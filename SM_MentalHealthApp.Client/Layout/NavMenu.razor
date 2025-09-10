@@ -1,0 +1,52 @@
+﻿<div class="nav-menu">
+    <nav class="nav-menu-items">
+        <a href="/" class="nav-item @(GetActiveClass("/"))">
+            <i class="nav-icon">🏠</i>
+            <span>Home</span>
+        </a>
+        <a href="/journal" class="nav-item @(GetActiveClass("/journal"))">
+            <i class="nav-icon">📝</i>
+            <span>Journal</span>
+        </a>
+        <a href="/trends" class="nav-item @(GetActiveClass("/trends"))">
+            <i class="nav-icon">📊</i>
+            <span>Trends</span>
+        </a>
+        <a href="/chat" class="nav-item @(GetActiveClass("/chat"))">
+            <i class="nav-icon">💬</i>
+            <span>Chat</span>
+        </a>
+        <a href="/patients" class="nav-item @(GetActiveClass("/patients"))">
+            <i class="nav-icon">👥</i>
+            <span>Patients</span>
+        </a>
+    </nav>
+    
+    <div class="nav-menu-footer">
+        <button class="nav-item about-button" @onclick="ShowAbout">
+            <i class="nav-icon">ℹ️</i>
+            <span>About</span>
+        </button>
+    </div>
+</div>
+
+@inject DialogService DialogService
+
+@code {
+    private string GetActiveClass(string path)
+    {
+        // This would need to be implemented with proper routing detection
+        return "";
+    }
+    
+    private void ShowAbout()
+    {
+        DialogService.Open("About", ds =>
+            @<div>
+                <h4>Mental Health Journal</h4>
+                <p>A compassionate AI-powered journaling app for mental health tracking and support.</p>
+                <p>Built with Blazor WebAssembly and powered by Hugging Face AI models.</p>
+            </div>,
+            new DialogOptions() { Width = "500px", Resizable = true, Draggable = true });
+    }
+}

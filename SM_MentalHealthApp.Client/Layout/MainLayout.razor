@@ -1,0 +1,30 @@
+﻿@inherits LayoutComponentBase
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<div class="rz-layout">
+    <div class="rz-layout-main">
+        <div class="rz-layout-sidebar">
+            <NavMenu />
+        </div>
+        
+        <div class="rz-layout-body">
+            <div class="rz-layout-content">
+                @Body
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private void ShowAbout()
+    {
+        DialogService.Open("About", ds =>
+            @<div>
+                <RadzenText TextStyle="TextStyle.H4" Text="Mental Health Journal" />
+                <RadzenText Text="A compassionate AI-powered journaling app for mental health tracking and support." />
+                <RadzenText Text="Built with Blazor WebAssembly and powered by Hugging Face AI models." />
+            </div>,
+            new DialogOptions() { Width = "500px", Resizable = true, Draggable = true });
+    }
+}

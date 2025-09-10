@@ -1,0 +1,108 @@
+﻿@page "/"
+@inject HttpClient Http
+@using SM_MentalHealthApp.Shared
+
+<PageTitle>Home</PageTitle>
+
+<div class="home-page">
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="hero-content">
+            <h1 class="hero-title">Welcome to Mental Health Journal</h1>
+            <h2 class="hero-subtitle">Your Personal AI-Powered Mental Health Companion</h2>
+            <p class="hero-description">
+                Helping patients is our number one priority. Track your emotional journey, 
+                gain insights, and receive compassionate AI support.
+            </p>
+        </div>
+    </div>
+
+    <!-- Feature Cards -->
+    <div class="features-grid">
+        <div class="feature-card">
+            <div class="feature-icon">📝</div>
+            <h3>Journal Your Thoughts</h3>
+            <p>Express your feelings and thoughts in a safe, private space. Our AI will provide empathetic responses and mood analysis.</p>
+            <a href="/journal" class="feature-button primary">Start Journaling</a>
+        </div>
+        
+        <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>Track Your Progress</h3>
+            <p>Visualize your emotional patterns over time with interactive charts and detailed analytics.</p>
+            <a href="/trends" class="feature-button success">View Trends</a>
+        </div>
+        
+        <div class="feature-card">
+            <div class="feature-icon">🤖</div>
+            <h3>AI-Powered Insights</h3>
+            <p>Get personalized mood analysis and compassionate responses powered by advanced AI technology.</p>
+            <a href="#" class="feature-button info">Learn More</a>
+        </div>
+    </div>
+
+    <!-- Recent Entries -->
+    @if (recentEntries.Any())
+    {
+        <div class="recent-entries">
+            <h3>Recent Journal Entries</h3>
+            <div class="entries-list">
+                @foreach (var entry in recentEntries.Take(3))
+                {
+                    <div class="entry-card" style="border-left: 4px solid @GetMoodColor(entry.Mood);">
+                        <div class="entry-header">
+                            <span class="entry-date">@entry.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy 'at' h:mm tt")</span>
+                            <span class="mood-badge @GetMoodClass(entry.Mood)">@(entry.Mood ?? "Unknown")</span>
+                        </div>
+                        <p class="entry-text">@(entry.Text.Length > 100 ? entry.Text.Substring(0, 100) + "..." : entry.Text)</p>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<JournalEntry> recentEntries = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRecentEntries();
+    }
+
+    private async Task LoadRecentEntries()
+    {
+        try
+        {
+            recentEntries = await Http.GetFromJsonAsync<List<JournalEntry>>("api/journal") ?? new();
+        }
+        catch (Exception)
+        {
+            // Silently handle errors on home page
+        }
+    }
+
+    private string GetMoodColor(string mood)
+    {
+        return mood switch
+        {
+            "Happy" => "#28a745",
+            "Sad" => "#dc3545",
+            "Anxious" => "#ffc107",
+            "Neutral" => "#6c757d",
+            _ => "#6c757d"
+        };
+    }
+
+    private string GetMoodClass(string mood)
+    {
+        return mood switch
+        {
+            "Happy" => "mood-happy",
+            "Sad" => "mood-sad",
+            "Anxious" => "mood-anxious",
+            "Neutral" => "mood-neutral",
+            _ => "mood-neutral"
+        };
+    }
+}

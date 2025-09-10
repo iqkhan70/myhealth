@@ -1,0 +1,317 @@
+@page "/chat"
+@page "/chat/{PatientId:int}"
+@using System.Net.Http.Json
+@using Microsoft.JSInterop
+@using SM_MentalHealthApp.Shared
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="chat-container">
+    <!-- Patient Selection Header -->
+    <div class="chat-header">
+        <div class="patient-selector">
+            <label for="patientSelect">👤 Chatting as:</label>
+            <select id="patientSelect" @bind="SelectedPatientId" @bind:after="OnPatientChanged" class="patient-select">
+                @if (Patients != null)
+                {
+                    @foreach (var patient in Patients)
+                    {
+                        <option value="@patient.Id">@patient.FirstName @patient.LastName (ID: @patient.Id)</option>
+                    }
+                }
+            </select>
+        </div>
+        <div class="patient-info">
+            @if (SelectedPatient != null)
+            {
+                <div class="patient-details">
+                    <span class="patient-name">@SelectedPatient.FirstName @SelectedPatient.LastName</span>
+                    <span class="patient-email">@SelectedPatient.Email</span>
+                    <span class="patient-id">Patient ID: @SelectedPatient.Id</span>
+                </div>
+                <div class="patient-stats">
+                    <span class="journal-count">📝 @(SelectedPatient.JournalEntries?.Count ?? 0) journal entries</span>
+                    <span class="last-login">🕒 Last active: @(SelectedPatient.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")</span>
+                </div>
+            }
+        </div>
+    </div>
+    <!-- <div class="nav-links">
+        <a href="/chat" class="nav-link active">WonderWorld Chat</a>
+        <a href="/regularchat" class="nav-link">Regular Chat</a>
+        <a href="/piichat" class="nav-link">PII Chat</a>
+        <a href="/reviews" class="nav-link">Reviews</a>
+    </div> -->
+    
+    <div class="chat-messages" id="chatMessages">
+        <!-- Patient Context Indicator -->
+        @if (SelectedPatient != null)
+        {
+            <div class="patient-context-indicator">
+                <div class="context-info">
+                    <span class="context-label">🧠 AI Context:</span>
+                    <span class="context-text">Personalized responses based on @SelectedPatient.FirstName's journal entries and mood patterns</span>
+                </div>
+            </div>
+        }
+        
+        @foreach (var message in Messages)
+        {
+            @if (message.StartsWith("You:"))
+            {
+                <div class="message-container user-container">
+                    <div class="message user-message">
+                        <div class="message-content">
+                            @message.Substring(4)
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (message.StartsWith("Bot:"))
+            {
+                <div class="message-container bot-container">
+                    <div class="message bot-message">
+                        <div class="message-content">
+                            @message.Substring(4)
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="message-container system-container">
+                    <div class="message system-message">
+                        <div class="message-content">
+                            @message
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        
+        @if (IsLoading)
+        {
+            <div class="message-container bot-container">
+                <div class="message bot-message">
+                    <div class="message-content">
+                        <div style="display: flex; flex-direction: row; gap: 6px;">
+                            <div class="dot-container">
+                                <div class="dot-base"></div>
+                                <div class="dot-overlay"></div>
+                            </div>
+                            <div class="dot-container">
+                                <div class="dot-base"></div>
+                                <div class="dot-overlay" style="animation-delay: 0.2s;"></div>
+                            </div>
+                            <div class="dot-container">
+                                <div class="dot-base"></div>
+                                <div class="dot-overlay" style="animation-delay: 0.4s;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="chat-input-container">
+        <div class="input-wrapper">
+            <input 
+                @bind="UserInput" 
+                @bind:event="oninput" 
+                @onkeydown="HandleKeyDown" 
+                placeholder="Ask me anything about mental health..." 
+                class="chat-input" 
+                disabled="@IsLoading"
+                maxlength="1000"
+            />
+            <button 
+                @onclick="ToggleSound" 
+                class="sound-toggle @(SoundEnabled ? "enabled" : "disabled")"
+                title="@(SoundEnabled ? "Disable sounds" : "Enable sounds")"
+            >
+                @if (SoundEnabled)
+                {
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="11,5 6,9 2,9 2,15 6,15 11,19"></polygon>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    </svg>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="11,5 6,9 2,9 2,15 6,15 11,19"></polygon>
+                        <line x1="23" y1="9" x2="17" y2="15"></line>
+                        <line x1="17" y1="9" x2="23" y2="15"></line>
+                    </svg>
+                }
+            </button>
+            <button 
+                @onclick="Send" 
+                disabled="@IsLoading || string.IsNullOrWhiteSpace(UserInput)" 
+                class="send-button"
+            >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22,2 15,22 11,13 2,9"></polygon>
+                </svg>
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int? PatientId { get; set; }
+    
+    private string UserInput { get; set; } = string.Empty;
+    private List<string> Messages = new();
+    private bool IsLoading = false;
+    private bool SoundEnabled { get; set; } = true;
+    
+    // Patient management
+    private List<Patient> Patients = new();
+    private int SelectedPatientId = 1; // Default to Patient 1
+    private Patient? SelectedPatient = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPatients();
+        
+        // If PatientId is provided in the URL, use it
+        if (PatientId.HasValue)
+        {
+            SelectedPatientId = PatientId.Value;
+        }
+        
+        await LoadSelectedPatient();
+        
+        // Add welcome message
+        Messages.Add("Bot: Hello! I'm your mental health companion. How can I help you today?");
+        
+        // Initialize sound setting
+        await InitializeSound();
+    }
+
+    private async Task LoadPatients()
+    {
+        try
+        {
+            Patients = await Http.GetFromJsonAsync<List<Patient>>("api/patient") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading patients: {ex.Message}");
+            Messages.Add($"System: Error loading patients - {ex.Message}");
+        }
+    }
+
+    private async Task LoadSelectedPatient()
+    {
+        try
+        {
+            SelectedPatient = await Http.GetFromJsonAsync<Patient>($"api/patient/{SelectedPatientId}");
+            if (SelectedPatient != null)
+            {
+                Messages.Add($"System: 👤 Now chatting as {SelectedPatient.FirstName} {SelectedPatient.LastName} (Patient ID: {SelectedPatient.Id})");
+                Messages.Add($"System: 📊 AI will provide personalized responses based on {SelectedPatient.FirstName}'s journal entries and mood patterns");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading selected patient: {ex.Message}");
+            Messages.Add($"System: Error loading patient data - {ex.Message}");
+        }
+    }
+
+    private async Task OnPatientChanged()
+    {
+        Messages.Clear();
+        await LoadSelectedPatient();
+        StateHasChanged();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(UserInput) && !IsLoading)
+        {
+            await Send();
+        }
+    }
+
+    private async Task Send()
+    {
+        if (string.IsNullOrWhiteSpace(UserInput) || IsLoading) return;
+        
+        try
+        {
+            IsLoading = true;
+            StateHasChanged();
+            
+            // Play send sound
+            if (SoundEnabled)
+            {
+                await JS.InvokeVoidAsync("playSound", "send");
+            }
+            
+            var request = new { prompt = UserInput, conversationId = Guid.NewGuid().ToString(), provider = 3, patientId = SelectedPatientId };
+            var response = await Http.PostAsJsonAsync("api/chat/send", request);
+            var data = await response.Content.ReadFromJsonAsync<ChatResponse>();
+            
+            Messages.Add($"You: {UserInput}");
+            UserInput = string.Empty;
+            
+            // Simple delay to show typing animation
+            await Task.Delay(1500);
+            
+            if (data?.Message != null)
+            {
+                Messages.Add($"Bot: {data.Message}");
+                // Play receive sound
+                if (SoundEnabled)
+                {
+                    await JS.InvokeVoidAsync("playSound", "receive");
+                }
+            }
+            else
+            {
+                Messages.Add($"Bot: Sorry, I couldn't process your request.");
+                // Play error sound for failed requests
+                if (SoundEnabled)
+                {
+                    await JS.InvokeVoidAsync("playSound", "error");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Messages.Add($"Error: {ex.Message}");
+            // Play error sound
+            if (SoundEnabled)
+            {
+                await JS.InvokeVoidAsync("playSound", "error");
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+            
+            // Scroll to bottom after sending message
+            await Task.Delay(100);
+            await JS.InvokeVoidAsync("scrollToBottom");
+        }
+    }
+
+
+    private async Task ToggleSound()
+    {
+        SoundEnabled = !SoundEnabled;
+        await JS.InvokeVoidAsync("setSoundEnabled", SoundEnabled);
+        StateHasChanged();
+    }
+
+    // Initialize sound setting
+    private async Task InitializeSound()
+    {
+        await JS.InvokeVoidAsync("setSoundEnabled", SoundEnabled);
+    }
+}

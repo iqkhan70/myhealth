@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SM_MentalHealthApp.Client</title>
+    <base href="/" />
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="_content/Radzen.Blazor/css/default-base.css" />
+    <link rel="stylesheet" href="_content/Radzen.Blazor/css/default.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="SM_MentalHealthApp.Client.styles.css" rel="stylesheet" />
+    <link href="manifest.webmanifest" rel="manifest" />
+    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    window.renderMoodChart = (entries) => {
+        try {
+            console.log('renderMoodChart called with entries:', entries);
+            
+            // Check if Chart.js is loaded
+            if (typeof Chart === 'undefined') {
+                console.error('Chart.js is not loaded');
+                return;
+            }
+
+            const canvas = document.getElementById('moodChart');
+            if (!canvas) {
+                console.error('Canvas element not found');
+                return;
+            }
+            
+            const ctx = canvas.getContext('2d');
+
+            // Destroy previous chart if exists and has destroy method
+            if (window.moodChart && typeof window.moodChart.destroy === 'function') {
+                window.moodChart.destroy();
+            }
+
+            const labels = entries.map(e => new Date(e.createdAt).toLocaleDateString());
+            const moods = entries.map(e => e.mood);
+            
+            console.log('Labels:', labels);
+            console.log('Moods:', moods);
+
+            // Assign numeric values for moods
+            const moodMap = { "Happy": 3, "Neutral": 2, "Sad": 1, "Anxious": 0 };
+            const moodValues = moods.map(m => moodMap[m] ?? 2);
+            
+            console.log('Mood values:', moodValues);
+
+            window.moodChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Mood Over Time',
+                    data: moodValues,
+                    borderColor: 'blue',
+                    tension: 0.2
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: function (val) {
+                                const labels = ["Anxious", "Sad", "Neutral", "Happy"];
+                                return labels[val] ?? val;
+                            }
+                        },
+                        min: 0,
+                        max: 3
+                    }
+                }
+            }
+        });
+        } catch (error) {
+            console.error('Error rendering mood chart:', error);
+        }
+    };
+
+    // Chat functionality
+    window.soundEnabled = true;
+    
+    window.setSoundEnabled = (enabled) => {
+        window.soundEnabled = enabled;
+    };
+    
+    window.playSound = (soundType) => {
+        if (!window.soundEnabled) {
+            return;
+        }
+        
+        try {
+            // Create audio context for sound generation
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Generate different sounds based on type
+            let frequency, duration, type;
+            
+            switch(soundType) {
+                case 'send':
+                    frequency = 800; // Higher pitch for send
+                    duration = 0.1;
+                    type = 'sine';
+                    break;
+                case 'receive':
+                    frequency = 600; // Medium pitch for receive
+                    duration = 0.15;
+                    type = 'triangle';
+                    break;
+                case 'error':
+                    frequency = 300; // Lower pitch for error
+                    duration = 0.3;
+                    type = 'sawtooth';
+                    break;
+                default:
+                    frequency = 500;
+                    duration = 0.1;
+                    type = 'sine';
+            }
+            
+            // Create oscillator
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            oscillator.type = type;
+            
+            // Add envelope for more natural sound
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+            
+            console.log(`Playing ${soundType} sound (${frequency}Hz)`);
+        } catch (error) {
+            console.log(`Playing ${soundType} sound (fallback)`);
+            // Fallback: just log if audio context fails
+        }
+    };
+
+    window.scrollToBottom = () => {
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) {
+            // Smooth scroll to bottom
+            chatMessages.scrollTo({
+                top: chatMessages.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+    };
+
+    // Add visual feedback for chat interactions
+    window.addChatAnimation = (messageElement) => {
+        if (messageElement) {
+            messageElement.style.opacity = '0';
+            messageElement.style.transform = 'translateY(20px)';
+            messageElement.style.transition = 'all 0.3s ease';
+            
+            setTimeout(() => {
+                messageElement.style.opacity = '1';
+                messageElement.style.transform = 'translateY(0)';
+            }, 50);
+        }
+    };
+</script>
+
+
+</head>
+
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+    <script>navigator.serviceWorker.register('service-worker.js');</script>
+</body>
+
+</html>

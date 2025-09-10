@@ -1,0 +1,150 @@
+@page "/trends"
+@inject HttpClient Http
+@inject NotificationService NotificationService
+@inject IJSRuntime JS
+@using SM_MentalHealthApp.Shared
+
+<div class="trends-page">
+    <div class="trends-header">
+        <h2>Mood Trends</h2>
+        <p>Track your emotional journey over time with interactive charts and insights.</p>
+    </div>
+    
+    @if (entries.Any())
+    {
+        <div class="trends-content">
+            <!-- Mood Chart -->
+            <div class="chart-card">
+                <h3>Mood Over Time</h3>
+                <div class="chart-container">
+                    <canvas id="moodChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+            
+            <!-- Stats and Recent Entries -->
+            <div class="trends-grid">
+                <!-- Mood Summary -->
+                <div class="mood-summary-card">
+                    <h4>Mood Summary</h4>
+                    <div class="mood-stats">
+                        <div class="mood-stat">
+                            <span class="mood-label">Happy:</span>
+                            <span class="mood-badge mood-happy">@GetMoodCount("Happy")</span>
+                        </div>
+                        <div class="mood-stat">
+                            <span class="mood-label">Neutral:</span>
+                            <span class="mood-badge mood-neutral">@GetMoodCount("Neutral")</span>
+                        </div>
+                        <div class="mood-stat">
+                            <span class="mood-label">Sad:</span>
+                            <span class="mood-badge mood-sad">@GetMoodCount("Sad")</span>
+                        </div>
+                        <div class="mood-stat">
+                            <span class="mood-label">Anxious:</span>
+                            <span class="mood-badge mood-anxious">@GetMoodCount("Anxious")</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Entries -->
+                <div class="recent-entries-card">
+                    <h4>Recent Entries</h4>
+                    <div class="entries-table">
+                        @foreach (var entry in entries.Take(5))
+                        {
+                            <div class="entry-row">
+                                <div class="entry-date">@entry.CreatedAt.ToLocalTime().ToString("MMM dd")</div>
+                                <div class="entry-mood">
+                                    <span class="mood-badge @GetMoodClass(entry.Mood)">@(entry.Mood ?? "Unknown")</span>
+                                </div>
+                                <div class="entry-text">@(entry.Text.Length > 50 ? entry.Text.Substring(0, 50) + "..." : entry.Text)</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="empty-state">
+            <div class="empty-icon">📊</div>
+            <h4>No journal entries yet</h4>
+            <p>Start writing in your journal to see trends!</p>
+        </div>
+    }
+</div>
+
+@code {
+    private List<JournalEntry> entries = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEntries();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Task.Delay(100); // Small delay to ensure DOM is ready
+            
+            if (entries.Any())
+            {
+                await JS.InvokeVoidAsync("renderMoodChart", entries);
+            }
+            else
+            {
+                // Create sample data for testing
+                var sampleEntries = new List<object>
+                {
+                    new { createdAt = DateTime.Now.AddDays(-4).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Happy" },
+                    new { createdAt = DateTime.Now.AddDays(-3).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Neutral" },
+                    new { createdAt = DateTime.Now.AddDays(-2).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Sad" },
+                    new { createdAt = DateTime.Now.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Anxious" },
+                    new { createdAt = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Happy" }
+                };
+                
+                Console.WriteLine("Using sample data for chart");
+                await JS.InvokeVoidAsync("renderMoodChart", sampleEntries);
+            }
+        }
+    }
+
+    private async Task LoadEntries()
+    {
+        try
+        {
+            // Load entries for Patient 1 specifically
+            entries = await Http.GetFromJsonAsync<List<JournalEntry>>("api/journal/patient/1") ?? new();
+            Console.WriteLine($"Loaded {entries.Count} journal entries for Patient 1");
+            
+            if (entries.Any())
+            {
+                Console.WriteLine("First entry mood: " + entries.First().Mood);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error loading entries: " + ex.Message);
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load journal entries: " + ex.Message);
+        }
+    }
+
+    private int GetMoodCount(string mood)
+    {
+        return entries.Count(e => e.Mood == mood);
+    }
+
+    private string GetMoodClass(string mood)
+    {
+        return mood switch
+        {
+            "Happy" => "mood-happy",
+            "Sad" => "mood-sad",
+            "Anxious" => "mood-anxious",
+            "Neutral" => "mood-neutral",
+            _ => "mood-neutral"
+        };
+    }
+}

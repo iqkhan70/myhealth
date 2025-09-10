@@ -1,0 +1,25 @@
+Save as setup.sh
+
+Run:
+
+chmod +x setup.sh
+./setup.sh
+
+
+This creates SM_MentalHealthApp.zip in the same folder.
+
+Update appsettings.json with your MySQL creds + OpenAI API key.
+
+Apply EF migrations:
+
+cd SM_MentalHealthApp.Server
+dotnet ef migrations add Init
+dotnet ef database update
+
+
+Run the app:
+
+dotnet run --project SM_MentalHealthApp.Server
+
+
+Visit 👉 https://localhost:5001/journal
