@@ -1,7 +1,9 @@
 @page "/journal"
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Shared
 @inject HttpClient Http
 @inject NotificationService NotificationService
-@using SM_MentalHealthApp.Shared
+@inject IAuthService AuthService
 
 <div class="journal-page">
     <!-- Journal Entry Form -->
@@ -82,8 +84,11 @@
     {
         try
         {
-            // Load entries for Patient 1 specifically
-            entries = await Http.GetFromJsonAsync<List<JournalEntry>>("api/journal/patient/1") ?? new();
+            if (AuthService.CurrentUser != null)
+            {
+                // Load entries for the authenticated user
+                entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/patient/{AuthService.CurrentUser.Id}") ?? new();
+            }
         }
         catch (Exception ex)
         {
@@ -98,9 +103,15 @@
 
         try
         {
+            if (AuthService.CurrentUser == null)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "You must be logged in to save journal entries.");
+                return;
+            }
+
             var newEntry = new JournalEntry { Text = entryText };
-            // Save entry for Patient 1 specifically
-            var result = await Http.PostAsJsonAsync("api/journal/patient/1", newEntry);
+            // Save entry for the authenticated user
+            var result = await Http.PostAsJsonAsync($"api/journal/patient/{AuthService.CurrentUser.Id}", newEntry);
 
             if (result.IsSuccessStatusCode)
             {

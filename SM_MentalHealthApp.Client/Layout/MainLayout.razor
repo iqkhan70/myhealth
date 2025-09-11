@@ -1,20 +1,55 @@
-﻿@inherits LayoutComponentBase
+﻿@using SM_MentalHealthApp.Client.Services
+@inherits LayoutComponentBase
 @inject NotificationService NotificationService
 @inject DialogService DialogService
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
 
-<div class="rz-layout">
-    <div class="rz-layout-main">
-        <div class="rz-layout-sidebar">
-            <NavMenu />
-        </div>
+@if (!AuthService.IsInitialized)
+{
+    <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <p>Loading...</p>
+    </div>
+}
+else
+{
+    <div class="rz-layout">
+        <!-- Header with logout button -->
+        @if (AuthService.CurrentUser != null)
+        {
+            <div class="app-header">
+                <div class="header-content">
+                    <div class="app-title">
+                        <h1>Mental Health Journal</h1>
+                    </div>
+                    <div class="header-user-info">
+                        <div class="user-details">
+                            <span class="user-name">@AuthService.CurrentUser.FullName</span>
+                            <span class="user-email">@AuthService.CurrentUser.Email</span>
+                        </div>
+                        <button class="header-logout-btn" @onclick="Logout" title="Logout">
+                            <i class="nav-icon">🚪</i>
+                            <span>Logout</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
         
-        <div class="rz-layout-body">
-            <div class="rz-layout-content">
-                @Body
+        <div class="rz-layout-main">
+            <div class="rz-layout-sidebar">
+                <NavMenu />
+            </div>
+            
+            <div class="rz-layout-body">
+                <div class="rz-layout-content">
+                    @Body
+                </div>
             </div>
         </div>
     </div>
-</div>
+}
 
 @code {
     private void ShowAbout()
@@ -26,5 +61,11 @@
                 <RadzenText Text="Built with Blazor WebAssembly and powered by Hugging Face AI models." />
             </div>,
             new DialogOptions() { Width = "500px", Resizable = true, Draggable = true });
+    }
+    
+    private async Task Logout()
+    {
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login");
     }
 }

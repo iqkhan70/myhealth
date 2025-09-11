@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Server.Services;
 
@@ -14,6 +17,31 @@ builder.Services.AddScoped<HuggingFaceService>();
 builder.Services.AddScoped<PatientService>();
 builder.Services.AddScoped<ConversationRepository>();
 builder.Services.AddScoped<ChatService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
+
+// JWT Authentication
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong!";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "MentalHealthApp";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "MentalHealthAppUsers";
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(jwtKey)),
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtAudience,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 builder.Services.AddControllersWithViews()
     .AddJsonOptions(options =>
@@ -44,6 +72,9 @@ else
 app.UseHttpsRedirection();
 app.UseBlazorFrameworkFiles();  // ✅ make sure Microsoft.AspNetCore.Components.WebAssembly.Server is referenced
 app.UseStaticFiles();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapRazorPages();
 app.MapControllers();

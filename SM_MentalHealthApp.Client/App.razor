@@ -1,7 +1,18 @@
-﻿<Router AppAssembly="@typeof(App).Assembly">
+﻿@using SM_MentalHealthApp.Client.Components
+
+<Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        @if (IsLoginPage(routeData.PageType) || IsChangePasswordPage(routeData.PageType))
+        {
+            <RouteView RouteData="@routeData" />
+        }
+        else
+        {
+            <AuthenticationStateProvider>
+                <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+                <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+            </AuthenticationStateProvider>
+        }
     </Found>
     <NotFound>
         <PageTitle>Not found</PageTitle>
@@ -10,3 +21,15 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    private bool IsLoginPage(Type pageType)
+    {
+        return pageType?.Name == "Login";
+    }
+    
+    private bool IsChangePasswordPage(Type pageType)
+    {
+        return pageType?.Name == "ChangePassword";
+    }
+}

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SM_MentalHealthApp.Server.Data;
 
@@ -11,9 +12,11 @@ using SM_MentalHealthApp.Server.Data;
 namespace SM_MentalHealthApp.Server.Migrations
 {
     [DbContext(typeof(JournalDbContext))]
-    partial class JournalDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250911205027_AddRoleSystem")]
+    partial class AddRoleSystem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -103,9 +106,6 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<int>("RoleId")
-                        .HasColumnType("int");
-
                     b.Property<string>("Specialization")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
@@ -114,8 +114,6 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.HasIndex("Email")
                         .IsUnique();
-
-                    b.HasIndex("RoleId");
 
                     b.ToTable("Doctors");
                 });
@@ -222,7 +220,7 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<int>("RoleId")
+                    b.Property<int>("Role")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -230,41 +228,7 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
-                    b.HasIndex("RoleId");
-
                     b.ToTable("Patients");
-                });
-
-            modelBuilder.Entity("SM_MentalHealthApp.Shared.Role", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("Roles");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.ChatSession", b =>
@@ -276,17 +240,6 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .IsRequired();
 
                     b.Navigation("Patient");
-                });
-
-            modelBuilder.Entity("SM_MentalHealthApp.Shared.Doctor", b =>
-                {
-                    b.HasOne("SM_MentalHealthApp.Shared.Role", "Role")
-                        .WithMany("Doctors")
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Role");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.DoctorPatient", b =>
@@ -319,17 +272,6 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Navigation("Patient");
                 });
 
-            modelBuilder.Entity("SM_MentalHealthApp.Shared.Patient", b =>
-                {
-                    b.HasOne("SM_MentalHealthApp.Shared.Role", "Role")
-                        .WithMany("Patients")
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Role");
-                });
-
             modelBuilder.Entity("SM_MentalHealthApp.Shared.Doctor", b =>
                 {
                     b.Navigation("DoctorPatients");
@@ -342,13 +284,6 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Navigation("DoctorPatients");
 
                     b.Navigation("JournalEntries");
-                });
-
-            modelBuilder.Entity("SM_MentalHealthApp.Shared.Role", b =>
-                {
-                    b.Navigation("Doctors");
-
-                    b.Navigation("Patients");
                 });
 #pragma warning restore 612, 618
         }

@@ -1,0 +1,332 @@
+@page "/login"
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Shared
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <h2>🧠 Mental Health Journal</h2>
+            <p>Sign in to your account</p>
+        </div>
+
+        <div class="login-form">
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger" role="alert">
+                    @errorMessage
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(successMessage))
+            {
+                <div class="alert alert-success" role="alert">
+                    @successMessage
+                </div>
+            }
+
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" 
+                       id="email" 
+                       class="form-control @(string.IsNullOrEmpty(email) && showValidation ? "is-invalid" : "")" 
+                       @bind="email" 
+                       placeholder="Enter your email" 
+                       disabled="@isLoading" />
+                @if (string.IsNullOrEmpty(email) && showValidation)
+                {
+                    <div class="invalid-feedback">Email is required</div>
+                }
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" 
+                       id="password" 
+                       class="form-control @(string.IsNullOrEmpty(password) && showValidation ? "is-invalid" : "")" 
+                       @bind="password" 
+                       placeholder="Enter your password" 
+                       disabled="@isLoading" />
+                @if (string.IsNullOrEmpty(password) && showValidation)
+                {
+                    <div class="invalid-feedback">Password is required</div>
+                }
+            </div>
+
+            <div class="form-actions">
+                <button type="button" 
+                        class="btn btn-primary btn-login" 
+                        @onclick="HandleLogin" 
+                        disabled="@isLoading">
+                    @if (isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    }
+                    Sign In
+                </button>
+            </div>
+
+            <div class="login-divider">
+                <span>or</span>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" 
+                        class="btn btn-outline-secondary btn-register" 
+                        @onclick="ToggleMode" 
+                        disabled="@isLoading">
+                    @(isRegisterMode ? "Already have an account? Sign In" : "Don't have an account? Register")
+                </button>
+            </div>
+        </div>
+
+        @if (isRegisterMode)
+        {
+            <div class="register-form">
+                <h4>Create New Account</h4>
+                
+                <div class="form-group">
+                    <label for="firstName">First Name</label>
+                    <input type="text" 
+                           id="firstName" 
+                           class="form-control @(string.IsNullOrEmpty(firstName) && showValidation ? "is-invalid" : "")" 
+                           @bind="firstName" 
+                           placeholder="Enter your first name" 
+                           disabled="@isLoading" />
+                    @if (string.IsNullOrEmpty(firstName) && showValidation)
+                    {
+                        <div class="invalid-feedback">First name is required</div>
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label for="lastName">Last Name</label>
+                    <input type="text" 
+                           id="lastName" 
+                           class="form-control @(string.IsNullOrEmpty(lastName) && showValidation ? "is-invalid" : "")" 
+                           @bind="lastName" 
+                           placeholder="Enter your last name" 
+                           disabled="@isLoading" />
+                    @if (string.IsNullOrEmpty(lastName) && showValidation)
+                    {
+                        <div class="invalid-feedback">Last name is required</div>
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label for="registerEmail">Email Address</label>
+                    <input type="email" 
+                           id="registerEmail" 
+                           class="form-control @(string.IsNullOrEmpty(registerEmail) && showValidation ? "is-invalid" : "")" 
+                           @bind="registerEmail" 
+                           placeholder="Enter your email" 
+                           disabled="@isLoading" />
+                    @if (string.IsNullOrEmpty(registerEmail) && showValidation)
+                    {
+                        <div class="invalid-feedback">Email is required</div>
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label for="registerPassword">Password</label>
+                    <input type="password" 
+                           id="registerPassword" 
+                           class="form-control @(string.IsNullOrEmpty(registerPassword) && showValidation ? "is-invalid" : "")" 
+                           @bind="registerPassword" 
+                           placeholder="Enter your password" 
+                           disabled="@isLoading" />
+                    @if (string.IsNullOrEmpty(registerPassword) && showValidation)
+                    {
+                        <div class="invalid-feedback">Password is required</div>
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label for="dateOfBirth">Date of Birth</label>
+                    <input type="date" 
+                           id="dateOfBirth" 
+                           class="form-control @(dateOfBirth == DateTime.MinValue && showValidation ? "is-invalid" : "")" 
+                           @bind="dateOfBirth" 
+                           disabled="@isLoading" />
+                    @if (dateOfBirth == DateTime.MinValue && showValidation)
+                    {
+                        <div class="invalid-feedback">Date of birth is required</div>
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label for="gender">Gender (Optional)</label>
+                    <select id="gender" 
+                            class="form-control" 
+                            @bind="gender" 
+                            disabled="@isLoading">
+                        <option value="">Select gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" 
+                            class="btn btn-success btn-register-submit" 
+                            @onclick="HandleRegister" 
+                            disabled="@isLoading">
+                        @if (isLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        }
+                        Create Account
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string email = "";
+    private string password = "";
+    private string firstName = "";
+    private string lastName = "";
+    private string registerEmail = "";
+    private string registerPassword = "";
+    private DateTime dateOfBirth = DateTime.Today.AddYears(-25);
+    private string gender = "";
+    
+    private bool isLoading = false;
+    private bool isRegisterMode = false;
+    private bool showValidation = false;
+    private string errorMessage = "";
+    private string successMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if user is already authenticated
+        if (AuthService.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/");
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        showValidation = true;
+        errorMessage = "";
+        successMessage = "";
+
+        if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
+        {
+            errorMessage = "Please fill in all required fields";
+            return;
+        }
+
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var request = new LoginRequest
+            {
+                Email = email,
+                Password = password
+            };
+
+            var response = await AuthService.LoginAsync(request);
+
+            if (response.Success)
+            {
+                successMessage = "Login successful! Redirecting...";
+                await Task.Delay(1000);
+                Navigation.NavigateTo("/");
+            }
+            else
+            {
+                errorMessage = response.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Login failed: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleRegister()
+    {
+        showValidation = true;
+        errorMessage = "";
+        successMessage = "";
+
+        if (string.IsNullOrEmpty(firstName) || string.IsNullOrEmpty(lastName) || 
+            string.IsNullOrEmpty(registerEmail) || string.IsNullOrEmpty(registerPassword) ||
+            dateOfBirth == DateTime.MinValue)
+        {
+            errorMessage = "Please fill in all required fields";
+            return;
+        }
+
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var request = new RegisterRequest
+            {
+                FirstName = firstName,
+                LastName = lastName,
+                Email = registerEmail,
+                Password = registerPassword,
+                DateOfBirth = dateOfBirth,
+                Gender = string.IsNullOrEmpty(gender) ? null : gender
+            };
+
+            var response = await AuthService.RegisterAsync(request);
+
+            if (response.Success)
+            {
+                successMessage = "Registration successful! Redirecting...";
+                await Task.Delay(1000);
+                Navigation.NavigateTo("/");
+            }
+            else
+            {
+                errorMessage = response.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Registration failed: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleMode()
+    {
+        isRegisterMode = !isRegisterMode;
+        showValidation = false;
+        errorMessage = "";
+        successMessage = "";
+        
+        // Clear form fields
+        email = "";
+        password = "";
+        firstName = "";
+        lastName = "";
+        registerEmail = "";
+        registerPassword = "";
+        dateOfBirth = DateTime.Today.AddYears(-25);
+        gender = "";
+    }
+}

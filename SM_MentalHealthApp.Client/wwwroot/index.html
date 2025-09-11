@@ -90,6 +90,19 @@
     window.setSoundEnabled = (enabled) => {
         window.soundEnabled = enabled;
     };
+
+    // Authentication storage functions
+    window.saveToken = (token) => {
+        localStorage.setItem('authToken', token);
+    };
+
+    window.getToken = () => {
+        return localStorage.getItem('authToken');
+    };
+
+    window.removeToken = () => {
+        localStorage.removeItem('authToken');
+    };
     
     window.playSound = (soundType) => {
         if (!window.soundEnabled) {

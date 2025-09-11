@@ -1,8 +1,10 @@
 @page "/trends"
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Shared
 @inject HttpClient Http
 @inject NotificationService NotificationService
 @inject IJSRuntime JS
-@using SM_MentalHealthApp.Shared
+@inject IAuthService AuthService
 
 <div class="trends-page">
     <div class="trends-header">
@@ -115,13 +117,16 @@
     {
         try
         {
-            // Load entries for Patient 1 specifically
-            entries = await Http.GetFromJsonAsync<List<JournalEntry>>("api/journal/patient/1") ?? new();
-            Console.WriteLine($"Loaded {entries.Count} journal entries for Patient 1");
-            
-            if (entries.Any())
+            if (AuthService.CurrentUser != null)
             {
-                Console.WriteLine("First entry mood: " + entries.First().Mood);
+                // Load entries for the authenticated user
+                entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/patient/{AuthService.CurrentUser.Id}") ?? new();
+                Console.WriteLine($"Loaded {entries.Count} journal entries for user {AuthService.CurrentUser.Id}");
+                
+                if (entries.Any())
+                {
+                    Console.WriteLine("First entry mood: " + entries.First().Mood);
+                }
             }
         }
         catch (Exception ex)

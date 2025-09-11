@@ -4,22 +4,45 @@
             <i class="nav-icon">🏠</i>
             <span>Home</span>
         </a>
-        <a href="/journal" class="nav-item @(GetActiveClass("/journal"))">
-            <i class="nav-icon">📝</i>
-            <span>Journal</span>
-        </a>
-        <a href="/trends" class="nav-item @(GetActiveClass("/trends"))">
-            <i class="nav-icon">📊</i>
-            <span>Trends</span>
-        </a>
-        <a href="/chat" class="nav-item @(GetActiveClass("/chat"))">
-            <i class="nav-icon">💬</i>
-            <span>Chat</span>
-        </a>
-        <a href="/patients" class="nav-item @(GetActiveClass("/patients"))">
-            <i class="nav-icon">👥</i>
-            <span>Patients</span>
-        </a>
+        
+        @* Patient-specific pages *@
+        @if (AuthService.CurrentUser?.RoleId == 1) // Patient
+        {
+            <a href="/journal" class="nav-item @(GetActiveClass("/journal"))">
+                <i class="nav-icon">📝</i>
+                <span>Journal</span>
+            </a>
+            <a href="/trends" class="nav-item @(GetActiveClass("/trends"))">
+                <i class="nav-icon">📊</i>
+                <span>Trends</span>
+            </a>
+            <a href="/chat" class="nav-item @(GetActiveClass("/chat"))">
+                <i class="nav-icon">💬</i>
+                <span>Chat</span>
+            </a>
+        }
+        
+        @* Doctor-specific pages *@
+        @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+        {
+            <a href="/patients" class="nav-item @(GetActiveClass("/patients"))">
+                <i class="nav-icon">👥</i>
+                <span>My Patients</span>
+            </a>
+        }
+        
+        @* Admin-specific pages *@
+        @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+        {
+            <a href="/admin" class="nav-item @(GetActiveClass("/admin"))">
+                <i class="nav-icon">⚙️</i>
+                <span>Admin Panel</span>
+            </a>
+            <a href="/patients" class="nav-item @(GetActiveClass("/patients"))">
+                <i class="nav-icon">👥</i>
+                <span>All Patients</span>
+            </a>
+        }
     </nav>
     
     <div class="nav-menu-footer">
@@ -30,7 +53,10 @@
     </div>
 </div>
 
+@using SM_MentalHealthApp.Client.Services
 @inject DialogService DialogService
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
 
 @code {
     private string GetActiveClass(string path)
@@ -48,5 +74,17 @@
                 <p>Built with Blazor WebAssembly and powered by Hugging Face AI models.</p>
             </div>,
             new DialogOptions() { Width = "500px", Resizable = true, Draggable = true });
+    }
+    
+    private async Task Logout()
+    {
+        var confirmed = await DialogService.Confirm("Are you sure you want to logout?", "Logout Confirmation", 
+            new ConfirmOptions() { OkButtonText = "Yes, Logout", CancelButtonText = "Cancel" });
+        
+        if (confirmed == true)
+        {
+            await AuthService.LogoutAsync();
+            Navigation.NavigateTo("/login");
+        }
     }
 }
