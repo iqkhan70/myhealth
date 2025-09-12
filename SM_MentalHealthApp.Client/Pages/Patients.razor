@@ -340,18 +340,24 @@
             
             if (AuthService.CurrentUser?.RoleId == 2) // Doctor - load only assigned users
             {
-                users = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/users") ?? new();
+                Console.WriteLine($"Loading patients for doctor ID: {AuthService.CurrentUser.Id}");
+                users = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients") ?? new();
+                Console.WriteLine($"Loaded {users.Count} patients for doctor");
             }
             else if (AuthService.CurrentUser?.RoleId == 3) // Admin - load all users
             {
+                Console.WriteLine("Loading all users for admin");
                 users = await Http.GetFromJsonAsync<List<User>>("api/user") ?? new();
+                Console.WriteLine($"Loaded {users.Count} users for admin");
             }
             else
             {
+                Console.WriteLine("No access - user role not authorized");
                 users = new(); // No access
             }
             
             filteredUsers = users.ToList();
+            Console.WriteLine($"Filtered users count: {filteredUsers.Count}");
         }
         catch (Exception ex)
         {
@@ -371,6 +377,7 @@
 
     private void FilterUsers()
     {
+        Console.WriteLine($"Filtering users - searchTerm: '{searchTerm}', statusFilter: '{statusFilter}', total users: {users.Count}");
         filteredUsers = users.Where(p => 
             (string.IsNullOrEmpty(searchTerm) || 
              p.FirstName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
@@ -380,6 +387,7 @@
              (statusFilter == "active" && p.IsActive) ||
              (statusFilter == "inactive" && !p.IsActive))
         ).ToList();
+        Console.WriteLine($"Filtered users count: {filteredUsers.Count}");
     }
 
     private void ShowAddPatientForm()
