@@ -25,7 +25,7 @@
         @* Doctor-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
         {
-            <a href="/patients" class="nav-item @(GetActiveClass("/patients"))">
+            <a href="/users" class="nav-item @(GetActiveClass("/users"))">
                 <i class="nav-icon">👥</i>
                 <span>My Patients</span>
             </a>
@@ -38,7 +38,7 @@
                 <i class="nav-icon">⚙️</i>
                 <span>Admin Panel</span>
             </a>
-            <a href="/patients" class="nav-item @(GetActiveClass("/patients"))">
+            <a href="/users" class="nav-item @(GetActiveClass("/users"))">
                 <i class="nav-icon">👥</i>
                 <span>All Patients</span>
             </a>

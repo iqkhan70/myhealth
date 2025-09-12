@@ -14,6 +14,7 @@
         }
         else if (AuthService.CurrentUser?.RoleId == 3) // Admin
         {
+            Console.WriteLine("This is at test page");
             <h2>All Patients</h2>
             <p>Manage all patient records and view their mental health journey.</p>
             <button @onclick="ShowAddPatientForm" class="add-patient-btn">
