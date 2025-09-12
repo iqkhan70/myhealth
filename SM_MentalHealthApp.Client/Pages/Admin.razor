@@ -137,6 +137,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Wait for authentication to be initialized
+        await AuthService.InitializeAsync();
         await LoadData();
     }
 
@@ -147,17 +149,22 @@
             isLoading = true;
             StateHasChanged();
 
+            Console.WriteLine($"Admin user: {AuthService.CurrentUser?.Email}, Role: {AuthService.CurrentUser?.RoleId}");
+
             // Load patients (users with role = Patient)
             var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
             patients = patientsResponse ?? new();
+            Console.WriteLine($"Loaded {patients.Count} patients");
 
             // Load doctors (users with role = Doctor)
             var doctorsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors");
             doctors = doctorsResponse ?? new();
+            Console.WriteLine($"Loaded {doctors.Count} doctors");
 
             // Load assignments
-                    var assignmentsResponse = await Http.GetFromJsonAsync<List<UserAssignment>>("api/admin/assignments");
+            var assignmentsResponse = await Http.GetFromJsonAsync<List<UserAssignment>>("api/admin/assignments");
             assignments = assignmentsResponse ?? new();
+            Console.WriteLine($"Loaded {assignments.Count} assignments");
 
             isLoading = false;
         }
@@ -166,6 +173,7 @@
             isLoading = false;
             message = $"Error loading data: {ex.Message}";
             isError = true;
+            Console.WriteLine($"Admin page error: {ex.Message}");
         }
     }
 
