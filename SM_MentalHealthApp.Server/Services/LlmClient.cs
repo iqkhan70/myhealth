@@ -6,16 +6,10 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using System.IO; // Added for File operations
+using SM_MentalHealthApp.Shared;
 
-namespace SM_LLMServer.Services
+namespace SM_MentalHealthApp.Server.Services
 {
-    public enum AiProvider
-    {
-        OpenAI,
-        Ollama,
-        CustomKnowledge,
-        HuggingFace
-    }
 
     public class LlmRequest
     {

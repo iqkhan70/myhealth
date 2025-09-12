@@ -120,7 +120,7 @@
             if (AuthService.CurrentUser != null)
             {
                 // Load entries for the authenticated user
-                entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/patient/{AuthService.CurrentUser.Id}") ?? new();
+                entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/user/{AuthService.CurrentUser.Id}") ?? new();
                 Console.WriteLine($"Loaded {entries.Count} journal entries for user {AuthService.CurrentUser.Id}");
                 
                 if (entries.Any())

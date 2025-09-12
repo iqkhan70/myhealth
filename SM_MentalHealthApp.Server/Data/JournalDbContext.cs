@@ -8,9 +8,8 @@ namespace SM_MentalHealthApp.Server.Data
         public JournalDbContext(DbContextOptions<JournalDbContext> options) : base(options) { }
         
         public DbSet<Role> Roles { get; set; }
-        public DbSet<Patient> Patients { get; set; }
-        public DbSet<Doctor> Doctors { get; set; }
-        public DbSet<DoctorPatient> DoctorPatients { get; set; }
+        public DbSet<User> Users { get; set; }
+        public DbSet<UserAssignment> UserAssignments { get; set; }
         public DbSet<JournalEntry> JournalEntries { get; set; }
         public DbSet<ChatSession> ChatSessions { get; set; }
 
@@ -27,8 +26,8 @@ namespace SM_MentalHealthApp.Server.Data
                 entity.HasIndex(e => e.Name).IsUnique();
             });
 
-            // Configure Patient entity
-            modelBuilder.Entity<Patient>(entity =>
+            // Configure User entity
+            modelBuilder.Entity<User>(entity =>
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
@@ -36,45 +35,29 @@ namespace SM_MentalHealthApp.Server.Data
                 entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
                 entity.HasIndex(e => e.Email).IsUnique();
                 entity.Property(e => e.Gender).HasMaxLength(20);
-                
-                // Foreign key relationship to Role
-                entity.HasOne(e => e.Role)
-                      .WithMany(r => r.Patients)
-                      .HasForeignKey(e => e.RoleId)
-                      .OnDelete(DeleteBehavior.Restrict);
-            });
-
-            // Configure Doctor entity
-            modelBuilder.Entity<Doctor>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
-                entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
-                entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
-                entity.HasIndex(e => e.Email).IsUnique();
                 entity.Property(e => e.Specialization).HasMaxLength(100);
                 entity.Property(e => e.LicenseNumber).HasMaxLength(50);
                 
                 // Foreign key relationship to Role
                 entity.HasOne(e => e.Role)
-                      .WithMany(r => r.Doctors)
+                      .WithMany(r => r.Users)
                       .HasForeignKey(e => e.RoleId)
                       .OnDelete(DeleteBehavior.Restrict);
             });
 
-            // Configure DoctorPatient junction table
-            modelBuilder.Entity<DoctorPatient>(entity =>
+            // Configure UserAssignment junction table (User-to-User relationships)
+            modelBuilder.Entity<UserAssignment>(entity =>
             {
-                entity.HasKey(e => new { e.DoctorId, e.PatientId });
+                entity.HasKey(e => new { e.AssignerId, e.AssigneeId });
                 
-                entity.HasOne(e => e.Doctor)
-                      .WithMany(d => d.DoctorPatients)
-                      .HasForeignKey(e => e.DoctorId)
+                entity.HasOne(e => e.Assigner)
+                      .WithMany(u => u.Assignments)
+                      .HasForeignKey(e => e.AssignerId)
                       .OnDelete(DeleteBehavior.Cascade);
                       
-                entity.HasOne(e => e.Patient)
-                      .WithMany(p => p.DoctorPatients)
-                      .HasForeignKey(e => e.PatientId)
+                entity.HasOne(e => e.Assignee)
+                      .WithMany(u => u.AssignedTo)
+                      .HasForeignKey(e => e.AssigneeId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
@@ -86,9 +69,9 @@ namespace SM_MentalHealthApp.Server.Data
                 entity.Property(e => e.Mood).HasMaxLength(50);
                 
                 // Foreign key relationship
-                entity.HasOne(e => e.Patient)
-                      .WithMany(p => p.JournalEntries)
-                      .HasForeignKey(e => e.PatientId)
+                entity.HasOne(e => e.User)
+                      .WithMany(u => u.JournalEntries)
+                      .HasForeignKey(e => e.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
@@ -100,9 +83,9 @@ namespace SM_MentalHealthApp.Server.Data
                 entity.HasIndex(e => e.SessionId).IsUnique();
                 
                 // Foreign key relationship
-                entity.HasOne(e => e.Patient)
-                      .WithMany(p => p.ChatSessions)
-                      .HasForeignKey(e => e.PatientId)
+                entity.HasOne(e => e.User)
+                      .WithMany(u => u.ChatSessions)
+                      .HasForeignKey(e => e.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
         }

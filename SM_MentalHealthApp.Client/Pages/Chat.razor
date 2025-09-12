@@ -15,24 +15,24 @@
         <div class="chat-header">
             <div class="patient-selector">
                 <label for="patientSelect">👤 Select Patient:</label>
-                <select id="patientSelect" @bind="SelectedPatientId" @bind:after="OnPatientChanged" class="patient-select">
+                <select id="userSelect" @bind="SelectedUserId" @bind:after="OnUserChanged" class="patient-select">
                     <option value="0">Choose a patient...</option>
-                    @if (Patients != null)
+                    @if (Users != null)
                     {
-                        @foreach (var patient in Patients)
+                        @foreach (var user in Users)
                         {
-                            <option value="@patient.Id">@patient.FirstName @patient.LastName (ID: @patient.Id)</option>
+                            <option value="@user.Id">@user.FirstName @user.LastName (ID: @user.Id)</option>
                         }
                     }
                 </select>
             </div>
-            @if (SelectedPatient != null)
+            @if (SelectedUser != null)
             {
                 <div class="patient-info">
                     <div class="patient-details">
-                        <span class="patient-name">@SelectedPatient.FirstName @SelectedPatient.LastName</span>
-                        <span class="patient-email">@SelectedPatient.Email</span>
-                        <span class="patient-id">Patient ID: @SelectedPatient.Id</span>
+                        <span class="patient-name">@SelectedUser.FirstName @SelectedUser.LastName</span>
+                        <span class="patient-email">@SelectedUser.Email</span>
+                        <span class="patient-id">User ID: @SelectedUser.Id</span>
                     </div>
                 </div>
             }
@@ -171,36 +171,42 @@
 
 @code {
     [Parameter] public int? PatientId { get; set; }
+    [Parameter] public int? UserId { get; set; }
     
     private string UserInput { get; set; } = string.Empty;
     private List<string> Messages = new();
     private bool IsLoading = false;
     private bool SoundEnabled { get; set; } = true;
     
-    // Patient management
-    private List<Patient> Patients = new();
-    private int SelectedPatientId = 1; // Default to Patient 1
-    private Patient? SelectedPatient = null;
+    // User management
+    private List<User> Users = new();
+    private int SelectedUserId = 1; // Default to User 1
+    private User? SelectedUser = null;
 
     protected override async Task OnInitializedAsync()
     {
         if (AuthService.CurrentUser?.RoleId == 2) // Doctor
         {
-            await LoadPatients();
+            await LoadUsers();
             
-            // If PatientId is provided in the URL, use it
+            // If PatientId is provided in the URL, use it as UserId
             if (PatientId.HasValue)
             {
-                SelectedPatientId = PatientId.Value;
+                SelectedUserId = PatientId.Value;
+            }
+            // If UserId is provided in the URL, use it
+            else if (UserId.HasValue)
+            {
+                SelectedUserId = UserId.Value;
             }
             
-            await LoadSelectedPatient();
+            await LoadSelectedUser();
         }
         else if (AuthService.CurrentUser?.RoleId == 1) // Patient
         {
             // For patients, they chat as themselves
-            SelectedPatientId = AuthService.CurrentUser.Id;
-            await LoadSelectedPatient();
+            SelectedUserId = AuthService.CurrentUser.Id;
+            await LoadSelectedUser();
         }
         
         // Add welcome message
@@ -210,49 +216,49 @@
         await InitializeSound();
     }
 
-    private async Task LoadPatients()
+    private async Task LoadUsers()
     {
         try
         {
-            // Only load patients for doctors (their assigned patients)
+            // Only load users for doctors (their assigned patients)
             if (AuthService.CurrentUser?.RoleId == 2)
             {
-                Patients = await Http.GetFromJsonAsync<List<Patient>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients") ?? new();
+                Users = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients") ?? new();
             }
             else
             {
-                Patients = new();
+                Users = new();
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading patients: {ex.Message}");
-            Messages.Add($"System: Error loading patients - {ex.Message}");
+            Console.WriteLine($"Error loading users: {ex.Message}");
+            Messages.Add($"System: Error loading users - {ex.Message}");
         }
     }
 
-    private async Task LoadSelectedPatient()
+    private async Task LoadSelectedUser()
     {
         try
         {
-            SelectedPatient = await Http.GetFromJsonAsync<Patient>($"api/patient/{SelectedPatientId}");
-            if (SelectedPatient != null)
+            SelectedUser = await Http.GetFromJsonAsync<User>($"api/user/{SelectedUserId}");
+            if (SelectedUser != null)
             {
-                Messages.Add($"System: 👤 Now chatting as {SelectedPatient.FirstName} {SelectedPatient.LastName} (Patient ID: {SelectedPatient.Id})");
-                Messages.Add($"System: 📊 AI will provide personalized responses based on {SelectedPatient.FirstName}'s journal entries and mood patterns");
+                Messages.Add($"System: 👤 Now chatting as {SelectedUser.FirstName} {SelectedUser.LastName} (User ID: {SelectedUser.Id})");
+                Messages.Add($"System: 📊 AI will provide personalized responses based on {SelectedUser.FirstName}'s journal entries and mood patterns");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading selected patient: {ex.Message}");
-            Messages.Add($"System: Error loading patient data - {ex.Message}");
+            Console.WriteLine($"Error loading selected user: {ex.Message}");
+            Messages.Add($"System: Error loading user data - {ex.Message}");
         }
     }
 
-    private async Task OnPatientChanged()
+    private async Task OnUserChanged()
     {
         Messages.Clear();
-        await LoadSelectedPatient();
+        await LoadSelectedUser();
         StateHasChanged();
     }
 
@@ -279,7 +285,7 @@
                 await JS.InvokeVoidAsync("playSound", "send");
             }
             
-            var request = new { prompt = UserInput, conversationId = Guid.NewGuid().ToString(), provider = 3, patientId = AuthService.CurrentUser?.Id ?? SelectedPatientId };
+            var request = new { prompt = UserInput, conversationId = Guid.NewGuid().ToString(), provider = 3, patientId = AuthService.CurrentUser?.Id ?? SelectedUserId };
             var response = await Http.PostAsJsonAsync("api/chat/send", request);
             var data = await response.Content.ReadFromJsonAsync<ChatResponse>();
             

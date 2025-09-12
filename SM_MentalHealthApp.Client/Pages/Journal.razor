@@ -87,7 +87,7 @@
             if (AuthService.CurrentUser != null)
             {
                 // Load entries for the authenticated user
-                entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/patient/{AuthService.CurrentUser.Id}") ?? new();
+                entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/user/{AuthService.CurrentUser.Id}") ?? new();
             }
         }
         catch (Exception ex)
@@ -111,7 +111,7 @@
 
             var newEntry = new JournalEntry { Text = entryText };
             // Save entry for the authenticated user
-            var result = await Http.PostAsJsonAsync($"api/journal/patient/{AuthService.CurrentUser.Id}", newEntry);
+            var result = await Http.PostAsJsonAsync($"api/journal/user/{AuthService.CurrentUser.Id}", newEntry);
 
             if (result.IsSuccessStatusCode)
             {

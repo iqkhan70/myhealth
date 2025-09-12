@@ -33,7 +33,7 @@
                         <label>Select Patient:</label>
                         <select @bind="selectedPatientId" class="form-control">
                             <option value="0">Choose a patient...</option>
-                            @foreach (var patient in patients)
+                            @foreach (var patient in patients.Where(p => p.RoleId == 1))
                             {
                                 <option value="@patient.Id">@patient.FirstName @patient.LastName (@patient.Email)</option>
                             }
@@ -44,7 +44,7 @@
                         <label>Select Doctor:</label>
                         <select @bind="selectedDoctorId" class="form-control">
                             <option value="0">Choose a doctor...</option>
-                            @foreach (var doctor in doctors)
+                            @foreach (var doctor in doctors.Where(d => d.RoleId == 2))
                             {
                                 <option value="@doctor.Id">@doctor.FirstName @doctor.LastName (@doctor.Email)</option>
                             }
@@ -77,9 +77,9 @@
                     {
                         <div class="assignment-card">
                             <div class="assignment-info">
-                                <strong>@assignment.Patient?.FirstName @assignment.Patient?.LastName</strong>
+                                <strong>@assignment.Assignee?.FirstName @assignment.Assignee?.LastName</strong>
                                 <span class="assignment-arrow">→</span>
-                                <strong>@assignment.Doctor?.FirstName @assignment.Doctor?.LastName</strong>
+                                <strong>@assignment.Assigner?.FirstName @assignment.Assigner?.LastName</strong>
                             </div>
                             <div class="assignment-details">
                                 <small>Assigned: @assignment.AssignedAt.ToString("MMM dd, yyyy")</small>
@@ -101,14 +101,14 @@
                             <div class="patient-list">
                                 <h4>Assigned Patients:</h4>
                                 @{
-                                    var doctorPatients = assignments.Where(a => a.DoctorId == doctor.Id).ToList();
+                                    var doctorPatients = assignments.Where(a => a.AssignerId == doctor.Id).ToList();
                                 }
                                 @if (doctorPatients.Any())
                                 {
                                     <ul>
                                         @foreach (var assignment in doctorPatients)
                                         {
-                                            <li>@assignment.Patient?.FirstName @assignment.Patient?.LastName</li>
+                                            <li>@assignment.Assignee?.FirstName @assignment.Assignee?.LastName</li>
                                         }
                                     </ul>
                                 }
@@ -126,9 +126,9 @@
 </div>
 
 @code {
-    private List<Patient> patients = new();
-    private List<Doctor> doctors = new();
-    private List<DoctorPatient> assignments = new();
+    private List<User> patients = new();
+    private List<User> doctors = new();
+    private List<UserAssignment> assignments = new();
     private int selectedPatientId = 0;
     private int selectedDoctorId = 0;
     private bool isLoading = true;
@@ -147,16 +147,16 @@
             isLoading = true;
             StateHasChanged();
 
-            // Load patients
-            var patientsResponse = await Http.GetFromJsonAsync<List<Patient>>("api/admin/patients");
+            // Load patients (users with role = Patient)
+            var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
             patients = patientsResponse ?? new();
 
-            // Load doctors
-            var doctorsResponse = await Http.GetFromJsonAsync<List<Doctor>>("api/admin/doctors");
+            // Load doctors (users with role = Doctor)
+            var doctorsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors");
             doctors = doctorsResponse ?? new();
 
             // Load assignments
-            var assignmentsResponse = await Http.GetFromJsonAsync<List<DoctorPatient>>("api/admin/assignments");
+                    var assignmentsResponse = await Http.GetFromJsonAsync<List<UserAssignment>>("api/admin/assignments");
             assignments = assignmentsResponse ?? new();
 
             isLoading = false;

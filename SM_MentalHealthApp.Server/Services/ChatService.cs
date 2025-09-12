@@ -11,14 +11,14 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly ConversationRepository _conversationRepository;
         private readonly HuggingFaceService _huggingFaceService;
         private readonly JournalService _journalService;
-        private readonly PatientService _patientService;
+        private readonly UserService _userService;
 
-        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, PatientService patientService)
+        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService)
         {
             _conversationRepository = conversationRepository;
             _huggingFaceService = huggingFaceService;
             _journalService = journalService;
-            _patientService = patientService;
+            _userService = userService;
         }
 
         public async Task<ChatResponse> SendMessageAsync(string prompt, string conversationId, AiProvider provider, int patientId = 0)
@@ -73,15 +73,15 @@ namespace SM_MentalHealthApp.Server.Services
             try
             {
                 // Get patient information
-                var patient = await _patientService.GetPatientByIdAsync(patientId);
+                var patient = await _userService.GetUserByIdAsync(patientId);
                 if (patient == null)
                 {
                     return originalPrompt;
                 }
 
                 // Get recent journal entries for context
-                var recentEntries = await _journalService.GetRecentEntriesForPatient(patientId, 7); // Last 7 days
-                var moodDistribution = await _journalService.GetMoodDistributionForPatient(patientId, 30); // Last 30 days
+                var recentEntries = await _journalService.GetRecentEntriesForUser(patientId, 7); // Last 7 days
+                var moodDistribution = await _journalService.GetMoodDistributionForUser(patientId, 30); // Last 30 days
 
                 // Build personalized context - simplified for better API compatibility
                 var context = new System.Text.StringBuilder();

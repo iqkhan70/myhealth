@@ -76,14 +76,14 @@ namespace SM_MentalHealthApp.Client.Services
                     _token = result.Token;
                     _currentUser = new AuthUser
                     {
-                        Id = result.Patient!.Id,
-                        Email = result.Patient.Email,
-                        FirstName = result.Patient.FirstName,
-                        LastName = result.Patient.LastName,
-                        RoleId = result.Patient.RoleId,
-                        RoleName = result.Patient.Role?.Name ?? "Patient",
-                        IsFirstLogin = result.Patient.IsFirstLogin,
-                        MustChangePassword = result.Patient.MustChangePassword
+                        Id = result.User!.Id,
+                        Email = result.User.Email,
+                        FirstName = result.User.FirstName,
+                        LastName = result.User.LastName,
+                        RoleId = result.User.RoleId,
+                        RoleName = result.User.Role?.Name ?? "Patient",
+                        IsFirstLogin = result.User.IsFirstLogin,
+                        MustChangePassword = result.User.MustChangePassword
                     };
 
                     _httpClient.DefaultRequestHeaders.Authorization = 
@@ -112,14 +112,14 @@ namespace SM_MentalHealthApp.Client.Services
                     _token = result.Token;
                     _currentUser = new AuthUser
                     {
-                        Id = result.Patient!.Id,
-                        Email = result.Patient.Email,
-                        FirstName = result.Patient.FirstName,
-                        LastName = result.Patient.LastName,
-                        RoleId = result.Patient.RoleId,
-                        RoleName = result.Patient.Role?.Name ?? "Patient",
-                        IsFirstLogin = result.Patient.IsFirstLogin,
-                        MustChangePassword = result.Patient.MustChangePassword
+                        Id = result.User!.Id,
+                        Email = result.User.Email,
+                        FirstName = result.User.FirstName,
+                        LastName = result.User.LastName,
+                        RoleId = result.User.RoleId,
+                        RoleName = result.User.Role?.Name ?? "Patient",
+                        IsFirstLogin = result.User.IsFirstLogin,
+                        MustChangePassword = result.User.MustChangePassword
                     };
 
                     _httpClient.DefaultRequestHeaders.Authorization = 

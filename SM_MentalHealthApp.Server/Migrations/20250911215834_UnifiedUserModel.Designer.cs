@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SM_MentalHealthApp.Server.Data;
 
@@ -11,9 +12,11 @@ using SM_MentalHealthApp.Server.Data;
 namespace SM_MentalHealthApp.Server.Migrations
 {
     [DbContext(typeof(JournalDbContext))]
-    partial class JournalDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250911215834_UnifiedUserModel")]
+    partial class UnifiedUserModel
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -191,12 +194,12 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("SM_MentalHealthApp.Shared.UserAssignment", b =>
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.UserUser", b =>
                 {
-                    b.Property<int>("AssignerId")
+                    b.Property<int>("DoctorId")
                         .HasColumnType("int");
 
-                    b.Property<int>("AssigneeId")
+                    b.Property<int>("PatientId")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("AssignedAt")
@@ -205,11 +208,11 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
-                    b.HasKey("AssignerId", "AssigneeId");
+                    b.HasKey("DoctorId", "PatientId");
 
-                    b.HasIndex("AssigneeId");
+                    b.HasIndex("PatientId");
 
-                    b.ToTable("UserAssignments");
+                    b.ToTable("UserUsers");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.ChatSession", b =>
@@ -245,23 +248,23 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Navigation("Role");
                 });
 
-            modelBuilder.Entity("SM_MentalHealthApp.Shared.UserAssignment", b =>
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.UserUser", b =>
                 {
-                    b.HasOne("SM_MentalHealthApp.Shared.User", "Assignee")
-                        .WithMany("AssignedTo")
-                        .HasForeignKey("AssigneeId")
+                    b.HasOne("SM_MentalHealthApp.Shared.User", "Doctor")
+                        .WithMany("DoctorPatients")
+                        .HasForeignKey("DoctorId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("SM_MentalHealthApp.Shared.User", "Assigner")
-                        .WithMany("Assignments")
-                        .HasForeignKey("AssignerId")
+                    b.HasOne("SM_MentalHealthApp.Shared.User", "Patient")
+                        .WithMany("PatientDoctors")
+                        .HasForeignKey("PatientId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Assignee");
+                    b.Navigation("Doctor");
 
-                    b.Navigation("Assigner");
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.Role", b =>
@@ -271,13 +274,13 @@ namespace SM_MentalHealthApp.Server.Migrations
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.User", b =>
                 {
-                    b.Navigation("AssignedTo");
-
-                    b.Navigation("Assignments");
-
                     b.Navigation("ChatSessions");
 
+                    b.Navigation("DoctorPatients");
+
                     b.Navigation("JournalEntries");
+
+                    b.Navigation("PatientDoctors");
                 });
 #pragma warning restore 612, 618
         }

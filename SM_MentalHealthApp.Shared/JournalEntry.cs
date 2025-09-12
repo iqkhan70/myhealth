@@ -9,11 +9,10 @@ namespace SM_MentalHealthApp.Shared
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         
         // Navigation properties
-        public List<Patient> Patients { get; set; } = new();
-        public List<Doctor> Doctors { get; set; } = new();
+        public List<User> Users { get; set; } = new();
     }
 
-    public class Patient
+    public class User
     {
         public int Id { get; set; }
         public string FirstName { get; set; } = string.Empty;
@@ -29,70 +28,54 @@ namespace SM_MentalHealthApp.Shared
         public bool IsFirstLogin { get; set; } = true;
         public bool MustChangePassword { get; set; } = false;
         
+        // Doctor-specific fields (nullable for non-doctors)
+        public string? Specialization { get; set; }
+        public string? LicenseNumber { get; set; }
+        
         // Navigation properties
         public Role Role { get; set; } = null!;
         public List<JournalEntry> JournalEntries { get; set; } = new();
         public List<ChatSession> ChatSessions { get; set; } = new();
-        public List<DoctorPatient> DoctorPatients { get; set; } = new();
+        public List<UserAssignment> Assignments { get; set; } = new(); // As assigner
+        public List<UserAssignment> AssignedTo { get; set; } = new(); // As assignee
     }
 
-    public class Doctor
+    public class UserAssignment
     {
-        public int Id { get; set; }
-        public string FirstName { get; set; } = string.Empty;
-        public string LastName { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string PasswordHash { get; set; } = string.Empty;
-        public string? Specialization { get; set; }
-        public string? LicenseNumber { get; set; }
-        public int RoleId { get; set; } = 2; // Default to Doctor role
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public DateTime? LastLoginAt { get; set; }
-        public bool IsActive { get; set; } = true;
-        public bool IsFirstLogin { get; set; } = true;
-        public bool MustChangePassword { get; set; } = false;
-        
-        // Navigation properties
-        public Role Role { get; set; } = null!;
-        public List<DoctorPatient> DoctorPatients { get; set; } = new();
-    }
-
-    public class DoctorPatient
-    {
-        public int DoctorId { get; set; }
-        public int PatientId { get; set; }
+        public int AssignerId { get; set; }
+        public int AssigneeId { get; set; }
         public DateTime AssignedAt { get; set; } = DateTime.UtcNow;
         public bool IsActive { get; set; } = true;
-        
+
         // Navigation properties
-        public Doctor Doctor { get; set; } = null!;
-        public Patient Patient { get; set; } = null!;
+        public User Assigner { get; set; } = null!;
+        public User Assignee { get; set; } = null!;
     }
 
     public class JournalEntry
     {
         public int Id { get; set; }
-        public int PatientId { get; set; }
+        public int UserId { get; set; } // Changed from PatientId to UserId
         public string Text { get; set; } = string.Empty;
         public string? AIResponse { get; set; }
         public string? Mood { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         
         // Navigation property
-        public Patient? Patient { get; set; }
+        public User? User { get; set; }
     }
 
     public class ChatSession
     {
         public int Id { get; set; }
-        public int PatientId { get; set; }
+        public int UserId { get; set; } // Changed from PatientId to UserId
         public string SessionId { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastActivityAt { get; set; }
         public bool IsActive { get; set; } = true;
         
         // Navigation property
-        public Patient? Patient { get; set; }
+        public User? User { get; set; }
     }
 
     public class ChatResponse
@@ -110,9 +93,9 @@ namespace SM_MentalHealthApp.Shared
         HuggingFace
     }
 
-    public class PatientStats
+    public class UserStats
     {
-        public int PatientId { get; set; }
+        public int UserId { get; set; }
         public int TotalJournalEntries { get; set; }
         public int EntriesLast30Days { get; set; }
         public string AverageMood { get; set; } = string.Empty;
@@ -134,7 +117,7 @@ namespace SM_MentalHealthApp.Shared
         public bool Success { get; set; }
         public string Token { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
-        public Patient? Patient { get; set; }
+        public User? User { get; set; }
     }
 
     public class RegisterRequest
@@ -145,6 +128,11 @@ namespace SM_MentalHealthApp.Shared
         public string Password { get; set; } = string.Empty;
         public DateTime DateOfBirth { get; set; }
         public string? Gender { get; set; }
+        public int RoleId { get; set; } = 1; // Default to Patient role
+        
+        // Doctor-specific fields (optional)
+        public string? Specialization { get; set; }
+        public string? LicenseNumber { get; set; }
     }
 
     public class AuthUser

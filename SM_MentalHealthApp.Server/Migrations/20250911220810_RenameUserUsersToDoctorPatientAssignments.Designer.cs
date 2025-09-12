@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SM_MentalHealthApp.Server.Data;
 
@@ -11,9 +12,11 @@ using SM_MentalHealthApp.Server.Data;
 namespace SM_MentalHealthApp.Server.Migrations
 {
     [DbContext(typeof(JournalDbContext))]
-    partial class JournalDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250911220810_RenameUserUsersToDoctorPatientAssignments")]
+    partial class RenameUserUsersToDoctorPatientAssignments
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -55,6 +58,27 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("ChatSessions");
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.DoctorPatientAssignment", b =>
+                {
+                    b.Property<int>("DoctorId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PatientId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.HasKey("DoctorId", "PatientId");
+
+                    b.HasIndex("PatientId");
+
+                    b.ToTable("DoctorPatientAssignments");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.JournalEntry", b =>
@@ -191,27 +215,6 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("SM_MentalHealthApp.Shared.UserAssignment", b =>
-                {
-                    b.Property<int>("AssignerId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("AssigneeId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("AssignedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
-
-                    b.HasKey("AssignerId", "AssigneeId");
-
-                    b.HasIndex("AssigneeId");
-
-                    b.ToTable("UserAssignments");
-                });
-
             modelBuilder.Entity("SM_MentalHealthApp.Shared.ChatSession", b =>
                 {
                     b.HasOne("SM_MentalHealthApp.Shared.User", "User")
@@ -221,6 +224,25 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.DoctorPatientAssignment", b =>
+                {
+                    b.HasOne("SM_MentalHealthApp.Shared.User", "Doctor")
+                        .WithMany("DoctorPatients")
+                        .HasForeignKey("DoctorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SM_MentalHealthApp.Shared.User", "Patient")
+                        .WithMany("PatientDoctors")
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Doctor");
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.JournalEntry", b =>
@@ -245,25 +267,6 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Navigation("Role");
                 });
 
-            modelBuilder.Entity("SM_MentalHealthApp.Shared.UserAssignment", b =>
-                {
-                    b.HasOne("SM_MentalHealthApp.Shared.User", "Assignee")
-                        .WithMany("AssignedTo")
-                        .HasForeignKey("AssigneeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("SM_MentalHealthApp.Shared.User", "Assigner")
-                        .WithMany("Assignments")
-                        .HasForeignKey("AssignerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Assignee");
-
-                    b.Navigation("Assigner");
-                });
-
             modelBuilder.Entity("SM_MentalHealthApp.Shared.Role", b =>
                 {
                     b.Navigation("Users");
@@ -271,13 +274,13 @@ namespace SM_MentalHealthApp.Server.Migrations
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.User", b =>
                 {
-                    b.Navigation("AssignedTo");
-
-                    b.Navigation("Assignments");
-
                     b.Navigation("ChatSessions");
 
+                    b.Navigation("DoctorPatients");
+
                     b.Navigation("JournalEntries");
+
+                    b.Navigation("PatientDoctors");
                 });
 #pragma warning restore 612, 618
         }

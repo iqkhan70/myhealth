@@ -11,35 +11,35 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly JournalService _journalService;
         public JournalController(JournalService journalService) => _journalService = journalService;
 
-        [HttpPost("patient/{patientId}")]
-        public async Task<ActionResult<JournalEntry>> PostEntry(int patientId, [FromBody] JournalEntry entry)
+        [HttpPost("user/{userId}")]
+        public async Task<ActionResult<JournalEntry>> PostEntry(int userId, [FromBody] JournalEntry entry)
         {
-            var savedEntry = await _journalService.ProcessEntry(entry, patientId);
+            var savedEntry = await _journalService.ProcessEntry(entry, userId);
             return Ok(savedEntry);
         }
 
-        [HttpGet("patient/{patientId}")]
-        public async Task<ActionResult<List<JournalEntry>>> GetEntriesForPatient(int patientId)
+        [HttpGet("user/{userId}")]
+        public async Task<ActionResult<List<JournalEntry>>> GetEntriesForUser(int userId)
         {
-            return Ok(await _journalService.GetEntriesForPatient(patientId));
+            return Ok(await _journalService.GetEntriesForUser(userId));
         }
 
-        [HttpGet("patient/{patientId}/recent")]
-        public async Task<ActionResult<List<JournalEntry>>> GetRecentEntriesForPatient(int patientId, [FromQuery] int days = 30)
+        [HttpGet("user/{userId}/recent")]
+        public async Task<ActionResult<List<JournalEntry>>> GetRecentEntriesForUser(int userId, [FromQuery] int days = 30)
         {
-            return Ok(await _journalService.GetRecentEntriesForPatient(patientId, days));
+            return Ok(await _journalService.GetRecentEntriesForUser(userId, days));
         }
 
-        [HttpGet("patient/{patientId}/mood-distribution")]
-        public async Task<ActionResult<Dictionary<string, int>>> GetMoodDistributionForPatient(int patientId, [FromQuery] int days = 30)
+        [HttpGet("user/{userId}/mood-distribution")]
+        public async Task<ActionResult<Dictionary<string, int>>> GetMoodDistributionForUser(int userId, [FromQuery] int days = 30)
         {
-            return Ok(await _journalService.GetMoodDistributionForPatient(patientId, days));
+            return Ok(await _journalService.GetMoodDistributionForUser(userId, days));
         }
 
-        [HttpGet("patient/{patientId}/entry/{entryId}")]
-        public async Task<ActionResult<JournalEntry>> GetEntryById(int patientId, int entryId)
+        [HttpGet("user/{userId}/entry/{entryId}")]
+        public async Task<ActionResult<JournalEntry>> GetEntryById(int userId, int entryId)
         {
-            var entry = await _journalService.GetEntryById(entryId, patientId);
+            var entry = await _journalService.GetEntryById(entryId, userId);
             if (entry == null)
             {
                 return NotFound();
@@ -47,10 +47,10 @@ namespace SM_MentalHealthApp.Server.Controllers
             return Ok(entry);
         }
 
-        [HttpDelete("patient/{patientId}/entry/{entryId}")]
-        public async Task<ActionResult> DeleteEntry(int patientId, int entryId)
+        [HttpDelete("user/{userId}/entry/{entryId}")]
+        public async Task<ActionResult> DeleteEntry(int userId, int entryId)
         {
-            var result = await _journalService.DeleteEntry(entryId, patientId);
+            var result = await _journalService.DeleteEntry(entryId, userId);
             if (!result)
             {
                 return NotFound();

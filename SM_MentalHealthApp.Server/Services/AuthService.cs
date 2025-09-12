@@ -33,13 +33,14 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                // Try to find user in Patients table first
-                var patient = await _context.Patients
-                    .FirstOrDefaultAsync(p => p.Email == request.Email && p.IsActive);
+                // Find user in Users table
+                var user = await _context.Users
+                    .Include(u => u.Role)
+                    .FirstOrDefaultAsync(u => u.Email == request.Email && u.IsActive);
 
-                if (patient != null)
+                if (user != null)
                 {
-                    if (!VerifyPassword(request.Password, patient.PasswordHash))
+                    if (!VerifyPassword(request.Password, user.PasswordHash))
                     {
                         return new LoginResponse
                         {
@@ -49,70 +50,22 @@ namespace SM_MentalHealthApp.Server.Services
                     }
 
                     // Update last login and first login status
-                    patient.LastLoginAt = DateTime.UtcNow;
-                    if (patient.IsFirstLogin)
+                    user.LastLoginAt = DateTime.UtcNow;
+                    if (user.IsFirstLogin)
                     {
-                        patient.IsFirstLogin = false;
-                        patient.MustChangePassword = true; // Force password change on first login
+                        user.IsFirstLogin = false;
+                        user.MustChangePassword = true; // Force password change on first login
                     }
                     await _context.SaveChangesAsync();
 
-                    var token = GenerateJwtToken(patient.Id, patient.Email, patient.FirstName, patient.LastName, patient.RoleId, patient.Role?.Name ?? "Patient", patient.IsFirstLogin, patient.MustChangePassword);
+                    var token = GenerateJwtToken(user.Id, user.Email, user.FirstName, user.LastName, user.RoleId, user.Role?.Name ?? "User", user.IsFirstLogin, user.MustChangePassword);
 
                     return new LoginResponse
                     {
                         Success = true,
                         Token = token,
-                        Message = patient.MustChangePassword ? "Login successful. Please change your password." : "Login successful",
-                        Patient = patient
-                    };
-                }
-
-                // Try to find user in Doctors table
-                var doctor = await _context.Doctors
-                    .FirstOrDefaultAsync(d => d.Email == request.Email && d.IsActive);
-
-                if (doctor != null)
-                {
-                    if (!VerifyPassword(request.Password, doctor.PasswordHash))
-                    {
-                        return new LoginResponse
-                        {
-                            Success = false,
-                            Message = "Invalid email or password"
-                        };
-                    }
-
-                    // Update last login and first login status
-                    doctor.LastLoginAt = DateTime.UtcNow;
-                    if (doctor.IsFirstLogin)
-                    {
-                        doctor.IsFirstLogin = false;
-                        doctor.MustChangePassword = true; // Force password change on first login
-                    }
-                    await _context.SaveChangesAsync();
-
-                    var token = GenerateJwtToken(doctor.Id, doctor.Email, doctor.FirstName, doctor.LastName, doctor.RoleId, doctor.Role?.Name ?? "Doctor", doctor.IsFirstLogin, doctor.MustChangePassword);
-
-                    // Create a Patient object for the response (for compatibility)
-                    var patientForResponse = new Patient
-                    {
-                        Id = doctor.Id,
-                        FirstName = doctor.FirstName,
-                        LastName = doctor.LastName,
-                        Email = doctor.Email,
-                        RoleId = doctor.RoleId,
-                        Role = doctor.Role,
-                        IsFirstLogin = doctor.IsFirstLogin,
-                        MustChangePassword = doctor.MustChangePassword
-                    };
-
-                    return new LoginResponse
-                    {
-                        Success = true,
-                        Token = token,
-                        Message = doctor.MustChangePassword ? "Login successful. Please change your password." : "Login successful",
-                        Patient = patientForResponse
+                        Message = user.MustChangePassword ? "Login successful. Please change your password." : "Login successful",
+                        User = user
                     };
                 }
 
@@ -137,10 +90,10 @@ namespace SM_MentalHealthApp.Server.Services
             try
             {
                 // Check if email already exists
-                var existingPatient = await _context.Patients
-                    .FirstOrDefaultAsync(p => p.Email == request.Email);
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email);
 
-                if (existingPatient != null)
+                if (existingUser != null)
                 {
                     return new LoginResponse
                     {
@@ -149,7 +102,7 @@ namespace SM_MentalHealthApp.Server.Services
                     };
                 }
 
-                var patient = new Patient
+                var user = new User
                 {
                     FirstName = request.FirstName,
                     LastName = request.LastName,
@@ -157,21 +110,22 @@ namespace SM_MentalHealthApp.Server.Services
                     PasswordHash = HashPassword(request.Password),
                     DateOfBirth = request.DateOfBirth,
                     Gender = request.Gender,
+                    RoleId = 1, // Default to Patient role
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true
                 };
 
-                _context.Patients.Add(patient);
+                _context.Users.Add(user);
                 await _context.SaveChangesAsync();
 
-                var token = GenerateJwtToken(patient.Id, patient.Email, patient.FirstName, patient.LastName, patient.RoleId, patient.Role?.Name ?? "Patient", patient.IsFirstLogin, patient.MustChangePassword);
+                var token = GenerateJwtToken(user.Id, user.Email, user.FirstName, user.LastName, user.RoleId, user.Role?.Name ?? "Patient", user.IsFirstLogin, user.MustChangePassword);
 
                 return new LoginResponse
                 {
                     Success = true,
                     Token = token,
                     Message = "Registration successful",
-                    Patient = patient
+                    User = user
                 };
             }
             catch (Exception ex)
@@ -234,45 +188,45 @@ namespace SM_MentalHealthApp.Server.Services
                 // Check if user is a patient (roleId = 1)
                 if (roleId == 1)
                 {
-                    var patient = await _context.Patients
-                        .Include(p => p.Role)
-                        .FirstOrDefaultAsync(p => p.Id == userId && p.IsActive);
+                    var user = await _context.Users
+                        .Include(u => u.Role)
+                        .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
 
-                    if (patient == null)
+                    if (user == null)
                         return null;
 
                     return new AuthUser
                     {
-                        Id = patient.Id,
-                        Email = patient.Email,
-                        FirstName = patient.FirstName,
-                        LastName = patient.LastName,
-                        RoleId = patient.RoleId,
-                        RoleName = patient.Role?.Name ?? "Patient",
-                        IsFirstLogin = patient.IsFirstLogin,
-                        MustChangePassword = patient.MustChangePassword
+                        Id = user.Id,
+                        Email = user.Email,
+                        FirstName = user.FirstName,
+                        LastName = user.LastName,
+                        RoleId = user.RoleId,
+                        RoleName = user.Role?.Name ?? "Patient",
+                        IsFirstLogin = user.IsFirstLogin,
+                        MustChangePassword = user.MustChangePassword
                     };
                 }
-                // Check if user is a doctor (roleId = 2)
-                else if (roleId == 2)
+                // Check if user is a doctor (roleId = 2) or admin (roleId = 3)
+                else if (roleId == 2 || roleId == 3)
                 {
-                    var doctor = await _context.Doctors
-                        .Include(d => d.Role)
-                        .FirstOrDefaultAsync(d => d.Id == userId && d.IsActive);
+                    var user = await _context.Users
+                        .Include(u => u.Role)
+                        .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
 
-                    if (doctor == null)
+                    if (user == null)
                         return null;
 
                     return new AuthUser
                     {
-                        Id = doctor.Id,
-                        Email = doctor.Email,
-                        FirstName = doctor.FirstName,
-                        LastName = doctor.LastName,
-                        RoleId = doctor.RoleId,
-                        RoleName = doctor.Role?.Name ?? "Doctor",
-                        IsFirstLogin = doctor.IsFirstLogin,
-                        MustChangePassword = doctor.MustChangePassword
+                        Id = user.Id,
+                        Email = user.Email,
+                        FirstName = user.FirstName,
+                        LastName = user.LastName,
+                        RoleId = user.RoleId,
+                        RoleName = user.Role?.Name ?? "User",
+                        IsFirstLogin = user.IsFirstLogin,
+                        MustChangePassword = user.MustChangePassword
                     };
                 }
 
@@ -307,11 +261,11 @@ namespace SM_MentalHealthApp.Server.Services
                     };
                 }
 
-                // Get the patient
-                var patient = await _context.Patients
-                    .FirstOrDefaultAsync(p => p.Id == userId && p.IsActive);
+                // Get the user
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
 
-                if (patient == null)
+                if (user == null)
                 {
                     return new ChangePasswordResponse
                     {
@@ -321,7 +275,7 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 // Verify current password
-                if (!VerifyPassword(request.CurrentPassword, patient.PasswordHash))
+                if (!VerifyPassword(request.CurrentPassword, user.PasswordHash))
                 {
                     return new ChangePasswordResponse
                     {
@@ -331,8 +285,8 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 // Update password
-                patient.PasswordHash = HashPassword(request.NewPassword);
-                patient.MustChangePassword = false; // Clear the flag after successful change
+                user.PasswordHash = HashPassword(request.NewPassword);
+                user.MustChangePassword = false; // Clear the flag after successful change
                 await _context.SaveChangesAsync();
 
                 return new ChangePasswordResponse

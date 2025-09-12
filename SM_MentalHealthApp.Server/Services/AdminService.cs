@@ -6,13 +6,13 @@ namespace SM_MentalHealthApp.Server.Services
 {
     public interface IAdminService
     {
-        Task<List<Doctor>> GetAllDoctorsAsync();
-        Task<List<Patient>> GetAllPatientsAsync();
-        Task<List<DoctorPatient>> GetDoctorPatientAssignmentsAsync();
+        Task<List<User>> GetAllDoctorsAsync();
+        Task<List<User>> GetAllPatientsAsync();
+        Task<List<UserAssignment>> GetUserAssignmentsAsync();
         Task<bool> AssignPatientToDoctorAsync(int patientId, int doctorId);
         Task<bool> UnassignPatientFromDoctorAsync(int patientId, int doctorId);
-        Task<List<Patient>> GetPatientsForDoctorAsync(int doctorId);
-        Task<List<Doctor>> GetDoctorsForPatientAsync(int patientId);
+        Task<List<User>> GetPatientsForDoctorAsync(int doctorId);
+        Task<List<User>> GetDoctorsForPatientAsync(int patientId);
     }
 
     public class AdminService : IAdminService
@@ -24,39 +24,39 @@ namespace SM_MentalHealthApp.Server.Services
             _context = context;
         }
 
-        public async Task<List<Doctor>> GetAllDoctorsAsync()
+        public async Task<List<User>> GetAllDoctorsAsync()
         {
-            return await _context.Doctors
-                .Include(d => d.Role)
-                .Where(d => d.IsActive)
-                .OrderBy(d => d.LastName)
-                .ThenBy(d => d.FirstName)
+            return await _context.Users
+                .Include(u => u.Role)
+                .Where(u => u.RoleId == 2 && u.IsActive) // Role 2 = Doctor
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .ToListAsync();
         }
 
-        public async Task<List<Patient>> GetAllPatientsAsync()
+        public async Task<List<User>> GetAllPatientsAsync()
         {
-            return await _context.Patients
-                .Include(p => p.Role)
-                .Where(p => p.IsActive)
-                .OrderBy(p => p.LastName)
-                .ThenBy(p => p.FirstName)
+            return await _context.Users
+                .Include(u => u.Role)
+                .Where(u => u.RoleId == 1 && u.IsActive) // Role 1 = Patient
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
                 .ToListAsync();
         }
 
-        public async Task<List<DoctorPatient>> GetDoctorPatientAssignmentsAsync()
+        public async Task<List<UserAssignment>> GetUserAssignmentsAsync()
         {
-            return await _context.DoctorPatients
-                .Include(dp => dp.Doctor)
-                .Include(dp => dp.Patient)
+            return await _context.UserAssignments
+                .Include(ua => ua.Assigner)
+                .Include(ua => ua.Assignee)
                 .ToListAsync();
         }
 
         public async Task<bool> AssignPatientToDoctorAsync(int patientId, int doctorId)
         {
             // Check if assignment already exists
-            var existingAssignment = await _context.DoctorPatients
-                .FirstOrDefaultAsync(dp => dp.PatientId == patientId && dp.DoctorId == doctorId);
+            var existingAssignment = await _context.UserAssignments
+                .FirstOrDefaultAsync(ua => ua.AssigneeId == patientId && ua.AssignerId == doctorId);
 
             if (existingAssignment != null)
             {
@@ -64,24 +64,24 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             // Check if patient and doctor exist and are active
-            var patient = await _context.Patients
-                .FirstOrDefaultAsync(p => p.Id == patientId && p.IsActive);
-            var doctor = await _context.Doctors
-                .FirstOrDefaultAsync(d => d.Id == doctorId && d.IsActive);
+            var patient = await _context.Users
+                .FirstOrDefaultAsync(u => u.Id == patientId && u.RoleId == 1 && u.IsActive);
+            var doctor = await _context.Users
+                .FirstOrDefaultAsync(u => u.Id == doctorId && u.RoleId == 2 && u.IsActive);
 
             if (patient == null || doctor == null)
             {
                 return false; // Invalid patient or doctor
             }
 
-            var assignment = new DoctorPatient
+            var assignment = new UserAssignment
             {
-                DoctorId = doctorId,
-                PatientId = patientId,
+                AssignerId = doctorId,
+                AssigneeId = patientId,
                 AssignedAt = DateTime.UtcNow
             };
 
-            _context.DoctorPatients.Add(assignment);
+            _context.UserAssignments.Add(assignment);
             await _context.SaveChangesAsync();
 
             return true;
@@ -89,40 +89,40 @@ namespace SM_MentalHealthApp.Server.Services
 
         public async Task<bool> UnassignPatientFromDoctorAsync(int patientId, int doctorId)
         {
-            var assignment = await _context.DoctorPatients
-                .FirstOrDefaultAsync(dp => dp.PatientId == patientId && dp.DoctorId == doctorId);
+            var assignment = await _context.UserAssignments
+                .FirstOrDefaultAsync(ua => ua.AssigneeId == patientId && ua.AssignerId == doctorId);
 
             if (assignment == null)
             {
                 return false; // Assignment doesn't exist
             }
 
-            _context.DoctorPatients.Remove(assignment);
+            _context.UserAssignments.Remove(assignment);
             await _context.SaveChangesAsync();
 
             return true;
         }
 
-        public async Task<List<Patient>> GetPatientsForDoctorAsync(int doctorId)
+        public async Task<List<User>> GetPatientsForDoctorAsync(int doctorId)
         {
-            return await _context.DoctorPatients
-                .Where(dp => dp.DoctorId == doctorId)
-                .Include(dp => dp.Patient)
-                .ThenInclude(p => p.Role)
-                .Select(dp => dp.Patient)
+            return await _context.UserAssignments
+                .Where(ua => ua.AssignerId == doctorId)
+                .Include(ua => ua.Assignee)
+                .ThenInclude(a => a.Role)
+                .Select(ua => ua.Assignee)
                 .Where(p => p.IsActive)
                 .OrderBy(p => p.LastName)
                 .ThenBy(p => p.FirstName)
                 .ToListAsync();
         }
 
-        public async Task<List<Doctor>> GetDoctorsForPatientAsync(int patientId)
+        public async Task<List<User>> GetDoctorsForPatientAsync(int patientId)
         {
-            return await _context.DoctorPatients
-                .Where(dp => dp.PatientId == patientId)
-                .Include(dp => dp.Doctor)
-                .ThenInclude(d => d.Role)
-                .Select(dp => dp.Doctor)
+            return await _context.UserAssignments
+                .Where(ua => ua.AssigneeId == patientId)
+                .Include(ua => ua.Assigner)
+                .ThenInclude(a => a.Role)
+                .Select(ua => ua.Assigner)
                 .Where(d => d.IsActive)
                 .OrderBy(d => d.LastName)
                 .ThenBy(d => d.FirstName)

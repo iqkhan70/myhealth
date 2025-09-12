@@ -15,10 +15,10 @@ namespace SM_MentalHealthApp.Server.Services
             _huggingFaceService = huggingFaceService;
         }
 
-        public async Task<JournalEntry> ProcessEntry(JournalEntry entry, int patientId)
+        public async Task<JournalEntry> ProcessEntry(JournalEntry entry, int userId)
         {
-            // Ensure the entry is associated with the patient
-            entry.PatientId = patientId;
+            // Ensure the entry is associated with the user
+            entry.UserId = userId;
             
             var (response, mood) = await _huggingFaceService.AnalyzeEntry(entry.Text);
             entry.AIResponse = response;
@@ -29,42 +29,42 @@ namespace SM_MentalHealthApp.Server.Services
             return entry;
         }
 
-        public async Task<List<JournalEntry>> GetEntriesForPatient(int patientId)
+        public async Task<List<JournalEntry>> GetEntriesForUser(int userId)
         {
             return await _context.JournalEntries
-                .Where(e => e.PatientId == patientId)
+                .Where(e => e.UserId == userId)
                 .OrderByDescending(e => e.CreatedAt)
                 .ToListAsync();
         }
 
-        public async Task<List<JournalEntry>> GetRecentEntriesForPatient(int patientId, int days = 30)
+        public async Task<List<JournalEntry>> GetRecentEntriesForUser(int userId, int days = 30)
         {
             var cutoffDate = DateTime.UtcNow.AddDays(-days);
             return await _context.JournalEntries
-                .Where(e => e.PatientId == patientId && e.CreatedAt >= cutoffDate)
+                .Where(e => e.UserId == userId && e.CreatedAt >= cutoffDate)
                 .OrderByDescending(e => e.CreatedAt)
                 .ToListAsync();
         }
 
-        public async Task<Dictionary<string, int>> GetMoodDistributionForPatient(int patientId, int days = 30)
+        public async Task<Dictionary<string, int>> GetMoodDistributionForUser(int userId, int days = 30)
         {
             var cutoffDate = DateTime.UtcNow.AddDays(-days);
             return await _context.JournalEntries
-                .Where(e => e.PatientId == patientId && e.CreatedAt >= cutoffDate && !string.IsNullOrEmpty(e.Mood))
+                .Where(e => e.UserId == userId && e.CreatedAt >= cutoffDate && !string.IsNullOrEmpty(e.Mood))
                 .GroupBy(e => e.Mood)
                 .ToDictionaryAsync(g => g.Key, g => g.Count());
         }
 
-        public async Task<JournalEntry?> GetEntryById(int entryId, int patientId)
+        public async Task<JournalEntry?> GetEntryById(int entryId, int userId)
         {
             return await _context.JournalEntries
-                .FirstOrDefaultAsync(e => e.Id == entryId && e.PatientId == patientId);
+                .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == userId);
         }
 
-        public async Task<bool> DeleteEntry(int entryId, int patientId)
+        public async Task<bool> DeleteEntry(int entryId, int userId)
         {
             var entry = await _context.JournalEntries
-                .FirstOrDefaultAsync(e => e.Id == entryId && e.PatientId == patientId);
+                .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == userId);
             
             if (entry == null)
                 return false;

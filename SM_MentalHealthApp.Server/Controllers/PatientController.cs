@@ -6,22 +6,22 @@ namespace SM_MentalHealthApp.Server.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class PatientController : ControllerBase
+    public class UserController : ControllerBase
     {
-        private readonly PatientService _patientService;
+        private readonly UserService _userService;
 
-        public PatientController(PatientService patientService)
+        public UserController(UserService userService)
         {
-            _patientService = patientService;
+            _userService = userService;
         }
 
         [HttpPost]
-        public async Task<ActionResult<Patient>> CreatePatient([FromBody] Patient patient)
+        public async Task<ActionResult<User>> CreateUser([FromBody] User user)
         {
             try
             {
-                var createdPatient = await _patientService.CreatePatientAsync(patient);
-                return Ok(createdPatient);
+                var createdUser = await _userService.CreateUserAsync(user);
+                return Ok(createdUser);
             }
             catch (InvalidOperationException ex)
             {
@@ -30,46 +30,46 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<Patient>> GetPatient(int id)
+        public async Task<ActionResult<User>> GetUser(int id)
         {
-            var patient = await _patientService.GetPatientByIdAsync(id);
-            if (patient == null)
+            var user = await _userService.GetUserByIdAsync(id);
+            if (user == null)
             {
                 return NotFound();
             }
-            return Ok(patient);
+            return Ok(user);
         }
 
         [HttpGet("email/{email}")]
-        public async Task<ActionResult<Patient>> GetPatientByEmail(string email)
+        public async Task<ActionResult<User>> GetUserByEmail(string email)
         {
-            var patient = await _patientService.GetPatientByEmailAsync(email);
-            if (patient == null)
+            var user = await _userService.GetUserByEmailAsync(email);
+            if (user == null)
             {
                 return NotFound();
             }
-            return Ok(patient);
+            return Ok(user);
         }
 
         [HttpGet]
-        public async Task<ActionResult<List<Patient>>> GetAllPatients()
+        public async Task<ActionResult<List<User>>> GetAllUsers()
         {
-            var patients = await _patientService.GetAllPatientsAsync();
-            return Ok(patients);
+            var users = await _userService.GetAllUsersAsync();
+            return Ok(users);
         }
 
         [HttpPut("{id}")]
-        public async Task<ActionResult<Patient>> UpdatePatient(int id, [FromBody] Patient patient)
+        public async Task<ActionResult<User>> UpdateUser(int id, [FromBody] User user)
         {
-            if (id != patient.Id)
+            if (id != user.Id)
             {
                 return BadRequest("ID mismatch");
             }
 
             try
             {
-                var updatedPatient = await _patientService.UpdatePatientAsync(patient);
-                return Ok(updatedPatient);
+                var updatedUser = await _userService.UpdateUserAsync(user);
+                return Ok(updatedUser);
             }
             catch (InvalidOperationException ex)
             {
@@ -78,9 +78,9 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpDelete("{id}")]
-        public async Task<ActionResult> DeactivatePatient(int id)
+        public async Task<ActionResult> DeactivateUser(int id)
         {
-            var result = await _patientService.DeactivatePatientAsync(id);
+            var result = await _userService.DeactivateUserAsync(id);
             if (!result)
             {
                 return NotFound();
@@ -89,18 +89,18 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("demo")]
-        public async Task<ActionResult<Patient>> GetDemoPatient()
+        public async Task<ActionResult<User>> GetDemoUser()
         {
-            var demoPatient = await _patientService.GetOrCreateDemoPatientAsync();
-            return Ok(demoPatient);
+            var demoUser = await _userService.GetOrCreateDemoUserAsync();
+            return Ok(demoUser);
         }
 
         [HttpGet("{id}/stats")]
-        public async Task<ActionResult<PatientStats>> GetPatientStats(int id)
+        public async Task<ActionResult<UserStats>> GetUserStats(int id)
         {
             try
             {
-                var stats = await _patientService.GetPatientStatsAsync(id);
+                var stats = await _userService.GetUserStatsAsync(id);
                 return Ok(stats);
             }
             catch (InvalidOperationException ex)

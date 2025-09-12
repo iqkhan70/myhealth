@@ -16,7 +16,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("doctors")]
-        public async Task<ActionResult<List<Doctor>>> GetDoctors()
+        public async Task<ActionResult<List<User>>> GetDoctors()
         {
             try
             {
@@ -30,7 +30,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("patients")]
-        public async Task<ActionResult<List<Patient>>> GetPatients()
+        public async Task<ActionResult<List<User>>> GetPatients()
         {
             try
             {
@@ -44,11 +44,11 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("assignments")]
-        public async Task<ActionResult<List<DoctorPatient>>> GetAssignments()
+        public async Task<ActionResult<List<UserAssignment>>> GetAssignments()
         {
             try
             {
-                var assignments = await _adminService.GetDoctorPatientAssignmentsAsync();
+                var assignments = await _adminService.GetUserAssignmentsAsync();
                 return Ok(assignments);
             }
             catch (Exception ex)
@@ -94,7 +94,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("doctor/{doctorId}/patients")]
-        public async Task<ActionResult<List<Patient>>> GetPatientsForDoctor(int doctorId)
+        public async Task<ActionResult<List<User>>> GetPatientsForDoctor(int doctorId)
         {
             try
             {
@@ -108,7 +108,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("patient/{patientId}/doctors")]
-        public async Task<ActionResult<List<Doctor>>> GetDoctorsForPatient(int patientId)
+        public async Task<ActionResult<List<User>>> GetDoctorsForPatient(int patientId)
         {
             try
             {

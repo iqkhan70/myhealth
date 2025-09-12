@@ -1,16 +1,16 @@
-@page "/patients"
+@page "/users"
 @inject HttpClient Http
 @inject NotificationService NotificationService
 @inject IAuthService AuthService
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 
-<div class="patients-page">
-    <div class="patients-header">
+<div class="users-page">
+    <div class="users-header">
         @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
         {
             <h2>My Patients</h2>
-            <p>View and manage your assigned patients' mental health journey.</p>
+            <p>View and manage your assigned users' mental health journey.</p>
         }
         else if (AuthService.CurrentUser?.RoleId == 3) // Admin
         {
@@ -32,13 +32,13 @@
         <!-- Search and Filter -->
         <div class="search-section">
             <div class="search-bar">
-                <input @bind="searchTerm" @bind:after="FilterPatients" 
-                       placeholder="Search patients by name or email..." 
+                <input @bind="searchTerm" @bind:after="FilterUsers" 
+                       placeholder="Search users by name or email..." 
                        class="search-input" />
                 <button @onclick="SearchPatients" class="search-btn">🔍</button>
             </div>
             <div class="filter-options">
-                <select @bind="statusFilter" @bind:after="FilterPatients" class="filter-select">
+                <select @bind="statusFilter" @bind:after="FilterUsers" class="filter-select">
                     <option value="">All Patients</option>
                     <option value="active">Active Only</option>
                     <option value="inactive">Inactive Only</option>
@@ -47,33 +47,33 @@
         </div>
 
         <!-- Patients List -->
-        <div class="patients-content">
+        <div class="users-content">
         @if (isLoading)
         {
             <div class="loading-state">
                 <div class="loading-spinner"></div>
-                <p>Loading patients...</p>
+                <p>Loading users...</p>
             </div>
         }
-        else if (filteredPatients.Any())
+        else if (filteredUsers.Any())
         {
-            <div class="patients-grid">
-                @foreach (var patient in filteredPatients)
+            <div class="users-grid">
+                @foreach (var user in filteredUsers.Where(u => u.RoleId == 1))
                 {
-                    <div class="patient-card @(patient.IsActive ? "active" : "inactive")">
+                    <div class="patient-card @(user.IsActive ? "active" : "inactive")">
                         <div class="patient-header">
                             <div class="patient-info">
-                                <h3>@patient.FirstName @patient.LastName</h3>
-                                <p class="patient-email">@patient.Email</p>
-                                <p class="patient-dob">Born: @patient.DateOfBirth.ToString("MMM dd, yyyy")</p>
-                                @if (!string.IsNullOrEmpty(patient.Gender))
+                                <h3>@user.FirstName @user.LastName</h3>
+                                <p class="patient-email">@user.Email</p>
+                                <p class="patient-dob">Born: @user.DateOfBirth.ToString("MMM dd, yyyy")</p>
+                                @if (!string.IsNullOrEmpty(user.Gender))
                                 {
-                                    <p class="patient-gender">@patient.Gender</p>
+                                    <p class="patient-gender">@user.Gender</p>
                                 }
                             </div>
                             <div class="patient-status">
-                                <span class="status-badge @(patient.IsActive ? "active" : "inactive")">
-                                    @(patient.IsActive ? "Active" : "Inactive")
+                                <span class="status-badge @(user.IsActive ? "active" : "inactive")">
+                                    @(user.IsActive ? "Active" : "Inactive")
                                 </span>
                             </div>
                         </div>
@@ -81,39 +81,39 @@
                         <div class="patient-stats">
                             <div class="stat-item">
                                 <span class="stat-label">Journal Entries:</span>
-                                <span class="stat-value">@patient.JournalEntries.Count</span>
+                                <span class="stat-value">@user.JournalEntries.Count</span>
                             </div>
                             <div class="stat-item">
                                 <span class="stat-label">Last Login:</span>
                                 <span class="stat-value">
-                                    @(patient.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")
+                                    @(user.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")
                                 </span>
                             </div>
                             <div class="stat-item">
                                 <span class="stat-label">Member Since:</span>
-                                <span class="stat-value">@patient.CreatedAt.ToString("MMM dd, yyyy")</span>
+                                <span class="stat-value">@user.CreatedAt.ToString("MMM dd, yyyy")</span>
                             </div>
                         </div>
 
                         <div class="patient-actions">
-                            <button @onclick="() => ViewPatientDetails(patient)" class="action-btn view-btn">
+                            <button @onclick="() => ViewUserDetails(user)" class="action-btn view-btn">
                                 👁️ View Details
                             </button>
-                            <button @onclick="() => EditPatient(patient)" class="action-btn edit-btn">
+                            <button @onclick="() => EditUser(user)" class="action-btn edit-btn">
                                 ✏️ Edit
                             </button>
-                            <button @onclick="() => ViewPatientStats(patient)" class="action-btn stats-btn">
+                            <button @onclick="() => ViewUserStats(user)" class="action-btn stats-btn">
                                 📊 Stats
                             </button>
-                            @if (patient.IsActive)
+                            @if (user.IsActive)
                             {
-                                <button @onclick="() => DeactivatePatient(patient)" class="action-btn deactivate-btn">
+                                <button @onclick="() => DeactivateUser(user)" class="action-btn deactivate-btn">
                                     🚫 Deactivate
                                 </button>
                             }
                             else
                             {
-                                <button @onclick="() => ReactivatePatient(patient)" class="action-btn reactivate-btn">
+                                <button @onclick="() => ReactivateUser(user)" class="action-btn reactivate-btn">
                                     ✅ Reactivate
                                 </button>
                             }
@@ -126,8 +126,8 @@
         {
             <div class="empty-state">
                 <div class="empty-icon">👥</div>
-                <h4>No patients found</h4>
-                <p>@(string.IsNullOrEmpty(searchTerm) ? "Add your first patient to get started!" : "No patients match your search criteria.")</p>
+                <h4>No users found</h4>
+                <p>@(string.IsNullOrEmpty(searchTerm) ? "Add your first patient to get started!" : "No users match your search criteria.")</p>
             </div>
         }
         </div>
@@ -140,34 +140,34 @@
     <div class="modal-overlay" @onclick="ClosePatientForm">
         <div class="modal-content" @onclick:stopPropagation="true">
             <div class="modal-header">
-                <h3>@(editingPatient == null ? "Add New Patient" : "Edit Patient")</h3>
+                <h3>@(editingUser == null ? "Add New Patient" : "Edit Patient")</h3>
                 <button @onclick="ClosePatientForm" class="close-btn">✕</button>
             </div>
             
             <div class="modal-body">
                 <div class="form-group">
                     <label>First Name *</label>
-                    <input @bind="patientForm.FirstName" class="form-input" />
+                    <input @bind="userForm.FirstName" class="form-input" />
                 </div>
                 
                 <div class="form-group">
                     <label>Last Name *</label>
-                    <input @bind="patientForm.LastName" class="form-input" />
+                    <input @bind="userForm.LastName" class="form-input" />
                 </div>
                 
                 <div class="form-group">
                     <label>Email *</label>
-                    <input @bind="patientForm.Email" type="email" class="form-input" />
+                    <input @bind="userForm.Email" type="email" class="form-input" />
                 </div>
                 
                 <div class="form-group">
                     <label>Date of Birth *</label>
-                    <input @bind="patientForm.DateOfBirth" type="date" class="form-input" />
+                    <input @bind="userForm.DateOfBirth" type="date" class="form-input" />
                 </div>
                 
                 <div class="form-group">
                     <label>Gender</label>
-                    <select @bind="patientForm.Gender" class="form-input">
+                    <select @bind="userForm.Gender" class="form-input">
                         <option value="">Select Gender</option>
                         <option value="Male">Male</option>
                         <option value="Female">Female</option>
@@ -180,7 +180,7 @@
             <div class="modal-footer">
                 <button @onclick="ClosePatientForm" class="btn btn-secondary">Cancel</button>
                 <button @onclick="SavePatient" disabled="@isSaving" class="btn btn-primary">
-                    @(isSaving ? "Saving..." : (editingPatient == null ? "Add Patient" : "Update Patient"))
+                    @(isSaving ? "Saving..." : (editingUser == null ? "Add Patient" : "Update Patient"))
                 </button>
             </div>
         </div>
@@ -188,12 +188,12 @@
 }
 
 <!-- Patient Details Modal -->
-@if (showPatientDetails && selectedPatient != null)
+@if (showPatientDetails && selectedUser != null)
 {
     <div class="modal-overlay" @onclick="ClosePatientDetails">
         <div class="modal-content patient-details-modal" @onclick:stopPropagation="true">
             <div class="modal-header">
-                <h3>Patient Details - @selectedPatient.FirstName @selectedPatient.LastName</h3>
+                <h3>User Details - @selectedUser.FirstName @selectedUser.LastName</h3>
                 <button @onclick="ClosePatientDetails" class="close-btn">✕</button>
             </div>
             
@@ -203,24 +203,24 @@
                         <h4>Personal Information</h4>
                         <div class="detail-item">
                             <span class="detail-label">Name:</span>
-                            <span class="detail-value">@selectedPatient.FirstName @selectedPatient.LastName</span>
+                            <span class="detail-value">@selectedUser.FirstName @selectedUser.LastName</span>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Email:</span>
-                            <span class="detail-value">@selectedPatient.Email</span>
+                            <span class="detail-value">@selectedUser.Email</span>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Date of Birth:</span>
-                            <span class="detail-value">@selectedPatient.DateOfBirth.ToString("MMM dd, yyyy")</span>
+                            <span class="detail-value">@selectedUser.DateOfBirth.ToString("MMM dd, yyyy")</span>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Gender:</span>
-                            <span class="detail-value">@(selectedPatient.Gender ?? "Not specified")</span>
+                            <span class="detail-value">@(selectedUser.Gender ?? "Not specified")</span>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Status:</span>
-                            <span class="status-badge @(selectedPatient.IsActive ? "active" : "inactive")">
-                                @(selectedPatient.IsActive ? "Active" : "Inactive")
+                            <span class="status-badge @(selectedUser.IsActive ? "active" : "inactive")">
+                                @(selectedUser.IsActive ? "Active" : "Inactive")
                             </span>
                         </div>
                     </div>
@@ -229,11 +229,11 @@
                         <h4>Account Information</h4>
                         <div class="detail-item">
                             <span class="detail-label">Member Since:</span>
-                            <span class="detail-value">@selectedPatient.CreatedAt.ToString("MMM dd, yyyy 'at' h:mm tt")</span>
+                            <span class="detail-value">@selectedUser.CreatedAt.ToString("MMM dd, yyyy 'at' h:mm tt")</span>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Last Login:</span>
-                            <span class="detail-value">@(selectedPatient.LastLoginAt?.ToString("MMM dd, yyyy 'at' h:mm tt") ?? "Never")</span>
+                            <span class="detail-value">@(selectedUser.LastLoginAt?.ToString("MMM dd, yyyy 'at' h:mm tt") ?? "Never")</span>
                         </div>
                     </div>
                     
@@ -241,11 +241,11 @@
                         <h4>Activity Summary</h4>
                         <div class="detail-item">
                             <span class="detail-label">Journal Entries:</span>
-                            <span class="detail-value">@selectedPatient.JournalEntries.Count</span>
+                            <span class="detail-value">@selectedUser.JournalEntries.Count</span>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Chat Sessions:</span>
-                            <span class="detail-value">@selectedPatient.ChatSessions.Count</span>
+                            <span class="detail-value">@selectedUser.ChatSessions.Count</span>
                         </div>
                     </div>
                 </div>
@@ -253,19 +253,19 @@
             
             <div class="modal-footer">
                 <button @onclick="ClosePatientDetails" class="btn btn-secondary">Close</button>
-                <button @onclick="() => { ClosePatientDetails(); EditPatient(selectedPatient); }" class="btn btn-primary">Edit Patient</button>
+                <button @onclick="() => { ClosePatientDetails(); EditUser(selectedUser); }" class="btn btn-primary">Edit User</button>
             </div>
         </div>
     </div>
 }
 
 <!-- Patient Stats Modal -->
-@if (showPatientStats && selectedPatient != null && patientStats is not null)
+@if (showPatientStats && selectedUser != null && userStats is not null)
 {
     <div class="modal-overlay" @onclick="ClosePatientStats">
         <div class="modal-content patient-stats-modal" @onclick:stopPropagation="true">
             <div class="modal-header">
-                <h3>Patient Statistics - @selectedPatient.FirstName @selectedPatient.LastName</h3>
+                <h3>User Statistics - @selectedUser.FirstName @selectedUser.LastName</h3>
                 <button @onclick="ClosePatientStats" class="close-btn">✕</button>
             </div>
             
@@ -273,20 +273,20 @@
                 <div class="stats-grid">
                     <div class="stat-card">
                         <h4>Journal Activity</h4>
-                        <div class="stat-value">@patientStats.TotalJournalEntries</div>
+                        <div class="stat-value">@userStats.TotalJournalEntries</div>
                         <div class="stat-label">Total Entries</div>
                     </div>
                     
                     <div class="stat-card">
                         <h4>Recent Activity</h4>
-                        <div class="stat-value">@patientStats.EntriesLast30Days</div>
+                        <div class="stat-value">@userStats.EntriesLast30Days</div>
                         <div class="stat-label">Last 30 Days</div>
                     </div>
                     
                     <div class="stat-card">
                         <h4>Mood Distribution</h4>
                         <div class="mood-stats">
-                            @foreach (var mood in patientStats.MoodDistribution)
+                            @foreach (var mood in userStats.MoodDistribution)
                             {
                                 <div class="mood-stat">
                                     <span class="mood-label">@mood.Key:</span>
@@ -298,7 +298,7 @@
                     
                     <div class="stat-card">
                         <h4>Chat Activity</h4>
-                        <div class="stat-value">@patientStats.TotalChatSessions</div>
+                        <div class="stat-value">@userStats.TotalChatSessions</div>
                         <div class="stat-label">Chat Sessions</div>
                     </div>
                 </div>
@@ -312,17 +312,17 @@
 }
 
 @code {
-    private List<Patient> patients = new();
-    private List<Patient> filteredPatients = new();
-    private Patient? selectedPatient;
-    private PatientStats? patientStats;
+    private List<User> users = new();
+    private List<User> filteredUsers = new();
+    private User? selectedUser;
+    private UserStats? userStats;
     private bool isLoading = true;
     private bool showPatientForm = false;
     private bool showPatientDetails = false;
     private bool showPatientStats = false;
     private bool isSaving = false;
-    private Patient? editingPatient;
-    private Patient patientForm = new();
+    private User? editingUser;
+    private User userForm = new();
     private string searchTerm = string.Empty;
     private string statusFilter = string.Empty;
 
@@ -337,24 +337,24 @@
         {
             isLoading = true;
             
-            if (AuthService.CurrentUser?.RoleId == 2) // Doctor - load only assigned patients
+            if (AuthService.CurrentUser?.RoleId == 2) // Doctor - load only assigned users
             {
-                patients = await Http.GetFromJsonAsync<List<Patient>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients") ?? new();
+                users = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/users") ?? new();
             }
-            else if (AuthService.CurrentUser?.RoleId == 3) // Admin - load all patients
+            else if (AuthService.CurrentUser?.RoleId == 3) // Admin - load all users
             {
-                patients = await Http.GetFromJsonAsync<List<Patient>>("api/patient") ?? new();
+                users = await Http.GetFromJsonAsync<List<User>>("api/user") ?? new();
             }
             else
             {
-                patients = new(); // No access
+                users = new(); // No access
             }
             
-            filteredPatients = patients.ToList();
+            filteredUsers = users.ToList();
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load patients: " + ex.Message);
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load users: " + ex.Message);
         }
         finally
         {
@@ -365,12 +365,12 @@
 
     private void SearchPatients()
     {
-        FilterPatients();
+        FilterUsers();
     }
 
-    private void FilterPatients()
+    private void FilterUsers()
     {
-        filteredPatients = patients.Where(p => 
+        filteredUsers = users.Where(p => 
             (string.IsNullOrEmpty(searchTerm) || 
              p.FirstName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
              p.LastName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
@@ -383,23 +383,23 @@
 
     private void ShowAddPatientForm()
     {
-        editingPatient = null;
-        patientForm = new Patient { DateOfBirth = DateTime.Now.AddYears(-25) };
+        editingUser = null;
+        userForm = new User { DateOfBirth = DateTime.Now.AddYears(-25) };
         showPatientForm = true;
     }
 
-    private void EditPatient(Patient patient)
+    private void EditUser(User user)
     {
-        editingPatient = patient;
-        patientForm = new Patient
+        editingUser = user;
+        userForm = new User
         {
-            Id = patient.Id,
-            FirstName = patient.FirstName,
-            LastName = patient.LastName,
-            Email = patient.Email,
-            DateOfBirth = patient.DateOfBirth,
-            Gender = patient.Gender,
-            IsActive = patient.IsActive
+            Id = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email,
+            DateOfBirth = user.DateOfBirth,
+            Gender = user.Gender,
+            IsActive = user.IsActive
         };
         showPatientForm = true;
     }
@@ -407,15 +407,15 @@
     private void ClosePatientForm()
     {
         showPatientForm = false;
-        editingPatient = null;
-        patientForm = new Patient();
+        editingUser = null;
+        userForm = new User();
     }
 
     private async Task SavePatient()
     {
-        if (string.IsNullOrWhiteSpace(patientForm.FirstName) || 
-            string.IsNullOrWhiteSpace(patientForm.LastName) || 
-            string.IsNullOrWhiteSpace(patientForm.Email))
+        if (string.IsNullOrWhiteSpace(userForm.FirstName) || 
+            string.IsNullOrWhiteSpace(userForm.LastName) || 
+            string.IsNullOrWhiteSpace(userForm.Email))
         {
             NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Please fill in all required fields.");
             return;
@@ -425,16 +425,16 @@
         {
             isSaving = true;
             
-            if (editingPatient == null)
+            if (editingUser == null)
             {
-                var result = await Http.PostAsJsonAsync("api/patient", patientForm);
+                var result = await Http.PostAsJsonAsync("api/patient", userForm);
                 if (result.IsSuccessStatusCode)
                 {
-                    var newPatient = await result.Content.ReadFromJsonAsync<Patient>();
-                    if (newPatient != null)
+                    var newUser = await result.Content.ReadFromJsonAsync<User>();
+                    if (newUser != null)
                     {
-                        patients.Insert(0, newPatient);
-                        FilterPatients();
+                        users.Insert(0, newUser);
+                        FilterUsers();
                         NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient added successfully!");
                     }
                 }
@@ -446,17 +446,17 @@
             }
             else
             {
-                var result = await Http.PutAsJsonAsync($"api/patient/{patientForm.Id}", patientForm);
+                var result = await Http.PutAsJsonAsync($"api/patient/{userForm.Id}", userForm);
                 if (result.IsSuccessStatusCode)
                 {
-                    var updatedPatient = await result.Content.ReadFromJsonAsync<Patient>();
-                    if (updatedPatient != null)
+                    var updatedUser = await result.Content.ReadFromJsonAsync<User>();
+                    if (updatedUser != null)
                     {
-                        var index = patients.FindIndex(p => p.Id == updatedPatient.Id);
+                        var index = users.FindIndex(p => p.Id == updatedUser.Id);
                         if (index >= 0)
                         {
-                            patients[index] = updatedPatient;
-                            FilterPatients();
+                            users[index] = updatedUser;
+                            FilterUsers();
                         }
                         NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient updated successfully!");
                     }
@@ -480,25 +480,25 @@
         }
     }
 
-    private void ViewPatientDetails(Patient patient)
+    private void ViewUserDetails(User user)
     {
-        selectedPatient = patient;
+        selectedUser = user;
         showPatientDetails = true;
     }
 
     private void ClosePatientDetails()
     {
         showPatientDetails = false;
-        selectedPatient = null;
+        selectedUser = null;
     }
 
-    private async Task ViewPatientStats(Patient patient)
+    private async Task ViewUserStats(User user)
     {
         try
         {
-            selectedPatient = patient;
-            var response = await Http.GetFromJsonAsync<PatientStats>($"api/patient/{patient.Id}/stats");
-            patientStats = response;
+            selectedUser = user;
+            var response = await Http.GetFromJsonAsync<UserStats>($"api/user/{user.Id}/stats");
+            userStats = response;
             showPatientStats = true;
         }
         catch (Exception ex)
@@ -510,19 +510,19 @@
     private void ClosePatientStats()
     {
         showPatientStats = false;
-        selectedPatient = null;
-        patientStats = null;
+        selectedUser = null;
+        userStats = null;
     }
 
-    private async Task DeactivatePatient(Patient patient)
+    private async Task DeactivateUser(User user)
     {
         try
         {
-            var result = await Http.DeleteAsync($"api/patient/{patient.Id}");
+            var result = await Http.DeleteAsync($"api/user/{user.Id}");
             if (result.IsSuccessStatusCode)
             {
-                patient.IsActive = false;
-                FilterPatients();
+                user.IsActive = false;
+                FilterUsers();
                 NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient deactivated successfully!");
             }
             else
@@ -536,22 +536,22 @@
         }
     }
 
-    private async Task ReactivatePatient(Patient patient)
+    private async Task ReactivateUser(User user)
     {
         try
         {
-            patient.IsActive = true;
-            var result = await Http.PutAsJsonAsync($"api/patient/{patient.Id}", patient);
+            user.IsActive = true;
+            var result = await Http.PutAsJsonAsync($"api/user/{user.Id}", user);
             if (result.IsSuccessStatusCode)
             {
-                var updatedPatient = await result.Content.ReadFromJsonAsync<Patient>();
-                if (updatedPatient != null)
+                var updatedUser = await result.Content.ReadFromJsonAsync<User>();
+                if (updatedUser != null)
                 {
-                    var index = patients.FindIndex(p => p.Id == updatedPatient.Id);
+                    var index = users.FindIndex(p => p.Id == updatedUser.Id);
                     if (index >= 0)
                     {
-                        patients[index] = updatedPatient;
-                        FilterPatients();
+                        users[index] = updatedUser;
+                        FilterUsers();
                     }
                 }
                 NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient reactivated successfully!");
