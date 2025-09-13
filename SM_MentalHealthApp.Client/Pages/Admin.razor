@@ -27,39 +27,36 @@
             <!-- Assignment Management -->
             <div class="assignment-section">
                 <h2>Patient-Doctor Assignments</h2>
-                
+
                 <div class="assignment-controls">
                     <div class="form-group">
-                        <label>Select Patient:</label>
-                        <select @bind="selectedPatientId" class="form-control">
-                            <option value="0">Choose a patient...</option>
-                            @foreach (var patient in patients.Where(p => p.RoleId == 1))
-                            {
-                                <option value="@patient.Id">@patient.FirstName @patient.LastName (@patient.Email)</option>
-                            }
-                        </select>
+                        <label class="form-label">Select Patient:</label>
+                        <RadzenDropDown Data="@patients.Where(p => p.RoleId == 1)" TextProperty="FullName"
+                            ValueProperty="Id" @bind-Value="selectedPatientId" AllowFiltering="true"
+                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a patient..."
+                            Style="width: 280px" />
                     </div>
-                    
+
                     <div class="form-group">
-                        <label>Select Doctor:</label>
-                        <select @bind="selectedDoctorId" class="form-control">
-                            <option value="0">Choose a doctor...</option>
-                            @foreach (var doctor in doctors.Where(d => d.RoleId == 2))
-                            {
-                                <option value="@doctor.Id">@doctor.FirstName @doctor.LastName (@doctor.Email)</option>
-                            }
-                        </select>
+                        <label class="form-label">Select Doctor:</label>
+                        <RadzenDropDown Data="@doctors.Where(d => d.RoleId == 2)" TextProperty="FullName" ValueProperty="Id"
+                            @bind-Value="selectedDoctorId" AllowFiltering="true"
+                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a doctor..."
+                            Style="width: 280px" />
                     </div>
-                    
-                    <div class="form-group">
-                        <button class="btn btn-primary" @onclick="AssignPatient" disabled="@(selectedPatientId == 0 || selectedDoctorId == 0)">
-                            Assign Patient to Doctor
+
+                    <div class="button-group">
+                        <button class="btn btn-primary" @onclick="AssignPatient"
+                            disabled="@(selectedPatientId == 0 || selectedDoctorId == 0)">
+                            Assign
                         </button>
-                        <button class="btn btn-danger" @onclick="UnassignPatient" disabled="@(selectedPatientId == 0 || selectedDoctorId == 0)">
-                            Unassign Patient from Doctor
+                        <button class="btn btn-danger" @onclick="UnassignPatient"
+                            disabled="@(selectedPatientId == 0 || selectedDoctorId == 0)">
+                            Unassign
                         </button>
                     </div>
                 </div>
+
 
                 @if (!string.IsNullOrEmpty(message))
                 {
@@ -188,7 +185,7 @@
             };
 
             var response = await Http.PostAsJsonAsync("api/admin/assign", request);
-            
+
             if (response.IsSuccessStatusCode)
             {
                 message = "Patient assigned to doctor successfully!";
@@ -225,7 +222,7 @@
             {
                 Content = JsonContent.Create(request)
             });
-            
+
             if (response.IsSuccessStatusCode)
             {
                 message = "Patient unassigned from doctor successfully!";

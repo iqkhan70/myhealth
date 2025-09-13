@@ -3053,3 +3053,34 @@ body:has(.chat-container) .rz-layout-content {
         padding: 15px;
     }
 }
+
+.assignment-controls {
+    display: flex;
+    align-items: center; /* 🔹 vertically align everything */
+    gap: 1rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.assignment-controls .form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.assignment-controls label {
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.assignment-controls .button-group {
+    display: flex;
+    flex-direction: row;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* 🔹 match button height to RadzenDropDown */
+.assignment-controls .button-group .btn {
+    min-height: 38px; /* tweak if needed */
+    padding: 0 16px;
+}

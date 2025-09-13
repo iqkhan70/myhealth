@@ -7,7 +7,7 @@ namespace SM_MentalHealthApp.Shared
         public string Description { get; set; } = string.Empty;
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        
+
         // Navigation properties
         public List<User> Users { get; set; } = new();
     }
@@ -27,17 +27,20 @@ namespace SM_MentalHealthApp.Shared
         public bool IsActive { get; set; } = true;
         public bool IsFirstLogin { get; set; } = true;
         public bool MustChangePassword { get; set; } = false;
-        
+
         // Doctor-specific fields (nullable for non-doctors)
         public string? Specialization { get; set; }
         public string? LicenseNumber { get; set; }
-        
+
         // Navigation properties
         public Role Role { get; set; } = null!;
         public List<JournalEntry> JournalEntries { get; set; } = new();
         public List<ChatSession> ChatSessions { get; set; } = new();
         public List<UserAssignment> Assignments { get; set; } = new(); // As assigner
         public List<UserAssignment> AssignedTo { get; set; } = new(); // As assignee
+
+        public string FullName => $"{FirstName} {LastName} ({Email})";
+
     }
 
     public class UserAssignment
@@ -60,7 +63,7 @@ namespace SM_MentalHealthApp.Shared
         public string? AIResponse { get; set; }
         public string? Mood { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        
+
         // Navigation property
         public User? User { get; set; }
     }
@@ -73,7 +76,7 @@ namespace SM_MentalHealthApp.Shared
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastActivityAt { get; set; }
         public bool IsActive { get; set; } = true;
-        
+
         // Navigation property
         public User? User { get; set; }
     }
@@ -129,7 +132,7 @@ namespace SM_MentalHealthApp.Shared
         public DateTime DateOfBirth { get; set; }
         public string? Gender { get; set; }
         public int RoleId { get; set; } = 1; // Default to Patient role
-        
+
         // Doctor-specific fields (optional)
         public string? Specialization { get; set; }
         public string? LicenseNumber { get; set; }
