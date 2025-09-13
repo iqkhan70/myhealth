@@ -8,6 +8,55 @@
 
 <PageTitle>Admin Panel</PageTitle>
 
+<style>
+    .search-controls {
+        margin-bottom: 1rem;
+    }
+
+    .search-box {
+        margin-bottom: 1rem;
+    }
+
+    .rz-datagrid {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+    }
+
+    .rz-datagrid-header {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .rz-datagrid-row:hover {
+        background-color: #f8f9fa;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 0.25em 0.4em;
+        font-size: 75%;
+        font-weight: 700;
+        line-height: 1;
+        text-align: center;
+        white-space: nowrap;
+        vertical-align: baseline;
+        border-radius: 0.25rem;
+    }
+
+    .badge-info {
+        color: #fff;
+        background-color: #17a2b8;
+    }
+
+    .text-muted {
+        color: #6c757d !important;
+    }
+
+    .mb-3 {
+        margin-bottom: 1rem !important;
+    }
+</style>
+
 <div class="admin-container">
     <div class="admin-header">
         <h1>Admin Panel</h1>
@@ -69,28 +118,88 @@
             <!-- Current Assignments -->
             <div class="assignments-section">
                 <h2>Current Assignments</h2>
-                <div class="assignments-grid">
-                    @foreach (var assignment in assignments)
-                    {
-                        <div class="assignment-card">
-                            <div class="assignment-info">
-                                <strong>@assignment.Assignee?.FirstName @assignment.Assignee?.LastName</strong>
-                                <span class="assignment-arrow">→</span>
-                                <strong>@assignment.Assigner?.FirstName @assignment.Assigner?.LastName</strong>
-                            </div>
-                            <div class="assignment-details">
-                                <small>Assigned: @assignment.AssignedAt.ToString("MMM dd, yyyy")</small>
-                            </div>
-                        </div>
-                    }
+
+                <div class="mb-3">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle"></i>
+                        Use the filter row below each column header to search and filter assignments.
+                        You can filter by patient name, doctor name, assignment date, or specialization.
+                    </small>
                 </div>
+
+                <RadzenDataGrid Data="@GetAssignmentDisplayModels()" TItem="AssignmentDisplayModel" AllowPaging="true"
+                    PageSize="10" AllowSorting="true" FilterMode="FilterMode.Advanced" ShowPagingSummary="true"
+                    EmptyText="No assignments found" AllowFiltering="true"
+                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" ShowFilterRow="true"
+                    ShowFilterRowButtons="true">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="PatientName" Title="Patient"
+                            Width="200px" Filterable="true" FilterProperty="PatientName">
+                            <Template Context="assignment">
+                                <div>
+                                    <strong>@assignment.PatientName</strong>
+                                    <br />
+                                    <small class="text-muted">@assignment.PatientEmail</small>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="DoctorName" Title="Doctor"
+                            Width="200px" Filterable="true" FilterProperty="DoctorName">
+                            <Template Context="assignment">
+                                <div>
+                                    <strong>@assignment.DoctorName</strong>
+                                    <br />
+                                    <small class="text-muted">@assignment.DoctorEmail</small>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="AssignedDate" Title="Assigned Date"
+                            Width="150px" Filterable="true" FilterProperty="AssignedDate">
+                            <Template Context="assignment">
+                                @assignment.AssignedDate.ToString("MMM dd, yyyy")
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="DoctorSpecialization"
+                            Title="Specialization" Width="150px" Filterable="true" FilterProperty="DoctorSpecialization">
+                            <Template Context="assignment">
+                                @if (!string.IsNullOrEmpty(assignment.DoctorSpecialization))
+                                {
+                                    <span class="badge badge-info">@assignment.DoctorSpecialization</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Not specified</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="Actions" Title="Actions"
+                            Width="120px" Sortable="false" Filterable="false">
+                            <Template Context="assignment">
+                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" ButtonType="ButtonType.Button"
+                                    Size="ButtonSize.Small"
+                                    Click="@(async () => await UnassignPatientFromGrid(assignment.PatientId, assignment.DoctorId))"
+                                    Title="Remove Assignment" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
             </div>
 
             <!-- Doctor-Patient Overview -->
             <div class="overview-section">
                 <h2>Doctor-Patient Overview</h2>
+
+                <div class="search-box mb-3">
+                    <RadzenTextBox @bind-Value="doctorSearchTerm" Placeholder="Search doctors by name or email..."
+                        Style="width: 100%; max-width: 400px;" />
+                </div>
+
                 <div class="overview-grid">
-                    @foreach (var doctor in doctors)
+                    @foreach (var doctor in FilteredDoctors)
                     {
                         <div class="doctor-card">
                             <h3>@doctor.FirstName @doctor.LastName</h3>
@@ -132,6 +241,9 @@
     private string message = "";
     private bool isError = false;
 
+    // Search functionality for doctor overview
+    private string doctorSearchTerm = string.Empty;
+
     protected override async Task OnInitializedAsync()
     {
         // Wait for authentication to be initialized
@@ -171,6 +283,64 @@
             message = $"Error loading data: {ex.Message}";
             isError = true;
             Console.WriteLine($"Admin page error: {ex.Message}");
+        }
+    }
+
+    // Filtered properties for search functionality
+    private IEnumerable<User> FilteredDoctors =>
+    string.IsNullOrWhiteSpace(doctorSearchTerm)
+    ? doctors
+    : doctors.Where(d =>
+    d.FirstName.Contains(doctorSearchTerm, StringComparison.OrdinalIgnoreCase) ||
+    d.LastName.Contains(doctorSearchTerm, StringComparison.OrdinalIgnoreCase) ||
+    d.Email.Contains(doctorSearchTerm, StringComparison.OrdinalIgnoreCase));
+
+
+    private List<AssignmentDisplayModel> GetAssignmentDisplayModels()
+    {
+        return assignments.Select(a => new AssignmentDisplayModel
+        {
+            PatientId = a.AssigneeId,
+            PatientName = $"{a.Assignee?.FirstName} {a.Assignee?.LastName}",
+            PatientEmail = a.Assignee?.Email ?? "",
+            DoctorId = a.AssignerId,
+            DoctorName = $"{a.Assigner?.FirstName} {a.Assigner?.LastName}",
+            DoctorEmail = a.Assigner?.Email ?? "",
+            DoctorSpecialization = a.Assigner?.Specialization,
+            AssignedDate = a.AssignedAt
+        }).ToList();
+    }
+
+    private async Task UnassignPatientFromGrid(int patientId, int doctorId)
+    {
+        try
+        {
+            var request = new AssignPatientRequest
+            {
+                PatientId = patientId,
+                DoctorId = doctorId
+            };
+
+            var response = await Http.PostAsJsonAsync("api/admin/unassign", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                message = "Patient unassigned from doctor successfully!";
+                isError = false;
+                await LoadData();
+                StateHasChanged();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                message = $"Error unassigning patient: {errorContent}";
+                isError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"Error unassigning patient: {ex.Message}";
+            isError = true;
         }
     }
 
@@ -255,5 +425,17 @@
     {
         public int PatientId { get; set; }
         public int DoctorId { get; set; }
+    }
+
+    public class AssignmentDisplayModel
+    {
+        public int PatientId { get; set; }
+        public string PatientName { get; set; } = string.Empty;
+        public string PatientEmail { get; set; } = string.Empty;
+        public int DoctorId { get; set; }
+        public string DoctorName { get; set; } = string.Empty;
+        public string DoctorEmail { get; set; } = string.Empty;
+        public string? DoctorSpecialization { get; set; }
+        public DateTime AssignedDate { get; set; }
     }
 }
