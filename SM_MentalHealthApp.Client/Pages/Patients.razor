@@ -30,107 +30,174 @@
 
     @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) // Doctor or Admin
     {
-        <!-- Search and Filter -->
-        <div class="search-section">
-            <div class="search-bar">
-                <input @bind="searchTerm" @bind:after="FilterUsers" 
-                       placeholder="Search users by name or email..." 
-                       class="search-input" />
-                <button @onclick="SearchPatients" class="search-btn">🔍</button>
-            </div>
-            <div class="filter-options">
-                <select @bind="statusFilter" @bind:after="FilterUsers" class="filter-select">
-                    <option value="">All Patients</option>
-                    <option value="active">Active Only</option>
-                    <option value="inactive">Inactive Only</option>
-                </select>
+        <!-- Custom Filters -->
+        <div class="custom-filters">
+            <div class="row">
+                <div class="col-md-3">
+                    <label class="form-label">Filter by Status:</label>
+                    <RadzenDropDown Data="@statusOptions"
+                                   ValueProperty="Value"
+                                   TextProperty="Text"
+                                   @bind-Value="selectedStatusFilter"
+                                   Placeholder="All Statuses"
+                                   Style="width: 100%" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Filter by Journal Entries:</label>
+                    <RadzenDropDown Data="@journalFilterOptions"
+                                   ValueProperty="Value"
+                                   TextProperty="Text"
+                                   @bind-Value="selectedJournalFilter"
+                                   Placeholder="All Patients"
+                                   Style="width: 100%" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <div>
+                        <RadzenButton Text="Clear Filters" 
+                                     ButtonStyle="ButtonStyle.Light" 
+                                     Click="@ClearFilters"
+                                     Style="width: 100%" />
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Patients List -->
+        <!-- Grid Info -->
+        <div class="grid-info">
+            <small class="text-muted">
+                <i class="fas fa-info-circle"></i>
+                Use the filter row below each column header for basic filtering, or use the custom filters above for status and journal entries.
+            </small>
+        </div>
+
+        <!-- Patients Grid -->
         <div class="users-content">
-        @if (isLoading)
-        {
-            <div class="loading-state">
-                <div class="loading-spinner"></div>
-                <p>Loading users...</p>
-            </div>
-        }
-        else if (filteredUsers.Any())
-        {
-            <div class="users-grid">
-                @foreach (var user in filteredUsers.Where(u => u.RoleId == 1))
-                {
-                    <div class="patient-card @(user.IsActive ? "active" : "inactive")">
-                        <div class="patient-header">
-                            <div class="patient-info">
-                                <h3>@user.FirstName @user.LastName</h3>
-                                <p class="patient-email">@user.Email</p>
-                                <p class="patient-dob">Born: @user.DateOfBirth.ToString("MMM dd, yyyy")</p>
+            @if (isLoading)
+            {
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>Loading users...</p>
+                </div>
+            }
+            else
+            {
+                <RadzenDataGrid Data="@GetFilteredUsers()" 
+                               TItem="User" 
+                               AllowPaging="true" 
+                               PageSize="15"
+                               AllowSorting="true" 
+                               FilterMode="FilterMode.Advanced" 
+                               ShowPagingSummary="true"
+                               EmptyText="No patients found"
+                               AllowFiltering="true"
+                               FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                               ShowFilterRow="true"
+                               ShowFilterRowButtons="true">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="User" Property="FirstName" Title="Name" Width="200px" Filterable="true">
+                            <Template Context="user">
+                                <div>
+                                    <strong>@user.FirstName @user.LastName</strong>
+                                    <br />
+                                    <small class="text-muted">@user.Email</small>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="120px" Filterable="true">
+                            <Template Context="user">
+                                @user.DateOfBirth.ToString("MMM dd, yyyy")
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="Gender" Title="Gender" Width="100px" Filterable="true">
+                            <Template Context="user">
                                 @if (!string.IsNullOrEmpty(user.Gender))
                                 {
-                                    <p class="patient-gender">@user.Gender</p>
+                                    <span class="badge badge-info">@user.Gender</span>
                                 }
-                            </div>
-                            <div class="patient-status">
+                                else
+                                {
+                                    <span class="text-muted">Not specified</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="IsActive" Title="Status" Width="100px" Filterable="false">
+                            <Template Context="user">
                                 <span class="status-badge @(user.IsActive ? "active" : "inactive")">
                                     @(user.IsActive ? "Active" : "Inactive")
                                 </span>
-                            </div>
-                        </div>
-                        
-                        <div class="patient-stats">
-                            <div class="stat-item">
-                                <span class="stat-label">Journal Entries:</span>
-                                <span class="stat-value">@user.JournalEntries.Count</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">Last Login:</span>
-                                <span class="stat-value">
-                                    @(user.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")
-                                </span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">Member Since:</span>
-                                <span class="stat-value">@user.CreatedAt.ToString("MMM dd, yyyy")</span>
-                            </div>
-                        </div>
+                            </Template>
+                        </RadzenDataGridColumn>
 
-                        <div class="patient-actions">
-                            <button @onclick="() => ViewUserDetails(user)" class="action-btn view-btn">
-                                👁️ View Details
-                            </button>
-                            <button @onclick="() => EditUser(user)" class="action-btn edit-btn">
-                                ✏️ Edit
-                            </button>
-                            <button @onclick="() => ViewUserStats(user)" class="action-btn stats-btn">
-                                📊 Stats
-                            </button>
-                            @if (user.IsActive)
-                            {
-                                <button @onclick="() => DeactivateUser(user)" class="action-btn deactivate-btn">
-                                    🚫 Deactivate
-                                </button>
-                            }
-                            else
-                            {
-                                <button @onclick="() => ReactivateUser(user)" class="action-btn reactivate-btn">
-                                    ✅ Reactivate
-                                </button>
-                            }
-                        </div>
-                    </div>
-                }
-            </div>
-        }
-        else
-        {
-            <div class="empty-state">
-                <div class="empty-icon">👥</div>
-                <h4>No users found</h4>
-                <p>@(string.IsNullOrEmpty(searchTerm) ? "Add your first patient to get started!" : "No users match your search criteria.")</p>
-            </div>
-        }
+                        <RadzenDataGridColumn TItem="User" Property="JournalEntries" Title="Journal Entries" Width="120px" Filterable="false" Sortable="false">
+                            <Template Context="user">
+                                <span class="badge badge-primary">@user.JournalEntries.Count</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="LastLoginAt" Title="Last Login" Width="120px" Filterable="true">
+                            <Template Context="user">
+                                @(user.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="CreatedAt" Title="Member Since" Width="120px" Filterable="true">
+                            <Template Context="user">
+                                @user.CreatedAt.ToString("MMM dd, yyyy")
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="Actions" Title="Actions" Width="200px" Sortable="false" Filterable="false">
+                            <Template Context="user">
+                                <div class="action-buttons">
+                                    <RadzenButton Icon="visibility" 
+                                                ButtonStyle="ButtonStyle.Info" 
+                                                ButtonType="ButtonType.Button" 
+                                                Size="ButtonSize.Small"
+                                                Click="@(() => ViewUserDetails(user))"
+                                                Title="View Details" />
+                                    
+                                    <RadzenButton Icon="edit" 
+                                                ButtonStyle="ButtonStyle.Success" 
+                                                ButtonType="ButtonType.Button" 
+                                                Size="ButtonSize.Small"
+                                                Click="@(() => EditUser(user))"
+                                                Title="Edit Patient" />
+                                    
+                                    <RadzenButton Icon="analytics" 
+                                                ButtonStyle="ButtonStyle.Primary" 
+                                                ButtonType="ButtonType.Button" 
+                                                Size="ButtonSize.Small"
+                                                Click="@(() => ViewUserStats(user))"
+                                                Title="View Stats" />
+                                    
+                                    @if (user.IsActive)
+                                    {
+                                        <RadzenButton Icon="block" 
+                                                    ButtonStyle="ButtonStyle.Danger" 
+                                                    ButtonType="ButtonType.Button" 
+                                                    Size="ButtonSize.Small"
+                                                    Click="@(() => DeactivateUser(user))"
+                                                    Title="Deactivate" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenButton Icon="check" 
+                                                    ButtonStyle="ButtonStyle.Success" 
+                                                    ButtonType="ButtonType.Button" 
+                                                    Size="ButtonSize.Small"
+                                                    Click="@(() => ReactivateUser(user))"
+                                                    Title="Reactivate" />
+                                    }
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
         </div>
     }
 </div>
@@ -314,7 +381,6 @@
 
 @code {
     private List<User> users = new();
-    private List<User> filteredUsers = new();
     private User? selectedUser;
     private UserStats? userStats;
     private bool isLoading = true;
@@ -324,8 +390,26 @@
     private bool isSaving = false;
     private User? editingUser;
     private User userForm = new();
-    private string searchTerm = string.Empty;
-    private string statusFilter = string.Empty;
+    
+    // Custom filter variables
+    private bool? selectedStatusFilter = null;
+    private string? selectedJournalFilter = null;
+    
+    private readonly List<object> statusOptions = new()
+    {
+        new { Value = (bool?)null, Text = "All Statuses" },
+        new { Value = (bool?)true, Text = "Active" },
+        new { Value = (bool?)false, Text = "Inactive" }
+    };
+    
+    private readonly List<object> journalFilterOptions = new()
+    {
+        new { Value = (string?)null, Text = "All Patients" },
+        new { Value = "0", Text = "No Journal Entries" },
+        new { Value = "1-5", Text = "1-5 Entries" },
+        new { Value = "6-10", Text = "6-10 Entries" },
+        new { Value = "10+", Text = "10+ Entries" }
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -356,8 +440,7 @@
                 users = new(); // No access
             }
             
-            filteredUsers = users.ToList();
-            Console.WriteLine($"Filtered users count: {filteredUsers.Count}");
+            Console.WriteLine($"Loaded {users.Count} users total");
         }
         catch (Exception ex)
         {
@@ -369,26 +452,40 @@
         }
     }
 
-
-    private void SearchPatients()
+    private List<User> GetFilteredUsers()
     {
-        FilterUsers();
+        var filtered = users.Where(u => u.RoleId == 1).AsEnumerable();
+
+        // Apply status filter
+        if (selectedStatusFilter.HasValue)
+        {
+            filtered = filtered.Where(u => u.IsActive == selectedStatusFilter.Value);
+        }
+
+        // Apply journal entries filter
+        if (!string.IsNullOrEmpty(selectedJournalFilter))
+        {
+            filtered = selectedJournalFilter switch
+            {
+                "0" => filtered.Where(u => u.JournalEntries.Count == 0),
+                "1-5" => filtered.Where(u => u.JournalEntries.Count >= 1 && u.JournalEntries.Count <= 5),
+                "6-10" => filtered.Where(u => u.JournalEntries.Count >= 6 && u.JournalEntries.Count <= 10),
+                "10+" => filtered.Where(u => u.JournalEntries.Count > 10),
+                _ => filtered
+            };
+        }
+
+        return filtered.ToList();
     }
 
-    private void FilterUsers()
+    private void ClearFilters()
     {
-        Console.WriteLine($"Filtering users - searchTerm: '{searchTerm}', statusFilter: '{statusFilter}', total users: {users.Count}");
-        filteredUsers = users.Where(p => 
-            (string.IsNullOrEmpty(searchTerm) || 
-             p.FirstName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-             p.LastName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-             p.Email.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)) &&
-            (string.IsNullOrEmpty(statusFilter) ||
-             (statusFilter == "active" && p.IsActive) ||
-             (statusFilter == "inactive" && !p.IsActive))
-        ).ToList();
-        Console.WriteLine($"Filtered users count: {filteredUsers.Count}");
+        selectedStatusFilter = null;
+        selectedJournalFilter = null;
+        StateHasChanged();
     }
+
+
 
     private void ShowAddPatientForm()
     {
@@ -443,7 +540,6 @@
                     if (newUser != null)
                     {
                         users.Insert(0, newUser);
-                        FilterUsers();
                         NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient added successfully!");
                     }
                 }
@@ -465,7 +561,6 @@
                         if (index >= 0)
                         {
                             users[index] = updatedUser;
-                            FilterUsers();
                         }
                         NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient updated successfully!");
                     }
@@ -531,7 +626,6 @@
             if (result.IsSuccessStatusCode)
             {
                 user.IsActive = false;
-                FilterUsers();
                 NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient deactivated successfully!");
             }
             else
@@ -560,7 +654,6 @@
                     if (index >= 0)
                     {
                         users[index] = updatedUser;
-                        FilterUsers();
                     }
                 }
                 NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient reactivated successfully!");
@@ -576,3 +669,92 @@
         }
     }
 }
+
+<style>
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .action-buttons .rz-button {
+        margin: 2px;
+    }
+
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+    }
+
+    .status-badge.active {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+
+    .status-badge.inactive {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+
+    .badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .badge.badge-info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .badge.badge-primary {
+        background-color: #cce5ff;
+        color: #004085;
+    }
+
+    .text-muted {
+        color: #6c757d;
+        font-size: 12px;
+    }
+
+    .grid-info {
+        margin-bottom: 15px;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        border-left: 4px solid #007bff;
+    }
+
+    .grid-info i {
+        margin-right: 5px;
+        color: #007bff;
+    }
+
+    .custom-filters {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        border: 1px solid #dee2e6;
+    }
+
+    .custom-filters .form-label {
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 5px;
+    }
+
+    .custom-filters .row {
+        margin: 0;
+    }
+
+    .custom-filters .col-md-3 {
+        padding: 0 10px;
+    }
+</style>

@@ -40,6 +40,7 @@ namespace SM_MentalHealthApp.Shared
         public List<UserAssignment> AssignedTo { get; set; } = new(); // As assignee
 
         public string FullName => $"{FirstName} {LastName} ({Email})";
+        public string StatusText => IsActive ? "Active" : "Inactive";
 
     }
 
