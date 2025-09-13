@@ -83,7 +83,7 @@
                         <RadzenDropDown Data="@patients.Where(p => p.RoleId == 1)" TextProperty="FullName"
                             ValueProperty="Id" @bind-Value="selectedPatientId" AllowFiltering="true"
                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a patient..."
-                            Style="width: 280px" />
+                            Style="width: 400px" />
                     </div>
 
                     <div class="form-group">
@@ -91,7 +91,7 @@
                         <RadzenDropDown Data="@doctors.Where(d => d.RoleId == 2)" TextProperty="FullName" ValueProperty="Id"
                             @bind-Value="selectedDoctorId" AllowFiltering="true"
                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a doctor..."
-                            Style="width: 280px" />
+                            Style="width: 400px" />
                     </div>
 
                     <div class="button-group">

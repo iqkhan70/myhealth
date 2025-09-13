@@ -3081,6 +3081,6 @@ body:has(.chat-container) .rz-layout-content {
 
 /* 🔹 match button height to RadzenDropDown */
 .assignment-controls .button-group .btn {
-    min-height: 38px; /* tweak if needed */
+    min-height: 22px; /* tweak if needed */
     padding: 0 16px;
 }
