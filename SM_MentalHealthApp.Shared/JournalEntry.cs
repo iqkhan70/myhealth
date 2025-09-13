@@ -164,4 +164,38 @@ namespace SM_MentalHealthApp.Shared
         public bool Success { get; set; }
         public string Message { get; set; } = string.Empty;
     }
+
+    public class ContentItem
+    {
+        public int Id { get; set; }
+        public Guid ContentGuid { get; set; } = Guid.NewGuid();
+        public int PatientId { get; set; }
+        public int? AddedByUserId { get; set; } // Who added this content (null if patient added for themselves)
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string FileName { get; set; } = string.Empty;
+        public string OriginalFileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = string.Empty; // MIME type
+        public long FileSizeBytes { get; set; }
+        public string S3Bucket { get; set; } = string.Empty;
+        public string S3Key { get; set; } = string.Empty; // S3 object key
+        public string S3Url { get; set; } = string.Empty; // Pre-signed URL for access
+        public ContentType Type { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? LastAccessedAt { get; set; }
+        public bool IsActive { get; set; } = true;
+
+        // Navigation properties
+        public User Patient { get; set; } = null!;
+        public User? AddedByUser { get; set; }
+    }
+
+    public enum ContentType
+    {
+        Document = 1,
+        Image = 2,
+        Video = 3,
+        Audio = 4,
+        Other = 5
+    }
 }

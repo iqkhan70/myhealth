@@ -17,6 +17,7 @@
     </PackageReference>
     <PackageReference Include="HuggingFace.NET" Version="1.0.0" />
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
+    <PackageReference Include="AWSSDK.S3" Version="3.7.400.12" />
   </ItemGroup>
 
   <ItemGroup>

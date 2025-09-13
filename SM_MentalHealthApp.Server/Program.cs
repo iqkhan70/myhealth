@@ -1,3 +1,4 @@
+using Amazon.S3;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using SM_MentalHealthApp.Server.Data;
@@ -7,10 +8,25 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddDbContext<JournalDbContext>(options =>
-    options.UseMySql(builder.Configuration.GetConnectionString("MySQL"), 
+    options.UseMySql(builder.Configuration.GetConnectionString("MySQL"),
     new MySqlServerVersion(new Version(8, 0, 21))));
 
 builder.Services.AddHttpClient();
+
+// Configure S3
+builder.Services.Configure<S3Config>(builder.Configuration.GetSection("S3"));
+builder.Services.AddSingleton<IAmazonS3>(provider =>
+{
+    var config = builder.Configuration.GetSection("S3").Get<S3Config>();
+    var s3Config = new AmazonS3Config
+    {
+        ServiceURL = config.ServiceUrl,
+        ForcePathStyle = true
+    };
+    return new AmazonS3Client(config.AccessKey, config.SecretKey, s3Config);
+});
+
+// Register services
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<JournalService>();
 builder.Services.AddScoped<ChatService>();
@@ -19,6 +35,8 @@ builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<HuggingFaceService>();
 builder.Services.AddScoped<ConversationRepository>();
 builder.Services.AddScoped<LlmClient>();
+builder.Services.AddScoped<S3Service>();
+builder.Services.AddScoped<ContentService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

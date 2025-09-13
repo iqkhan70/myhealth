@@ -1,0 +1,654 @@
+@page "/content"
+@inject HttpClient Http
+@inject NotificationService NotificationService
+@inject IAuthService AuthService
+@inject IJSRuntime JSRuntime
+@using Microsoft.JSInterop
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using Microsoft.AspNetCore.Components.Forms
+
+<div class="content-page">
+    <div class="content-header">
+        @if (AuthService.CurrentUser?.RoleId == 1) // Patient
+        {
+            <h2>My Content</h2>
+            <p>Manage your personal content and documents.</p>
+        }
+        else if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+        {
+            <h2>Patient Content</h2>
+            <p>View and manage content for your assigned patients.</p>
+        }
+        else if (AuthService.CurrentUser?.RoleId == 3) // Admin
+        {
+            <h2>All Content</h2>
+            <p>Manage all content across the platform.</p>
+        }
+        else
+        {
+            <h2>Access Denied</h2>
+            <p>You don't have permission to view this page.</p>
+        }
+    </div>
+
+    @if (AuthService.CurrentUser?.RoleId == 1 || AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId
+        == 3)
+    {
+        <!-- Add Content Button -->
+        <div class="add-content-section">
+            <RadzenButton Text="Add New Content" ButtonStyle="ButtonStyle.Primary" Icon="add" Click="@ShowAddContentForm" />
+        </div>
+
+        <!-- Content Grid -->
+        <div class="content-grid">
+            @if (isLoading)
+            {
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>Loading content...</p>
+                </div>
+            }
+            else if (contents.Any())
+            {
+                <RadzenDataGrid Data="@contents" TItem="ContentItem" AllowPaging="true" PageSize="10" AllowSorting="true"
+                    FilterMode="FilterMode.Advanced" ShowPagingSummary="true" EmptyText="No content found" AllowFiltering="true"
+                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" ShowFilterRow="true"
+                    ShowFilterRowButtons="true">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="ContentItem" Property="Title" Title="Title" Width="200px"
+                            Filterable="true">
+                            <Template Context="content">
+                                <div>
+                                    <strong>@content.Title</strong>
+                                    <br />
+                                    <small class="text-muted">@content.Description</small>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="ContentItem" Property="Patient" Title="Patient" Width="150px"
+                            Filterable="true">
+                            <Template Context="content">
+                                <div>
+                                    <strong>@content.Patient.FirstName @content.Patient.LastName</strong>
+                                    <br />
+                                    <small class="text-muted">@content.Patient.Email</small>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="ContentItem" Property="OriginalFileName" Title="File" Width="150px"
+                            Filterable="true">
+                            <Template Context="content">
+                                <div>
+                                    <i class="@GetFileIcon(content.Type)"></i>
+                                    @content.OriginalFileName
+                                    <br />
+                                    <small class="text-muted">@FormatFileSize(content.FileSizeBytes)</small>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="ContentItem" Property="Type" Title="Type" Width="100px" Filterable="true">
+                            <Template Context="content">
+                                <span class="content-type-badge @GetTypeClass(content.Type)">
+                                    @content.Type.ToString()
+                                </span>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="ContentItem" Property="CreatedAt" Title="Added" Width="120px"
+                            Filterable="true">
+                            <Template Context="content">
+                                @content.CreatedAt.ToString("MMM dd, yyyy")
+                                <br />
+                                <small class="text-muted">@content.CreatedAt.ToString("HH:mm")</small>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="ContentItem" Property="AddedByUser" Title="Added By" Width="120px"
+                            Filterable="true">
+                            <Template Context="content">
+                                @if (content.AddedByUser != null)
+                                {
+                                    <div>
+                                        <strong>@content.AddedByUser.FirstName @content.AddedByUser.LastName</strong>
+                                        <br />
+                                        <small class="text-muted">@content.AddedByUser.Email</small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Self</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="ContentItem" Property="Actions" Title="Actions" Width="150px"
+                            Sortable="false" Filterable="false">
+                            <Template Context="content">
+                                <div class="action-buttons">
+                                    <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Info"
+                                        ButtonType="ButtonType.Button" Size="ButtonSize.Small"
+                                        Click="@(async () => await ViewContent(content))" Title="View/Download" />
+
+                                    <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Success" ButtonType="ButtonType.Button"
+                                        Size="ButtonSize.Small" Click="@(() => EditContent(content))" Title="Edit" />
+
+                                    @if (AuthService.CurrentUser?.RoleId == 3) // Only admin can delete
+                                    {
+                                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" ButtonType="ButtonType.Button"
+                                            Size="ButtonSize.Small" Click="@(async () => await DeleteContent(content))"
+                                            Title="Delete" />
+                                    }
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+            else
+            {
+                <div class="empty-state">
+                    <div class="empty-icon">📁</div>
+                    <h4>No content found</h4>
+                    <p>Add your first content to get started!</p>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- Add/Edit Content Modal -->
+@if (showContentForm)
+{
+    <div class="modal-overlay" @onclick="CloseContentForm">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(editingContent == null ? "Add New Content" : "Edit Content")</h3>
+                <button @onclick="CloseContentForm" class="close-btn">✕</button>
+            </div>
+
+            <div class="modal-body">
+                <EditForm Model="@contentForm" OnValidSubmit="@SaveContent">
+                    <DataAnnotationsValidator />
+
+                    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Select Patient:</label>
+                            <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
+                                @bind-Value="contentForm.PatientId" AllowFiltering="true"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a patient..."
+                                Style="width: 100%" />
+                        </div>
+                    }
+
+                    <div class="form-group">
+                        <label class="form-label">Title:</label>
+                        <RadzenTextBox @bind-Value="contentForm.Title" Placeholder="Enter content title..."
+                            Style="width: 100%" />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Description:</label>
+                        <RadzenTextArea @bind-Value="contentForm.Description" Placeholder="Enter content description..."
+                            Style="width: 100%; height: 80px;" />
+                    </div>
+
+                    @if (editingContent == null)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">File:</label>
+                            <InputFile OnChange="@OnFileSelected" accept="*/*" class="form-control" />
+                        </div>
+                    }
+
+                    <div class="form-actions">
+                        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseContentForm" />
+                        <RadzenButton Text="@(editingContent == null ? "Upload" : "Save")" ButtonStyle="ButtonStyle.Primary"
+                            ButtonType="ButtonType.Submit" Disabled="@isSaving" />
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ContentItem> contents = new();
+    private List<User> patients = new();
+    private bool isLoading = true;
+    private bool showContentForm = false;
+    private bool isSaving = false;
+    private ContentItem? editingContent = null;
+    private ContentForm contentForm = new();
+    private IBrowserFile? selectedFile = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthService.InitializeAsync();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            isLoading = true;
+            StateHasChanged();
+
+            // Load patients based on user role
+            if (AuthService.CurrentUser?.RoleId == 2) // Doctor - only assigned patients
+            {
+                var patientsResponse = await
+                Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients");
+                patients = patientsResponse ?? new();
+            }
+            else if (AuthService.CurrentUser?.RoleId == 3) // Admin - all patients
+            {
+                var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
+                patients = patientsResponse ?? new();
+            }
+
+            // Load content based on user role
+            if (AuthService.CurrentUser?.RoleId == 1) // Patient
+            {
+                var response = await Http.GetFromJsonAsync<List<ContentItem>>($"api/content/patient/{AuthService.CurrentUser.Id}");
+                contents = response ?? new();
+            }
+            else if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+            {
+                // Load content only for assigned patients
+                var assignedPatientIds = patients.Select(p => p.Id).ToList();
+                var allContentResponse = await Http.GetFromJsonAsync<List<ContentItem>>("api/content/all");
+                contents = allContentResponse?.Where(c => assignedPatientIds.Contains(c.PatientId)).ToList() ?? new();
+            }
+            else if (AuthService.CurrentUser?.RoleId == 3) // Admin
+            {
+                var response = await Http.GetFromJsonAsync<List<ContentItem>>("api/content/all");
+                contents = response ?? new();
+            }
+
+            isLoading = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            isLoading = false;
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load content: " + ex.Message);
+        }
+    }
+
+    private void ShowAddContentForm()
+    {
+        editingContent = null;
+        contentForm = new ContentForm();
+        if (AuthService.CurrentUser?.RoleId == 1) // Patient
+        {
+            contentForm.PatientId = AuthService.CurrentUser.Id;
+        }
+        showContentForm = true;
+    }
+
+    private void EditContent(ContentItem content)
+    {
+        editingContent = content;
+        contentForm = new ContentForm
+        {
+            Id = content.Id,
+            PatientId = content.PatientId,
+            Title = content.Title,
+            Description = content.Description
+        };
+        showContentForm = true;
+    }
+
+    private async Task SaveContent()
+    {
+        try
+        {
+            isSaving = true;
+            StateHasChanged();
+
+            if (editingContent == null)
+            {
+                // Add new content
+                if (selectedFile == null)
+                {
+                    NotificationService.Notify(NotificationSeverity.Warning, "Warning", "Please select a file to upload.");
+                    return;
+                }
+
+                var formData = new MultipartFormDataContent();
+                formData.Add(new StringContent(contentForm.PatientId.ToString()), "PatientId");
+                formData.Add(new StringContent(AuthService.CurrentUser?.Id.ToString() ?? ""), "AddedByUserId");
+                formData.Add(new StringContent(contentForm.Title), "Title");
+                formData.Add(new StringContent(contentForm.Description), "Description");
+                formData.Add(new StreamContent(selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024)), "File",
+                selectedFile.Name);
+
+                var response = await Http.PostAsync("api/content/upload", formData);
+                if (response.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Content uploaded successfully!");
+                    await LoadData();
+                    CloseContentForm();
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to upload content: " + error);
+                }
+            }
+            else
+            {
+                // Update existing content
+                var updateRequest = new ContentUpdateRequest
+                {
+                    Title = contentForm.Title,
+                    Description = contentForm.Description,
+                    AddedByUserId = AuthService.CurrentUser?.Id
+                };
+
+                var response = await Http.PutAsJsonAsync($"api/content/{editingContent.Id}", updateRequest);
+                if (response.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Content updated successfully!");
+                    await LoadData();
+                    CloseContentForm();
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update content: " + error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "An error occurred: " + ex.Message);
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ViewContent(ContentItem content)
+    {
+        try
+        {
+            var response = await Http.GetAsync($"api/content/{content.Id}/url");
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<dynamic>();
+                var url = result?.GetProperty("url").GetString();
+                if (!string.IsNullOrEmpty(url))
+                {
+                    // Open in new tab
+                    await JSRuntime.InvokeVoidAsync("window.open", new object[] { url, "_blank" });
+                }
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to get content URL.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "An error occurred: " + ex.Message);
+        }
+    }
+
+    private async Task DeleteContent(ContentItem content)
+    {
+        try
+        {
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete '{content.Title}'?");
+            if (confirmed)
+            {
+                var response = await Http.DeleteAsync($"api/content/{content.Id}");
+                if (response.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Content deleted successfully!");
+                    await LoadData();
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to delete content.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "An error occurred: " + ex.Message);
+        }
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+    }
+
+    private void CloseContentForm()
+    {
+        showContentForm = false;
+        editingContent = null;
+        contentForm = new ContentForm();
+        selectedFile = null;
+    }
+
+    private string GetFileIcon(ContentType type)
+    {
+        return type switch
+        {
+            ContentType.Image => "fas fa-image",
+            ContentType.Video => "fas fa-video",
+            ContentType.Audio => "fas fa-music",
+            ContentType.Document => "fas fa-file-alt",
+            _ => "fas fa-file"
+        };
+    }
+
+    private string GetTypeClass(ContentType type)
+    {
+        return type switch
+        {
+            ContentType.Image => "image",
+            ContentType.Video => "video",
+            ContentType.Audio => "audio",
+            ContentType.Document => "document",
+            _ => "other"
+        };
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    public class ContentForm
+    {
+        public int Id { get; set; }
+        public int PatientId { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+    }
+
+    public class ContentUpdateRequest
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public int? AddedByUserId { get; set; }
+    }
+}
+
+<style>
+    .content-page {
+        padding: 20px;
+    }
+
+    .content-header {
+        margin-bottom: 20px;
+    }
+
+    .add-content-section {
+        margin-bottom: 20px;
+    }
+
+    .content-grid {
+        margin-top: 20px;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .loading-spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    @@keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6c757d;
+    }
+
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 20px;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .content-type-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+    }
+
+    .content-type-badge.image {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    .content-type-badge.video {
+        background-color: #cce5ff;
+        color: #004085;
+    }
+
+    .content-type-badge.audio {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+
+    .content-type-badge.document {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+
+    .content-type-badge.other {
+        background-color: #e2e3e5;
+        color: #383d41;
+    }
+
+    .text-muted {
+        color: #6c757d;
+        font-size: 12px;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        max-width: 600px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        padding: 20px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6c757d;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #333;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 20px;
+    }
+</style>

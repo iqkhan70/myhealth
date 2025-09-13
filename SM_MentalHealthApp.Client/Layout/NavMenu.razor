@@ -4,7 +4,7 @@
             <i class="nav-icon">🏠</i>
             <span>Home</span>
         </a>
-        
+
         @* Patient-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 1) // Patient
         {
@@ -20,8 +20,12 @@
                 <i class="nav-icon">💬</i>
                 <span>Chat</span>
             </a>
+            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                <i class="nav-icon">📁</i>
+                <span>My Content</span>
+            </a>
         }
-        
+
         @* Doctor-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
         {
@@ -29,8 +33,12 @@
                 <i class="nav-icon">👥</i>
                 <span>My Patients</span>
             </a>
+            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                <i class="nav-icon">📁</i>
+                <span>Patient Content</span>
+            </a>
         }
-        
+
         @* Admin-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 3) // Admin
         {
@@ -42,9 +50,13 @@
                 <i class="nav-icon">👥</i>
                 <span>All Patients</span>
             </a>
+            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                <i class="nav-icon">📁</i>
+                <span>All Content</span>
+            </a>
         }
     </nav>
-    
+
     <div class="nav-menu-footer">
         <button class="nav-item about-button" @onclick="ShowAbout">
             <i class="nav-icon">ℹ️</i>
@@ -64,23 +76,23 @@
         // This would need to be implemented with proper routing detection
         return "";
     }
-    
+
     private void ShowAbout()
     {
         DialogService.Open("About", ds =>
-            @<div>
-                <h4>Mental Health Journal</h4>
-                <p>A compassionate AI-powered journaling app for mental health tracking and support.</p>
-                <p>Built with Blazor WebAssembly and powered by Hugging Face AI models.</p>
-            </div>,
-            new DialogOptions() { Width = "500px", Resizable = true, Draggable = true });
+        @<div>
+            <h4>Mental Health Journal</h4>
+            <p>A compassionate AI-powered journaling app for mental health tracking and support.</p>
+            <p>Built with Blazor WebAssembly and powered by Hugging Face AI models.</p>
+        </div>,
+        new DialogOptions() { Width = "500px", Resizable = true, Draggable = true });
     }
-    
+
     private async Task Logout()
     {
-        var confirmed = await DialogService.Confirm("Are you sure you want to logout?", "Logout Confirmation", 
-            new ConfirmOptions() { OkButtonText = "Yes, Logout", CancelButtonText = "Cancel" });
-        
+        var confirmed = await DialogService.Confirm("Are you sure you want to logout?", "Logout Confirmation",
+        new ConfirmOptions() { OkButtonText = "Yes, Logout", CancelButtonText = "Cancel" });
+
         if (confirmed == true)
         {
             await AuthService.LogoutAsync();
