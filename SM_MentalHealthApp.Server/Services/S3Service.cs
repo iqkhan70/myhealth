@@ -50,7 +50,8 @@ namespace SM_MentalHealthApp.Server.Services
                     BucketName = _s3Config.BucketName,
                     Key = s3Key,
                     Verb = HttpVerb.GET,
-                    Expires = DateTime.UtcNow.AddHours(expirationHours)
+                    Expires = DateTime.UtcNow.AddHours(expirationHours),
+                    Protocol = Protocol.HTTPS
                 };
 
                 return await _s3Client.GetPreSignedURLAsync(request);

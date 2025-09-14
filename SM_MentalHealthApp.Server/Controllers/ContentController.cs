@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
+using Amazon.S3;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -10,11 +11,13 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         private readonly ContentService _contentService;
         private readonly ILogger<ContentController> _logger;
+        private readonly IAmazonS3 _s3Client;
 
-        public ContentController(ContentService contentService, ILogger<ContentController> logger)
+        public ContentController(ContentService contentService, ILogger<ContentController> logger, IAmazonS3 s3Client)
         {
             _contentService = contentService;
             _logger = logger;
+            _s3Client = s3Client;
         }
 
         [HttpGet("patient/{patientId}")]
@@ -183,6 +186,33 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 _logger.LogError(ex, "Error deleting content {ContentId}", id);
                 return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpGet("test-s3")]
+        public async Task<ActionResult> TestS3Connection()
+        {
+            try
+            {
+                // Test S3 connection by listing buckets
+                var response = await _s3Client.ListBucketsAsync();
+                return Ok(new
+                {
+                    success = true,
+                    message = "S3 connection successful",
+                    bucketCount = response.Buckets.Count,
+                    buckets = response.Buckets.Select(b => b.BucketName).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "S3 connection test failed");
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "S3 connection failed",
+                    error = ex.Message
+                });
             }
         }
 

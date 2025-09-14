@@ -71,7 +71,7 @@ namespace SM_MentalHealthApp.Server.Services
                 content.S3Bucket = _s3Config.BucketName;
 
                 // Generate presigned URL
-                content.S3Url = await _s3Service.GetPresignedUrlAsync(s3Key);
+                // S3Url removed - URLs generated on-demand for security
 
                 // Save to database
                 _context.Contents.Add(content);

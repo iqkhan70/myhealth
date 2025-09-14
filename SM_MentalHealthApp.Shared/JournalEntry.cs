@@ -179,7 +179,7 @@ namespace SM_MentalHealthApp.Shared
         public long FileSizeBytes { get; set; }
         public string S3Bucket { get; set; } = string.Empty;
         public string S3Key { get; set; } = string.Empty; // S3 object key
-        public string S3Url { get; set; } = string.Empty; // Pre-signed URL for access
+        // public string S3Url { get; set; } = string.Empty; // Removed - URLs generated on-demand for security
         public ContentType Type { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastAccessedAt { get; set; }

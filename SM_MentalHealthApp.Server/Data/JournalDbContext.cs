@@ -103,7 +103,7 @@ namespace SM_MentalHealthApp.Server.Data
                 entity.Property(e => e.ContentType).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.S3Bucket).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.S3Key).IsRequired().HasMaxLength(500);
-                entity.Property(e => e.S3Url).HasMaxLength(1000);
+                // entity.Property(e => e.S3Url).HasMaxLength(1000); // Removed - URLs generated on-demand
 
                 // Foreign key relationships
                 entity.HasOne(e => e.Patient)

@@ -18,12 +18,20 @@ builder.Services.Configure<S3Config>(builder.Configuration.GetSection("S3"));
 builder.Services.AddSingleton<IAmazonS3>(provider =>
 {
     var config = builder.Configuration.GetSection("S3").Get<S3Config>();
+
+    // Use environment variables for sensitive credentials
+    var accessKey = Environment.GetEnvironmentVariable("DIGITALOCEAN_ACCESS_KEY") ?? config.AccessKey;
+    var secretKey = Environment.GetEnvironmentVariable("DIGITALOCEAN_SECRET_KEY") ?? config.SecretKey;
+
     var s3Config = new AmazonS3Config
     {
         ServiceURL = config.ServiceUrl,
-        ForcePathStyle = true
+        ForcePathStyle = true,
+        UseHttp = false,
+        AuthenticationRegion = config.Region,
+        SignatureVersion = "4"
     };
-    return new AmazonS3Client(config.AccessKey, config.SecretKey, s3Config);
+    return new AmazonS3Client(accessKey, secretKey, s3Config);
 });
 
 // Register services
