@@ -133,9 +133,23 @@ namespace SM_MentalHealthApp.Server.Services
             try
             {
                 _logger.LogInformation("=== BUILDING ENHANCED CONTEXT FOR PATIENT {PatientId} ===", patientId);
+                _logger.LogInformation("Original prompt: {OriginalPrompt}", originalPrompt);
+
+                // If no patient is selected (patientId = 0), return empty context
+                if (patientId <= 0)
+                {
+                    _logger.LogInformation("No patient selected (patientId = {PatientId}), returning empty context", patientId);
+                    return originalPrompt;
+                }
+
+                _logger.LogInformation("Patient selected (patientId = {PatientId}), proceeding with context building", patientId);
+
                 var context = new StringBuilder();
 
                 // Get journal entries (existing functionality)
+                _logger.LogInformation("=== JOURNAL ENTRIES QUERY DEBUG ===");
+                _logger.LogInformation("Querying journal entries for patientId: {PatientId}", patientId);
+
                 var recentEntries = await _context.JournalEntries
                     .Where(e => e.UserId == patientId)
                     .OrderByDescending(e => e.CreatedAt)
@@ -143,6 +157,23 @@ namespace SM_MentalHealthApp.Server.Services
                     .ToListAsync();
 
                 _logger.LogInformation("Found {JournalCount} journal entries for patient {PatientId}", recentEntries.Count, patientId);
+
+                // Debug: Log each journal entry found
+                foreach (var entry in recentEntries)
+                {
+                    _logger.LogInformation("Journal Entry - ID: {EntryId}, UserId: {UserId}, CreatedAt: {CreatedAt}, Mood: {Mood}",
+                        entry.Id, entry.UserId, entry.CreatedAt, entry.Mood);
+                }
+
+                // Debug: Check total journal entries in database for this patient
+                var totalEntriesForPatient = await _context.JournalEntries
+                    .Where(e => e.UserId == patientId)
+                    .CountAsync();
+                _logger.LogInformation("Total journal entries in database for patient {PatientId}: {TotalCount}", patientId, totalEntriesForPatient);
+
+                // Debug: Check total journal entries in database (all patients)
+                var totalEntriesAll = await _context.JournalEntries.CountAsync();
+                _logger.LogInformation("Total journal entries in database (all patients): {TotalCount}", totalEntriesAll);
 
                 if (recentEntries.Any())
                 {

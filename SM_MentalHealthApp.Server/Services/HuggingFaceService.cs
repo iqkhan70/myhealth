@@ -101,19 +101,25 @@ namespace SM_MentalHealthApp.Server.Services
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 // Using a more reliable text generation model
+                Console.WriteLine("=== API CALL START ===");
                 var response = await _httpClient.PostAsync(
                     "https://api-inference.huggingface.co/models/microsoft/DialoGPT-small",
                     content);
 
+                Console.WriteLine($"API Response Status: {response.StatusCode}");
+
                 if (response.IsSuccessStatusCode)
                 {
+                    Console.WriteLine("API call succeeded, processing response...");
                     var responseContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"Response content length: {responseContent.Length}");
 
                     var responseData = JsonSerializer.Deserialize<JsonElement[]>(responseContent);
 
                     if (responseData.Length > 0)
                     {
                         var generatedText = responseData[0].GetProperty("generated_text").GetString() ?? "I understand. How can I help you today?";
+                        Console.WriteLine($"Generated text: {generatedText}");
 
                         // Clean up the response - remove the original input if it's included
                         if (generatedText.StartsWith(text))
@@ -121,7 +127,9 @@ namespace SM_MentalHealthApp.Server.Services
                             generatedText = generatedText.Substring(text.Length).Trim();
                         }
 
-                        return string.IsNullOrWhiteSpace(generatedText) ? "I understand. How can I help you today?" : generatedText;
+                        var finalResponse = string.IsNullOrWhiteSpace(generatedText) ? "I understand. How can I help you today?" : generatedText;
+                        Console.WriteLine($"Final response: {finalResponse}");
+                        return finalResponse;
                     }
                 }
                 else
@@ -136,18 +144,31 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             // Fallback: Use enhanced context to generate a meaningful response
+            Console.WriteLine("=== FALLBACK TRIGGERED ===");
+            Console.WriteLine($"Text length: {text.Length}");
+            Console.WriteLine($"Text preview: {text.Substring(0, Math.Min(200, text.Length))}...");
+
             try
             {
                 var knowledgePath = Path.Combine("llm", "prompts", "MentalHealthKnowledge.md");
                 if (File.Exists(knowledgePath))
                 {
                     var knowledge = File.ReadAllText(knowledgePath);
+                    Console.WriteLine("Knowledge file found, processing context...");
 
                     // Extract key information from the enhanced context
                     var contextLines = text.Split('\n');
                     var patientInfo = new StringBuilder();
                     var alerts = new List<string>();
                     var journalEntries = new List<string>();
+
+                    Console.WriteLine("=== FALLBACK PARSING DEBUG ===");
+                    Console.WriteLine($"Total context lines: {contextLines.Length}");
+                    Console.WriteLine("First 20 lines of context:");
+                    for (int i = 0; i < Math.Min(20, contextLines.Length); i++)
+                    {
+                        Console.WriteLine($"{i}: {contextLines[i]}");
+                    }
 
                     bool inJournalSection = false;
                     bool inContentSection = false;
@@ -175,7 +196,12 @@ namespace SM_MentalHealthApp.Server.Services
 
                         if (inJournalSection && !string.IsNullOrWhiteSpace(line))
                         {
-                            journalEntries.Add(line.Trim());
+                            // Only count lines that look like actual journal entries (contain date and mood)
+                            if (line.Contains("[") && line.Contains("]") && (line.Contains("Mood:") || line.Contains("Entry:")))
+                            {
+                                journalEntries.Add(line.Trim());
+                                Console.WriteLine($"Found journal entry: {line.Trim()}");
+                            }
                         }
                         if (inContentSection && line.Contains("⚠️ ALERTS:"))
                         {
@@ -189,6 +215,29 @@ namespace SM_MentalHealthApp.Server.Services
 
                     // Generate a contextual response based on the enhanced context
                     var response = new StringBuilder();
+
+                    // Check if we have patient data or if this is a generic query
+                    bool hasPatientData = journalEntries.Any() || alerts.Any();
+
+                    Console.WriteLine($"Journal entries found: {journalEntries.Count}");
+                    Console.WriteLine($"Alerts found: {alerts.Count}");
+                    Console.WriteLine($"Has patient data: {hasPatientData}");
+
+                    if (!hasPatientData)
+                    {
+                        // No patient selected or no data available
+                        Console.WriteLine("No patient data found, returning no patient selected message");
+                        response.AppendLine("⚠️ **No Patient Selected**");
+                        response.AppendLine();
+                        response.AppendLine("To provide personalized insights about a specific patient, please:");
+                        response.AppendLine("1. Select a patient from the dropdown above");
+                        response.AppendLine("2. Ask your question about that specific patient");
+                        response.AppendLine();
+                        response.AppendLine("Once a patient is selected, I can analyze their journal entries, medical content, and provide detailed insights about their mental health status.");
+                        var result = response.ToString().Trim();
+                        Console.WriteLine($"Fallback result: {result}");
+                        return result;
+                    }
 
                     if (alerts.Any())
                     {

@@ -188,7 +188,7 @@ namespace SM_MentalHealthApp.Server.Services
                 context.AppendLine("You are an AI assistant helping a doctor with patient care.");
             }
 
-            // Get patient information and data for clinical context
+            // Get patient information for basic context (detailed data handled by ContentAnalysisService)
             if (patientId > 0)
             {
                 var patient = await _userService.GetUserByIdAsync(patientId);
@@ -199,29 +199,6 @@ namespace SM_MentalHealthApp.Server.Services
                     context.AppendLine($"Age: {CalculateAge(patient.DateOfBirth)}");
                     context.AppendLine($"Gender: {patient.Gender}");
                     context.AppendLine($"Status: {(patient.IsActive ? "Active" : "Inactive")}");
-
-                    // Get recent journal entries for clinical context
-                    var recentEntries = await _journalService.GetRecentEntriesForUser(patientId, 14); // Last 14 days
-                    var moodDistribution = await _journalService.GetMoodDistributionForUser(patientId, 30); // Last 30 days
-
-                    if (moodDistribution.Any())
-                    {
-                        var topMoods = moodDistribution.OrderByDescending(kvp => kvp.Value).Take(3);
-                        context.AppendLine($"\nMOOD PATTERNS (Last 30 days):");
-                        foreach (var mood in topMoods)
-                        {
-                            context.AppendLine($"- {mood.Key}: {mood.Value} entries");
-                        }
-                    }
-
-                    if (recentEntries.Any())
-                    {
-                        context.AppendLine($"\nRECENT JOURNAL ENTRIES (Last 14 days):");
-                        foreach (var entry in recentEntries.Take(5))
-                        {
-                            context.AppendLine($"- {entry.CreatedAt:MM/dd}: {entry.Mood} - {entry.Text.Substring(0, Math.Min(100, entry.Text.Length))}...");
-                        }
-                    }
                 }
             }
 
@@ -237,11 +214,20 @@ namespace SM_MentalHealthApp.Server.Services
             context.AppendLine("- Always remind the doctor that this is AI assistance and final decisions are theirs");
 
             // Use enhanced context that includes both journal entries AND content analysis
+            _logger.LogInformation("=== DOCTOR PROMPT DEBUG ===");
+            _logger.LogInformation("PatientId in BuildDoctorPrompt: {PatientId}", patientId);
+            _logger.LogInformation("Is patientId > 0? {IsGreaterThanZero}", patientId > 0);
+
             if (patientId > 0)
             {
+                _logger.LogInformation("=== CALLING CONTENT ANALYSIS SERVICE ===");
+                _logger.LogInformation("PatientId being passed to ContentAnalysisService: {PatientId}", patientId);
+                _logger.LogInformation("Original prompt: {OriginalPrompt}", originalPrompt);
+
                 try
                 {
                     var enhancedContext = await _contentAnalysisService.BuildEnhancedContextAsync(patientId, originalPrompt);
+                    _logger.LogInformation("ContentAnalysisService returned context length: {Length}", enhancedContext.Length);
                     context.AppendLine($"\n{enhancedContext}");
                 }
                 catch (Exception ex)

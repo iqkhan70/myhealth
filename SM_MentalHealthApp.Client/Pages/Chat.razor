@@ -199,7 +199,7 @@
     
     // User management
     private List<User> Users = new();
-    private int SelectedUserId = 1; // Default to User 1
+    private int SelectedUserId = 0; // Default to no patient selected
     private User? SelectedUser = null;
     
     // Chat mode management
@@ -283,11 +283,20 @@
     {
         try
         {
-            SelectedUser = await Http.GetFromJsonAsync<User>($"api/user/{SelectedUserId}");
-            if (SelectedUser != null)
+            if (SelectedUserId > 0)
             {
-                Messages.Add($"System: 👤 Now chatting as {SelectedUser.FirstName} {SelectedUser.LastName} (User ID: {SelectedUser.Id})");
-                Messages.Add($"System: 📊 AI will provide personalized responses based on {SelectedUser.FirstName}'s journal entries and mood patterns");
+                SelectedUser = await Http.GetFromJsonAsync<User>($"api/user/{SelectedUserId}");
+                if (SelectedUser != null)
+                {
+                    Messages.Add($"System: 👤 Now chatting as {SelectedUser.FirstName} {SelectedUser.LastName} (User ID: {SelectedUser.Id})");
+                    Messages.Add($"System: 📊 AI will provide personalized responses based on {SelectedUser.FirstName}'s journal entries and mood patterns");
+                }
+            }
+            else
+            {
+                SelectedUser = null;
+                Messages.Add($"System: 🌐 No patient selected - AI will provide generic responses");
+                Messages.Add($"System: 💡 Select a patient from the dropdown above to get personalized insights");
             }
         }
         catch (Exception ex)
