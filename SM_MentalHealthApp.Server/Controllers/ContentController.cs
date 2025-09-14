@@ -86,22 +86,51 @@ namespace SM_MentalHealthApp.Server.Controllers
         [HttpPost("upload")]
         public async Task<ActionResult<ContentItem>> UploadContent([FromForm] ContentUploadRequest request)
         {
+            _logger.LogInformation("=== UPLOAD ENDPOINT HIT ===");
             try
             {
+                _logger.LogInformation("=== UPLOAD REQUEST START ===");
+                _logger.LogInformation("Upload request received: PatientId={PatientId}, AddedByUserId={AddedByUserId}, Title='{Title}', Description='{Description}', FileName='{FileName}'",
+                    request.PatientId, request.AddedByUserId, request.Title, request.Description, request.File?.FileName);
+
+                // Check if request is null
+                if (request == null)
+                {
+                    _logger.LogError("Request is null!");
+                    return BadRequest("Request is null");
+                }
+
                 if (request.File == null || request.File.Length == 0)
+                {
+                    _logger.LogWarning("No file provided in upload request");
                     return BadRequest("No file provided");
+                }
 
                 // Validate that the user can add content for this patient
                 if (request.AddedByUserId.HasValue)
                 {
+                    _logger.LogInformation("Validating user access: AddedByUserId={AddedByUserId}, PatientId={PatientId}", request.AddedByUserId.Value, request.PatientId);
+
                     // Get user role from database
                     var user = await _contentService.GetUserByIdAsync(request.AddedByUserId.Value);
                     if (user == null)
+                    {
+                        _logger.LogWarning("User not found: AddedByUserId={AddedByUserId}", request.AddedByUserId.Value);
                         return BadRequest("User not found");
+                    }
+
+                    _logger.LogInformation("User found: RoleId={RoleId}", user.RoleId);
 
                     var canAccess = await _contentService.CanUserAddContentForPatientAsync(request.AddedByUserId.Value, user.RoleId, request.PatientId);
+                    _logger.LogInformation("Access check result: canAccess={canAccess}", canAccess);
+
                     if (!canAccess)
+                    {
+                        _logger.LogWarning("Access denied: AddedByUserId={AddedByUserId}, RoleId={RoleId}, PatientId={PatientId}", request.AddedByUserId.Value, user.RoleId, request.PatientId);
                         return Forbid("You don't have permission to add content for this patient");
+                    }
+
+                    _logger.LogInformation("Access granted for user {AddedByUserId} to add content for patient {PatientId}", request.AddedByUserId.Value, request.PatientId);
                 }
 
                 // Determine content type based on file extension
@@ -114,7 +143,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     PatientId = request.PatientId,
                     AddedByUserId = request.AddedByUserId,
                     Title = request.Title,
-                    Description = request.Description,
+                    Description = request.Description ?? string.Empty, // Provide empty string if null
                     FileName = $"{contentGuid}_{request.File.FileName}",
                     OriginalFileName = request.File.FileName,
                     ContentType = request.File.ContentType,
@@ -125,11 +154,15 @@ namespace SM_MentalHealthApp.Server.Controllers
                 using var stream = request.File.OpenReadStream();
                 var createdContent = await _contentService.CreateContentAsync(content, stream);
 
+                _logger.LogInformation("Content created successfully with ID: {ContentId}", createdContent.Id);
+                _logger.LogInformation("=== UPLOAD REQUEST SUCCESS ===");
                 return Ok(createdContent);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error uploading content");
+                _logger.LogError(ex, "=== UPLOAD REQUEST ERROR ===");
+                _logger.LogError("Error uploading content: {ErrorMessage}", ex.Message);
+                _logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
                 return StatusCode(500, "Internal server error");
             }
         }
@@ -156,7 +189,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 content.Title = request.Title;
-                content.Description = request.Description;
+                content.Description = request.Description ?? string.Empty; // Provide empty string if null
 
                 var updated = await _contentService.UpdateContentAsync(content);
                 if (!updated)
@@ -235,7 +268,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public int PatientId { get; set; }
         public int? AddedByUserId { get; set; }
         public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
+        public string? Description { get; set; }
         public IFormFile File { get; set; } = null!;
     }
 

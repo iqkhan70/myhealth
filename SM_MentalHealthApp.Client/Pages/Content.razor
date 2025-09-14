@@ -166,33 +166,43 @@
     <div class="modal-overlay" @onclick="CloseContentForm">
         <div class="modal-content" @onclick:stopPropagation="true">
             <div class="modal-header">
-                <h3>@(editingContent == null ? "Add New Content" : "Edit Content")</h3>
+                <h3>@GetFormTitle()</h3>
                 <button @onclick="CloseContentForm" class="close-btn">✕</button>
             </div>
 
             <div class="modal-body">
-                <EditForm Model="@contentForm" OnValidSubmit="@SaveContent">
-                    <DataAnnotationsValidator />
+                <form @onsubmit="@SaveContent" @onsubmit:preventDefault="true">
 
                     @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3)
                     {
                         <div class="form-group">
-                            <label class="form-label">Select Patient:</label>
+                            <label class="form-label @GetPatientLabelClass()">Select Patient: <span class="required-asterisk">*</span></label>
                             <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
                                 @bind-Value="contentForm.PatientId" AllowFiltering="true"
                                 FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a patient..."
-                                Style="width: 100%" />
+                                Style="width: 100%" 
+                                @onchange="@(() => { showPatientError = false; StateHasChanged(); })" />
+                        </div>
+                    }
+                    else if (AuthService.CurrentUser?.RoleId == 1)
+                    {
+                        <div class="form-group">
+                            <div class="patient-info-display">
+                                <i class="fas fa-user"></i>
+                                <span>Uploading content for: <strong>@(AuthService.CurrentUser?.FirstName) @(AuthService.CurrentUser?.LastName)</strong></span>
+                            </div>
                         </div>
                     }
 
                     <div class="form-group">
-                        <label class="form-label">Title:</label>
+                        <label class="form-label @GetTitleLabelClass()">Title: <span class="required-asterisk">*</span></label>
                         <RadzenTextBox @bind-Value="contentForm.Title" Placeholder="Enter content title..."
-                            Style="width: 100%" />
+                            Style="width: 100%" 
+                            @onchange="@(() => { showTitleError = false; StateHasChanged(); })" />
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Description:</label>
+                        <label class="form-label">Description: <span class="optional-text">(Optional)</span></label>
                         <RadzenTextArea @bind-Value="contentForm.Description" Placeholder="Enter content description..."
                             Style="width: 100%; height: 80px;" />
                     </div>
@@ -200,17 +210,31 @@
                     @if (editingContent == null)
                     {
                         <div class="form-group">
-                            <label class="form-label">File:</label>
-                            <InputFile OnChange="@OnFileSelected" accept="*/*" class="form-control" />
+                            <label class="form-label @GetFileLabelClass()">File: <span class="required-asterisk">*</span></label>
+                            <InputFile OnChange="@OnFileSelected" accept="*/*" class="@GetFileInputClass()" />
+                            @if (selectedFile == null)
+                            {
+                                <div class="file-input-hint">
+                                    <i class="fas fa-info-circle"></i>
+                                    Please select a file to upload
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="file-selected-info">
+                                    <i class="fas fa-check-circle text-success"></i>
+                                    Selected: @selectedFile.Name (@(selectedFile.Size / 1024) KB)
+                                </div>
+                            }
                         </div>
                     }
 
                     <div class="form-actions">
                         <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseContentForm" />
                         <RadzenButton Text="@(editingContent == null ? "Upload" : "Save")" ButtonStyle="ButtonStyle.Primary"
-                            ButtonType="ButtonType.Submit" Disabled="@isSaving" />
+                            ButtonType="ButtonType.Submit" Disabled="@isSaving" Click="@SaveContent" />
                     </div>
-                </EditForm>
+                </form>
             </div>
         </div>
     </div>
@@ -225,6 +249,11 @@
     private ContentItem? editingContent = null;
     private ContentForm contentForm = new();
     private IBrowserFile? selectedFile = null;
+    
+    // Validation state tracking
+    private bool showPatientError = false;
+    private bool showTitleError = false;
+    private bool showFileError = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -289,6 +318,12 @@
         {
             contentForm.PatientId = AuthService.CurrentUser.Id;
         }
+        
+        // Clear validation errors (in same order as validation)
+        showPatientError = false;
+        showTitleError = false;
+        showFileError = false;
+        
         showContentForm = true;
     }
 
@@ -307,23 +342,71 @@
 
     private async Task SaveContent()
     {
+        Console.WriteLine("SaveContent method called");
+        NotificationService.Notify(NotificationSeverity.Info, "Debug", "SaveContent method called!");
         try
         {
-            isSaving = true;
-            StateHasChanged();
-
             if (editingContent == null)
             {
-                // Add new content
-                if (selectedFile == null)
+                // Clear previous validation errors (in same order as validation)
+                showPatientError = false;
+                showTitleError = false;
+                showFileError = false;
+                StateHasChanged();
+
+                // Add new content - validate from top to bottom
+                Console.WriteLine($"Validation: PatientId={contentForm.PatientId}, Title='{contentForm.Title}', Description='{contentForm.Description}', SelectedFile={selectedFile?.Name}");
+                
+                // 1. Patient selection (for doctors and admins only)
+                if ((AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) && contentForm.PatientId == 0)
                 {
-                    NotificationService.Notify(NotificationSeverity.Warning, "Warning", "Please select a file to upload.");
+                    Console.WriteLine("Patient validation failed");
+                    showPatientError = true;
+                    NotificationService.Notify(NotificationSeverity.Warning, "Patient Required", "Please select a patient for this content.");
+                    StateHasChanged();
                     return;
                 }
 
+                // 2. Title (required for all users)
+                if (string.IsNullOrWhiteSpace(contentForm.Title))
+                {
+                    Console.WriteLine("Title validation failed");
+                    showTitleError = true;
+                    NotificationService.Notify(NotificationSeverity.Warning, "Title Required", "Please enter a title for the content.");
+                    StateHasChanged();
+                    return;
+                }
+
+                // 3. File selection (required for all users)
+                if (selectedFile == null)
+                {
+                    Console.WriteLine("File validation failed");
+                    showFileError = true;
+                    NotificationService.Notify(NotificationSeverity.Warning, "No File Selected", "Please select a file to upload before clicking Upload.");
+                    StateHasChanged();
+                    return;
+                }
+
+                Console.WriteLine("All validations passed, proceeding with upload");
+                Console.WriteLine($"Current User ID: {AuthService.CurrentUser?.Id}");
+                Console.WriteLine($"Current User Role: {AuthService.CurrentUser?.RoleId}");
+
+                isSaving = true;
+                StateHasChanged();
+
                 var formData = new MultipartFormDataContent();
                 formData.Add(new StringContent(contentForm.PatientId.ToString()), "PatientId");
-                formData.Add(new StringContent(AuthService.CurrentUser?.Id.ToString() ?? ""), "AddedByUserId");
+                
+                if (AuthService.CurrentUser?.Id != null)
+                {
+                    formData.Add(new StringContent(AuthService.CurrentUser.Id.ToString()), "AddedByUserId");
+                    Console.WriteLine($"Added AddedByUserId: {AuthService.CurrentUser.Id}");
+                }
+                else
+                {
+                    Console.WriteLine("WARNING: No current user ID available!");
+                }
+                
                 formData.Add(new StringContent(contentForm.Title), "Title");
                 formData.Add(new StringContent(contentForm.Description), "Description");
                 formData.Add(new StreamContent(selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024)), "File",
@@ -344,7 +427,16 @@
             }
             else
             {
-                // Update existing content
+                // Update existing content - validate before setting isSaving
+                if (string.IsNullOrWhiteSpace(contentForm.Title))
+                {
+                    NotificationService.Notify(NotificationSeverity.Warning, "Title Required", "Please enter a title for the content.");
+                    return;
+                }
+
+                isSaving = true;
+                StateHasChanged();
+
                 var updateRequest = new ContentUpdateRequest
                 {
                     Title = contentForm.Title,
@@ -431,6 +523,46 @@
     private void OnFileSelected(InputFileChangeEventArgs e)
     {
         selectedFile = e.File;
+        showFileError = false;
+        StateHasChanged();
+    }
+
+    private string GetFileInputClass()
+    {
+        return selectedFile == null ? "form-control file-input-empty" : "form-control file-input-selected";
+    }
+
+    private string GetFormTitle()
+    {
+        if (editingContent == null)
+        {
+            return AuthService.CurrentUser?.RoleId switch
+            {
+                1 => "Upload New Content", // Patient
+                2 => "Add Content for Patient", // Doctor
+                3 => "Add New Content", // Admin
+                _ => "Add New Content"
+            };
+        }
+        else
+        {
+            return "Edit Content";
+        }
+    }
+
+    private string GetPatientLabelClass()
+    {
+        return showPatientError ? "form-label validation-error" : "form-label";
+    }
+
+    private string GetTitleLabelClass()
+    {
+        return showTitleError ? "form-label validation-error" : "form-label";
+    }
+
+    private string GetFileLabelClass()
+    {
+        return showFileError ? "form-label validation-error" : "form-label";
     }
 
     private void CloseContentForm()
@@ -643,6 +775,40 @@
         margin-bottom: 5px;
         font-weight: 500;
         color: #333;
+        font-size: 14px;
+    }
+
+    .form-label .required-asterisk {
+        color: #dc3545 !important;
+        font-weight: bold !important;
+        font-size: 16px !important;
+        margin-left: 2px;
+        text-shadow: 0 0 1px rgba(220, 53, 69, 0.3);
+    }
+
+    .validation-error {
+        position: relative;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .validation-error::after {
+        content: "Required";
+        font-size: 11px;
+        color: #dc3545;
+        background-color: #fff5f5;
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid #f5c6cb;
+        font-weight: 500;
+    }
+
+    .optional-text {
+        color: #6c757d;
+        font-size: 12px;
+        font-weight: normal;
+        font-style: italic;
     }
 
     .form-actions {
@@ -650,5 +816,77 @@
         gap: 10px;
         justify-content: flex-end;
         margin-top: 20px;
+    }
+
+    .required-asterisk {
+        color: #dc3545 !important;
+        font-weight: bold !important;
+        font-size: 16px !important;
+        margin-left: 2px;
+    }
+
+    .file-input-empty {
+        border: 2px dashed #dc3545 !important;
+        background-color: #fff5f5;
+    }
+
+    .file-input-selected {
+        border: 2px solid #28a745 !important;
+        background-color: #f8fff8;
+    }
+
+    .file-input-hint {
+        margin-top: 5px;
+        padding: 8px 12px;
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 4px;
+        color: #856404;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .file-input-hint i {
+        color: #f39c12;
+    }
+
+    .file-selected-info {
+        margin-top: 5px;
+        padding: 8px 12px;
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 4px;
+        color: #155724;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .file-selected-info i {
+        color: #28a745;
+    }
+
+    .patient-info-display {
+        padding: 12px 16px;
+        background-color: #e3f2fd;
+        border: 1px solid #bbdefb;
+        border-radius: 6px;
+        color: #1565c0;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .patient-info-display i {
+        color: #1976d2;
+        font-size: 16px;
+    }
+
+    .patient-info-display strong {
+        color: #0d47a1;
     }
 </style>
