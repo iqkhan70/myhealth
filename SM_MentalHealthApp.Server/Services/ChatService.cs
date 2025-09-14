@@ -21,24 +21,22 @@ namespace SM_MentalHealthApp.Server.Services
             _userService = userService;
         }
 
-        public async Task<ChatResponse> SendMessageAsync(string prompt, string conversationId, AiProvider provider, int patientId = 0)
+        public async Task<ChatResponse> SendMessageAsync(string prompt, string conversationId, AiProvider provider, int patientId = 0, int userId = 0, int userRoleId = 0)
         {
             try
             {
-                Console.WriteLine($"ChatService.SendMessageAsync called with prompt: '{prompt}' for patient: {patientId}");
-                
+
                 // Parse conversationId to Guid
                 if (!Guid.TryParse(conversationId, out Guid guidConversationId))
                 {
                     guidConversationId = Guid.NewGuid();
                 }
 
-                // Get patient context for personalized responses
-                string personalizedPrompt = await BuildPersonalizedPrompt(prompt, patientId);
+                // Build role-based prompt
+                string roleBasedPrompt = await BuildRoleBasedPrompt(prompt, patientId, userId, userRoleId);
 
                 // Use HuggingFace service for AI response
-                var response = await _huggingFaceService.GenerateResponse(personalizedPrompt);
-                Console.WriteLine($"HuggingFace response: '{response}'");
+                var response = await _huggingFaceService.GenerateResponse(roleBasedPrompt);
 
                 // Generate a simple response ID
                 var responseId = Guid.NewGuid().ToString();
@@ -52,7 +50,6 @@ namespace SM_MentalHealthApp.Server.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in SendMessageAsync: {ex.Message}");
                 // Return a friendly error message instead of crashing
                 return new ChatResponse
                 {
@@ -61,6 +58,185 @@ namespace SM_MentalHealthApp.Server.Services
                     Provider = "HuggingFace"
                 };
             }
+        }
+
+        private async Task<string> BuildRoleBasedPrompt(string originalPrompt, int patientId, int userId, int userRoleId)
+        {
+            try
+            {
+
+                // If role is 0 or unknown, try to determine role from user data
+                if (userRoleId == 0 && userId > 0)
+                {
+                    var user = await _userService.GetUserByIdAsync(userId);
+                    if (user != null)
+                    {
+                        userRoleId = user.RoleId;
+                    }
+                }
+
+                // Role-based prompt building
+                if (userRoleId == 1) // Patient
+                {
+                    return await BuildPatientPrompt(originalPrompt, userId);
+                }
+                else if (userRoleId == 2) // Doctor
+                {
+                    return await BuildDoctorPrompt(originalPrompt, userId, patientId);
+                }
+                else if (userRoleId == 3) // Admin
+                {
+                    return await BuildAdminPrompt(originalPrompt, userId, patientId);
+                }
+                else
+                {
+                    // Default to patient prompt for unknown roles
+                    return await BuildPatientPrompt(originalPrompt, userId);
+                }
+            }
+            catch (Exception)
+            {
+                return originalPrompt;
+            }
+        }
+
+        private async Task<string> BuildPatientPrompt(string originalPrompt, int userId)
+        {
+            var context = new System.Text.StringBuilder();
+
+            // Get patient information
+            var patient = await _userService.GetUserByIdAsync(userId);
+            if (patient != null)
+            {
+                context.AppendLine($"You are a mental health companion talking to {patient.FirstName} {patient.LastName}.");
+            }
+            else
+            {
+                context.AppendLine("You are a mental health companion talking to a patient.");
+            }
+
+            // Patient-specific instructions - conservative and supportive
+            context.AppendLine("\nIMPORTANT GUIDELINES FOR PATIENT RESPONSES:");
+            context.AppendLine("- You are NOT a doctor and cannot provide medical advice, diagnoses, or prescriptions");
+            context.AppendLine("- For any medical concerns, symptoms, or requests for prescriptions, ALWAYS direct them to consult their doctor");
+            context.AppendLine("- You can provide general wellness advice like exercise, diet, sleep, and stress management");
+            context.AppendLine("- You can offer emotional support and active listening");
+            context.AppendLine("- You can suggest relaxation techniques, breathing exercises, and mindfulness");
+            context.AppendLine("- If they mention specific symptoms or ask for medical advice, respond with: 'I understand your concern, but I'm not qualified to provide medical advice. Please consult with your doctor about this.'");
+            context.AppendLine("- Be supportive, empathetic, and encouraging");
+            context.AppendLine("- Keep responses conversational and non-clinical");
+
+            context.AppendLine($"\nPatient asks: {originalPrompt}");
+            context.AppendLine("\nRespond as a supportive mental health companion, following the guidelines above.");
+
+            var prompt = context.ToString();
+
+            return prompt;
+        }
+
+        private async Task<string> BuildDoctorPrompt(string originalPrompt, int doctorId, int patientId)
+        {
+            var context = new System.Text.StringBuilder();
+
+            // Get doctor information
+            var doctor = await _userService.GetUserByIdAsync(doctorId);
+            if (doctor != null)
+            {
+                context.AppendLine($"You are an AI assistant helping Dr. {doctor.FirstName} {doctor.LastName} with patient care.");
+            }
+            else
+            {
+                context.AppendLine("You are an AI assistant helping a doctor with patient care.");
+            }
+
+            // Get patient information and data for clinical context
+            if (patientId > 0)
+            {
+                var patient = await _userService.GetUserByIdAsync(patientId);
+                if (patient != null)
+                {
+                    context.AppendLine($"\nPATIENT INFORMATION:");
+                    context.AppendLine($"Name: {patient.FirstName} {patient.LastName}");
+                    context.AppendLine($"Age: {CalculateAge(patient.DateOfBirth)}");
+                    context.AppendLine($"Gender: {patient.Gender}");
+                    context.AppendLine($"Status: {(patient.IsActive ? "Active" : "Inactive")}");
+
+                    // Get recent journal entries for clinical context
+                    var recentEntries = await _journalService.GetRecentEntriesForUser(patientId, 14); // Last 14 days
+                    var moodDistribution = await _journalService.GetMoodDistributionForUser(patientId, 30); // Last 30 days
+
+                    if (moodDistribution.Any())
+                    {
+                        var topMoods = moodDistribution.OrderByDescending(kvp => kvp.Value).Take(3);
+                        context.AppendLine($"\nMOOD PATTERNS (Last 30 days):");
+                        foreach (var mood in topMoods)
+                        {
+                            context.AppendLine($"- {mood.Key}: {mood.Value} entries");
+                        }
+                    }
+
+                    if (recentEntries.Any())
+                    {
+                        context.AppendLine($"\nRECENT JOURNAL ENTRIES (Last 14 days):");
+                        foreach (var entry in recentEntries.Take(5))
+                        {
+                            context.AppendLine($"- {entry.CreatedAt:MM/dd}: {entry.Mood} - {entry.Text.Substring(0, Math.Min(100, entry.Text.Length))}...");
+                        }
+                    }
+                }
+            }
+
+            // Doctor-specific instructions - clinical and detailed
+            context.AppendLine("\nDOCTOR ASSISTANCE GUIDELINES:");
+            context.AppendLine("- You can provide clinical insights and treatment suggestions");
+            context.AppendLine("- You can analyze patient data and identify patterns");
+            context.AppendLine("- You can suggest potential diagnoses based on symptoms and patterns");
+            context.AppendLine("- You can recommend treatment approaches and interventions");
+            context.AppendLine("- You can provide medication considerations (but remind doctor to verify with current guidelines)");
+            context.AppendLine("- You can suggest follow-up questions to ask the patient");
+            context.AppendLine("- Be clinical but accessible in your language");
+            context.AppendLine("- Always remind the doctor that this is AI assistance and final decisions are theirs");
+
+            context.AppendLine($"\nDoctor asks: {originalPrompt}");
+            context.AppendLine("\nRespond as a clinical AI assistant, providing detailed insights and recommendations.");
+
+            var prompt = context.ToString();
+
+            return prompt;
+        }
+
+        private async Task<string> BuildAdminPrompt(string originalPrompt, int adminId, int patientId)
+        {
+            var context = new System.Text.StringBuilder();
+
+            context.AppendLine("You are an AI assistant helping an administrator with system management and patient oversight.");
+
+            // Admin-specific instructions
+            context.AppendLine("\nADMIN ASSISTANCE GUIDELINES:");
+            context.AppendLine("- You can provide insights about patient trends and patterns");
+            context.AppendLine("- You can suggest system improvements and monitoring approaches");
+            context.AppendLine("- You can help with data analysis and reporting insights");
+            context.AppendLine("- You can provide general mental health information for administrative purposes");
+            context.AppendLine("- Be professional and administrative in tone");
+            context.AppendLine("- Focus on system-wide insights rather than individual patient care");
+
+            context.AppendLine($"\nAdmin asks: {originalPrompt}");
+            context.AppendLine("\nRespond as an administrative AI assistant.");
+
+            var prompt = context.ToString();
+            Console.WriteLine($"=== ADMIN PROMPT ===");
+            Console.WriteLine(prompt);
+            Console.WriteLine("=== END ADMIN PROMPT ===");
+
+            return prompt;
+        }
+
+        private int CalculateAge(DateTime dateOfBirth)
+        {
+            var today = DateTime.Today;
+            var age = today.Year - dateOfBirth.Year;
+            if (dateOfBirth.Date > today.AddYears(-age)) age--;
+            return age;
         }
 
         private async Task<string> BuildPersonalizedPrompt(string originalPrompt, int patientId)
@@ -86,13 +262,13 @@ namespace SM_MentalHealthApp.Server.Services
                 // Build personalized context - simplified for better API compatibility
                 var context = new System.Text.StringBuilder();
                 context.AppendLine($"You are talking to {patient.FirstName} {patient.LastName}.");
-                
+
                 if (moodDistribution.Any())
                 {
                     var topMoods = moodDistribution.OrderByDescending(kvp => kvp.Value).Take(2);
                     context.AppendLine($"Their recent mood patterns: {string.Join(", ", topMoods.Select(kvp => $"{kvp.Key} ({kvp.Value} times)"))}");
                 }
-                
+
                 if (recentEntries.Any())
                 {
                     var latestEntry = recentEntries.First();
@@ -106,7 +282,7 @@ namespace SM_MentalHealthApp.Server.Services
                 Console.WriteLine($"=== PERSONALIZED PROMPT FOR PATIENT {patientId} ===");
                 Console.WriteLine(personalizedPrompt);
                 Console.WriteLine("=== END PERSONALIZED PROMPT ===");
-                
+
                 return personalizedPrompt;
             }
             catch (Exception ex)

@@ -424,23 +424,19 @@
             
             if (AuthService.CurrentUser?.RoleId == 2) // Doctor - load only assigned users
             {
-                Console.WriteLine($"Loading patients for doctor ID: {AuthService.CurrentUser.Id}");
                 users = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients") ?? new();
-                Console.WriteLine($"Loaded {users.Count} patients for doctor");
             }
             else if (AuthService.CurrentUser?.RoleId == 3) // Admin - load all users
             {
-                Console.WriteLine("Loading all users for admin");
                 users = await Http.GetFromJsonAsync<List<User>>("api/user") ?? new();
-                Console.WriteLine($"Loaded {users.Count} users for admin");
             }
             else
             {
-                Console.WriteLine("No access - user role not authorized");
                 users = new(); // No access
             }
             
-            Console.WriteLine($"Loaded {users.Count} users total");
+            // Load journal entry counts for each patient
+            await LoadJournalEntryCounts();
         }
         catch (Exception ex)
         {
@@ -449,6 +445,29 @@
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private async Task LoadJournalEntryCounts()
+    {
+        try
+        {
+            foreach (var user in users.Where(u => u.RoleId == 1)) // Only for patients
+            {
+                try
+                {
+                    var entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/user/{user.Id}") ?? new();
+                    user.JournalEntries = entries; // Populate the JournalEntries property
+                }
+                catch (Exception)
+                {
+                    user.JournalEntries = new(); // Set empty list if error
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Log error but don't show to user
         }
     }
 

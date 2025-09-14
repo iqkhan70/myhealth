@@ -285,7 +285,14 @@
                 await JS.InvokeVoidAsync("playSound", "send");
             }
             
-            var request = new { prompt = UserInput, conversationId = Guid.NewGuid().ToString(), provider = 3, patientId = AuthService.CurrentUser?.Id ?? SelectedUserId };
+            var request = new { 
+                prompt = UserInput, 
+                conversationId = Guid.NewGuid().ToString(), 
+                provider = 3, 
+                patientId = AuthService.CurrentUser?.RoleId == 2 ? SelectedUserId : (AuthService.CurrentUser?.Id ?? 0), // For doctors, use selected patient ID; for patients, use their own ID
+                userId = AuthService.CurrentUser?.Id ?? 0,
+                userRoleId = AuthService.CurrentUser?.RoleId ?? 0
+            };
             var response = await Http.PostAsJsonAsync("api/chat/send", request);
             var data = await response.Content.ReadFromJsonAsync<ChatResponse>();
             

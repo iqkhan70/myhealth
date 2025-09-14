@@ -20,20 +20,18 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                Console.WriteLine($"ChatController.SendMessage called with prompt: '{request.Prompt}'");
-                
                 var response = await _chatService.SendMessageAsync(
-                    request.Prompt, 
-                    request.ConversationId, 
+                    request.Prompt,
+                    request.ConversationId,
                     request.Provider,
-                    request.PatientId);
-                
-                Console.WriteLine($"ChatController returning response: '{response.Message}'");
+                    request.PatientId,
+                    request.UserId,
+                    request.UserRoleId);
+
                 return Ok(response);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ChatController error: {ex.Message}");
                 return BadRequest(new { error = ex.Message });
             }
         }
@@ -43,20 +41,19 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                Console.WriteLine($"ChatController.SendMessageForPatient called with prompt: '{request.Prompt}' for patient: {patientId}");
-                
+
                 var response = await _chatService.SendMessageAsync(
-                    request.Prompt, 
-                    request.ConversationId, 
+                    request.Prompt,
+                    request.ConversationId,
                     request.Provider,
-                    patientId);
-                
-                Console.WriteLine($"ChatController returning response: '{response.Message}'");
+                    patientId,
+                    request.UserId,
+                    request.UserRoleId);
+
                 return Ok(response);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ChatController error: {ex.Message}");
                 return BadRequest(new { error = ex.Message });
             }
         }
@@ -67,10 +64,10 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var response = await _chatService.SendRegularMessageAsync(
-                    request.Prompt, 
-                    request.ConversationId, 
+                    request.Prompt,
+                    request.ConversationId,
                     request.Provider);
-                
+
                 return Ok(response);
             }
             catch (Exception ex)
@@ -86,5 +83,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string ConversationId { get; set; } = string.Empty;
         public AiProvider Provider { get; set; } = AiProvider.HuggingFace;
         public int PatientId { get; set; } = 0;
+        public int UserId { get; set; } = 0;
+        public int UserRoleId { get; set; } = 0;
     }
 }
