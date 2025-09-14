@@ -19,9 +19,15 @@ builder.Services.AddSingleton<IAmazonS3>(provider =>
 {
     var config = builder.Configuration.GetSection("S3").Get<S3Config>();
 
-    // Use environment variables for sensitive credentials
+    // Priority: Environment Variables > appsettings.json
     var accessKey = Environment.GetEnvironmentVariable("DIGITALOCEAN_ACCESS_KEY") ?? config.AccessKey;
     var secretKey = Environment.GetEnvironmentVariable("DIGITALOCEAN_SECRET_KEY") ?? config.SecretKey;
+
+    // Log warning if using appsettings.json credentials (for development awareness)
+    if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DIGITALOCEAN_ACCESS_KEY")))
+    {
+        Console.WriteLine("⚠️  WARNING: Using credentials from appsettings.json. For production, use environment variables.");
+    }
 
     var s3Config = new AmazonS3Config
     {
