@@ -4,6 +4,7 @@
 @inject IAuthService AuthService
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
+@using System.Net.Http
 
 <div class="users-page">
     <div class="users-header">
@@ -150,7 +151,7 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="User" Property="Actions" Title="Actions" Width="200px" Sortable="false" Filterable="false">
+                        <RadzenDataGridColumn TItem="User" Property="Actions" Title="Actions" Width="250px" Sortable="false" Filterable="false">
                             <Template Context="user">
                                 <div class="action-buttons">
                                     <RadzenButton Icon="visibility" 
@@ -174,23 +175,42 @@
                                                 Click="@(() => ViewUserStats(user))"
                                                 Title="View Stats" />
                                     
-                                    @if (user.IsActive)
+                                    @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show assignment controls
                                     {
-                                        <RadzenButton Icon="block" 
-                                                    ButtonStyle="ButtonStyle.Danger" 
+                                        <RadzenButton Icon="person_add" 
+                                                    ButtonStyle="ButtonStyle.Warning" 
                                                     ButtonType="ButtonType.Button" 
                                                     Size="ButtonSize.Small"
-                                                    Click="@(() => DeactivateUser(user))"
-                                                    Title="Deactivate" />
+                                                    Click="@(() => ShowAssignPatientModal(user))"
+                                                    Title="Assign to Another Doctor" />
+                                        
+                                        <button class="btn btn-danger btn-sm" 
+                                                @onclick="@(() => ShowUnassignConfirmation(user))"
+                                                title="Unassign from Me">
+                                            <i class="fas fa-user-minus"></i>
+                                        </button>
                                     }
-                                    else
+                                    
+                                    @if (AuthService.CurrentUser?.RoleId == 3) // Admin - show admin controls
                                     {
-                                        <RadzenButton Icon="check" 
-                                                    ButtonStyle="ButtonStyle.Success" 
-                                                    ButtonType="ButtonType.Button" 
-                                                    Size="ButtonSize.Small"
-                                                    Click="@(() => ReactivateUser(user))"
-                                                    Title="Reactivate" />
+                                        @if (user.IsActive)
+                                        {
+                                            <RadzenButton Icon="block" 
+                                                        ButtonStyle="ButtonStyle.Danger" 
+                                                        ButtonType="ButtonType.Button" 
+                                                        Size="ButtonSize.Small"
+                                                        Click="@(() => DeactivateUser(user))"
+                                                        Title="Deactivate" />
+                                        }
+                                        else
+                                        {
+                                            <RadzenButton Icon="check" 
+                                                        ButtonStyle="ButtonStyle.Success" 
+                                                        ButtonType="ButtonType.Button" 
+                                                        Size="ButtonSize.Small"
+                                                        Click="@(() => ReactivateUser(user))"
+                                                        Title="Reactivate" />
+                                        }
                                     }
                                 </div>
                             </Template>
@@ -379,6 +399,85 @@
     </div>
 }
 
+<!-- Doctor Assignment Modal -->
+@if (showAssignModal && selectedUser != null)
+{
+    <div class="modal-overlay" @onclick="CloseAssignModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Assign Patient to Another Doctor</h3>
+                <button @onclick="CloseAssignModal" class="close-btn">✕</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="assignment-info">
+                    <p><strong>Patient:</strong> @selectedUser.FirstName @selectedUser.LastName</p>
+                    <p><strong>Email:</strong> @selectedUser.Email</p>
+                </div>
+                
+                <div class="form-group">
+                    <label>Select Doctor to Assign To:</label>
+                    <RadzenDropDown Data="@availableDoctors"
+                                   ValueProperty="Id"
+                                   TextProperty="FullName"
+                                   @bind-Value="selectedDoctorId"
+                                   Placeholder="Choose a doctor..."
+                                   Style="width: 100%" />
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button @onclick="CloseAssignModal" class="btn btn-secondary">Cancel</button>
+                <button @onclick="AssignPatientToDoctor" disabled="@isAssigning" class="btn btn-primary">
+                    @(isAssigning ? "Assigning..." : "Assign Patient")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Unassign Confirmation Modal -->
+@if (showUnassignConfirmation && selectedUser != null)
+{
+    <div class="modal-overlay" @onclick="CloseUnassignConfirmation" style="display: block !important; z-index: 9999 !important;">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>⚠️ Confirm Unassignment</h3>
+                <button @onclick="CloseUnassignConfirmation" class="close-btn">✕</button>
+            </div>
+            
+            <div class="modal-body">
+                <div style="background: red; color: white; padding: 10px; margin-bottom: 10px;">
+                    DEBUG: Modal is showing! showUnassignConfirmation = @showUnassignConfirmation, selectedUser = @(selectedUser?.FirstName ?? "null")
+                </div>
+                <div class="confirmation-warning">
+                    <div class="warning-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="warning-content">
+                        <h4>Are you sure you want to unassign this patient?</h4>
+                        <div class="patient-info">
+                            <p><strong>Patient:</strong> @selectedUser.FirstName @selectedUser.LastName</p>
+                            <p><strong>Email:</strong> @selectedUser.Email</p>
+                        </div>
+                        <div class="warning-message">
+                            <p><strong>Important:</strong> Once unassigned, you will no longer have access to this patient's records. 
+                            You will need to contact an administrator to reassign the patient or ask another doctor to assign them to you.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button @onclick="CloseUnassignConfirmation" class="btn btn-secondary">Cancel</button>
+                <button @onclick="ConfirmUnassignPatient" disabled="@isUnassigning" class="btn btn-danger">
+                    @(isUnassigning ? "Unassigning..." : "Yes, Unassign Patient")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<User> users = new();
     private User? selectedUser;
@@ -387,9 +486,15 @@
     private bool showPatientForm = false;
     private bool showPatientDetails = false;
     private bool showPatientStats = false;
+    private bool showAssignModal = false;
+    private bool showUnassignConfirmation = false;
     private bool isSaving = false;
+    private bool isAssigning = false;
+    private bool isUnassigning = false;
     private User? editingUser;
     private User userForm = new();
+    private List<User> availableDoctors = new();
+    private int selectedDoctorId = 0;
     
     // Custom filter variables
     private bool? selectedStatusFilter = null;
@@ -424,7 +529,7 @@
             
             if (AuthService.CurrentUser?.RoleId == 2) // Doctor - load only assigned users
             {
-                users = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients") ?? new();
+                users = await Http.GetFromJsonAsync<List<User>>("api/doctor/my-patients") ?? new();
             }
             else if (AuthService.CurrentUser?.RoleId == 3) // Admin - load all users
             {
@@ -687,6 +792,142 @@
             NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reactivate patient: " + ex.Message);
         }
     }
+
+    private async Task ShowAssignPatientModal(User user)
+    {
+        try
+        {
+            selectedUser = user;
+            selectedDoctorId = 0;
+            
+            // Load available doctors
+            availableDoctors = await Http.GetFromJsonAsync<List<User>>("api/doctor/doctors") ?? new();
+            
+            // Remove current doctor from the list
+            if (AuthService.CurrentUser?.Id != null)
+            {
+                availableDoctors = availableDoctors.Where(d => d.Id != AuthService.CurrentUser.Id).ToList();
+            }
+            
+            showAssignModal = true;
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load doctors: " + ex.Message);
+        }
+    }
+
+    private void CloseAssignModal()
+    {
+        showAssignModal = false;
+        selectedUser = null;
+        selectedDoctorId = 0;
+        availableDoctors.Clear();
+    }
+
+    private async Task AssignPatientToDoctor()
+    {
+        if (selectedUser == null || selectedDoctorId == 0)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Please select a doctor to assign the patient to.");
+            return;
+        }
+
+        try
+        {
+            isAssigning = true;
+            
+            var request = new DoctorAssignPatientRequest
+            {
+                PatientId = selectedUser.Id,
+                ToDoctorId = selectedDoctorId
+            };
+
+            var response = await Http.PostAsJsonAsync("api/doctor/assign-patient", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient assigned to doctor successfully!");
+                CloseAssignModal();
+                await LoadPatients(); // Reload to refresh the list
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to assign patient: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Error assigning patient: {ex.Message}");
+        }
+        finally
+        {
+            isAssigning = false;
+        }
+    }
+
+    private void ShowUnassignConfirmation(User user)
+    {
+        Console.WriteLine($"ShowUnassignConfirmation called for user: {user.FirstName} {user.LastName}");
+        selectedUser = user;
+        showUnassignConfirmation = true;
+        Console.WriteLine($"showUnassignConfirmation set to: {showUnassignConfirmation}");
+        
+        // Add a simple test to see if this method is being called
+        NotificationService.Notify(NotificationSeverity.Info, "Debug", $"ShowUnassignConfirmation called for {user.FirstName}");
+        
+        StateHasChanged();
+    }
+
+    private void CloseUnassignConfirmation()
+    {
+        showUnassignConfirmation = false;
+        selectedUser = null;
+    }
+
+    private async Task ConfirmUnassignPatient()
+    {
+        if (selectedUser == null)
+        {
+            return;
+        }
+
+        try
+        {
+            isUnassigning = true;
+            
+            var request = new DoctorUnassignPatientRequest
+            {
+                PatientId = selectedUser.Id
+            };
+
+            var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/doctor/unassign-patient")
+            {
+                Content = JsonContent.Create(request)
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient unassigned from you successfully!");
+                CloseUnassignConfirmation();
+                await LoadPatients(); // Reload to refresh the list
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to unassign patient: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Error unassigning patient: {ex.Message}");
+        }
+        finally
+        {
+            isUnassigning = false;
+        }
+    }
 }
 
 <style>
@@ -775,5 +1016,91 @@
 
     .custom-filters .col-md-3 {
         padding: 0 10px;
+    }
+
+    .assignment-info {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        border-left: 4px solid #007bff;
+    }
+
+    .assignment-info p {
+        margin: 5px 0;
+        color: #333;
+    }
+
+    .assignment-info strong {
+        color: #007bff;
+    }
+
+    .confirmation-warning {
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+        padding: 20px;
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .warning-icon {
+        font-size: 24px;
+        color: #f39c12;
+        margin-top: 5px;
+    }
+
+    .warning-content h4 {
+        color: #856404;
+        margin-bottom: 15px;
+        font-size: 18px;
+    }
+
+    .patient-info {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        border-left: 4px solid #007bff;
+    }
+
+    .patient-info p {
+        margin: 5px 0;
+        color: #333;
+    }
+
+    .patient-info strong {
+        color: #007bff;
+    }
+
+    .warning-message {
+        background-color: #f8d7da;
+        padding: 15px;
+        border-radius: 5px;
+        border-left: 4px solid #dc3545;
+    }
+
+    .warning-message p {
+        margin: 0;
+        color: #721c24;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .warning-message strong {
+        color: #dc3545;
+    }
+
+    .btn-danger {
+        background-color: #dc3545;
+        border-color: #dc3545;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background-color: #c82333;
+        border-color: #bd2130;
     }
 </style>

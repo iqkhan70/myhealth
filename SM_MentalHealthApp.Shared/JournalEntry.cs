@@ -198,4 +198,16 @@ namespace SM_MentalHealthApp.Shared
         Audio = 4,
         Other = 5
     }
+
+    // Doctor Assignment Request Models
+    public class DoctorAssignPatientRequest
+    {
+        public int PatientId { get; set; }
+        public int ToDoctorId { get; set; }
+    }
+
+    public class DoctorUnassignPatientRequest
+    {
+        public int PatientId { get; set; }
+    }
 }

@@ -46,6 +46,7 @@ builder.Services.AddScoped<JournalService>();
 builder.Services.AddScoped<ChatService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
+builder.Services.AddScoped<IDoctorService, DoctorService>();
 builder.Services.AddScoped<HuggingFaceService>();
 builder.Services.AddScoped<ConversationRepository>();
 builder.Services.AddScoped<LlmClient>();
