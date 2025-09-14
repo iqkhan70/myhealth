@@ -526,7 +526,92 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
-                // Handle medical questions
+                // Handle specific medical topics with detailed information
+                if (question.Contains("anxiety"))
+                {
+                    return "**General Information About Anxiety Treatment:**\n\n" +
+                           "**Therapeutic Approaches:**\n" +
+                           "• **Cognitive Behavioral Therapy (CBT)** - Helps identify and change negative thought patterns\n" +
+                           "• **Exposure Therapy** - Gradually facing feared situations\n" +
+                           "• **Mindfulness and Meditation** - Techniques to stay present and reduce worry\n" +
+                           "• **Relaxation Techniques** - Deep breathing, progressive muscle relaxation\n\n" +
+                           "**Lifestyle Modifications:**\n" +
+                           "• Regular exercise (especially aerobic activities)\n" +
+                           "• Adequate sleep and consistent sleep schedule\n" +
+                           "• Balanced diet with limited caffeine and alcohol\n" +
+                           "• Stress management techniques\n" +
+                           "• Social support and maintaining relationships\n\n" +
+                           "**Professional Treatment Options:**\n" +
+                           "• Psychotherapy with licensed mental health professionals\n" +
+                           "• Medication (when appropriate, prescribed by healthcare providers)\n" +
+                           "• Support groups and peer counseling\n\n" +
+                           "**Important Note:** This is general educational information. For personalized treatment plans, please consult with qualified healthcare professionals who can assess your specific situation and provide appropriate care.";
+                }
+
+                if (question.Contains("depression"))
+                {
+                    return "**General Information About Depression Treatment:**\n\n" +
+                           "**Therapeutic Approaches:**\n" +
+                           "• **Cognitive Behavioral Therapy (CBT)** - Addresses negative thought patterns\n" +
+                           "• **Interpersonal Therapy** - Focuses on relationships and social functioning\n" +
+                           "• **Behavioral Activation** - Increasing engagement in positive activities\n" +
+                           "• **Mindfulness-Based Cognitive Therapy** - Combines CBT with mindfulness\n\n" +
+                           "**Lifestyle Interventions:**\n" +
+                           "• Regular physical exercise\n" +
+                           "• Maintaining a structured daily routine\n" +
+                           "• Social connection and support\n" +
+                           "• Healthy sleep hygiene\n" +
+                           "• Exposure to natural light\n\n" +
+                           "**Professional Treatment:**\n" +
+                           "• Individual or group psychotherapy\n" +
+                           "• Medication management (when appropriate)\n" +
+                           "• Hospitalization for severe cases\n\n" +
+                           "**Important Note:** This is general educational information. For personalized treatment plans, please consult with qualified healthcare professionals.";
+                }
+
+                if (question.Contains("stress") || question.Contains("stress management"))
+                {
+                    return "**General Information About Stress Management:**\n\n" +
+                           "**Immediate Stress Relief Techniques:**\n" +
+                           "• Deep breathing exercises (4-7-8 breathing)\n" +
+                           "• Progressive muscle relaxation\n" +
+                           "• Quick meditation or mindfulness moments\n" +
+                           "• Physical activity (even a short walk)\n\n" +
+                           "**Long-term Stress Management:**\n" +
+                           "• Regular exercise routine\n" +
+                           "• Adequate sleep (7-9 hours)\n" +
+                           "• Healthy diet with minimal processed foods\n" +
+                           "• Time management and prioritization\n" +
+                           "• Social support and connection\n\n" +
+                           "**Professional Support:**\n" +
+                           "• Therapy or counseling\n" +
+                           "• Stress management programs\n" +
+                           "• Support groups\n\n" +
+                           "**Important Note:** This is general educational information. For personalized stress management strategies, please consult with qualified healthcare professionals.";
+                }
+
+                if (question.Contains("sleep") || question.Contains("insomnia"))
+                {
+                    return "**General Information About Sleep and Sleep Disorders:**\n\n" +
+                           "**Good Sleep Hygiene Practices:**\n" +
+                           "• Consistent sleep schedule (same bedtime and wake time)\n" +
+                           "• Create a comfortable sleep environment (cool, dark, quiet)\n" +
+                           "• Avoid screens 1 hour before bed\n" +
+                           "• Limit caffeine and alcohol, especially in the evening\n" +
+                           "• Regular exercise (but not right before bed)\n\n" +
+                           "**Relaxation Techniques for Sleep:**\n" +
+                           "• Deep breathing exercises\n" +
+                           "• Progressive muscle relaxation\n" +
+                           "• Meditation or guided imagery\n" +
+                           "• Reading or listening to calming music\n\n" +
+                           "**When to Seek Professional Help:**\n" +
+                           "• Persistent sleep problems lasting more than a few weeks\n" +
+                           "• Significant impact on daily functioning\n" +
+                           "• Loud snoring or breathing problems during sleep\n\n" +
+                           "**Important Note:** This is general educational information. For specific sleep concerns, please consult with qualified healthcare professionals.";
+                }
+
+                // Handle general medical questions
                 if (question.Contains("medical") || question.Contains("medicine") || question.Contains("treatment"))
                 {
                     return "I can provide general information about medical topics, but please remember that this is for educational purposes only. For specific medical advice, diagnosis, or treatment, always consult with a qualified healthcare professional. What specific medical topic would you like to learn about?";
