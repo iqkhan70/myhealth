@@ -292,6 +292,32 @@ namespace SM_MentalHealthApp.Server.Services
             // Check if patient has no data - look for actual data sections in the prompt
             var hasNoData = !text.Contains("MOOD PATTERNS (Last 30 days):") && !text.Contains("RECENT JOURNAL ENTRIES (Last 14 days):");
 
+            // Check if the question is asking about a specific person who might not be a patient
+            var isAskingAboutPerson = question.Contains("who is") || question.Contains("who's") ||
+                                     question.Contains("tell me about") || question.Contains("information about");
+
+            // Handle questions about specific people who might not be patients
+            if (isAskingAboutPerson && hasNoData)
+            {
+                return $"**PATIENT LOOKUP:**\n\n" +
+                       $"**Status:** ❌ **Patient not found in your assigned patients**\n\n" +
+                       $"**Current Situation:** The person you're asking about does not appear to be one of your assigned patients in the system.\n\n" +
+                       $"**What This Means:**\n" +
+                       $"• No patient record found with this name\n" +
+                       $"• No clinical data available for analysis\n" +
+                       $"• No treatment history or journal entries to review\n\n" +
+                       $"**Possible Reasons:**\n" +
+                       $"• The person is not assigned to you as a patient\n" +
+                       $"• The name might be misspelled\n" +
+                       $"• The person might not be registered in the system\n" +
+                       $"• You might need to check with administration for patient assignments\n\n" +
+                       $"**Next Steps:**\n" +
+                       $"• Verify the correct spelling of the patient's name\n" +
+                       $"• Check your patient list to confirm assignments\n" +
+                       $"• Contact administration if you believe this person should be your patient\n" +
+                       $"• Use the patient selection dropdown to choose from your assigned patients";
+            }
+
             // Handle specific doctor questions
             if (question.Contains("how is he doing") || question.Contains("how is she doing") || question.Contains("how is the patient doing"))
             {
