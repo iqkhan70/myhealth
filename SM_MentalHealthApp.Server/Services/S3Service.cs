@@ -41,6 +41,25 @@ namespace SM_MentalHealthApp.Server.Services
             }
         }
 
+        public async Task<Stream?> GetFileStreamAsync(string s3Key)
+        {
+            try
+            {
+                var request = new GetObjectRequest
+                {
+                    BucketName = _s3Config.BucketName,
+                    Key = s3Key
+                };
+
+                var response = await _s3Client.GetObjectAsync(request);
+                return response.ResponseStream;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed to get file stream from S3: {ex.Message}", ex);
+            }
+        }
+
         public async Task<string> GetPresignedUrlAsync(string s3Key, int expirationHours = 24)
         {
             try

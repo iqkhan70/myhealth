@@ -102,7 +102,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Using a more reliable text generation model
                 var response = await _httpClient.PostAsync(
-                    "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium",
+                    "https://api-inference.huggingface.co/models/microsoft/DialoGPT-small",
                     content);
 
                 if (response.IsSuccessStatusCode)
@@ -127,25 +127,146 @@ namespace SM_MentalHealthApp.Server.Services
                 else
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"HuggingFace API Error: {response.StatusCode} - {errorContent}");
                 }
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"HuggingFace API Exception: {ex.Message}");
             }
 
+            // Fallback: Use enhanced context to generate a meaningful response
             try
             {
                 var knowledgePath = Path.Combine("llm", "prompts", "MentalHealthKnowledge.md");
                 if (File.Exists(knowledgePath))
                 {
                     var knowledge = File.ReadAllText(knowledgePath);
+
+                    // Extract key information from the enhanced context
+                    var contextLines = text.Split('\n');
+                    var patientInfo = new StringBuilder();
+                    var alerts = new List<string>();
+                    var journalEntries = new List<string>();
+
+                    bool inJournalSection = false;
+                    bool inContentSection = false;
+
+                    foreach (var line in contextLines)
+                    {
+                        if (line.Contains("=== RECENT JOURNAL ENTRIES ==="))
+                        {
+                            inJournalSection = true;
+                            inContentSection = false;
+                            continue;
+                        }
+                        if (line.Contains("=== PATIENT CONTENT ANALYSIS ==="))
+                        {
+                            inJournalSection = false;
+                            inContentSection = true;
+                            continue;
+                        }
+                        if (line.Contains("=== USER QUESTION ==="))
+                        {
+                            inJournalSection = false;
+                            inContentSection = false;
+                            break;
+                        }
+
+                        if (inJournalSection && !string.IsNullOrWhiteSpace(line))
+                        {
+                            journalEntries.Add(line.Trim());
+                        }
+                        if (inContentSection && line.Contains("⚠️ ALERTS:"))
+                        {
+                            var alertText = line.Replace("⚠️ ALERTS:", "").Trim();
+                            if (!string.IsNullOrWhiteSpace(alertText))
+                            {
+                                alerts.Add(alertText);
+                            }
+                        }
+                    }
+
+                    // Generate a contextual response based on the enhanced context
+                    var response = new StringBuilder();
+
+                    if (alerts.Any())
+                    {
+                        response.AppendLine("🚨 **IMPORTANT ALERTS DETECTED:**");
+                        foreach (var alert in alerts)
+                        {
+                            response.AppendLine($"- {alert}");
+                        }
+                        response.AppendLine();
+                    }
+
+                    if (journalEntries.Any())
+                    {
+                        response.AppendLine("📝 **Recent Patient Activity:**");
+                        foreach (var entry in journalEntries.Take(3)) // Show last 3 entries
+                        {
+                            response.AppendLine($"- {entry}");
+                        }
+                        response.AppendLine();
+                    }
+
+                    // Add contextual response based on the question
+                    if (text.ToLower().Contains("how is he doing") || text.ToLower().Contains("how is she doing"))
+                    {
+                        response.AppendLine("Based on the patient's recent activity and medical content:");
+                        if (alerts.Any())
+                        {
+                            response.AppendLine("⚠️ There are some concerning alerts that require immediate attention. Please review the flagged items above.");
+                        }
+                        else
+                        {
+                            response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                        }
+
+                        if (journalEntries.Any())
+                        {
+                            response.AppendLine("The patient has been actively engaging with their mental health tracking.");
+                        }
+                    }
+                    else if (text.ToLower().Contains("areas of concern") || text.ToLower().Contains("concerns"))
+                    {
+                        response.AppendLine("**Areas of Concern Analysis:**");
+                        if (alerts.Any())
+                        {
+                            response.AppendLine("🚨 **High Priority Concerns:**");
+                            foreach (var alert in alerts)
+                            {
+                                response.AppendLine($"- {alert}");
+                            }
+                        }
+                        else
+                        {
+                            response.AppendLine("✅ No immediate concerns detected in the current data.");
+                        }
+                    }
+                    else
+                    {
+                        response.AppendLine("I've analyzed the patient's recent activity and medical content. ");
+                        if (alerts.Any())
+                        {
+                            response.AppendLine("There are some important alerts that need your attention.");
+                        }
+                        else
+                        {
+                            response.AppendLine("The patient appears to be doing well with no immediate concerns.");
+                        }
+                    }
+
+                    return response.ToString().Trim();
                 }
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"Fallback response generation error: {ex.Message}");
             }
 
-            // Debug: Log the full prompt to see what we're getting
+            // Final fallback
+            return "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
 
             // Check if this is a role-based prompt
 

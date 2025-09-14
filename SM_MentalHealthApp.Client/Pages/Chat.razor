@@ -312,6 +312,10 @@
 
     private async Task OnUserChanged()
     {
+        Console.WriteLine($"=== USER CHANGED DEBUG ===");
+        Console.WriteLine($"SelectedUserId changed to: {SelectedUserId}");
+        Console.WriteLine($"=== END USER CHANGED DEBUG ===");
+        
         Messages.Clear();
         await LoadSelectedUser();
         StateHasChanged();
@@ -340,11 +344,22 @@
                 await JS.InvokeVoidAsync("playSound", "send");
             }
             
+            var calculatedPatientId = IsGenericMode ? 0 : (AuthService.CurrentUser?.RoleId == 2 ? SelectedUserId : (AuthService.CurrentUser?.Id ?? 0));
+            
+            Console.WriteLine($"=== CHAT REQUEST DEBUG ===");
+            Console.WriteLine($"UserInput: {UserInput}");
+            Console.WriteLine($"IsGenericMode: {IsGenericMode}");
+            Console.WriteLine($"AuthService.CurrentUser?.RoleId: {AuthService.CurrentUser?.RoleId}");
+            Console.WriteLine($"SelectedUserId: {SelectedUserId}");
+            Console.WriteLine($"Calculated patientId: {calculatedPatientId}");
+            Console.WriteLine($"AuthService.CurrentUser?.Id: {AuthService.CurrentUser?.Id}");
+            Console.WriteLine($"=== END DEBUG ===");
+            
             var request = new { 
                 prompt = UserInput, 
                 conversationId = Guid.NewGuid().ToString(), 
                 provider = 3, 
-                patientId = IsGenericMode ? 0 : (AuthService.CurrentUser?.RoleId == 2 ? SelectedUserId : (AuthService.CurrentUser?.Id ?? 0)), // For generic mode, use 0; for doctors, use selected patient ID; for patients, use their own ID
+                patientId = calculatedPatientId,
                 userId = AuthService.CurrentUser?.Id ?? 0,
                 userRoleId = AuthService.CurrentUser?.RoleId ?? 0,
                 isGenericMode = IsGenericMode

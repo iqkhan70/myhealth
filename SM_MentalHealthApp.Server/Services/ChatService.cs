@@ -12,19 +12,29 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly HuggingFaceService _huggingFaceService;
         private readonly JournalService _journalService;
         private readonly UserService _userService;
+        private readonly IContentAnalysisService _contentAnalysisService;
+        private readonly ILogger<ChatService> _logger;
 
-        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService)
+        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, ILogger<ChatService> logger)
         {
             _conversationRepository = conversationRepository;
             _huggingFaceService = huggingFaceService;
             _journalService = journalService;
             _userService = userService;
+            _contentAnalysisService = contentAnalysisService;
+            _logger = logger;
         }
 
         public async Task<ChatResponse> SendMessageAsync(string prompt, string conversationId, AiProvider provider, int patientId = 0, int userId = 0, int userRoleId = 0, bool isGenericMode = false)
         {
             try
             {
+                _logger.LogInformation("=== CHAT REQUEST START ===");
+                _logger.LogInformation("Prompt: {Prompt}", prompt);
+                _logger.LogInformation("PatientId: {PatientId}", patientId);
+                _logger.LogInformation("UserId: {UserId}", userId);
+                _logger.LogInformation("UserRoleId: {UserRoleId}", userRoleId);
+                _logger.LogInformation("IsGenericMode: {IsGenericMode}", isGenericMode);
 
                 // Parse conversationId to Guid
                 if (!Guid.TryParse(conversationId, out Guid guidConversationId))
@@ -36,10 +46,12 @@ namespace SM_MentalHealthApp.Server.Services
                 string roleBasedPrompt;
                 if (isGenericMode)
                 {
+                    _logger.LogInformation("Using generic mode");
                     roleBasedPrompt = BuildGenericPrompt(prompt, userRoleId);
                 }
                 else
                 {
+                    _logger.LogInformation("Using role-based prompt for patient {PatientId}", patientId);
                     roleBasedPrompt = await BuildRoleBasedPrompt(prompt, patientId, userId, userRoleId);
                 }
 
@@ -72,6 +84,9 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
+                _logger.LogInformation("=== BUILDING ROLE-BASED PROMPT ===");
+                _logger.LogInformation("Original prompt: {OriginalPrompt}", originalPrompt);
+                _logger.LogInformation("PatientId: {PatientId}, UserId: {UserId}, UserRoleId: {UserRoleId}", patientId, userId, userRoleId);
 
                 // If role is 0 or unknown, try to determine role from user data
                 if (userRoleId == 0 && userId > 0)
@@ -80,30 +95,36 @@ namespace SM_MentalHealthApp.Server.Services
                     if (user != null)
                     {
                         userRoleId = user.RoleId;
+                        _logger.LogInformation("Determined user role from database: {UserRoleId}", userRoleId);
                     }
                 }
 
                 // Role-based prompt building
                 if (userRoleId == 1) // Patient
                 {
+                    _logger.LogInformation("Building patient prompt for user {UserId}", userId);
                     return await BuildPatientPrompt(originalPrompt, userId);
                 }
                 else if (userRoleId == 2) // Doctor
                 {
+                    _logger.LogInformation("Building doctor prompt for doctor {UserId}, patient {PatientId}", userId, patientId);
                     return await BuildDoctorPrompt(originalPrompt, userId, patientId);
                 }
                 else if (userRoleId == 3) // Admin
                 {
+                    _logger.LogInformation("Building admin prompt for admin {UserId}, patient {PatientId}", userId, patientId);
                     return await BuildAdminPrompt(originalPrompt, userId, patientId);
                 }
                 else
                 {
+                    _logger.LogWarning("Unknown user role {UserRoleId}, falling back to patient prompt", userRoleId);
                     // Default to patient prompt for unknown roles
                     return await BuildPatientPrompt(originalPrompt, userId);
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Error building role-based prompt");
                 return originalPrompt;
             }
         }
@@ -134,11 +155,21 @@ namespace SM_MentalHealthApp.Server.Services
             context.AppendLine("- Be supportive, empathetic, and encouraging");
             context.AppendLine("- Keep responses conversational and non-clinical");
 
-            context.AppendLine($"\nPatient asks: {originalPrompt}");
-            context.AppendLine("\nRespond as a supportive mental health companion, following the guidelines above.");
+            // Use enhanced context that includes both journal entries AND content analysis
+            try
+            {
+                var enhancedContext = await _contentAnalysisService.BuildEnhancedContextAsync(userId, originalPrompt);
+                context.AppendLine($"\n{enhancedContext}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error building enhanced context for patient {UserId}, falling back to basic context", userId);
+                // Fallback to basic context
+                context.AppendLine($"\nPatient asks: {originalPrompt}");
+                context.AppendLine("\nRespond as a supportive mental health companion, following the guidelines above.");
+            }
 
             var prompt = context.ToString();
-
             return prompt;
         }
 
@@ -205,11 +236,29 @@ namespace SM_MentalHealthApp.Server.Services
             context.AppendLine("- Be clinical but accessible in your language");
             context.AppendLine("- Always remind the doctor that this is AI assistance and final decisions are theirs");
 
-            context.AppendLine($"\nDoctor asks: {originalPrompt}");
-            context.AppendLine("\nRespond as a clinical AI assistant, providing detailed insights and recommendations.");
+            // Use enhanced context that includes both journal entries AND content analysis
+            if (patientId > 0)
+            {
+                try
+                {
+                    var enhancedContext = await _contentAnalysisService.BuildEnhancedContextAsync(patientId, originalPrompt);
+                    context.AppendLine($"\n{enhancedContext}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error building enhanced context for patient {PatientId}, falling back to basic context", patientId);
+                    // Fallback to basic context
+                    context.AppendLine($"\nDoctor asks: {originalPrompt}");
+                    context.AppendLine("\nRespond as a clinical AI assistant, providing detailed insights and recommendations.");
+                }
+            }
+            else
+            {
+                context.AppendLine($"\nDoctor asks: {originalPrompt}");
+                context.AppendLine("\nRespond as a clinical AI assistant, providing detailed insights and recommendations.");
+            }
 
             var prompt = context.ToString();
-
             return prompt;
         }
 
@@ -263,13 +312,33 @@ namespace SM_MentalHealthApp.Server.Services
                     return originalPrompt;
                 }
 
-                // Get recent journal entries for context
-                var recentEntries = await _journalService.GetRecentEntriesForUser(patientId, 7); // Last 7 days
-                var moodDistribution = await _journalService.GetMoodDistributionForUser(patientId, 30); // Last 30 days
+                // Use enhanced context that includes both journal entries AND content analysis
+                var enhancedContext = await _contentAnalysisService.BuildEnhancedContextAsync(patientId, originalPrompt);
 
-                // Build personalized context - simplified for better API compatibility
+                Console.WriteLine($"=== ENHANCED CONTEXT FOR PATIENT {patientId} ===");
+                Console.WriteLine(enhancedContext);
+                Console.WriteLine("=== END ENHANCED CONTEXT ===");
+
+                return enhancedContext;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error building enhanced prompt: {ex.Message}");
+                // Fallback to original personalized prompt
+                return await BuildFallbackPersonalizedPrompt(originalPrompt, patientId);
+            }
+        }
+
+        private async Task<string> BuildFallbackPersonalizedPrompt(string originalPrompt, int patientId)
+        {
+            try
+            {
+                // Get recent journal entries for context (fallback)
+                var recentEntries = await _journalService.GetRecentEntriesForUser(patientId, 7);
+                var moodDistribution = await _journalService.GetMoodDistributionForUser(patientId, 30);
+
                 var context = new System.Text.StringBuilder();
-                context.AppendLine($"You are talking to {patient.FirstName} {patient.LastName}.");
+                context.AppendLine($"You are talking to a patient (ID: {patientId}).");
 
                 if (moodDistribution.Any())
                 {
@@ -286,16 +355,11 @@ namespace SM_MentalHealthApp.Server.Services
                 context.AppendLine($"\nUser asks: {originalPrompt}");
                 context.AppendLine("Respond as a mental health companion with personalized context.");
 
-                var personalizedPrompt = context.ToString();
-                Console.WriteLine($"=== PERSONALIZED PROMPT FOR PATIENT {patientId} ===");
-                Console.WriteLine(personalizedPrompt);
-                Console.WriteLine("=== END PERSONALIZED PROMPT ===");
-
-                return personalizedPrompt;
+                return context.ToString();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error building personalized prompt: {ex.Message}");
+                Console.WriteLine($"Error building fallback prompt: {ex.Message}");
                 return originalPrompt;
             }
         }

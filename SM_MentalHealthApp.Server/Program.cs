@@ -52,6 +52,7 @@ builder.Services.AddScoped<ConversationRepository>();
 builder.Services.AddScoped<LlmClient>();
 builder.Services.AddScoped<S3Service>();
 builder.Services.AddScoped<ContentService>();
+builder.Services.AddScoped<IContentAnalysisService, ContentAnalysisService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

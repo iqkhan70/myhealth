@@ -12,12 +12,14 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly ContentService _contentService;
         private readonly ILogger<ContentController> _logger;
         private readonly IAmazonS3 _s3Client;
+        private readonly IContentAnalysisService _contentAnalysisService;
 
-        public ContentController(ContentService contentService, ILogger<ContentController> logger, IAmazonS3 s3Client)
+        public ContentController(ContentService contentService, ILogger<ContentController> logger, IAmazonS3 s3Client, IContentAnalysisService contentAnalysisService)
         {
             _contentService = contentService;
             _logger = logger;
             _s3Client = s3Client;
+            _contentAnalysisService = contentAnalysisService;
         }
 
         [HttpGet("patient/{patientId}")]
@@ -155,6 +157,29 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var createdContent = await _contentService.CreateContentAsync(content, stream);
 
                 _logger.LogInformation("Content created successfully with ID: {ContentId}", createdContent.Id);
+
+                // Trigger content analysis asynchronously
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        _logger.LogInformation("Starting content analysis for content ID: {ContentId}", createdContent.Id);
+                        var analysis = await _contentAnalysisService.AnalyzeContentAsync(createdContent);
+                        _logger.LogInformation("Content analysis completed for content ID: {ContentId}. Alerts: {AlertCount}",
+                            createdContent.Id, analysis.Alerts.Count);
+
+                        if (analysis.Alerts.Any())
+                        {
+                            _logger.LogWarning("Content analysis generated alerts for content ID: {ContentId}: {Alerts}",
+                                createdContent.Id, string.Join(", ", analysis.Alerts));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error during content analysis for content ID: {ContentId}", createdContent.Id);
+                    }
+                });
+
                 _logger.LogInformation("=== UPLOAD REQUEST SUCCESS ===");
                 return Ok(createdContent);
             }
