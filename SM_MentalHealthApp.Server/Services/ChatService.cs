@@ -214,20 +214,12 @@ namespace SM_MentalHealthApp.Server.Services
             context.AppendLine("- Always remind the doctor that this is AI assistance and final decisions are theirs");
 
             // Use enhanced context that includes both journal entries AND content analysis
-            _logger.LogInformation("=== DOCTOR PROMPT DEBUG ===");
-            _logger.LogInformation("PatientId in BuildDoctorPrompt: {PatientId}", patientId);
-            _logger.LogInformation("Is patientId > 0? {IsGreaterThanZero}", patientId > 0);
-
             if (patientId > 0)
             {
-                _logger.LogInformation("=== CALLING CONTENT ANALYSIS SERVICE ===");
-                _logger.LogInformation("PatientId being passed to ContentAnalysisService: {PatientId}", patientId);
-                _logger.LogInformation("Original prompt: {OriginalPrompt}", originalPrompt);
 
                 try
                 {
                     var enhancedContext = await _contentAnalysisService.BuildEnhancedContextAsync(patientId, originalPrompt);
-                    _logger.LogInformation("ContentAnalysisService returned context length: {Length}", enhancedContext.Length);
                     context.AppendLine($"\n{enhancedContext}");
                 }
                 catch (Exception ex)

@@ -162,14 +162,6 @@ namespace SM_MentalHealthApp.Server.Services
                     var alerts = new List<string>();
                     var journalEntries = new List<string>();
 
-                    Console.WriteLine("=== FALLBACK PARSING DEBUG ===");
-                    Console.WriteLine($"Total context lines: {contextLines.Length}");
-                    Console.WriteLine("First 20 lines of context:");
-                    for (int i = 0; i < Math.Min(20, contextLines.Length); i++)
-                    {
-                        Console.WriteLine($"{i}: {contextLines[i]}");
-                    }
-
                     bool inJournalSection = false;
                     bool inContentSection = false;
 
@@ -200,7 +192,6 @@ namespace SM_MentalHealthApp.Server.Services
                             if (line.Contains("[") && line.Contains("]") && (line.Contains("Mood:") || line.Contains("Entry:")))
                             {
                                 journalEntries.Add(line.Trim());
-                                Console.WriteLine($"Found journal entry: {line.Trim()}");
                             }
                         }
                         if (inContentSection && line.Contains("⚠️ ALERTS:"))
@@ -219,14 +210,9 @@ namespace SM_MentalHealthApp.Server.Services
                     // Check if we have patient data or if this is a generic query
                     bool hasPatientData = journalEntries.Any() || alerts.Any();
 
-                    Console.WriteLine($"Journal entries found: {journalEntries.Count}");
-                    Console.WriteLine($"Alerts found: {alerts.Count}");
-                    Console.WriteLine($"Has patient data: {hasPatientData}");
-
                     if (!hasPatientData)
                     {
                         // No patient selected or no data available
-                        Console.WriteLine("No patient data found, returning no patient selected message");
                         response.AppendLine("⚠️ **No Patient Selected**");
                         response.AppendLine();
                         response.AppendLine("To provide personalized insights about a specific patient, please:");
@@ -234,9 +220,7 @@ namespace SM_MentalHealthApp.Server.Services
                         response.AppendLine("2. Ask your question about that specific patient");
                         response.AppendLine();
                         response.AppendLine("Once a patient is selected, I can analyze their journal entries, medical content, and provide detailed insights about their mental health status.");
-                        var result = response.ToString().Trim();
-                        Console.WriteLine($"Fallback result: {result}");
-                        return result;
+                        return response.ToString().Trim();
                     }
 
                     if (alerts.Any())
