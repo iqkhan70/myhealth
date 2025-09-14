@@ -3,6 +3,79 @@
     margin-bottom: 20px;
 }
 
+/* Mode selector styles */
+.mode-selector {
+    margin-bottom: 15px;
+}
+
+.mode-selector label {
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.mode-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.mode-button {
+    padding: 10px 20px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    color: #666;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    min-width: 120px;
+}
+
+.mode-button:hover {
+    border-color: #007bff;
+    color: #007bff;
+}
+
+.mode-button.active {
+    background: #007bff;
+    border-color: #007bff;
+    color: white;
+}
+
+.mode-button.active:hover {
+    background: #0056b3;
+    border-color: #0056b3;
+}
+
+/* Generic info styles */
+.generic-info {
+    background: #e3f2fd;
+    border: 1px solid #bbdefb;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 10px;
+}
+
+.generic-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.generic-title {
+    font-weight: 600;
+    color: #1976d2;
+    font-size: 16px;
+}
+
+.generic-description {
+    color: #666;
+    font-size: 14px;
+}
+
 .patient-selector {
     margin-bottom: 15px;
 }

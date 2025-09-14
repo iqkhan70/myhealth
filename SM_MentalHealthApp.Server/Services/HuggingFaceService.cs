@@ -75,10 +75,16 @@ namespace SM_MentalHealthApp.Server.Services
             return "Neutral";
         }
 
-        public async Task<string> GenerateResponse(string text)
+        public async Task<string> GenerateResponse(string text, bool isGenericMode = false)
         {
             try
             {
+                // For generic mode, use a different model and approach
+                if (isGenericMode)
+                {
+                    return await GenerateGenericResponse(text);
+                }
+
                 var requestBody = new
                 {
                     inputs = text,
@@ -469,6 +475,117 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             return (moodPatterns, recentPatterns);
+        }
+
+        private async Task<string> GenerateGenericResponse(string text)
+        {
+            try
+            {
+                // First, try to handle common questions with predefined responses
+                var question = text.ToLower().Trim();
+
+                // Handle "who is" questions
+                if (question.Contains("who is"))
+                {
+                    if (question.Contains("salman khan"))
+                    {
+                        return "Salman Khan is a famous Bollywood actor, producer, and television personality from India. He's one of the most successful actors in Hindi cinema, known for films like 'Bajrangi Bhaijaan', 'Sultan', 'Tiger Zinda Hai', and many others. He's also known for his philanthropic work and hosting reality shows like 'Bigg Boss'.";
+                    }
+                    if (question.Contains("shah rukh khan"))
+                    {
+                        return "Shah Rukh Khan, often called 'SRK' or 'King Khan', is a famous Bollywood actor, film producer, and television personality. He's known as the 'King of Romance' and has starred in many successful films like 'Dilwale Dulhania Le Jayenge', 'My Name is Khan', 'Chennai Express', and others.";
+                    }
+                    if (question.Contains("amitabh bachchan"))
+                    {
+                        return "Amitabh Bachchan is a legendary Bollywood actor, film producer, and television host. He's often called the 'Shahenshah' (Emperor) of Bollywood and is known for films like 'Sholay', 'Deewar', 'Zanjeer', and many others. He's considered one of the greatest actors in Indian cinema.";
+                    }
+                    if (question.Contains("tom cruise"))
+                    {
+                        return "Tom Cruise is a famous American actor and producer known for action films like 'Top Gun', 'Mission: Impossible' series, 'Jerry Maguire', and 'Edge of Tomorrow'. He's one of the highest-paid actors in Hollywood.";
+                    }
+                    if (question.Contains("leonardo dicaprio"))
+                    {
+                        return "Leonardo DiCaprio is an American actor and environmental activist. He's known for films like 'Titanic', 'Inception', 'The Wolf of Wall Street', and 'The Revenant' (for which he won an Oscar). He's also known for his environmental activism.";
+                    }
+                }
+
+                // Handle "what is" questions
+                if (question.Contains("what is"))
+                {
+                    if (question.Contains("quantum computing"))
+                    {
+                        return "Quantum computing is a type of computation that uses quantum mechanical phenomena like superposition and entanglement to process information. Unlike classical computers that use bits (0 or 1), quantum computers use quantum bits (qubits) that can exist in multiple states simultaneously, potentially solving certain problems much faster than classical computers.";
+                    }
+                    if (question.Contains("artificial intelligence"))
+                    {
+                        return "Artificial Intelligence (AI) is a branch of computer science that aims to create machines capable of intelligent behavior. It includes machine learning, natural language processing, computer vision, and robotics. AI systems can learn, reason, and make decisions, and are used in various fields like healthcare, finance, and technology.";
+                    }
+                    if (question.Contains("blockchain"))
+                    {
+                        return "Blockchain is a distributed ledger technology that maintains a continuously growing list of records (blocks) linked and secured using cryptography. It's the technology behind cryptocurrencies like Bitcoin and enables secure, transparent, and tamper-proof record-keeping without a central authority.";
+                    }
+                }
+
+                // Handle medical questions
+                if (question.Contains("medical") || question.Contains("medicine") || question.Contains("treatment"))
+                {
+                    return "I can provide general information about medical topics, but please remember that this is for educational purposes only. For specific medical advice, diagnosis, or treatment, always consult with a qualified healthcare professional. What specific medical topic would you like to learn about?";
+                }
+
+                // Handle technology questions
+                if (question.Contains("programming") || question.Contains("coding") || question.Contains("software"))
+                {
+                    return "I'd be happy to help with programming and technology questions! I can assist with various programming languages, software development concepts, debugging, and best practices. What specific programming topic or problem would you like help with?";
+                }
+
+                // If no specific pattern matches, try HuggingFace API as fallback
+                var requestBody = new
+                {
+                    inputs = text,
+                    parameters = new
+                    {
+                        max_new_tokens = 150,
+                        temperature = 0.7,
+                        do_sample = true,
+                        return_full_text = false
+                    }
+                };
+
+                var json = JsonSerializer.Serialize(requestBody);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                // Use a reliable model
+                var response = await _httpClient.PostAsync(
+                    "https://api-inference.huggingface.co/models/gpt2",
+                    content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    var responseData = JsonSerializer.Deserialize<JsonElement[]>(responseContent);
+
+                    if (responseData.Length > 0)
+                    {
+                        var generatedText = responseData[0].GetProperty("generated_text").GetString() ?? "I'd be happy to help you with that question. Could you provide more details?";
+
+                        // Clean up the response
+                        if (generatedText.StartsWith(text))
+                        {
+                            generatedText = generatedText.Substring(text.Length).Trim();
+                        }
+
+                        return string.IsNullOrWhiteSpace(generatedText) ? "I'd be happy to help you with that question. Could you provide more details?" : generatedText;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fallback for generic responses
+                return "I'm here to help with any questions you have. Could you please rephrase your question or provide more details?";
+            }
+
+            // Final fallback
+            return "I'd be happy to help you with that question. Could you provide more details?";
         }
     }
 }

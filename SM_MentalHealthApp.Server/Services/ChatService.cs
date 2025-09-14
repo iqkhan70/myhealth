@@ -21,7 +21,7 @@ namespace SM_MentalHealthApp.Server.Services
             _userService = userService;
         }
 
-        public async Task<ChatResponse> SendMessageAsync(string prompt, string conversationId, AiProvider provider, int patientId = 0, int userId = 0, int userRoleId = 0)
+        public async Task<ChatResponse> SendMessageAsync(string prompt, string conversationId, AiProvider provider, int patientId = 0, int userId = 0, int userRoleId = 0, bool isGenericMode = false)
         {
             try
             {
@@ -32,11 +32,19 @@ namespace SM_MentalHealthApp.Server.Services
                     guidConversationId = Guid.NewGuid();
                 }
 
-                // Build role-based prompt
-                string roleBasedPrompt = await BuildRoleBasedPrompt(prompt, patientId, userId, userRoleId);
+                // Build role-based prompt or use generic prompt
+                string roleBasedPrompt;
+                if (isGenericMode)
+                {
+                    roleBasedPrompt = BuildGenericPrompt(prompt, userRoleId);
+                }
+                else
+                {
+                    roleBasedPrompt = await BuildRoleBasedPrompt(prompt, patientId, userId, userRoleId);
+                }
 
                 // Use HuggingFace service for AI response
-                var response = await _huggingFaceService.GenerateResponse(roleBasedPrompt);
+                var response = await _huggingFaceService.GenerateResponse(roleBasedPrompt, isGenericMode);
 
                 // Generate a simple response ID
                 var responseId = Guid.NewGuid().ToString();
@@ -325,6 +333,38 @@ namespace SM_MentalHealthApp.Server.Services
                     Provider = "HuggingFace"
                 };
             }
+        }
+
+        private string BuildGenericPrompt(string originalPrompt, int userRoleId)
+        {
+            var context = new System.Text.StringBuilder();
+
+            // Get user information
+            var user = _userService.GetUserByIdAsync(userRoleId == 2 ? 2 : 3).Result; // Default to doctor or admin
+            if (user != null)
+            {
+                context.AppendLine($"You are a helpful AI assistant helping {user.FirstName} {user.LastName}.");
+            }
+            else
+            {
+                context.AppendLine("You are a helpful AI assistant.");
+            }
+
+            // Generic AI instructions - like ChatGPT
+            context.AppendLine("\nGENERIC AI ASSISTANCE GUIDELINES:");
+            context.AppendLine("- You are a general-purpose AI assistant similar to ChatGPT");
+            context.AppendLine("- You can help with any topic: medical research, general knowledge, technical questions, writing, analysis, etc.");
+            context.AppendLine("- Provide accurate, helpful, and detailed responses");
+            context.AppendLine("- If you don't know something, say so honestly");
+            context.AppendLine("- Be conversational and engaging");
+            context.AppendLine("- For medical topics, provide general information but always recommend consulting healthcare professionals for specific medical advice");
+            context.AppendLine("- For technical topics, provide clear explanations and examples when possible");
+            context.AppendLine("- Be respectful and professional in all interactions");
+
+            context.AppendLine($"\nUser asks: {originalPrompt}");
+            context.AppendLine("\nRespond as a helpful, knowledgeable AI assistant.");
+
+            return context.ToString();
         }
 
     }

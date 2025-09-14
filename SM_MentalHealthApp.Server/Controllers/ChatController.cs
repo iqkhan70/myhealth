@@ -26,7 +26,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                     request.Provider,
                     request.PatientId,
                     request.UserId,
-                    request.UserRoleId);
+                    request.UserRoleId,
+                    request.IsGenericMode);
 
                 return Ok(response);
             }
@@ -85,5 +86,6 @@ namespace SM_MentalHealthApp.Server.Controllers
         public int PatientId { get; set; } = 0;
         public int UserId { get; set; } = 0;
         public int UserRoleId { get; set; } = 0;
+        public bool IsGenericMode { get; set; } = false;
     }
 }
