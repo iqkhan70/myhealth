@@ -1,6 +1,8 @@
 ﻿@page "/"
 @inject HttpClient Http
 @using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IAuthService AuthService
 
 <PageTitle>Home</PageTitle>
 
@@ -11,7 +13,7 @@
             <h1 class="hero-title">Welcome to Mental Health Journal</h1>
             <h2 class="hero-subtitle">Your Personal AI-Powered Mental Health Companion</h2>
             <p class="hero-description">
-                Helping patients is our number one priority. Track your emotional journey, 
+                Helping patients is our number one priority. Track your emotional journey,
                 gain insights, and receive compassionate AI support.
             </p>
         </div>
@@ -22,17 +24,18 @@
         <div class="feature-card">
             <div class="feature-icon">📝</div>
             <h3>Journal Your Thoughts</h3>
-            <p>Express your feelings and thoughts in a safe, private space. Our AI will provide empathetic responses and mood analysis.</p>
+            <p>Express your feelings and thoughts in a safe, private space. Our AI will provide empathetic responses and
+                mood analysis.</p>
             <a href="/journal" class="feature-button primary">Start Journaling</a>
         </div>
-        
+
         <div class="feature-card">
             <div class="feature-icon">📊</div>
             <h3>Track Your Progress</h3>
             <p>Visualize your emotional patterns over time with interactive charts and detailed analytics.</p>
             <a href="/trends" class="feature-button success">View Trends</a>
         </div>
-        
+
         <div class="feature-card">
             <div class="feature-icon">🤖</div>
             <h3>AI-Powered Insights</h3>
@@ -74,7 +77,11 @@
     {
         try
         {
-            recentEntries = await Http.GetFromJsonAsync<List<JournalEntry>>("api/journal") ?? new();
+            if (AuthService.CurrentUser != null)
+            {
+                recentEntries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/user/{AuthService.CurrentUser.Id}") ??
+                new();
+            }
         }
         catch (Exception)
         {
@@ -89,6 +96,8 @@
             "Happy" => "#28a745",
             "Sad" => "#dc3545",
             "Anxious" => "#ffc107",
+            "Distressed" => "#fd7e14", // Orange for distress
+            "Crisis" => "#dc3545", // Red for crisis
             "Neutral" => "#6c757d",
             _ => "#6c757d"
         };
@@ -101,6 +110,8 @@
             "Happy" => "mood-happy",
             "Sad" => "mood-sad",
             "Anxious" => "mood-anxious",
+            "Distressed" => "mood-distressed",
+            "Crisis" => "mood-crisis",
             "Neutral" => "mood-neutral",
             _ => "mood-neutral"
         };

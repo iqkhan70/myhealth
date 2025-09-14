@@ -58,19 +58,6 @@ namespace SM_MentalHealthApp.Server.Controllers
             return NoContent();
         }
 
-        // Legacy endpoints for backward compatibility
-        [HttpPost]
-        public async Task<ActionResult<JournalEntry>> PostEntry([FromBody] JournalEntry entry)
-        {
-            // For backward compatibility, use demo patient
-            var savedEntry = await _journalService.ProcessEntry(entry, 1);
-            return Ok(savedEntry);
-        }
-
-        [HttpGet]
-        public async Task<ActionResult<List<JournalEntry>>> GetEntries()
-        {
-            return Ok(await _journalService.GetEntries());
-        }
+        // Legacy endpoints removed - use user-specific endpoints instead
     }
 }

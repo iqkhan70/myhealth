@@ -24,8 +24,8 @@ namespace SM_MentalHealthApp.Server.Services
                 // Use a sentiment analysis model for mood detection
                 var sentimentResult = await AnalyzeSentiment(text);
 
-                // Use a text generation model for empathetic response
-                var responseResult = await GenerateResponse(text);
+                // Use a journal-specific response method
+                var responseResult = await GenerateJournalResponse(text, sentimentResult);
 
                 return (responseResult, sentimentResult);
             }
@@ -142,6 +142,104 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             return "Neutral";
+        }
+
+        private async Task<string> GenerateJournalResponse(string text, string mood)
+        {
+            try
+            {
+                // Create a journal-specific prompt
+                var prompt = BuildJournalPrompt(text, mood);
+
+                var requestBody = new
+                {
+                    inputs = prompt,
+                    parameters = new
+                    {
+                        max_new_tokens = 200,
+                        temperature = 0.7,
+                        return_full_text = false
+                    }
+                };
+
+                var json = JsonSerializer.Serialize(requestBody);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(
+                    "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium",
+                    content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    var responseData = JsonSerializer.Deserialize<JsonElement[]>(responseContent);
+
+                    if (responseData.Length > 0)
+                    {
+                        var generatedText = responseData[0].GetProperty("generated_text").GetString() ?? "";
+                        return CleanJournalResponse(generatedText);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Fall through to fallback
+            }
+
+            // Fallback response based on mood
+            return GetJournalFallbackResponse(mood);
+        }
+
+        private string BuildJournalPrompt(string text, string mood)
+        {
+            var moodContext = mood switch
+            {
+                "Crisis" => "The person is in crisis and needs immediate support. Respond with empathy and encourage seeking professional help.",
+                "Distressed" => "The person is experiencing emotional distress. Provide comfort and gentle encouragement.",
+                "Sad" => "The person is feeling sad. Offer empathy and hope.",
+                "Anxious" => "The person is feeling anxious. Provide calming reassurance and coping strategies.",
+                "Happy" => "The person is feeling positive. Celebrate with them and encourage continued well-being.",
+                _ => "The person is sharing their thoughts. Respond with empathy and understanding."
+            };
+
+            return $"You are a compassionate mental health companion. A person has written in their journal: \"{text}\"\n\n{moodContext}\n\nRespond with a brief, empathetic message (2-3 sentences) that acknowledges their feelings and provides gentle support. Be warm and encouraging.";
+        }
+
+        private string CleanJournalResponse(string response)
+        {
+            // Clean up the response
+            response = response.Trim();
+
+            // Remove any repeated prompts or unwanted text
+            if (response.Contains("You are a compassionate"))
+            {
+                var parts = response.Split("You are a compassionate");
+                if (parts.Length > 1)
+                {
+                    response = parts[0].Trim();
+                }
+            }
+
+            // Ensure it's not too long
+            if (response.Length > 300)
+            {
+                response = response.Substring(0, 300).Trim() + "...";
+            }
+
+            return string.IsNullOrWhiteSpace(response) ? GetJournalFallbackResponse("Neutral") : response;
+        }
+
+        private string GetJournalFallbackResponse(string mood)
+        {
+            return mood switch
+            {
+                "Crisis" => "I can hear that you're going through a really difficult time right now. Please know that you're not alone, and it's important to reach out to a mental health professional or crisis helpline. Your feelings are valid, and there are people who want to help you through this.",
+                "Distressed" => "I understand you're feeling really bad right now. These feelings are temporary, even though they might not feel that way. Please consider reaching out to someone you trust or a mental health professional. You don't have to go through this alone.",
+                "Sad" => "I'm sorry you're feeling sad. It's okay to feel this way, and your emotions are valid. Sometimes talking to someone we trust or engaging in activities that bring us comfort can help. Remember that this feeling will pass.",
+                "Anxious" => "I can sense you're feeling anxious. Try taking some deep breaths and remember that you've gotten through difficult times before. Consider reaching out to someone you trust or trying some relaxation techniques.",
+                "Happy" => "It's wonderful to hear that you're feeling good! I'm glad you're taking the time to reflect on positive moments. Keep nurturing these positive feelings and remember to celebrate the good times.",
+                _ => "Thank you for sharing your thoughts with me. It takes courage to express your feelings, and I appreciate you trusting me with them. Remember that you're not alone in whatever you're experiencing."
+            };
         }
 
         public async Task<string> GenerateResponse(string text, bool isGenericMode = false)

@@ -10,18 +10,15 @@
     <div class="journal-form-card">
         <div class="form-header">
             <h2>Mental Health Journal</h2>
-            <p>Share your thoughts and feelings. Our AI companion will provide empathetic responses and mood analysis.</p>
+            <p>Share your thoughts and feelings. Our AI companion will provide empathetic responses and mood analysis.
+            </p>
         </div>
-        
+
         <div class="form-content">
-            <textarea @bind="entryText" 
-                     placeholder="How are you feeling today? What's on your mind?" 
-                     rows="5" 
-                     class="journal-textarea"></textarea>
-            
-            <button @onclick="SaveEntry" 
-                   disabled="@(string.IsNullOrWhiteSpace(entryText))"
-                   class="save-button">
+            <textarea @bind="entryText" placeholder="How are you feeling today? What's on your mind?" rows="5"
+                class="journal-textarea"></textarea>
+
+            <button @onclick="SaveEntry" disabled="@(string.IsNullOrWhiteSpace(entryText))" class="save-button">
                 💾 Save Entry
             </button>
         </div>
@@ -30,7 +27,7 @@
     <!-- Journal Entries List -->
     <div class="entries-section">
         <h3>Your Journal Entries</h3>
-        
+
         @if (entries.Any())
         {
             <div class="entries-list">
@@ -41,10 +38,10 @@
                             <span class="entry-date">@entry.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy 'at' h:mm tt")</span>
                             <span class="mood-badge @GetMoodClass(entry.Mood)">@(entry.Mood ?? "Unknown")</span>
                         </div>
-                        
+
                         <div class="entry-content">
                             <p class="entry-text">@entry.Text</p>
-                            
+
                             @if (!string.IsNullOrEmpty(entry.AIResponse))
                             {
                                 <div class="ai-response">
@@ -141,6 +138,8 @@
             "Happy" => "#28a745",
             "Sad" => "#dc3545",
             "Anxious" => "#ffc107",
+            "Distressed" => "#fd7e14", // Orange for distress
+            "Crisis" => "#dc3545", // Red for crisis
             "Neutral" => "#6c757d",
             _ => "#6c757d"
         };
@@ -153,6 +152,8 @@
             "Happy" => "mood-happy",
             "Sad" => "mood-sad",
             "Anxious" => "mood-anxious",
+            "Distressed" => "mood-distressed",
+            "Crisis" => "mood-crisis",
             "Neutral" => "mood-neutral",
             _ => "mood-neutral"
         };
