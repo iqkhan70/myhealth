@@ -1,0 +1,152 @@
+/* Chat page specific styles */
+.chat-header {
+    margin-bottom: 20px;
+}
+
+.patient-selector {
+    margin-bottom: 15px;
+}
+
+.patient-selector label {
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 8px;
+    display: block;
+}
+
+/* Improve RadzenDropDown styling */
+.patient-selector .rz-dropdown {
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    transition: border-color 0.2s ease;
+}
+
+.patient-selector .rz-dropdown:hover {
+    border-color: #007bff;
+}
+
+.patient-selector .rz-dropdown:focus-within {
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Improve dropdown items */
+.patient-selector .rz-dropdown-item {
+    padding: 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.patient-selector .rz-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.patient-selector .rz-dropdown-item:hover {
+    background-color: #f8f9fa;
+}
+
+.patient-selector .rz-dropdown-item.rz-state-selected {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+/* Patient info styling */
+.patient-info {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 10px;
+}
+
+.patient-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.patient-name {
+    font-weight: 600;
+    color: #333;
+    font-size: 16px;
+}
+
+.patient-email {
+    color: #666;
+    font-size: 14px;
+}
+
+.patient-id {
+    color: #888;
+    font-size: 12px;
+}
+
+/* Chat messages styling */
+.chat-messages {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 15px;
+    background: #fff;
+    margin-bottom: 15px;
+}
+
+.chat-input-container {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+.chat-input {
+    flex: 1;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 14px;
+    resize: vertical;
+    min-height: 40px;
+    max-height: 120px;
+}
+
+.chat-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.send-button {
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.send-button:hover:not(:disabled) {
+    background: #0056b3;
+}
+
+.send-button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+/* Loading indicator */
+.loading {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

@@ -14,17 +14,25 @@
     {
         <div class="chat-header">
             <div class="patient-selector">
-                <label for="patientSelect">👤 Select Patient:</label>
-                <select id="userSelect" @bind="SelectedUserId" @bind:after="OnUserChanged" class="patient-select">
-                    <option value="0">Choose a patient...</option>
-                    @if (Users != null)
-                    {
-                        @foreach (var user in Users)
-                        {
-                            <option value="@user.Id">@user.FirstName @user.LastName (ID: @user.Id)</option>
-                        }
-                    }
-                </select>
+                <label style="white-space: nowrap; margin-bottom: 8px; display: block;">👤 Select Patient:</label>
+                <RadzenDropDown @bind-Value="SelectedUserId" 
+                               Data="@Users" 
+                               ValueProperty="Id" 
+                               TextProperty="FullName"
+                               Placeholder="Search patients..." 
+                               AllowClear="true"
+                               AllowFiltering="true"
+                               FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                               Change="@OnUserChanged"
+                               Style="width: 100%; min-width: 350px; max-width: 500px;"
+                               TValue="int">
+                    <Template Context="user">
+                        <div style="padding: 6px 8px; line-height: 1.2;">
+                            <div style="font-weight: 500; font-size: 14px; margin-bottom: 2px;">@user.FirstName @user.LastName</div>
+                            <div style="font-size: 12px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@user.Email • ID: @user.Id</div>
+                        </div>
+                    </Template>
+                </RadzenDropDown>
             </div>
             @if (SelectedUser != null)
             {
