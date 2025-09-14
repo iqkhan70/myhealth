@@ -38,6 +38,14 @@ namespace SM_MentalHealthApp.Server.Services
 
         private async Task<string> AnalyzeSentiment(string text)
         {
+            // First, try keyword-based analysis for mental health context
+            var keywordMood = AnalyzeMentalHealthKeywords(text);
+            if (keywordMood != "Neutral")
+            {
+                return keywordMood;
+            }
+
+            // Fallback to API-based sentiment analysis
             var requestBody = new
             {
                 inputs = text
@@ -46,30 +54,91 @@ namespace SM_MentalHealthApp.Server.Services
             var json = JsonSerializer.Serialize(requestBody);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            // Using a sentiment analysis model
-            var response = await _httpClient.PostAsync(
-                "https://api-inference.huggingface.co/models/cardiffnlp/twitter-roberta-base-sentiment-latest",
-                content);
-
-            if (response.IsSuccessStatusCode)
+            try
             {
-                var responseContent = await response.Content.ReadAsStringAsync();
-                var sentimentData = JsonSerializer.Deserialize<JsonElement[]>(responseContent);
+                // Using a more general sentiment analysis model
+                var response = await _httpClient.PostAsync(
+                    "https://api-inference.huggingface.co/models/cardiffnlp/twitter-roberta-base-sentiment-latest",
+                    content);
 
-                if (sentimentData.Length > 0)
+                if (response.IsSuccessStatusCode)
                 {
-                    var topResult = sentimentData[0];
-                    var label = topResult.GetProperty("label").GetString() ?? "LABEL_1";
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    var sentimentData = JsonSerializer.Deserialize<JsonElement[]>(responseContent);
 
-                    // Map sentiment labels to mood categories
-                    return label switch
+                    if (sentimentData.Length > 0)
                     {
-                        "LABEL_0" => "Sad",      // Negative
-                        "LABEL_1" => "Neutral",  // Neutral
-                        "LABEL_2" => "Happy",    // Positive
-                        _ => "Neutral"
-                    };
+                        var topResult = sentimentData[0];
+                        var label = topResult.GetProperty("label").GetString() ?? "LABEL_1";
+
+                        // Map sentiment labels to mood categories
+                        return label switch
+                        {
+                            "LABEL_0" => "Sad",      // Negative
+                            "LABEL_1" => "Neutral",  // Neutral
+                            "LABEL_2" => "Happy",    // Positive
+                            _ => "Neutral"
+                        };
+                    }
                 }
+            }
+            catch (Exception)
+            {
+                // If API fails, use keyword analysis
+                return AnalyzeMentalHealthKeywords(text);
+            }
+
+            return "Neutral";
+        }
+
+        private string AnalyzeMentalHealthKeywords(string text)
+        {
+            var lowerText = text.ToLowerInvariant();
+
+            // High concern keywords (should override other classifications)
+            var highConcernKeywords = new[]
+            {
+                "really bad", "terrible", "awful", "horrible", "worst", "can't take it", "can't handle",
+                "suicidal", "want to die", "end it all", "not worth living", "hopeless", "desperate",
+                "crisis", "emergency", "urgent", "help me", "can't cope", "breaking down"
+            };
+
+            // Distress keywords
+            var distressKeywords = new[]
+            {
+                "bad", "not well", "struggling", "suffering", "pain", "hurt", "broken", "lost",
+                "confused", "overwhelmed", "stressed", "anxious", "worried", "scared", "frightened",
+                "depressed", "sad", "down", "low", "empty", "numb", "alone", "isolated"
+            };
+
+            // Positive keywords
+            var positiveKeywords = new[]
+            {
+                "good", "great", "wonderful", "amazing", "fantastic", "excellent", "happy", "joyful",
+                "grateful", "blessed", "lucky", "proud", "accomplished", "confident", "hopeful",
+                "better", "improving", "progress", "breakthrough", "success", "achievement"
+            };
+
+            // Check for high concern first
+            foreach (var keyword in highConcernKeywords)
+            {
+                if (lowerText.Contains(keyword))
+                {
+                    return "Crisis"; // New mood category for high concern
+                }
+            }
+
+            // Count distress vs positive keywords
+            int distressCount = distressKeywords.Count(keyword => lowerText.Contains(keyword));
+            int positiveCount = positiveKeywords.Count(keyword => lowerText.Contains(keyword));
+
+            if (distressCount > positiveCount && distressCount > 0)
+            {
+                return "Distressed"; // New mood category for emotional distress
+            }
+            else if (positiveCount > distressCount && positiveCount > 0)
+            {
+                return "Happy";
             }
 
             return "Neutral";
