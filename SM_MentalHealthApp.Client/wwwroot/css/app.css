@@ -1233,6 +1233,140 @@ body:has(.chat-container) .rz-layout-content {
     border-color: #ffeaa7;
 }
 
+/* Journal Grid Styling */
+.journal-grid {
+    margin-top: 1rem;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.journal-grid .rz-datagrid {
+    border: none !important;
+}
+
+.journal-grid .rz-datagrid-header {
+    background-color: #f8f9fa !important;
+    border-bottom: 2px solid #e9ecef !important;
+}
+
+.journal-grid .rz-datagrid-header .rz-datagrid-header-cell {
+    background-color: #f8f9fa !important;
+    color: #495057 !important;
+    font-weight: 600 !important;
+    border-right: 1px solid #e9ecef !important;
+}
+
+.journal-grid .rz-datagrid-body .rz-datagrid-row {
+    border-bottom: 1px solid #f1f3f4 !important;
+}
+
+.journal-grid .rz-datagrid-body .rz-datagrid-row:hover {
+    background-color: #f8f9fa !important;
+}
+
+.journal-grid .rz-datagrid-body .rz-datagrid-cell {
+    border-right: 1px solid #f1f3f4 !important;
+    padding: 0.75rem !important;
+    vertical-align: middle !important;
+}
+
+/* Expandable Row Content */
+.journal-detail-expansion {
+    background-color: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+    padding: 1.5rem;
+}
+
+.journal-detail-content {
+    max-width: 100%;
+}
+
+.journal-text-section,
+.ai-response-section {
+    margin-bottom: 1.5rem;
+}
+
+.journal-text-section:last-child,
+.ai-response-section:last-child {
+    margin-bottom: 0;
+}
+
+.journal-text-section h5,
+.ai-response-section h5 {
+    color: #495057;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.journal-text-section h5 i {
+    color: #007bff;
+}
+
+.ai-response-section h5 i {
+    color: #28a745;
+}
+
+.journal-text,
+.ai-response-text {
+    background-color: #ffffff;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 1rem;
+    line-height: 1.6;
+    color: #495057;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.ai-response-text {
+    background-color: #f8f9fa;
+    border-left: 4px solid #28a745;
+}
+
+/* Grid Pagination */
+.journal-grid .rz-paginator {
+    background-color: #f8f9fa !important;
+    border-top: 1px solid #e9ecef !important;
+    padding: 0.75rem 1rem !important;
+}
+
+.journal-grid .rz-paginator .rz-paginator-page {
+    color: #007bff !important;
+}
+
+.journal-grid .rz-paginator .rz-paginator-page.rz-state-active {
+    background-color: #007bff !important;
+    color: white !important;
+}
+
+/* Grid Filter Row */
+.journal-grid .rz-datagrid-filter-row {
+    background-color: #ffffff !important;
+    border-bottom: 1px solid #e9ecef !important;
+}
+
+.journal-grid .rz-datagrid-filter-row .rz-datagrid-filter-cell {
+    border-right: 1px solid #f1f3f4 !important;
+    padding: 0.5rem !important;
+}
+
+.journal-grid .rz-datagrid-filter-row .rz-inputtext {
+    border: 1px solid #ced4da !important;
+    border-radius: 4px !important;
+    padding: 0.375rem 0.75rem !important;
+    font-size: 0.875rem !important;
+}
+
+.journal-grid .rz-datagrid-filter-row .rz-inputtext:focus {
+    border-color: #007bff !important;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25) !important;
+}
+
 .entry-date {
     font-size: 0.875rem;
     color: #6c757d;

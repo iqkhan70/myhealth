@@ -70,54 +70,80 @@
         </div>
     </div>
 
-    <!-- Journal Entries List -->
+    <!-- Journal Entries Grid -->
     <div class="entries-section">
         <h3>@(AuthService.CurrentUser?.RoleId == 2 ? "Patient Journal Entries" : "Your Journal Entries")</h3>
 
-        @if (entries.Any())
+        @if (gridEntries.Any())
         {
-            <div class="entries-list">
-                @foreach (var entry in entries)
-                {
-                    <div class="entry-card" style="border-left: 4px solid @GetMoodColor(entry.Mood);">
-                        <div class="entry-header">
-                            <span class="entry-date">@entry.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy 'at' h:mm tt")</span>
-                            <div class="entry-meta">
-                                @if (entry.EnteredByUserId.HasValue)
-                                {
-                                    <span class="entry-entered-by">
-                                        <i class="fas fa-user-md"></i>
-                                        @GetDoctorName(entry.EnteredByUserId)
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="entry-entered-by self">
-                                        <i class="fas fa-user"></i>
-                                        Self Entry
-                                    </span>
-                                }
-                                <span class="mood-badge @GetMoodClass(entry.Mood)">@(entry.Mood ?? "Unknown")</span>
-                            </div>
-                        </div>
-
-                        <div class="entry-content">
-                            <p class="entry-text">@entry.Text</p>
-
-                            @if (!string.IsNullOrEmpty(entry.AIResponse))
+            <RadzenDataGrid @ref="journalGrid"
+                           Data="@gridEntries" 
+                           TItem="JournalEntryForGrid" 
+                           AllowPaging="true" 
+                           PageSize="10"
+                           AllowSorting="true" 
+                           FilterMode="FilterMode.Advanced" 
+                           ShowPagingSummary="true"
+                           EmptyText="No journal entries found"
+                           AllowFiltering="true"
+                           FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                           ShowFilterRow="true"
+                           ShowFilterRowButtons="true"
+                           AllowColumnResize="true"
+                           AllowColumnReorder="true"
+                           class="journal-grid">
+                <Columns>
+                    <RadzenDataGridColumn TItem="JournalEntryForGrid" Property="CreatedAt" Title="Entry Date" Width="200px">
+                        <Template Context="gridEntry">
+                            <span class="entry-date">@gridEntry.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy 'at' h:mm tt")</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    
+                    <RadzenDataGridColumn TItem="JournalEntryForGrid" Property="EnteredByName" Title="Entered By" Width="200px">
+                        <Template Context="gridEntry">
+                            @if (gridEntry.Entry.EnteredByUserId.HasValue)
                             {
-                                <div class="ai-response">
-                                    <div class="ai-header">
-                                        <span class="ai-icon">🤖</span>
-                                        <span class="ai-label">AI Response</span>
-                                    </div>
-                                    <p class="ai-text">@entry.AIResponse</p>
+                                <span class="entry-entered-by">
+                                    <i class="fas fa-user-md"></i>
+                                    @gridEntry.EnteredByName
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="entry-entered-by self">
+                                    <i class="fas fa-user"></i>
+                                    @gridEntry.EnteredByName
+                                </span>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    
+                    <RadzenDataGridColumn TItem="JournalEntryForGrid" Property="Mood" Title="Mood" Width="120px">
+                        <Template Context="gridEntry">
+                            <span class="mood-badge @GetMoodClass(gridEntry.Entry.Mood)">@gridEntry.Mood</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+                
+                <Template Context="gridEntry">
+                    <div class="journal-detail-expansion">
+                        <div class="journal-detail-content">
+                            <div class="journal-text-section">
+                                <h5><i class="fas fa-file-text"></i> Journal Entry</h5>
+                                <div class="journal-text">@gridEntry.Entry.Text</div>
+                            </div>
+                            
+                            @if (!string.IsNullOrEmpty(gridEntry.Entry.AIResponse))
+                            {
+                                <div class="ai-response-section">
+                                    <h5><i class="fas fa-robot"></i> AI Response</h5>
+                                    <div class="ai-response-text">@gridEntry.Entry.AIResponse</div>
                                 </div>
                             }
                         </div>
                     </div>
-                }
-            </div>
+                </Template>
+            </RadzenDataGrid>
         }
         else
         {
@@ -144,6 +170,18 @@
     private List<User> assignedPatients = new();
     private int selectedPatientId = 0;
     private Dictionary<int, User> doctorCache = new(); // Cache for doctor information
+
+    // Helper class for grid filtering
+    public class JournalEntryForGrid
+    {
+        public JournalEntry Entry { get; set; } = new();
+        public string EnteredByName { get; set; } = string.Empty;
+        public DateTime CreatedAt => Entry.CreatedAt;
+        public string Mood => Entry.Mood ?? "Unknown";
+    }
+
+    private List<JournalEntryForGrid> gridEntries = new();
+    private RadzenDataGrid<JournalEntryForGrid>? journalGrid;
 
     protected override async Task OnInitializedAsync()
     {
@@ -180,10 +218,18 @@
                     
                     // Load doctor information for entries that were entered by doctors
                     await LoadDoctorInformation();
+                    
+                    // Create grid entries for filtering
+                    gridEntries = entries.Select(entry => new JournalEntryForGrid
+                    {
+                        Entry = entry,
+                        EnteredByName = entry.EnteredByUserId.HasValue ? GetDoctorName(entry.EnteredByUserId) : "Self Entry"
+                    }).ToList();
                 }
                 else
                 {
                     entries = new();
+                    gridEntries = new();
                 }
             }
         }
@@ -208,29 +254,44 @@
             // Load doctor information for each unique doctor ID
             foreach (var doctorId in doctorIds)
             {
-                try
-                {
-                    var doctor = await Http.GetFromJsonAsync<User>($"api/user/{doctorId}");
-                    if (doctor != null)
-                    {
-                        doctorCache[doctorId] = doctor;
-                    }
-                }
-                catch (Exception)
-                {
-                    // If we can't load the doctor info, we'll show a fallback
-                    doctorCache[doctorId] = new User 
-                    { 
-                        Id = doctorId, 
-                        FirstName = "Unknown", 
-                        LastName = "Doctor" 
-                    };
-                }
+                await LoadSpecificDoctor(doctorId);
             }
         }
         catch (Exception)
         {
             // Silently handle errors - we'll show fallback text
+        }
+    }
+
+    private async Task LoadSpecificDoctor(int doctorId)
+    {
+        try
+        {
+            var doctor = await Http.GetFromJsonAsync<User>($"api/user/{doctorId}");
+            if (doctor != null)
+            {
+                doctorCache[doctorId] = doctor;
+            }
+            else
+            {
+                // If we can't load the doctor info, we'll show a fallback
+                doctorCache[doctorId] = new User 
+                { 
+                    Id = doctorId, 
+                    FirstName = "Unknown", 
+                    LastName = "Doctor" 
+                };
+            }
+        }
+        catch (Exception)
+        {
+            // If we can't load the doctor info, we'll show a fallback
+            doctorCache[doctorId] = new User 
+            { 
+                Id = doctorId, 
+                FirstName = "Unknown", 
+                LastName = "Doctor" 
+            };
         }
     }
 
@@ -274,6 +335,30 @@
                 if (saved != null)
                 {
                     entries.Insert(0, saved);
+                    
+                    // Load doctor information for the new entry if needed
+                    if (saved.EnteredByUserId.HasValue && !doctorCache.ContainsKey(saved.EnteredByUserId.Value))
+                    {
+                        await LoadSpecificDoctor(saved.EnteredByUserId.Value);
+                    }
+                    
+                    // Update grid entries
+                    var gridEntry = new JournalEntryForGrid
+                    {
+                        Entry = saved,
+                        EnteredByName = saved.EnteredByUserId.HasValue ? GetDoctorName(saved.EnteredByUserId) : "Self Entry"
+                    };
+                    gridEntries.Insert(0, gridEntry);
+                    
+                    // Force UI refresh
+                    StateHasChanged();
+                    
+                    // Refresh the grid if it exists
+                    if (journalGrid != null)
+                    {
+                        await journalGrid.Reload();
+                    }
+                    
                     entryText = string.Empty;
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Journal entry saved successfully!");
                 }
