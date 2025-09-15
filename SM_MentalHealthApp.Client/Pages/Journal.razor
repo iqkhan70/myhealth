@@ -15,7 +15,8 @@
         </div>
 
         <div class="form-content">
-            <textarea @bind="entryText" placeholder="How are you feeling today? What's on your mind?" rows="5"
+            <textarea @bind="entryText" @bind:event="oninput"
+                placeholder="How are you feeling today? What's on your mind?" rows="5"
                 class="journal-textarea"></textarea>
 
             <button @onclick="SaveEntry" disabled="@(string.IsNullOrWhiteSpace(entryText))" class="save-button">

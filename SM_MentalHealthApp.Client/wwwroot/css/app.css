@@ -1311,11 +1311,11 @@ body:has(.chat-container) .rz-layout-content {
     box-shadow: 0 4px 8px rgba(0,123,255,0.3);
 }
 
-.save-button:disabled {
+/* .save-button:disabled {
     background-color: #6c757d;
     cursor: not-allowed;
     opacity: 0.6;
-}
+} */
 
 .entries-section {
     background: white;
