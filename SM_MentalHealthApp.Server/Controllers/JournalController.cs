@@ -18,6 +18,13 @@ namespace SM_MentalHealthApp.Server.Controllers
             return Ok(savedEntry);
         }
 
+        [HttpPost("doctor/{doctorId}/patient/{patientId}")]
+        public async Task<ActionResult<JournalEntry>> PostDoctorEntry(int doctorId, int patientId, [FromBody] JournalEntry entry)
+        {
+            var savedEntry = await _journalService.ProcessDoctorEntry(entry, patientId, doctorId);
+            return Ok(savedEntry);
+        }
+
         [HttpGet("user/{userId}")]
         public async Task<ActionResult<List<JournalEntry>>> GetEntriesForUser(int userId)
         {

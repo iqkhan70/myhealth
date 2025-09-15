@@ -59,14 +59,16 @@ namespace SM_MentalHealthApp.Shared
     public class JournalEntry
     {
         public int Id { get; set; }
-        public int UserId { get; set; } // Changed from PatientId to UserId
+        public int UserId { get; set; } // The patient whose journal this entry belongs to
+        public int? EnteredByUserId { get; set; } // Who actually entered this (null if patient entered for themselves)
         public string Text { get; set; } = string.Empty;
         public string? AIResponse { get; set; }
         public string? Mood { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        // Navigation property
-        public User? User { get; set; }
+        // Navigation properties
+        public User? User { get; set; } // The patient
+        public User? EnteredByUser { get; set; } // Who entered it (doctor or patient)
     }
 
     public class ChatSession

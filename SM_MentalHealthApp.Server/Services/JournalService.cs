@@ -19,11 +19,27 @@ namespace SM_MentalHealthApp.Server.Services
         {
             // Ensure the entry is associated with the user
             entry.UserId = userId;
-            
+            entry.EnteredByUserId = null; // Patient entered for themselves
+
             var (response, mood) = await _huggingFaceService.AnalyzeEntry(entry.Text);
             entry.AIResponse = response;
             entry.Mood = mood;
-            
+
+            _context.JournalEntries.Add(entry);
+            await _context.SaveChangesAsync();
+            return entry;
+        }
+
+        public async Task<JournalEntry> ProcessDoctorEntry(JournalEntry entry, int patientId, int doctorId)
+        {
+            // Ensure the entry is associated with the patient and track who entered it
+            entry.UserId = patientId;
+            entry.EnteredByUserId = doctorId; // Doctor entered for patient
+
+            var (response, mood) = await _huggingFaceService.AnalyzeEntry(entry.Text);
+            entry.AIResponse = response;
+            entry.Mood = mood;
+
             _context.JournalEntries.Add(entry);
             await _context.SaveChangesAsync();
             return entry;
@@ -65,7 +81,7 @@ namespace SM_MentalHealthApp.Server.Services
         {
             var entry = await _context.JournalEntries
                 .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == userId);
-            
+
             if (entry == null)
                 return false;
 

@@ -1,6 +1,8 @@
 @page "/journal"
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Shared
+@using Radzen
+@using Radzen.Blazor
 @inject HttpClient Http
 @inject NotificationService NotificationService
 @inject IAuthService AuthService
@@ -15,19 +17,62 @@
         </div>
 
         <div class="form-content">
+            @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+            {
+                <div class="patient-selection">
+                    <label style="white-space: nowrap; margin-bottom: 8px; display: block;">
+                        👤 Select Patient: 
+                        @if (selectedPatientId == 0)
+                        {
+                            <span class="required-indicator">*</span>
+                        }
+                    </label>
+                    <RadzenDropDown @bind-Value="selectedPatientId" 
+                                   Data="@assignedPatients" 
+                                   ValueProperty="Id" 
+                                   TextProperty="FullName"
+                                   Placeholder="Search patients..." 
+                                   AllowClear="true"
+                                   AllowFiltering="true"
+                                   FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                   Change="@OnPatientSelected"
+                                   Style="width: 100%; min-width: 350px; max-width: 500px;"
+                                   TValue="int"
+                                   class="@GetPatientSelectClass()">
+                        <Template Context="patient">
+                            <div style="padding: 6px 8px; line-height: 1.2;">
+                                <div style="font-weight: 500; font-size: 14px; margin-bottom: 2px;">@patient.FirstName @patient.LastName</div>
+                                <div style="font-size: 12px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@patient.Email • ID: @patient.Id</div>
+                            </div>
+                        </Template>
+                    </RadzenDropDown>
+                </div>
+            }
+
             <textarea @bind="entryText" @bind:event="oninput"
-                placeholder="How are you feeling today? What's on your mind?" rows="5"
+                placeholder="@(AuthService.CurrentUser?.RoleId == 2 ? "Enter journal entry for the selected patient..." : "How are you feeling today? What's on your mind?")" 
+                rows="5"
                 class="journal-textarea"></textarea>
 
-            <button @onclick="SaveEntry" disabled="@(string.IsNullOrWhiteSpace(entryText))" class="save-button">
+            <button @onclick="SaveEntry" 
+                   disabled="@(string.IsNullOrWhiteSpace(entryText) || (AuthService.CurrentUser?.RoleId == 2 && selectedPatientId == 0))" 
+                   class="save-button @(string.IsNullOrWhiteSpace(entryText) ? "disabled" : (AuthService.CurrentUser?.RoleId == 2 && selectedPatientId == 0 ? "disabled-patient" : "enabled"))">
                 💾 Save Entry
             </button>
+            
+            @if (AuthService.CurrentUser?.RoleId == 2 && selectedPatientId == 0 && !string.IsNullOrWhiteSpace(entryText))
+            {
+                <div class="validation-message error">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Please select a patient before saving the journal entry.
+                </div>
+            }
         </div>
     </div>
 
     <!-- Journal Entries List -->
     <div class="entries-section">
-        <h3>Your Journal Entries</h3>
+        <h3>@(AuthService.CurrentUser?.RoleId == 2 ? "Patient Journal Entries" : "Your Journal Entries")</h3>
 
         @if (entries.Any())
         {
@@ -37,7 +82,23 @@
                     <div class="entry-card" style="border-left: 4px solid @GetMoodColor(entry.Mood);">
                         <div class="entry-header">
                             <span class="entry-date">@entry.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy 'at' h:mm tt")</span>
-                            <span class="mood-badge @GetMoodClass(entry.Mood)">@(entry.Mood ?? "Unknown")</span>
+                            <div class="entry-meta">
+                                @if (entry.EnteredByUserId.HasValue)
+                                {
+                                    <span class="entry-entered-by">
+                                        <i class="fas fa-user-md"></i>
+                                        @GetDoctorName(entry.EnteredByUserId)
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="entry-entered-by self">
+                                        <i class="fas fa-user"></i>
+                                        Self Entry
+                                    </span>
+                                }
+                                <span class="mood-badge @GetMoodClass(entry.Mood)">@(entry.Mood ?? "Unknown")</span>
+                            </div>
                         </div>
 
                         <div class="entry-content">
@@ -62,8 +123,16 @@
         {
             <div class="empty-state">
                 <div class="empty-icon">📝</div>
-                <h4>No journal entries yet</h4>
-                <p>Start by writing your first entry above!</p>
+                @if (AuthService.CurrentUser?.RoleId == 2)
+                {
+                    <h4>@(selectedPatientId == 0 ? "Select a patient to view their journal entries" : "No journal entries for this patient yet")</h4>
+                    <p>@(selectedPatientId == 0 ? "Choose a patient from the dropdown above to see their journal entries, or create a new entry for them." : "This patient hasn't written any journal entries yet. You can create one for them above.")</p>
+                }
+                else
+                {
+                    <h4>No journal entries yet</h4>
+                    <p>Start by writing your first entry above!</p>
+                }
             </div>
         }
     </div>
@@ -72,10 +141,29 @@
 @code {
     private string entryText = string.Empty;
     private List<JournalEntry> entries = new();
+    private List<User> assignedPatients = new();
+    private int selectedPatientId = 0;
+    private Dictionary<int, User> doctorCache = new(); // Cache for doctor information
 
     protected override async Task OnInitializedAsync()
     {
+        if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+        {
+            await LoadAssignedPatients();
+        }
         await LoadEntries();
+    }
+
+    private async Task LoadAssignedPatients()
+    {
+        try
+        {
+            assignedPatients = await Http.GetFromJsonAsync<List<User>>("api/doctor/my-patients") ?? new();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load assigned patients: " + ex.Message);
+        }
     }
 
     private async Task LoadEntries()
@@ -84,8 +172,19 @@
         {
             if (AuthService.CurrentUser != null)
             {
-                // Load entries for the authenticated user
-                entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/user/{AuthService.CurrentUser.Id}") ?? new();
+                // For doctors, load entries for selected patient; for patients, load their own entries
+                var targetUserId = AuthService.CurrentUser.RoleId == 2 ? selectedPatientId : AuthService.CurrentUser.Id;
+                if (targetUserId > 0)
+                {
+                    entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/user/{targetUserId}") ?? new();
+                    
+                    // Load doctor information for entries that were entered by doctors
+                    await LoadDoctorInformation();
+                }
+                else
+                {
+                    entries = new();
+                }
             }
         }
         catch (Exception ex)
@@ -94,10 +193,58 @@
         }
     }
 
+    private async Task LoadDoctorInformation()
+    {
+        try
+        {
+            // Get unique doctor IDs from entries
+            var doctorIds = entries
+                .Where(e => e.EnteredByUserId.HasValue)
+                .Select(e => e.EnteredByUserId.Value)
+                .Distinct()
+                .Where(id => !doctorCache.ContainsKey(id))
+                .ToList();
+
+            // Load doctor information for each unique doctor ID
+            foreach (var doctorId in doctorIds)
+            {
+                try
+                {
+                    var doctor = await Http.GetFromJsonAsync<User>($"api/user/{doctorId}");
+                    if (doctor != null)
+                    {
+                        doctorCache[doctorId] = doctor;
+                    }
+                }
+                catch (Exception)
+                {
+                    // If we can't load the doctor info, we'll show a fallback
+                    doctorCache[doctorId] = new User 
+                    { 
+                        Id = doctorId, 
+                        FirstName = "Unknown", 
+                        LastName = "Doctor" 
+                    };
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Silently handle errors - we'll show fallback text
+        }
+    }
+
     private async Task SaveEntry()
     {
         if (string.IsNullOrWhiteSpace(entryText))
             return;
+
+        // For doctors, ensure a patient is selected
+        if (AuthService.CurrentUser?.RoleId == 2 && selectedPatientId == 0)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Patient Required", "Please select a patient from the dropdown above before saving the journal entry.");
+            return;
+        }
 
         try
         {
@@ -108,8 +255,18 @@
             }
 
             var newEntry = new JournalEntry { Text = entryText };
-            // Save entry for the authenticated user
-            var result = await Http.PostAsJsonAsync($"api/journal/user/{AuthService.CurrentUser.Id}", newEntry);
+            HttpResponseMessage result;
+
+            if (AuthService.CurrentUser.RoleId == 2) // Doctor
+            {
+                // Doctor entering for patient
+                result = await Http.PostAsJsonAsync($"api/journal/doctor/{AuthService.CurrentUser.Id}/patient/{selectedPatientId}", newEntry);
+            }
+            else
+            {
+                // Patient entering for themselves
+                result = await Http.PostAsJsonAsync($"api/journal/user/{AuthService.CurrentUser.Id}", newEntry);
+            }
 
             if (result.IsSuccessStatusCode)
             {
@@ -130,6 +287,35 @@
         {
             NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to save journal entry: " + ex.Message);
         }
+    }
+
+    private async Task OnPatientSelected(object value)
+    {
+        selectedPatientId = value != null ? (int)value : 0;
+        await LoadEntries();
+    }
+
+    private string GetPatientSelectClass()
+    {
+        var baseClass = "patient-select-radzen";
+        if (selectedPatientId == 0 && !string.IsNullOrWhiteSpace(entryText))
+        {
+            return $"{baseClass} validation-error";
+        }
+        return baseClass;
+    }
+
+    private string GetDoctorName(int? doctorId)
+    {
+        if (!doctorId.HasValue) return "Unknown Doctor";
+        
+        if (doctorCache.ContainsKey(doctorId.Value))
+        {
+            var doctor = doctorCache[doctorId.Value];
+            return $"Dr. {doctor.FirstName} {doctor.LastName}";
+        }
+        
+        return "Entered by Doctor";
     }
 
     private string GetMoodColor(string mood)
