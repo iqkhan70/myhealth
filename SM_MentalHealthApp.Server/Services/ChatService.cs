@@ -13,15 +13,17 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly JournalService _journalService;
         private readonly UserService _userService;
         private readonly IContentAnalysisService _contentAnalysisService;
+        private readonly IChatHistoryService _chatHistoryService;
         private readonly ILogger<ChatService> _logger;
 
-        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, ILogger<ChatService> logger)
+        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, IChatHistoryService chatHistoryService, ILogger<ChatService> logger)
         {
             _conversationRepository = conversationRepository;
             _huggingFaceService = huggingFaceService;
             _journalService = journalService;
             _userService = userService;
             _contentAnalysisService = contentAnalysisService;
+            _chatHistoryService = chatHistoryService;
             _logger = logger;
         }
 
@@ -35,27 +37,35 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogInformation("UserRoleId: {UserRoleId}", userRoleId);
                 _logger.LogInformation("IsGenericMode: {IsGenericMode}", isGenericMode);
 
-                // Parse conversationId to Guid
-                if (!Guid.TryParse(conversationId, out Guid guidConversationId))
-                {
-                    guidConversationId = Guid.NewGuid();
-                }
+                // Get or create chat session
+                var session = await _chatHistoryService.GetOrCreateSessionAsync(userId, patientId > 0 ? patientId : null);
 
-                // Build role-based prompt or use generic prompt
+                // Add user message to history
+                var isMedicalData = ContainsMedicalData(prompt);
+                var metadata = BuildMessageMetadata(userId, userRoleId, patientId);
+                await _chatHistoryService.AddMessageAsync(session.Id, MessageRole.User, prompt, MessageType.Question, isMedicalData, metadata);
+
+                // Build role-based prompt with chat history context
                 string roleBasedPrompt;
                 if (isGenericMode)
                 {
                     _logger.LogInformation("Using generic mode");
-                    roleBasedPrompt = BuildGenericPrompt(prompt, userRoleId);
+                    roleBasedPrompt = await BuildGenericPromptWithHistory(prompt, userRoleId, session.Id);
                 }
                 else
                 {
                     _logger.LogInformation("Using role-based prompt for patient {PatientId}", patientId);
-                    roleBasedPrompt = await BuildRoleBasedPrompt(prompt, patientId, userId, userRoleId);
+                    roleBasedPrompt = await BuildRoleBasedPromptWithHistory(prompt, patientId, userId, userRoleId, session.Id);
                 }
 
                 // Use HuggingFace service for AI response
                 var response = await _huggingFaceService.GenerateResponse(roleBasedPrompt, isGenericMode);
+
+                // Add AI response to history
+                await _chatHistoryService.AddMessageAsync(session.Id, MessageRole.Assistant, response, MessageType.Response, false, null);
+
+                // Update session activity
+                await _chatHistoryService.UpdateSessionActivityAsync(session.Id);
 
                 // Generate a simple response ID
                 var responseId = Guid.NewGuid().ToString();
@@ -69,6 +79,7 @@ namespace SM_MentalHealthApp.Server.Services
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error in SendMessageAsync");
                 // Return a friendly error message instead of crashing
                 return new ChatResponse
                 {
@@ -377,6 +388,94 @@ namespace SM_MentalHealthApp.Server.Services
                     Provider = "HuggingFace"
                 };
             }
+        }
+
+        private async Task<string> BuildRoleBasedPromptWithHistory(string originalPrompt, int patientId, int userId, int userRoleId, int sessionId)
+        {
+            try
+            {
+                // Get conversation context from chat history
+                var conversationContext = await _chatHistoryService.BuildConversationContextAsync(sessionId);
+
+                // Build the base prompt
+                var basePrompt = await BuildRoleBasedPrompt(originalPrompt, patientId, userId, userRoleId);
+
+                // Combine with conversation context
+                var contextBuilder = new System.Text.StringBuilder();
+                contextBuilder.AppendLine(basePrompt);
+
+                if (!string.IsNullOrEmpty(conversationContext))
+                {
+                    contextBuilder.AppendLine("\n=== CONVERSATION HISTORY ===");
+                    contextBuilder.AppendLine(conversationContext);
+                }
+
+                return contextBuilder.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error building role-based prompt with history");
+                return await BuildRoleBasedPrompt(originalPrompt, patientId, userId, userRoleId);
+            }
+        }
+
+        private async Task<string> BuildGenericPromptWithHistory(string originalPrompt, int userRoleId, int sessionId)
+        {
+            try
+            {
+                // Get conversation context from chat history
+                var conversationContext = await _chatHistoryService.BuildConversationContextAsync(sessionId);
+
+                // Build the base prompt
+                var basePrompt = BuildGenericPrompt(originalPrompt, userRoleId);
+
+                // Combine with conversation context
+                var contextBuilder = new System.Text.StringBuilder();
+                contextBuilder.AppendLine(basePrompt);
+
+                if (!string.IsNullOrEmpty(conversationContext))
+                {
+                    contextBuilder.AppendLine("\n=== CONVERSATION HISTORY ===");
+                    contextBuilder.AppendLine(conversationContext);
+                }
+
+                return contextBuilder.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error building generic prompt with history");
+                return BuildGenericPrompt(originalPrompt, userRoleId);
+            }
+        }
+
+        private bool ContainsMedicalData(string content)
+        {
+            if (string.IsNullOrEmpty(content)) return false;
+
+            var medicalKeywords = new[]
+            {
+                "blood pressure", "bp", "hemoglobin", "triglycerides", "cholesterol",
+                "heart rate", "temperature", "pulse", "oxygen", "glucose", "sugar",
+                "medication", "prescription", "dosage", "mg", "ml", "tablet", "capsule",
+                "symptom", "pain", "ache", "fever", "nausea", "dizziness", "fatigue",
+                "diagnosis", "condition", "disease", "illness", "treatment", "therapy"
+            };
+
+            var lowerContent = content.ToLower();
+            return medicalKeywords.Any(keyword => lowerContent.Contains(keyword));
+        }
+
+        private string BuildMessageMetadata(int userId, int userRoleId, int patientId)
+        {
+            var metadata = new
+            {
+                UserId = userId,
+                UserRoleId = userRoleId,
+                PatientId = patientId > 0 ? patientId : (int?)null,
+                Timestamp = DateTime.UtcNow
+            };
+
+            return System.Text.Json.JsonSerializer.Serialize(metadata);
         }
 
         private string BuildGenericPrompt(string originalPrompt, int userRoleId)

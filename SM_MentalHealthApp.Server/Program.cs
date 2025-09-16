@@ -1,8 +1,11 @@
 using Amazon.S3;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.IdentityModel.Tokens;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Server.Services;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -54,6 +57,7 @@ builder.Services.AddScoped<S3Service>();
 builder.Services.AddScoped<ContentService>();
 builder.Services.AddScoped<IContentAnalysisService, ContentAnalysisService>();
 builder.Services.AddScoped<IMultimediaAnalysisService, MultimediaAnalysisService>();
+builder.Services.AddScoped<IChatHistoryService, ChatHistoryService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -75,6 +79,23 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod();
     });
 });
+
+// Add JWT Authentication
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"] ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong!")),
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -109,10 +130,15 @@ app.UseStaticFiles(new StaticFileOptions
 });
 
 app.UseCors("AllowBlazorClient");
+app.UseAuthentication();
 app.UseAuthorization();
 
+
+// Map API controllers first
 app.MapControllers();
 app.MapRazorPages();
+
+// Fallback to Blazor WebAssembly for non-API routes only
 app.MapFallbackToFile("index.html");
 
 // TODO: Add database seeding later

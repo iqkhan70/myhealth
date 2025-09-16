@@ -12,6 +12,7 @@ namespace SM_MentalHealthApp.Server.Data
         public DbSet<UserAssignment> UserAssignments { get; set; }
         public DbSet<JournalEntry> JournalEntries { get; set; }
         public DbSet<ChatSession> ChatSessions { get; set; }
+        public DbSet<ChatMessage> ChatMessages { get; set; }
         public DbSet<ContentItem> Contents { get; set; }
         public DbSet<ContentAnalysis> ContentAnalyses { get; set; }
         public DbSet<ContentAlert> ContentAlerts { get; set; }
@@ -84,11 +85,34 @@ namespace SM_MentalHealthApp.Server.Data
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.SessionId).IsRequired().HasMaxLength(100);
                 entity.HasIndex(e => e.SessionId).IsUnique();
+                entity.Property(e => e.Summary).HasMaxLength(2000);
+                entity.Property(e => e.PrivacyLevel).HasConversion<string>();
 
-                // Foreign key relationship
+                // Foreign key relationships
                 entity.HasOne(e => e.User)
                       .WithMany(u => u.ChatSessions)
                       .HasForeignKey(e => e.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Patient)
+                      .WithMany()
+                      .HasForeignKey(e => e.PatientId)
+                      .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            // Configure ChatMessage entity
+            modelBuilder.Entity<ChatMessage>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Content).IsRequired().HasMaxLength(4000);
+                entity.Property(e => e.Metadata).HasMaxLength(1000);
+                entity.Property(e => e.Role).HasConversion<string>();
+                entity.Property(e => e.MessageType).HasConversion<string>();
+
+                // Foreign key relationship
+                entity.HasOne(e => e.Session)
+                      .WithMany(s => s.Messages)
+                      .HasForeignKey(e => e.SessionId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 

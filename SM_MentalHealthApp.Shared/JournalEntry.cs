@@ -71,18 +71,6 @@ namespace SM_MentalHealthApp.Shared
         public User? EnteredByUser { get; set; } // Who entered it (doctor or patient)
     }
 
-    public class ChatSession
-    {
-        public int Id { get; set; }
-        public int UserId { get; set; } // Changed from PatientId to UserId
-        public string SessionId { get; set; } = string.Empty;
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public DateTime? LastActivityAt { get; set; }
-        public bool IsActive { get; set; } = true;
-
-        // Navigation property
-        public User? User { get; set; }
-    }
 
     public class ChatResponse
     {
