@@ -212,4 +212,76 @@ namespace SM_MentalHealthApp.Shared
     {
         public int PatientId { get; set; }
     }
+
+    // Content Analysis Models
+    public class ContentAnalysis
+    {
+        public int Id { get; set; }
+        public int ContentId { get; set; }
+        public string ContentType { get; set; } = string.Empty;
+        public string ExtractedText { get; set; } = string.Empty;
+        public Dictionary<string, object> AnalysisResults { get; set; } = new();
+        public List<string> Alerts { get; set; } = new();
+        public DateTime ProcessedAt { get; set; } = DateTime.UtcNow;
+        public string ProcessingStatus { get; set; } = "Pending";
+        public string? ErrorMessage { get; set; }
+
+        // Navigation properties
+        public ContentItem Content { get; set; } = null!;
+    }
+
+    public class ContentAlert
+    {
+        public int Id { get; set; }
+        public int ContentId { get; set; }
+        public int PatientId { get; set; }
+        public string AlertType { get; set; } = string.Empty; // "Critical", "Warning", "Info"
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Severity { get; set; } = string.Empty; // "High", "Medium", "Low"
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public bool IsRead { get; set; } = false;
+        public bool IsResolved { get; set; } = false;
+
+        // Navigation properties
+        public ContentItem Content { get; set; } = null!;
+        public User Patient { get; set; } = null!;
+    }
+
+    // Medical Document Analysis Models
+    public class MedicalDocumentAnalysis
+    {
+        public string DocumentType { get; set; } = string.Empty; // "Lab Report", "X-Ray", "Prescription", etc.
+        public List<string> Medications { get; set; } = new();
+        public List<string> Symptoms { get; set; } = new();
+        public List<string> Diagnoses { get; set; } = new();
+        public List<string> VitalSigns { get; set; } = new();
+        public List<string> TestResults { get; set; } = new();
+        public Dictionary<string, string> KeyValues { get; set; } = new(); // Key-value pairs from documents
+        public string Summary { get; set; } = string.Empty;
+        public List<string> Concerns { get; set; } = new();
+        public List<string> Recommendations { get; set; } = new();
+    }
+
+    // Video Analysis Models
+    public class VideoAnalysis
+    {
+        public List<string> ExtractedText { get; set; } = new(); // Text from video frames
+        public List<string> DetectedObjects { get; set; } = new(); // Objects detected in video
+        public List<string> DetectedActivities { get; set; } = new(); // Activities detected
+        public List<string> AudioTranscription { get; set; } = new(); // Speech-to-text results
+        public string Summary { get; set; } = string.Empty;
+        public List<string> KeyMoments { get; set; } = new(); // Important moments in video
+    }
+
+    // Audio Analysis Models
+    public class AudioAnalysis
+    {
+        public string Transcription { get; set; } = string.Empty;
+        public List<string> Keywords { get; set; } = new();
+        public string Sentiment { get; set; } = string.Empty;
+        public List<string> Emotions { get; set; } = new();
+        public string Summary { get; set; } = string.Empty;
+        public List<string> Concerns { get; set; } = new();
+    }
 }

@@ -54,7 +54,106 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ChatSessions");
+                    b.ToTable("ChatSessions", (string)null);
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.ContentAlert", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AlertType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<int>("ContentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsResolved")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("PatientId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentId");
+
+                    b.HasIndex("PatientId");
+
+                    b.ToTable("ContentAlerts", (string)null);
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.ContentAnalysis", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.PrimitiveCollection<string>("Alerts")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("AnalysisResults")
+                        .IsRequired()
+                        .HasColumnType("JSON");
+
+                    b.Property<int>("ContentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<string>("ExtractedText")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ProcessingStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentId");
+
+                    b.ToTable("ContentAnalyses", (string)null);
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.ContentItem", b =>
@@ -133,7 +232,7 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.HasIndex("PatientId");
 
-                    b.ToTable("Contents");
+                    b.ToTable("Contents", (string)null);
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.JournalEntry", b =>
@@ -170,7 +269,7 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("JournalEntries");
+                    b.ToTable("JournalEntries", (string)null);
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.Role", b =>
@@ -202,7 +301,7 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Roles");
+                    b.ToTable("Roles", (string)null);
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.User", b =>
@@ -272,7 +371,7 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.HasIndex("RoleId");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.UserAssignment", b =>
@@ -293,7 +392,7 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.HasIndex("AssigneeId");
 
-                    b.ToTable("UserAssignments");
+                    b.ToTable("UserAssignments", (string)null);
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.ChatSession", b =>
@@ -305,6 +404,36 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.ContentAlert", b =>
+                {
+                    b.HasOne("SM_MentalHealthApp.Shared.ContentItem", "Content")
+                        .WithMany()
+                        .HasForeignKey("ContentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SM_MentalHealthApp.Shared.User", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Content");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.ContentAnalysis", b =>
+                {
+                    b.HasOne("SM_MentalHealthApp.Shared.ContentItem", "Content")
+                        .WithMany()
+                        .HasForeignKey("ContentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Content");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.ContentItem", b =>

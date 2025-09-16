@@ -53,6 +53,7 @@ builder.Services.AddScoped<LlmClient>();
 builder.Services.AddScoped<S3Service>();
 builder.Services.AddScoped<ContentService>();
 builder.Services.AddScoped<IContentAnalysisService, ContentAnalysisService>();
+builder.Services.AddScoped<IMultimediaAnalysisService, MultimediaAnalysisService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

@@ -13,6 +13,8 @@ namespace SM_MentalHealthApp.Server.Data
         public DbSet<JournalEntry> JournalEntries { get; set; }
         public DbSet<ChatSession> ChatSessions { get; set; }
         public DbSet<ContentItem> Contents { get; set; }
+        public DbSet<ContentAnalysis> ContentAnalyses { get; set; }
+        public DbSet<ContentAlert> ContentAlerts { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -115,6 +117,54 @@ namespace SM_MentalHealthApp.Server.Data
                       .WithMany()
                       .HasForeignKey(e => e.AddedByUserId)
                       .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            // Configure ContentAnalysis entity
+            modelBuilder.Entity<ContentAnalysis>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.ContentType).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.ExtractedText).HasColumnType("TEXT");
+                entity.Property(e => e.ProcessingStatus).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.ErrorMessage).HasMaxLength(1000);
+
+                // Configure Dictionary as JSON
+                entity.Property(e => e.AnalysisResults)
+                      .HasConversion(
+                          v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions)null),
+                          v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(v, (System.Text.Json.JsonSerializerOptions)null) ?? new Dictionary<string, object>())
+                      .HasColumnType("JSON");
+
+                // Foreign key relationship
+                entity.HasOne(e => e.Content)
+                      .WithMany()
+                      .HasForeignKey(e => e.ContentId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                // Add unique constraint to prevent duplicate analyses for the same content
+                entity.HasIndex(e => e.ContentId)
+                      .IsUnique();
+            });
+
+            // Configure ContentAlert entity
+            modelBuilder.Entity<ContentAlert>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.AlertType).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.Description).HasMaxLength(1000);
+                entity.Property(e => e.Severity).IsRequired().HasMaxLength(20);
+
+                // Foreign key relationships
+                entity.HasOne(e => e.Content)
+                      .WithMany()
+                      .HasForeignKey(e => e.ContentId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Patient)
+                      .WithMany()
+                      .HasForeignKey(e => e.PatientId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

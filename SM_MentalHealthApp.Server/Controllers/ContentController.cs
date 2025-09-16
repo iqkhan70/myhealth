@@ -158,27 +158,24 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _logger.LogInformation("Content created successfully with ID: {ContentId}", createdContent.Id);
 
-                // Trigger content analysis asynchronously
-                _ = Task.Run(async () =>
+                // Trigger content analysis synchronously to ensure it completes
+                try
                 {
-                    try
-                    {
-                        _logger.LogInformation("Starting content analysis for content ID: {ContentId}", createdContent.Id);
-                        var analysis = await _contentAnalysisService.AnalyzeContentAsync(createdContent);
-                        _logger.LogInformation("Content analysis completed for content ID: {ContentId}. Alerts: {AlertCount}",
-                            createdContent.Id, analysis.Alerts.Count);
+                    _logger.LogInformation("Starting content analysis for content ID: {ContentId}", createdContent.Id);
+                    var analysis = await _contentAnalysisService.AnalyzeContentAsync(createdContent);
+                    _logger.LogInformation("Content analysis completed for content ID: {ContentId}. Alerts: {AlertCount}",
+                        createdContent.Id, analysis.Alerts.Count);
 
-                        if (analysis.Alerts.Any())
-                        {
-                            _logger.LogWarning("Content analysis generated alerts for content ID: {ContentId}: {Alerts}",
-                                createdContent.Id, string.Join(", ", analysis.Alerts));
-                        }
-                    }
-                    catch (Exception ex)
+                    if (analysis.Alerts.Any())
                     {
-                        _logger.LogError(ex, "Error during content analysis for content ID: {ContentId}", createdContent.Id);
+                        _logger.LogWarning("Content analysis generated alerts for content ID: {ContentId}: {Alerts}",
+                            createdContent.Id, string.Join(", ", analysis.Alerts));
                     }
-                });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error during content analysis for content ID: {ContentId}", createdContent.Id);
+                }
 
                 _logger.LogInformation("=== UPLOAD REQUEST SUCCESS ===");
                 return Ok(createdContent);
@@ -243,6 +240,40 @@ namespace SM_MentalHealthApp.Server.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting content {ContentId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpPost("process-unanalyzed")]
+        public async Task<ActionResult> ProcessAllUnanalyzedContent()
+        {
+            try
+            {
+                _logger.LogInformation("Processing all unanalyzed content...");
+                await _contentAnalysisService.ProcessAllUnanalyzedContentAsync();
+                _logger.LogInformation("Completed processing all unanalyzed content");
+                return Ok(new { message = "All unanalyzed content has been processed" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing unanalyzed content");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpPost("cleanup-orphaned-data")]
+        public async Task<ActionResult> CleanupOrphanedData()
+        {
+            try
+            {
+                _logger.LogInformation("Starting cleanup of orphaned data...");
+                var cleanedCount = await _contentService.CleanupOrphanedDataAsync();
+                _logger.LogInformation("Cleaned up {Count} orphaned records", cleanedCount);
+                return Ok(new { message = $"Cleaned up {cleanedCount} orphaned records", cleanedCount });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cleaning up orphaned data");
                 return StatusCode(500, "Internal server error");
             }
         }

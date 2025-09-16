@@ -125,6 +125,26 @@ namespace SM_MentalHealthApp.Server.Services
                     await _s3Service.DeleteFileAsync(content.S3Key);
                 }
 
+                // Delete related ContentAnalysis records
+                var analyses = await _context.ContentAnalyses
+                    .Where(ca => ca.ContentId == content.Id)
+                    .ToListAsync();
+
+                if (analyses.Any())
+                {
+                    _context.ContentAnalyses.RemoveRange(analyses);
+                }
+
+                // Delete related ContentAlert records
+                var alerts = await _context.ContentAlerts
+                    .Where(ca => ca.ContentId == content.Id)
+                    .ToListAsync();
+
+                if (alerts.Any())
+                {
+                    _context.ContentAlerts.RemoveRange(alerts);
+                }
+
                 // Soft delete from database
                 content.IsActive = false;
                 await _context.SaveChangesAsync();
@@ -204,6 +224,47 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             return false;
+        }
+
+        public async Task<int> CleanupOrphanedDataAsync()
+        {
+            try
+            {
+                // Find ContentAnalysis records that reference deleted/inactive content
+                var orphanedAnalyses = await _context.ContentAnalyses
+                    .Where(ca => !_context.Contents.Any(c => c.Id == ca.ContentId && c.IsActive))
+                    .ToListAsync();
+
+                // Find ContentAlert records that reference deleted/inactive content
+                var orphanedAlerts = await _context.ContentAlerts
+                    .Where(ca => !_context.Contents.Any(c => c.Id == ca.ContentId && c.IsActive))
+                    .ToListAsync();
+
+                int totalCleaned = 0;
+
+                if (orphanedAnalyses.Any())
+                {
+                    _context.ContentAnalyses.RemoveRange(orphanedAnalyses);
+                    totalCleaned += orphanedAnalyses.Count;
+                }
+
+                if (orphanedAlerts.Any())
+                {
+                    _context.ContentAlerts.RemoveRange(orphanedAlerts);
+                    totalCleaned += orphanedAlerts.Count;
+                }
+
+                if (totalCleaned > 0)
+                {
+                    await _context.SaveChangesAsync();
+                }
+
+                return totalCleaned;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed to cleanup orphaned data: {ex.Message}", ex);
+            }
         }
 
         public async Task<User?> GetUserByIdAsync(int userId)

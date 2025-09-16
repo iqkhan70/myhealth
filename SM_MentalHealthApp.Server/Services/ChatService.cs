@@ -29,7 +29,6 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                _logger.LogInformation("=== CHAT REQUEST START ===");
                 _logger.LogInformation("Prompt: {Prompt}", prompt);
                 _logger.LogInformation("PatientId: {PatientId}", patientId);
                 _logger.LogInformation("UserId: {UserId}", userId);
@@ -84,7 +83,6 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                _logger.LogInformation("=== BUILDING ROLE-BASED PROMPT ===");
                 _logger.LogInformation("Original prompt: {OriginalPrompt}", originalPrompt);
                 _logger.LogInformation("PatientId: {PatientId}, UserId: {UserId}, UserRoleId: {UserRoleId}", patientId, userId, userRoleId);
 
@@ -108,7 +106,11 @@ namespace SM_MentalHealthApp.Server.Services
                 else if (userRoleId == 2) // Doctor
                 {
                     _logger.LogInformation("Building doctor prompt for doctor {UserId}, patient {PatientId}", userId, patientId);
-                    return await BuildDoctorPrompt(originalPrompt, userId, patientId);
+                    _logger.LogInformation("About to call BuildDoctorPrompt with patientId={PatientId}", patientId);
+                    _logger.LogInformation("Calling BuildDoctorPrompt now...");
+                    var result = await BuildDoctorPrompt(originalPrompt, userId, patientId);
+                    _logger.LogInformation("BuildDoctorPrompt completed, result length: {Length}", result.Length);
+                    return result;
                 }
                 else if (userRoleId == 3) // Admin
                 {

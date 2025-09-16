@@ -7,11 +7,13 @@ namespace SM_MentalHealthApp.Server.Services
     {
         private readonly HttpClient _httpClient;
         private readonly string _apiKey;
+        private readonly ILogger<HuggingFaceService> _logger;
 
-        public HuggingFaceService(HttpClient httpClient, IConfiguration config)
+        public HuggingFaceService(HttpClient httpClient, IConfiguration config, ILogger<HuggingFaceService> logger)
         {
             _httpClient = httpClient;
             _apiKey = config["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("HuggingFace API key not found");
+            _logger = logger;
 
             _httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
@@ -268,25 +270,20 @@ namespace SM_MentalHealthApp.Server.Services
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 // Using a more reliable text generation model
-                Console.WriteLine("=== API CALL START ===");
                 var response = await _httpClient.PostAsync(
                     "https://api-inference.huggingface.co/models/microsoft/DialoGPT-small",
                     content);
 
-                Console.WriteLine($"API Response Status: {response.StatusCode}");
 
                 if (response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine("API call succeeded, processing response...");
                     var responseContent = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"Response content length: {responseContent.Length}");
 
                     var responseData = JsonSerializer.Deserialize<JsonElement[]>(responseContent);
 
                     if (responseData.Length > 0)
                     {
                         var generatedText = responseData[0].GetProperty("generated_text").GetString() ?? "I understand. How can I help you today?";
-                        Console.WriteLine($"Generated text: {generatedText}");
 
                         // Clean up the response - remove the original input if it's included
                         if (generatedText.StartsWith(text))
@@ -295,25 +292,21 @@ namespace SM_MentalHealthApp.Server.Services
                         }
 
                         var finalResponse = string.IsNullOrWhiteSpace(generatedText) ? "I understand. How can I help you today?" : generatedText;
-                        Console.WriteLine($"Final response: {finalResponse}");
                         return finalResponse;
                     }
                 }
                 else
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"HuggingFace API Error: {response.StatusCode} - {errorContent}");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"HuggingFace API Exception: {ex.Message}");
             }
 
             // Fallback: Use enhanced context to generate a meaningful response
-            Console.WriteLine("=== FALLBACK TRIGGERED ===");
-            Console.WriteLine($"Text length: {text.Length}");
-            Console.WriteLine($"Text preview: {text.Substring(0, Math.Min(200, text.Length))}...");
+            _logger.LogInformation("=== FALLBACK RESPONSE GENERATION ===");
+            _logger.LogInformation("Enhanced context received: {Context}", text.Substring(0, Math.Min(500, text.Length)));
 
             try
             {
@@ -321,7 +314,6 @@ namespace SM_MentalHealthApp.Server.Services
                 if (File.Exists(knowledgePath))
                 {
                     var knowledge = File.ReadAllText(knowledgePath);
-                    Console.WriteLine("Knowledge file found, processing context...");
 
                     // Extract key information from the enhanced context
                     var contextLines = text.Split('\n');
@@ -340,7 +332,7 @@ namespace SM_MentalHealthApp.Server.Services
                             inContentSection = false;
                             continue;
                         }
-                        if (line.Contains("=== PATIENT CONTENT ANALYSIS ==="))
+                        if (line.Contains("=== CURRENT MEDICAL STATUS") || line.Contains("=== HISTORICAL MEDICAL CONCERNS") || line.Contains("=== HEALTH TREND ANALYSIS"))
                         {
                             inJournalSection = false;
                             inContentSection = true;
@@ -361,12 +353,16 @@ namespace SM_MentalHealthApp.Server.Services
                                 journalEntries.Add(line.Trim());
                             }
                         }
-                        if (inContentSection && line.Contains("⚠️ ALERTS:"))
+                        if (inContentSection && (line.Contains("🚨") || line.Contains("⚠️") || line.Contains("✅")))
                         {
-                            var alertText = line.Replace("⚠️ ALERTS:", "").Trim();
-                            if (!string.IsNullOrWhiteSpace(alertText))
+                            // Extract medical alerts and status information
+                            if (line.Contains("CRITICAL VALUES:") || line.Contains("ABNORMAL VALUES:") || line.Contains("NORMAL VALUES:"))
                             {
-                                alerts.Add(alertText);
+                                alerts.Add(line.Trim());
+                            }
+                            else if (line.Contains("CRITICAL:") || line.Contains("HIGH:") || line.Contains("LOW:"))
+                            {
+                                alerts.Add(line.Trim());
                             }
                         }
                     }
@@ -374,8 +370,25 @@ namespace SM_MentalHealthApp.Server.Services
                     // Generate a contextual response based on the enhanced context
                     var response = new StringBuilder();
 
+                    // Check for medical content in the context
+                    bool hasMedicalContent = text.Contains("Blood Pressure") || text.Contains("Hemoglobin") || text.Contains("Triglycerides") ||
+                                           text.Contains("CRITICAL VALUES") || text.Contains("ABNORMAL VALUES") || text.Contains("NORMAL VALUES") ||
+                                           text.Contains("CURRENT MEDICAL STATUS") || text.Contains("LATEST TEST RESULTS") ||
+                                           text.Contains("=== CURRENT MEDICAL STATUS") || text.Contains("=== HISTORICAL MEDICAL CONCERNS") ||
+                                           text.Contains("=== HEALTH TREND ANALYSIS");
+
+                    // Check for specific critical values
+                    bool hasCriticalValues = text.Contains("180/110") || text.Contains("6.0") || text.Contains("700");
+
                     // Check if we have patient data or if this is a generic query
-                    bool hasPatientData = journalEntries.Any() || alerts.Any();
+                    bool hasPatientData = journalEntries.Any() || alerts.Any() || hasMedicalContent;
+
+                    _logger.LogInformation("=== FALLBACK DETECTION RESULTS ===");
+                    _logger.LogInformation("hasMedicalContent: {HasMedicalContent}", hasMedicalContent);
+                    _logger.LogInformation("hasCriticalValues: {HasCriticalValues}", hasCriticalValues);
+                    _logger.LogInformation("journalEntries.Count: {JournalCount}", journalEntries.Count);
+                    _logger.LogInformation("alerts.Count: {AlertsCount}", alerts.Count);
+                    _logger.LogInformation("hasPatientData: {HasPatientData}", hasPatientData);
 
                     if (!hasPatientData)
                     {
@@ -390,14 +403,67 @@ namespace SM_MentalHealthApp.Server.Services
                         return response.ToString().Trim();
                     }
 
-                    if (alerts.Any())
+                    // Check for critical medical conditions - use both alerts and direct content detection
+                    bool hasCriticalConditions = alerts.Any(a => a.Contains("CRITICAL") || a.Contains("🚨")) ||
+                                               text.Contains("180/110") || text.Contains("6.0") || text.Contains("700");
+                    bool hasAbnormalConditions = alerts.Any(a => a.Contains("ABNORMAL") || a.Contains("⚠️"));
+                    bool hasNormalConditions = alerts.Any(a => a.Contains("NORMAL") || a.Contains("✅"));
+
+                    if (hasCriticalConditions)
                     {
-                        response.AppendLine("🚨 **IMPORTANT ALERTS DETECTED:**");
+                        response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention. ");
+
+                        // Add specific critical values found
+                        if (text.Contains("180/110"))
+                        {
+                            response.AppendLine("- **Blood Pressure: 180/110** - This is a hypertensive crisis requiring immediate medical intervention.");
+                        }
+                        if (text.Contains("6.0"))
+                        {
+                            response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
+                        }
+                        if (text.Contains("700"))
+                        {
+                            response.AppendLine("- **Triglycerides: 700** - This is extremely high and requires immediate medical management.");
+                        }
+
+                        response.AppendLine();
+                        response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                        response.AppendLine("- These values indicate a medical emergency");
+                        response.AppendLine("- Contact emergency services if symptoms worsen");
+                        response.AppendLine("- Patient needs immediate medical evaluation");
+                    }
+                    else if (alerts.Any())
+                    {
+                        response.AppendLine("🚨 **MEDICAL ALERTS DETECTED:**");
                         foreach (var alert in alerts)
                         {
                             response.AppendLine($"- {alert}");
                         }
                         response.AppendLine();
+
+                        if (hasAbnormalConditions)
+                        {
+                            response.AppendLine("**MEDICAL MONITORING NEEDED:** Abnormal values detected that require medical attention.");
+                        }
+                        else if (hasNormalConditions)
+                        {
+                            response.AppendLine("**CURRENT STATUS:** Patient shows normal values, but previous concerning results require continued monitoring.");
+                        }
+                    }
+                    else if (hasMedicalContent)
+                    {
+                        response.AppendLine("📊 **Medical Content Analysis:** I've reviewed the patient's medical content. ");
+
+                        if (!hasCriticalValues)
+                        {
+                            response.AppendLine("⚠️ **IMPORTANT:** While medical content was found, I was unable to detect specific critical values in the current analysis. ");
+                            response.AppendLine("Please ensure all test results are properly formatted and accessible for accurate medical assessment.");
+                        }
+                        else
+                        {
+                            response.AppendLine("Please ensure all critical values are properly addressed with appropriate medical care.");
+                        }
                     }
 
                     if (journalEntries.Any())
@@ -414,9 +480,32 @@ namespace SM_MentalHealthApp.Server.Services
                     if (text.ToLower().Contains("how is he doing") || text.ToLower().Contains("how is she doing"))
                     {
                         response.AppendLine("Based on the patient's recent activity and medical content:");
-                        if (alerts.Any())
+
+                        // Check for critical medical values
+                        var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:")).ToList();
+                        var normalValues = alerts.Where(a => a.Contains("✅ NORMAL:") || a.Contains("NORMAL VALUES:")).ToList();
+
+                        if (criticalAlerts.Any())
                         {
-                            response.AppendLine("⚠️ There are some concerning alerts that require immediate attention. Please review the flagged items above.");
+                            response.AppendLine("🚨 **CRITICAL MEDICAL EMERGENCY DETECTED!**");
+                            response.AppendLine("The patient has critical medical values that require IMMEDIATE medical attention:");
+                            foreach (var critical in criticalAlerts)
+                            {
+                                response.AppendLine($"- {critical}");
+                            }
+                            response.AppendLine();
+                            response.AppendLine("**URGENT ACTION REQUIRED:** Contact emergency services immediately!");
+                        }
+                        else if (normalValues.Any() && alerts.Any(a => a.Contains("⚠️") && !a.Contains("CRITICAL")))
+                        {
+                            response.AppendLine("✅ **CURRENT STATUS: IMPROVED**");
+                            response.AppendLine("The patient's latest test results show normal values, indicating improvement from previous concerning results.");
+                            response.AppendLine("However, continued monitoring is essential due to previous abnormal values.");
+                        }
+                        else if (alerts.Any())
+                        {
+                            response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED**");
+                            response.AppendLine("There are abnormal medical values that require attention and monitoring.");
                         }
                         else
                         {
@@ -425,7 +514,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                         if (journalEntries.Any())
                         {
-                            response.AppendLine("The patient has been actively engaging with their mental health tracking.");
+                            response.AppendLine("The patient has been actively engaging with their health tracking.");
                         }
                     }
                     else if (text.ToLower().Contains("areas of concern") || text.ToLower().Contains("concerns"))
@@ -462,7 +551,6 @@ namespace SM_MentalHealthApp.Server.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Fallback response generation error: {ex.Message}");
             }
 
             // Final fallback

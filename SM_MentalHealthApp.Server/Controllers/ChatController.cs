@@ -20,6 +20,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
+
                 var response = await _chatService.SendMessageAsync(
                     request.Prompt,
                     request.ConversationId,
@@ -64,6 +65,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
+
                 var response = await _chatService.SendRegularMessageAsync(
                     request.Prompt,
                     request.ConversationId,
