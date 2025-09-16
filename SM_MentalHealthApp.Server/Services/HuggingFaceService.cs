@@ -244,6 +244,190 @@ namespace SM_MentalHealthApp.Server.Services
             };
         }
 
+        public async Task<(string response, string mood)> AnalyzeMedicalJournalEntry(string text, MedicalJournalAnalysis medicalAnalysis)
+        {
+            try
+            {
+                // Create a medical-aware prompt
+                var prompt = BuildMedicalJournalPrompt(text, medicalAnalysis);
+
+                var requestBody = new
+                {
+                    inputs = prompt,
+                    parameters = new
+                    {
+                        max_new_tokens = 200,
+                        temperature = 0.7,
+                        return_full_text = false
+                    }
+                };
+
+                var json = JsonSerializer.Serialize(requestBody);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(
+                    "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium",
+                    content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    var responseData = JsonSerializer.Deserialize<JsonElement[]>(responseContent);
+
+                    if (responseData.Length > 0)
+                    {
+                        var generatedText = responseData[0].GetProperty("generated_text").GetString() ?? "";
+                        var cleanedResponse = CleanMedicalJournalResponse(generatedText);
+                        var mood = DetermineMedicalMood(medicalAnalysis);
+                        return (cleanedResponse, mood);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Fall through to fallback
+            }
+
+            // Fallback response based on medical analysis
+            return (GetMedicalJournalFallbackResponse(medicalAnalysis), DetermineMedicalMood(medicalAnalysis));
+        }
+
+        private string BuildMedicalJournalPrompt(string text, MedicalJournalAnalysis medicalAnalysis)
+        {
+            var prompt = new StringBuilder();
+            prompt.AppendLine("You are a medical AI assistant analyzing a journal entry that contains medical data.");
+            prompt.AppendLine();
+            prompt.AppendLine($"Journal Entry: \"{text}\"");
+            prompt.AppendLine();
+
+            if (medicalAnalysis.HasCriticalValues)
+            {
+                prompt.AppendLine("🚨 CRITICAL MEDICAL VALUES DETECTED:");
+                foreach (var critical in medicalAnalysis.CriticalValues)
+                {
+                    prompt.AppendLine($"  {critical}");
+                }
+                prompt.AppendLine();
+                prompt.AppendLine("This requires immediate medical attention. Respond with urgency and recommend immediate consultation with a healthcare provider.");
+            }
+
+            if (medicalAnalysis.HasAbnormalValues)
+            {
+                prompt.AppendLine("⚠️ ABNORMAL MEDICAL VALUES DETECTED:");
+                foreach (var abnormal in medicalAnalysis.AbnormalValues)
+                {
+                    prompt.AppendLine($"  {abnormal}");
+                }
+                prompt.AppendLine();
+                prompt.AppendLine("These values are concerning and should be monitored closely. Recommend follow-up with healthcare provider.");
+            }
+
+            if (medicalAnalysis.NormalValues.Any())
+            {
+                prompt.AppendLine("✅ NORMAL MEDICAL VALUES:");
+                foreach (var normal in medicalAnalysis.NormalValues)
+                {
+                    prompt.AppendLine($"  {normal}");
+                }
+                prompt.AppendLine();
+            }
+
+            prompt.AppendLine("Provide a medical assessment that:");
+            prompt.AppendLine("1. Acknowledges the medical data presented");
+            prompt.AppendLine("2. Provides appropriate medical context and interpretation");
+            prompt.AppendLine("3. Gives clear recommendations based on the values");
+            prompt.AppendLine("4. Maintains a professional, caring tone");
+            prompt.AppendLine("5. Emphasizes the importance of professional medical consultation when appropriate");
+
+            return prompt.ToString();
+        }
+
+        private string CleanMedicalJournalResponse(string response)
+        {
+            // Clean up the response
+            response = response.Trim();
+
+            // Remove any repeated prompts or unwanted text
+            if (response.Contains("You are a medical AI assistant"))
+            {
+                var parts = response.Split("You are a medical AI assistant");
+                if (parts.Length > 1)
+                {
+                    response = parts[0].Trim();
+                }
+            }
+
+            // Ensure it's not too long
+            if (response.Length > 500)
+            {
+                response = response.Substring(0, 500).Trim() + "...";
+            }
+
+            return string.IsNullOrWhiteSpace(response) ? GetMedicalJournalFallbackResponse(new MedicalJournalAnalysis()) : response;
+        }
+
+        private string DetermineMedicalMood(MedicalJournalAnalysis medicalAnalysis)
+        {
+            if (medicalAnalysis.HasCriticalValues)
+                return "Crisis";
+            if (medicalAnalysis.HasAbnormalValues)
+                return "Distressed";
+            if (medicalAnalysis.HasMedicalContent)
+                return "Neutral";
+            return "Neutral";
+        }
+
+        private string GetMedicalJournalFallbackResponse(MedicalJournalAnalysis medicalAnalysis)
+        {
+            var response = new StringBuilder();
+
+            if (medicalAnalysis.HasCriticalValues)
+            {
+                response.AppendLine("🚨 **CRITICAL MEDICAL VALUES DETECTED**");
+                response.AppendLine();
+                response.AppendLine("The following critical values require **immediate medical attention**:");
+                foreach (var critical in medicalAnalysis.CriticalValues)
+                {
+                    response.AppendLine($"• {critical}");
+                }
+                response.AppendLine();
+                response.AppendLine("**URGENT RECOMMENDATION:** Please seek immediate medical care or contact emergency services. These values indicate a serious medical condition that needs prompt evaluation by a healthcare professional.");
+            }
+            else if (medicalAnalysis.HasAbnormalValues)
+            {
+                response.AppendLine("⚠️ **ABNORMAL MEDICAL VALUES DETECTED**");
+                response.AppendLine();
+                response.AppendLine("The following values are concerning and should be monitored:");
+                foreach (var abnormal in medicalAnalysis.AbnormalValues)
+                {
+                    response.AppendLine($"• {abnormal}");
+                }
+                response.AppendLine();
+                response.AppendLine("**RECOMMENDATION:** Please schedule an appointment with your healthcare provider to discuss these values and determine appropriate next steps.");
+            }
+            else if (medicalAnalysis.HasMedicalContent)
+            {
+                response.AppendLine("📊 **MEDICAL DATA RECORDED**");
+                response.AppendLine();
+                if (medicalAnalysis.NormalValues.Any())
+                {
+                    response.AppendLine("The following values are within normal ranges:");
+                    foreach (var normal in medicalAnalysis.NormalValues)
+                    {
+                        response.AppendLine($"• {normal}");
+                    }
+                    response.AppendLine();
+                }
+                response.AppendLine("Thank you for documenting this medical information. Continue to monitor these values and consult with your healthcare provider as needed.");
+            }
+            else
+            {
+                response.AppendLine("Thank you for your journal entry. If you have any medical concerns, please don't hesitate to discuss them with your healthcare provider.");
+            }
+
+            return response.ToString().Trim();
+        }
+
         public async Task<string> GenerateResponse(string text, bool isGenericMode = false)
         {
             try
