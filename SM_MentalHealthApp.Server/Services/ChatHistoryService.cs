@@ -16,6 +16,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<ChatSession?> GetSessionAsync(int sessionId);
         Task<List<ChatSession>> GetUserSessionsAsync(int userId, int? patientId = null);
         Task DeleteSessionAsync(int sessionId);
+        Task GenerateSessionSummaryAsync(int sessionId);
     }
 
     public class ChatHistoryService : IChatHistoryService
@@ -58,6 +59,12 @@ namespace SM_MentalHealthApp.Server.Services
                 foreach (var oldSession in oldSessions)
                 {
                     oldSession.IsActive = false;
+
+                    // Generate summary for deactivated sessions that don't have one
+                    if (string.IsNullOrEmpty(oldSession.Summary) && oldSession.MessageCount > 0)
+                    {
+                        _ = Task.Run(async () => await GenerateSessionSummaryAsync(oldSession.Id));
+                    }
                 }
 
                 // Create new session for today
@@ -115,6 +122,13 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 await _context.SaveChangesAsync();
+
+                // Generate summary if session has enough messages and no summary exists
+                if (session.MessageCount >= 4 && string.IsNullOrEmpty(session.Summary))
+                {
+                    // Generate summary asynchronously to avoid blocking the response
+                    _ = Task.Run(async () => await GenerateSessionSummaryAsync(sessionId));
+                }
 
                 _logger.LogInformation("Added message to session {SessionId}, role: {Role}, type: {MessageType}, medical: {IsMedicalData}",
                     sessionId, role, messageType, isMedicalData);
@@ -370,6 +384,139 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 _logger.LogError(ex, "Error deleting session {SessionId}", sessionId);
                 throw;
+            }
+        }
+
+        public async Task GenerateSessionSummaryAsync(int sessionId)
+        {
+            try
+            {
+                var session = await _context.ChatSessions
+                    .Include(s => s.Messages.OrderBy(m => m.Timestamp))
+                    .Include(s => s.Patient)
+                    .Include(s => s.User)
+                    .FirstOrDefaultAsync(s => s.Id == sessionId);
+
+                if (session == null || !session.Messages.Any())
+                {
+                    _logger.LogWarning("Session {SessionId} not found or has no messages", sessionId);
+                    return;
+                }
+
+                // Don't generate summary if one already exists
+                if (!string.IsNullOrEmpty(session.Summary))
+                {
+                    _logger.LogInformation("Session {SessionId} already has a summary", sessionId);
+                    return;
+                }
+
+                // Build conversation context for summary
+                var conversationContext = await BuildConversationContextAsync(sessionId);
+
+                // Create summary prompt
+                var summaryPrompt = $@"
+Please provide a concise clinical summary of this mental health conversation. Focus on:
+
+1. **Key Topics Discussed**: Main themes, concerns, or issues raised
+2. **Patient Concerns**: Specific worries, symptoms, or challenges mentioned
+3. **AI Recommendations**: Advice, coping strategies, or suggestions provided
+4. **Patient Response**: How the patient reacted to suggestions
+5. **Clinical Notes**: Any important observations for healthcare providers
+
+Conversation:
+{conversationContext}
+
+Please provide a structured summary in 2-3 sentences that would be useful for clinical review and follow-up care.";
+
+                // For now, we'll use a simple summary generation
+                // In production, you'd call your AI service here
+                var summary = await GenerateAISummary(summaryPrompt, session);
+
+                if (!string.IsNullOrEmpty(summary))
+                {
+                    session.Summary = summary;
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Generated summary for session {SessionId}", sessionId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating summary for session {SessionId}", sessionId);
+            }
+        }
+
+        private async Task<string> GenerateAISummary(string prompt, ChatSession session)
+        {
+            try
+            {
+                // Extract key information from the conversation
+                var userMessages = session.Messages.Where(m => m.Role == MessageRole.User).ToList();
+                var aiMessages = session.Messages.Where(m => m.Role == MessageRole.Assistant).ToList();
+
+                if (!userMessages.Any() || !aiMessages.Any())
+                {
+                    return "Conversation summary not available - insufficient message data.";
+                }
+
+                // Simple rule-based summary generation
+                var topics = new List<string>();
+                var concerns = new List<string>();
+                var recommendations = new List<string>();
+
+                // Analyze user messages for topics and concerns
+                foreach (var msg in userMessages)
+                {
+                    var content = msg.Content.ToLower();
+                    if (content.Contains("anxiety") || content.Contains("worried") || content.Contains("stress"))
+                        concerns.Add("Anxiety/Stress");
+                    if (content.Contains("sleep") || content.Contains("insomnia"))
+                        concerns.Add("Sleep Issues");
+                    if (content.Contains("depressed") || content.Contains("sad") || content.Contains("down"))
+                        concerns.Add("Mood/Depression");
+                    if (content.Contains("work") || content.Contains("job"))
+                        topics.Add("Work-related concerns");
+                    if (content.Contains("family") || content.Contains("relationship"))
+                        topics.Add("Family/Relationships");
+                }
+
+                // Analyze AI messages for recommendations
+                foreach (var msg in aiMessages)
+                {
+                    var content = msg.Content.ToLower();
+                    if (content.Contains("breathing") || content.Contains("meditation"))
+                        recommendations.Add("Breathing/Meditation techniques");
+                    if (content.Contains("exercise") || content.Contains("physical activity"))
+                        recommendations.Add("Physical activity suggestions");
+                    if (content.Contains("sleep") || content.Contains("bedtime"))
+                        recommendations.Add("Sleep hygiene advice");
+                }
+
+                // Build summary
+                var summaryParts = new List<string>();
+
+                if (concerns.Any())
+                {
+                    summaryParts.Add($"Patient discussed: {string.Join(", ", concerns.Distinct())}");
+                }
+
+                if (topics.Any())
+                {
+                    summaryParts.Add($"Topics covered: {string.Join(", ", topics.Distinct())}");
+                }
+
+                if (recommendations.Any())
+                {
+                    summaryParts.Add($"AI provided: {string.Join(", ", recommendations.Distinct())}");
+                }
+
+                summaryParts.Add($"Session included {userMessages.Count} patient messages and {aiMessages.Count} AI responses.");
+
+                return string.Join(" ", summaryParts);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in AI summary generation");
+                return "Summary generation failed - manual review recommended.";
             }
         }
     }

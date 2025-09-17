@@ -196,6 +196,45 @@ namespace SM_MentalHealthApp.Server.Controllers
             return int.TryParse(userIdClaim, out var userId) ? userId : 0;
         }
 
+        [HttpPost("sessions/{sessionId}/generate-summary")]
+        public async Task<ActionResult> GenerateSummary(int sessionId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                if (userId == 0)
+                {
+                    return Unauthorized("User not authenticated");
+                }
+
+                // Check if user has access to this session
+                var session = await _chatHistoryService.GetSessionAsync(sessionId);
+                if (session == null)
+                {
+                    return NotFound("Session not found");
+                }
+
+                // Check access permissions
+                var userRole = GetCurrentUserRole();
+                if (userRole == 1 && session.UserId != userId && session.PatientId != userId) // Patient
+                {
+                    return Forbid("Access denied to this session");
+                }
+                else if (userRole == 2 && session.UserId != userId) // Doctor
+                {
+                    return Forbid("Access denied to this session");
+                }
+
+                await _chatHistoryService.GenerateSessionSummaryAsync(sessionId);
+                return Ok(new { message = "Summary generation initiated" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating summary for session {SessionId}", sessionId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
         private int GetCurrentUserRole()
         {
             var roleIdClaim = User.FindFirst("roleId")?.Value;
