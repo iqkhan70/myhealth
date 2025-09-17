@@ -156,10 +156,17 @@
                 
                 <RadzenDataGridColumn TItem="ChatSession" Sortable="false" Filterable="false" Title="Actions" Width="80px">
                     <Template Context="session">
-                        <RadzenButton Text="Delete" 
-                                    ButtonStyle="ButtonStyle.Danger" 
-                                    Size="ButtonSize.Small"
-                                    Click="@(() => DeleteSession(session))" />
+                        @if (CanDeleteSession(session))
+                        {
+                            <RadzenButton Text="Delete" 
+                                        ButtonStyle="ButtonStyle.Danger" 
+                                        Size="ButtonSize.Small"
+                                        Click="@(() => TestDelete(session))" />
+                        }
+                        else
+                        {
+                            <span class="text-muted small">Protected</span>
+                        }
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -281,15 +288,24 @@
         }
     }
 
-    private async Task LoadSessions()
-    {
-        try
+        private async Task LoadSessions()
         {
-            isLoading = true;
-            var url = selectedPatientId.HasValue 
-                ? $"api/chathistory/sessions?patientId={selectedPatientId.Value}"
-                : "api/chathistory/sessions";
-            var response = await Http.GetFromJsonAsync<List<ChatSession>>(url);
+            try
+            {
+                isLoading = true;
+                
+                // Ensure authorization header is set
+                var token = AuthService.Token;
+                if (!string.IsNullOrEmpty(token))
+                {
+                    Http.DefaultRequestHeaders.Authorization = 
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+                
+                var url = selectedPatientId.HasValue 
+                    ? $"api/chathistory/sessions?patientId={selectedPatientId.Value}"
+                    : "api/chathistory/sessions";
+                var response = await Http.GetFromJsonAsync<List<ChatSession>>(url);
             sessions = response ?? new List<ChatSession>();
         }
         catch (Exception ex)
@@ -303,18 +319,26 @@
         }
     }
 
-    private async Task OnRowExpand(ChatSession session)
-    {
-        try
+        private async Task OnRowExpand(ChatSession session)
         {
-            // Check if we already have the expanded data
-            if (expandedSessions.ContainsKey(session.Id))
+            try
             {
-                return; // Already loaded
-            }
+                // Check if we already have the expanded data
+                if (expandedSessions.ContainsKey(session.Id))
+                {
+                    return; // Already loaded
+                }
 
-            // Load full session details with messages when row is expanded
-            var sessionDetails = await Http.GetFromJsonAsync<ChatSession>($"api/chathistory/sessions/{session.Id}");
+                // Ensure authorization header is set
+                var token = AuthService.Token;
+                if (!string.IsNullOrEmpty(token))
+                {
+                    Http.DefaultRequestHeaders.Authorization = 
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+
+                // Load full session details with messages when row is expanded
+                var sessionDetails = await Http.GetFromJsonAsync<ChatSession>($"api/chathistory/sessions/{session.Id}");
             if (sessionDetails != null)
             {
                 // Store the expanded session data
@@ -328,31 +352,124 @@
         }
     }
 
+    private async Task TestDelete(ChatSession session)
+    {
+        Console.WriteLine($"TestDelete called for session {session.Id}");
+        await DeleteSession(session);
+    }
+
     private async Task DeleteSession(ChatSession session)
     {
-        var confirmed = await DialogService.Confirm("Are you sure you want to delete this chat session? This action cannot be undone.", "Delete Session", 
-            new ConfirmOptions() { OkButtonText = "Yes, Delete", CancelButtonText = "Cancel" });
-
-        if (confirmed == true)
+        Console.WriteLine($"DeleteSession called for session {session.Id}");
+        try
         {
-            try
+            // Show confirmation dialog
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+                $"Are you sure you want to delete this chat session?\n\n" +
+                $"Session: {(session.PatientId.HasValue ? session.Patient?.FullName ?? $"Patient {session.PatientId}" : "General Chat")}\n" +
+                $"Messages: {session.MessageCount}\n" +
+                $"Created: {session.CreatedAt:MM/dd/yyyy HH:mm}\n\n" +
+                $"⚠️ This action cannot be undone!");
+
+            if (confirmed == true)
             {
+                Console.WriteLine($"Attempting to delete session {session.Id}");
+                
+                // Check if user is authenticated
+                if (!AuthService.IsAuthenticated)
+                {
+                    NotificationService.Notify(new NotificationMessage 
+                    { 
+                        Severity = NotificationSeverity.Error, 
+                        Summary = "Authentication Required", 
+                        Detail = "Please log in again to perform this action.",
+                        Duration = 4000
+                    });
+                    return;
+                }
+                
+                // Ensure authorization header is set
+                var token = AuthService.Token;
+                Console.WriteLine($"Using token: {token?.Substring(0, Math.Min(50, token?.Length ?? 0))}...");
+                if (!string.IsNullOrEmpty(token))
+                {
+                    Http.DefaultRequestHeaders.Authorization = 
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+                
                 var response = await Http.DeleteAsync($"api/chathistory/sessions/{session.Id}");
+                Console.WriteLine($"Delete response status: {response.StatusCode}");
+                
+                var responseContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Delete response content: {responseContent}");
+                
                 if (response.IsSuccessStatusCode)
                 {
-                    await LoadSessions(); // Refresh the list
-                    await JSRuntime.InvokeVoidAsync("alert", "Session deleted successfully");
+                    NotificationService.Notify(new NotificationMessage 
+                    { 
+                        Severity = NotificationSeverity.Success, 
+                        Summary = "Success", 
+                        Detail = "Chat session deleted successfully!",
+                        Duration = 4000
+                    });
+                    
+                    // Remove from expanded sessions if it was expanded
+                    if (expandedSessions.ContainsKey(session.Id))
+                    {
+                        expandedSessions.Remove(session.Id);
+                    }
+                    
+                    // Reload sessions after deletion
+                    await LoadSessions();
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    NotificationService.Notify(new NotificationMessage 
+                    { 
+                        Severity = NotificationSeverity.Error, 
+                        Summary = "Authentication Required", 
+                        Detail = "Your session has expired. Please log in again.",
+                        Duration = 4000
+                    });
+                    
+                    // Clear the token and redirect to login
+                    await AuthService.LogoutAsync();
                 }
                 else
                 {
-                    await JSRuntime.InvokeVoidAsync("alert", "Error deleting session");
+                    Console.WriteLine($"Delete error: {responseContent}");
+                    
+                    // Check if response is HTML (error page) instead of JSON
+                    string errorMessage = responseContent;
+                    if (responseContent.StartsWith("<"))
+                    {
+                        errorMessage = $"Server returned an error page. Status: {response.StatusCode}";
+                    }
+                    
+                    NotificationService.Notify(new NotificationMessage 
+                    { 
+                        Severity = NotificationSeverity.Error, 
+                        Summary = "Delete Failed", 
+                        Detail = $"Failed to delete session: {errorMessage}",
+                        Duration = 6000
+                    });
                 }
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine($"Error deleting session: {ex.Message}");
-                await JSRuntime.InvokeVoidAsync("alert", "Error deleting session");
+                Console.WriteLine("Delete cancelled by user");
             }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Delete exception: {ex.Message}");
+            NotificationService.Notify(new NotificationMessage 
+            { 
+                Severity = NotificationSeverity.Error, 
+                Summary = "Error", 
+                Detail = $"An error occurred while deleting: {ex.Message}",
+                Duration = 6000
+            });
         }
     }
 
@@ -365,6 +482,41 @@
     private int GetCurrentUserId()
     {
         return AuthService.CurrentUser?.Id ?? 0;
+    }
+
+    private bool CanDeleteSession(ChatSession session)
+    {
+        var currentUserId = GetCurrentUserId();
+        var currentUserRole = AuthService.CurrentUser?.RoleId ?? 0;
+        
+        Console.WriteLine($"CanDeleteSession - SessionId: {session.Id}, SessionUserId: {session.UserId}, CurrentUserId: {currentUserId}, CurrentUserRole: {currentUserRole}");
+        
+        // Patients can only delete their own direct conversations
+        // They cannot delete doctor's chats about them
+        if (currentUserRole == 1) // Patient
+        {
+            var canDelete = session.UserId == currentUserId;
+            Console.WriteLine($"Patient can delete: {canDelete}");
+            return canDelete;
+        }
+        
+        // Doctors can delete their own sessions
+        if (currentUserRole == 2) // Doctor
+        {
+            var canDelete = session.UserId == currentUserId;
+            Console.WriteLine($"Doctor can delete: {canDelete}");
+            return canDelete;
+        }
+        
+        // Admins can delete any session
+        if (currentUserRole == 3) // Admin
+        {
+            Console.WriteLine("Admin can delete: true");
+            return true;
+        }
+        
+        Console.WriteLine("No role match, cannot delete");
+        return false;
     }
 
     private async Task ShowMetadata(string metadata)

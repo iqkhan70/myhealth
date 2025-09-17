@@ -103,9 +103,14 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
+                _logger.LogInformation("DeleteSession called for sessionId: {SessionId}", sessionId);
+
                 var userId = GetCurrentUserId();
+                _logger.LogInformation("Current userId: {UserId}", userId);
+
                 if (userId == 0)
                 {
+                    _logger.LogWarning("User not authenticated for delete request");
                     return Unauthorized("User not authenticated");
                 }
 
@@ -121,10 +126,11 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Role-based access control for deletion
                 if (userRole == 1) // Patient
                 {
-                    // Patients can only delete their own sessions
+                    // Patients can only delete their own direct conversations
+                    // They cannot delete doctor's chats about them (even if they are the PatientId)
                     if (session.UserId != userId)
                     {
-                        return StatusCode(403, "Access denied to this session");
+                        return StatusCode(403, "Access denied: You can only delete your own conversations, not doctor's chats about you");
                     }
                 }
                 else if (userRole == 2) // Doctor
@@ -145,8 +151,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return StatusCode(403, "Access denied to this session");
                 }
 
-                // TODO: Implement actual deletion in ChatHistoryService
-                // For now, just return success
+                await _chatHistoryService.DeleteSessionAsync(sessionId);
+                _logger.LogInformation("Session {SessionId} deleted successfully by user {UserId}", sessionId, userId);
                 return Ok(new { message = "Session deleted successfully" });
             }
             catch (Exception ex)

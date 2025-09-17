@@ -15,6 +15,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task CleanupExpiredDataAsync();
         Task<ChatSession?> GetSessionAsync(int sessionId);
         Task<List<ChatSession>> GetUserSessionsAsync(int userId, int? patientId = null);
+        Task DeleteSessionAsync(int sessionId);
     }
 
     public class ChatHistoryService : IChatHistoryService
@@ -331,6 +332,25 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 _logger.LogError(ex, "Error getting sessions for user {UserId}", userId);
                 return new List<ChatSession>();
+            }
+        }
+
+        public async Task DeleteSessionAsync(int sessionId)
+        {
+            try
+            {
+                var session = await _context.ChatSessions.FindAsync(sessionId);
+                if (session != null)
+                {
+                    _context.ChatSessions.Remove(session);
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Session {SessionId} deleted successfully", sessionId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting session {SessionId}", sessionId);
+                throw;
             }
         }
     }
