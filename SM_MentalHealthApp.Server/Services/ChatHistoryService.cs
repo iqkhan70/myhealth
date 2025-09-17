@@ -266,6 +266,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 return await _context.ChatSessions
                     .Include(s => s.Patient)
+                    .Include(s => s.User)
                     .Include(s => s.Messages.OrderBy(m => m.Timestamp))
                     .FirstOrDefaultAsync(s => s.Id == sessionId);
             }
@@ -293,6 +294,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 var query = _context.ChatSessions
                     .Include(s => s.Patient)
+                    .Include(s => s.User)
                     .AsQueryable();
 
                 // Role-based session filtering

@@ -52,23 +52,32 @@
             <h2>💬 Chat History</h2>
             <p class="text-muted">View and search your conversation history with the AI assistant</p>
             
-            @if (currentUserRole == "Doctor" && patients != null && patients.Any())
-            {
-                <div class="row mb-3">
+            <div class="row mb-3">
+                @if (currentUserRole == "Doctor" && patients != null && patients.Any())
+                {
                     <div class="col-md-6">
                         <label for="patientFilter" class="form-label">Filter by Patient:</label>
-                        <select id="patientFilter" class="form-select" @onchange="OnPatientFilterChanged">
-                            <option value="">All Patients</option>
-                            @foreach (var patient in patients)
+                        <div class="input-group">
+                            <select id="patientFilter" class="form-select" @onchange="OnPatientFilterChanged">
+                                <option value="">All Patients (@patients.Count total)</option>
+                                @foreach (var patient in patients.OrderBy(p => p.FullName))
+                                {
+                                    <option value="@patient.Id" selected="@(selectedPatientId == patient.Id)">
+                                        @patient.FullName (@patient.Email)
+                                    </option>
+                                }
+                            </select>
+                            @if (selectedPatientId.HasValue)
                             {
-                                <option value="@patient.Id" selected="@(selectedPatientId == patient.Id)">
-                                    @patient.FullName
-                                </option>
+                                <button class="btn btn-outline-secondary" type="button" @onclick="ClearPatientFilter">
+                                    <i class="fas fa-times"></i> Clear
+                                </button>
                             }
-                        </select>
+                        </div>
                     </div>
-                </div>
-            }
+                }
+                
+            </div>
         </div>
     </div>
 
@@ -104,7 +113,7 @@
                         class="w-100"
                         style="overflow-x: hidden;">
             <Columns>
-                <RadzenDataGridColumn TItem="ChatSession" Property="PatientId" Title="About Patient" Width="200px">
+                <RadzenDataGridColumn TItem="ChatSession" Property="PatientDisplayName" Title="About Patient" Width="200px">
                     <Template Context="session">
                         @if (session.PatientId.HasValue)
                         {
@@ -117,6 +126,23 @@
                         @if (session.UserId != GetCurrentUserId())
                         {
                             <span class="badge bg-warning ms-1">Doctor Chat</span>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                
+                <RadzenDataGridColumn TItem="ChatSession" Property="UserDisplayName" Title="Conducted By" Width="150px">
+                    <Template Context="session">
+                        @if (session.User != null)
+                        {
+                            <div>
+                                <strong>@(session.User.FullName ?? $"{session.User.FirstName} {session.User.LastName}")</strong>
+                                <br>
+                                <small class="text-muted">@(session.User.Email ?? "Unknown")</small>
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Unknown User</span>
                         }
                     </Template>
                 </RadzenDataGridColumn>
@@ -306,7 +332,7 @@
                     ? $"api/chathistory/sessions?patientId={selectedPatientId.Value}"
                     : "api/chathistory/sessions";
                 var response = await Http.GetFromJsonAsync<List<ChatSession>>(url);
-            sessions = response ?? new List<ChatSession>();
+                sessions = response ?? new List<ChatSession>();
         }
         catch (Exception ex)
         {
@@ -478,6 +504,13 @@
         selectedPatientId = string.IsNullOrEmpty(e.Value?.ToString()) ? null : int.Parse(e.Value.ToString()!);
         await LoadSessions();
     }
+    
+    private async Task ClearPatientFilter()
+    {
+        selectedPatientId = null;
+        await LoadSessions();
+    }
+    
 
     private int GetCurrentUserId()
     {

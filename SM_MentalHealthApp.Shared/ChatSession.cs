@@ -32,6 +32,13 @@ namespace SM_MentalHealthApp.Shared
         public User? User { get; set; }
         public User? Patient { get; set; }
         public ICollection<ChatMessage> Messages { get; set; } = new List<ChatMessage>();
+
+        // Computed properties for search/filtering
+        public string PatientDisplayName => PatientId.HasValue
+            ? (Patient?.FullName ?? $"Patient {PatientId}")
+            : "General Chat";
+
+        public string UserDisplayName => User?.FullName ?? $"User {UserId}";
     }
 
     public enum PrivacyLevel
