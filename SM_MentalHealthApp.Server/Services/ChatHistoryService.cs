@@ -35,20 +35,32 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                // Try to find an active session for this user and patient combination
+                // Check if there's an active session for TODAY only
+                var today = DateTime.UtcNow.Date;
                 var existingSession = await _context.ChatSessions
                     .FirstOrDefaultAsync(s => s.UserId == userId &&
                                             s.PatientId == patientId &&
-                                            s.IsActive);
+                                            s.IsActive &&
+                                            s.CreatedAt.Date == today);
 
                 if (existingSession != null)
                 {
-                    _logger.LogInformation("Found existing active session {SessionId} for user {UserId}, patient {PatientId}",
+                    _logger.LogInformation("Found existing active session for today {SessionId} for user {UserId}, patient {PatientId}",
                         existingSession.SessionId, userId, patientId);
                     return existingSession;
                 }
 
-                // Create new session
+                // Deactivate any old sessions for this user/patient combination
+                var oldSessions = await _context.ChatSessions
+                    .Where(s => s.UserId == userId && s.PatientId == patientId && s.IsActive)
+                    .ToListAsync();
+
+                foreach (var oldSession in oldSessions)
+                {
+                    oldSession.IsActive = false;
+                }
+
+                // Create new session for today
                 var sessionId = Guid.NewGuid().ToString();
                 var newSession = new ChatSession
                 {
@@ -197,8 +209,13 @@ namespace SM_MentalHealthApp.Server.Services
                 var session = await _context.ChatSessions.FindAsync(sessionId);
                 if (session != null)
                 {
-                    session.LastActivityAt = DateTime.UtcNow;
-                    await _context.SaveChangesAsync();
+                    // Only update LastActivityAt if the session was created today
+                    var today = DateTime.UtcNow.Date;
+                    if (session.CreatedAt.Date == today)
+                    {
+                        session.LastActivityAt = DateTime.UtcNow;
+                        await _context.SaveChangesAsync();
+                    }
                 }
             }
             catch (Exception ex)
