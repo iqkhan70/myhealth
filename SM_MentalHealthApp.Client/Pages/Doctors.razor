@@ -1,0 +1,935 @@
+@page "/doctors"
+@inject HttpClient Http
+@inject NotificationService NotificationService
+@inject IAuthService AuthService
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using System.Net.Http
+
+<div class="doctors-page">
+    <div class="doctors-header">
+        @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+        {
+            <h2>All Doctors</h2>
+            <p>Manage all doctor accounts and their information.</p>
+            <button @onclick="ShowAddDoctorForm" class="add-doctor-btn">
+                ➕ Add New Doctor
+            </button>
+        }
+        else
+        {
+            <h2>Access Denied</h2>
+            <p>You don't have permission to view this page.</p>
+        }
+    </div>
+
+    @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+    {
+        <!-- Custom Filters -->
+        <div class="custom-filters">
+            <div class="row">
+                <div class="col-md-3">
+                    <label class="form-label">Filter by Status:</label>
+                    <RadzenDropDown Data="@statusOptions"
+                                   ValueProperty="Value"
+                                   TextProperty="Text"
+                                   @bind-Value="selectedStatusFilter"
+                                   Placeholder="All Statuses"
+                                   Style="width: 100%" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Filter by Specialization:</label>
+                    <RadzenDropDown Data="@specializationOptions"
+                                   ValueProperty="Value"
+                                   TextProperty="Text"
+                                   @bind-Value="selectedSpecializationFilter"
+                                   Placeholder="All Specializations"
+                                   Style="width: 100%" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <div>
+                        <RadzenButton Text="Clear Filters" 
+                                     ButtonStyle="ButtonStyle.Light" 
+                                     Click="@ClearFilters"
+                                     Style="width: 100%" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grid Info -->
+        <div class="grid-info">
+            <small class="text-muted">
+                <i class="fas fa-info-circle"></i>
+                Use the filter row below each column header for basic filtering, or use the custom filters above for status and specialization.
+            </small>
+        </div>
+
+        <!-- Doctors Grid -->
+        <div class="doctors-content">
+            @if (isLoading)
+            {
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>Loading doctors...</p>
+                </div>
+            }
+            else
+            {
+                <RadzenDataGrid Data="@GetFilteredDoctors()" 
+                               TItem="User" 
+                               AllowPaging="true" 
+                               PageSize="15"
+                               AllowSorting="true" 
+                               FilterMode="FilterMode.Advanced" 
+                               ShowPagingSummary="true"
+                               EmptyText="No doctors found"
+                               AllowFiltering="true"
+                               FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                               ShowFilterRow="true"
+                               ShowFilterRowButtons="true">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="User" Property="FirstName" Title="Name" Width="200px" Filterable="true">
+                            <Template Context="doctor">
+                                <div>
+                                    <strong>@doctor.FirstName @doctor.LastName</strong>
+                                    <br />
+                                    <small class="text-muted">@doctor.Email</small>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="Specialization" Title="Specialization" Width="150px" Filterable="true">
+                            <Template Context="doctor">
+                                @if (!string.IsNullOrEmpty(doctor.Specialization))
+                                {
+                                    <span class="badge badge-info">@doctor.Specialization</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Not specified</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="LicenseNumber" Title="License Number" Width="150px" Filterable="true">
+                            <Template Context="doctor">
+                                @if (!string.IsNullOrEmpty(doctor.LicenseNumber))
+                                {
+                                    <span class="license-number">@doctor.LicenseNumber</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Not specified</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="120px" Filterable="true">
+                            <Template Context="doctor">
+                                @doctor.DateOfBirth.ToString("MMM dd, yyyy")
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="Gender" Title="Gender" Width="100px" Filterable="true">
+                            <Template Context="doctor">
+                                @if (!string.IsNullOrEmpty(doctor.Gender))
+                                {
+                                    <span class="badge badge-secondary">@doctor.Gender</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Not specified</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="IsActive" Title="Status" Width="100px" Filterable="false">
+                            <Template Context="doctor">
+                                <span class="status-badge @(doctor.IsActive ? "active" : "inactive")">
+                                    @(doctor.IsActive ? "Active" : "Inactive")
+                                </span>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="LastLoginAt" Title="Last Login" Width="120px" Filterable="true">
+                            <Template Context="doctor">
+                                @(doctor.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="CreatedAt" Title="Member Since" Width="120px" Filterable="true">
+                            <Template Context="doctor">
+                                @doctor.CreatedAt.ToString("MMM dd, yyyy")
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="User" Property="Actions" Title="Actions" Width="200px" Sortable="false" Filterable="false">
+                            <Template Context="doctor">
+                                <div class="action-buttons">
+                                    <RadzenButton Icon="visibility" 
+                                                ButtonStyle="ButtonStyle.Info" 
+                                                ButtonType="ButtonType.Button" 
+                                                Size="ButtonSize.Small"
+                                                Click="@(() => ViewDoctorDetails(doctor))"
+                                                Title="View Details" />
+                                    
+                                    <RadzenButton Icon="edit" 
+                                                ButtonStyle="ButtonStyle.Success" 
+                                                ButtonType="ButtonType.Button" 
+                                                Size="ButtonSize.Small"
+                                                Click="@(() => EditDoctor(doctor))"
+                                                Title="Edit Doctor" />
+                                    
+                                    @if (doctor.IsActive)
+                                    {
+                                        <RadzenButton Icon="block" 
+                                                    ButtonStyle="ButtonStyle.Danger" 
+                                                    ButtonType="ButtonType.Button" 
+                                                    Size="ButtonSize.Small"
+                                                    Click="@(() => DeactivateDoctor(doctor))"
+                                                    Title="Deactivate" />
+                                    }
+                                    else
+                                    {
+                                        <RadzenButton Icon="check" 
+                                                    ButtonStyle="ButtonStyle.Success" 
+                                                    ButtonType="ButtonType.Button" 
+                                                    Size="ButtonSize.Small"
+                                                    Click="@(() => ReactivateDoctor(doctor))"
+                                                    Title="Reactivate" />
+                                    }
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </div>
+    }
+</div>
+
+<!-- Add/Edit Doctor Modal -->
+@if (showDoctorForm)
+{
+    <div class="modal-overlay" @onclick="CloseDoctorForm">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(editingDoctor == null ? "Add New Doctor" : "Edit Doctor")</h3>
+                <button @onclick="CloseDoctorForm" class="close-btn">✕</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>First Name *</label>
+                        <input @bind="doctorForm.FirstName" class="form-input" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Last Name *</label>
+                        <input @bind="doctorForm.LastName" class="form-input" />
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Email *</label>
+                        <input @bind="doctorForm.Email" type="email" class="form-input" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Password @(editingDoctor == null ? "*" : "(leave blank to keep current)")</label>
+                        <input @bind="doctorForm.Password" type="password" class="form-input" />
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date of Birth *</label>
+                        <input @bind="doctorForm.DateOfBirth" type="date" class="form-input" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Gender</label>
+                        <select @bind="doctorForm.Gender" class="form-input">
+                            <option value="">Select Gender</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                            <option value="Prefer not to say">Prefer not to say</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Specialization *</label>
+                        <input @bind="doctorForm.Specialization" class="form-input" placeholder="e.g., Psychiatry, Psychology" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>License Number *</label>
+                        <input @bind="doctorForm.LicenseNumber" class="form-input" placeholder="Enter license number" />
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button @onclick="CloseDoctorForm" class="btn btn-secondary">Cancel</button>
+                <button @onclick="SaveDoctor" disabled="@isSaving" class="btn btn-primary">
+                    @(isSaving ? "Saving..." : (editingDoctor == null ? "Add Doctor" : "Update Doctor"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Doctor Details Modal -->
+@if (showDoctorDetails && selectedDoctor != null)
+{
+    <div class="modal-overlay" @onclick="CloseDoctorDetails">
+        <div class="modal-content doctor-details-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Doctor Details - @selectedDoctor.FirstName @selectedDoctor.LastName</h3>
+                <button @onclick="CloseDoctorDetails" class="close-btn">✕</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="doctor-details-grid">
+                    <div class="detail-section">
+                        <h4>Personal Information</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Name:</span>
+                            <span class="detail-value">@selectedDoctor.FirstName @selectedDoctor.LastName</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Email:</span>
+                            <span class="detail-value">@selectedDoctor.Email</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Date of Birth:</span>
+                            <span class="detail-value">@selectedDoctor.DateOfBirth.ToString("MMM dd, yyyy")</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Gender:</span>
+                            <span class="detail-value">@(selectedDoctor.Gender ?? "Not specified")</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Status:</span>
+                            <span class="status-badge @(selectedDoctor.IsActive ? "active" : "inactive")">
+                                @(selectedDoctor.IsActive ? "Active" : "Inactive")
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-section">
+                        <h4>Professional Information</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Specialization:</span>
+                            <span class="detail-value">@(selectedDoctor.Specialization ?? "Not specified")</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">License Number:</span>
+                            <span class="detail-value">@(selectedDoctor.LicenseNumber ?? "Not specified")</span>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-section">
+                        <h4>Account Information</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Member Since:</span>
+                            <span class="detail-value">@selectedDoctor.CreatedAt.ToString("MMM dd, yyyy 'at' h:mm tt")</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Last Login:</span>
+                            <span class="detail-value">@(selectedDoctor.LastLoginAt?.ToString("MMM dd, yyyy 'at' h:mm tt") ?? "Never")</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Must Change Password:</span>
+                            <span class="detail-value">@(selectedDoctor.MustChangePassword ? "Yes" : "No")</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button @onclick="CloseDoctorDetails" class="btn btn-secondary">Close</button>
+                <button @onclick="() => { CloseDoctorDetails(); EditDoctor(selectedDoctor); }" class="btn btn-primary">Edit Doctor</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<User> doctors = new();
+    private User? selectedDoctor;
+    private bool isLoading = true;
+    private bool showDoctorForm = false;
+    private bool showDoctorDetails = false;
+    private bool isSaving = false;
+    private User? editingDoctor;
+    private CreateDoctorRequest doctorForm = new();
+    
+    // Custom filter variables
+    private bool? selectedStatusFilter = null;
+    private string? selectedSpecializationFilter = null;
+    
+    private readonly List<object> statusOptions = new()
+    {
+        new { Value = (bool?)null, Text = "All Statuses" },
+        new { Value = (bool?)true, Text = "Active" },
+        new { Value = (bool?)false, Text = "Inactive" }
+    };
+    
+    private readonly List<object> specializationOptions = new()
+    {
+        new { Value = (string?)null, Text = "All Specializations" },
+        new { Value = "Psychiatry", Text = "Psychiatry" },
+        new { Value = "Psychology", Text = "Psychology" },
+        new { Value = "Counseling", Text = "Counseling" },
+        new { Value = "Therapy", Text = "Therapy" },
+        new { Value = "Other", Text = "Other" }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDoctors();
+    }
+
+    private async Task LoadDoctors()
+    {
+        try
+        {
+            isLoading = true;
+            
+            if (AuthService.CurrentUser?.RoleId == 3) // Admin
+            {
+                doctors = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors") ?? new();
+            }
+            else
+            {
+                doctors = new(); // No access
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load doctors: " + ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private List<User> GetFilteredDoctors()
+    {
+        var filtered = doctors.Where(d => d.RoleId == 2).AsEnumerable(); // Only doctors
+
+        // Apply status filter
+        if (selectedStatusFilter.HasValue)
+        {
+            filtered = filtered.Where(d => d.IsActive == selectedStatusFilter.Value);
+        }
+
+        // Apply specialization filter
+        if (!string.IsNullOrEmpty(selectedSpecializationFilter))
+        {
+            filtered = filtered.Where(d => d.Specialization == selectedSpecializationFilter);
+        }
+
+        return filtered.ToList();
+    }
+
+    private void ClearFilters()
+    {
+        selectedStatusFilter = null;
+        selectedSpecializationFilter = null;
+        StateHasChanged();
+    }
+
+    private void ShowAddDoctorForm()
+    {
+        editingDoctor = null;
+        doctorForm = new CreateDoctorRequest { DateOfBirth = DateTime.Now.AddYears(-30) };
+        showDoctorForm = true;
+    }
+
+    private void EditDoctor(User doctor)
+    {
+        editingDoctor = doctor;
+        doctorForm = new CreateDoctorRequest
+        {
+            FirstName = doctor.FirstName,
+            LastName = doctor.LastName,
+            Email = doctor.Email,
+            DateOfBirth = doctor.DateOfBirth,
+            Gender = doctor.Gender ?? "",
+            Specialization = doctor.Specialization ?? "",
+            LicenseNumber = doctor.LicenseNumber ?? ""
+        };
+        showDoctorForm = true;
+    }
+
+    private void CloseDoctorForm()
+    {
+        showDoctorForm = false;
+        editingDoctor = null;
+        doctorForm = new CreateDoctorRequest();
+    }
+
+    private async Task SaveDoctor()
+    {
+        if (string.IsNullOrWhiteSpace(doctorForm.FirstName) || 
+            string.IsNullOrWhiteSpace(doctorForm.LastName) || 
+            string.IsNullOrWhiteSpace(doctorForm.Email) ||
+            string.IsNullOrWhiteSpace(doctorForm.Specialization) ||
+            string.IsNullOrWhiteSpace(doctorForm.LicenseNumber))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Please fill in all required fields.");
+            return;
+        }
+
+        if (editingDoctor == null && string.IsNullOrWhiteSpace(doctorForm.Password))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Password is required for new doctors.");
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            
+            if (editingDoctor == null)
+            {
+                // Create new doctor
+                var result = await Http.PostAsJsonAsync("api/admin/create-doctor", doctorForm);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Doctor added successfully!");
+                    await LoadDoctors(); // Reload the list
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to add doctor: " + error);
+                }
+            }
+            else
+            {
+                // Update existing doctor
+                var updateRequest = new UpdateDoctorRequest
+                {
+                    FirstName = doctorForm.FirstName,
+                    LastName = doctorForm.LastName,
+                    Email = doctorForm.Email,
+                    DateOfBirth = doctorForm.DateOfBirth,
+                    Gender = doctorForm.Gender,
+                    Specialization = doctorForm.Specialization,
+                    LicenseNumber = doctorForm.LicenseNumber,
+                    Password = string.IsNullOrWhiteSpace(doctorForm.Password) ? null : doctorForm.Password
+                };
+
+                var result = await Http.PutAsJsonAsync($"api/admin/doctors/{editingDoctor.Id}", updateRequest);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Doctor updated successfully!");
+                    await LoadDoctors(); // Reload the list
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update doctor: " + error);
+                }
+            }
+            
+            CloseDoctorForm();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to save doctor: " + ex.Message);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ViewDoctorDetails(User doctor)
+    {
+        selectedDoctor = doctor;
+        showDoctorDetails = true;
+    }
+
+    private void CloseDoctorDetails()
+    {
+        showDoctorDetails = false;
+        selectedDoctor = null;
+    }
+
+    private async Task DeactivateDoctor(User doctor)
+    {
+        try
+        {
+            var result = await Http.DeleteAsync($"api/admin/doctors/{doctor.Id}/deactivate");
+            if (result.IsSuccessStatusCode)
+            {
+                doctor.IsActive = false;
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Doctor deactivated successfully!");
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to deactivate doctor.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to deactivate doctor: " + ex.Message);
+        }
+    }
+
+    private async Task ReactivateDoctor(User doctor)
+    {
+        try
+        {
+            var result = await Http.PostAsync($"api/admin/doctors/{doctor.Id}/reactivate", null);
+            if (result.IsSuccessStatusCode)
+            {
+                doctor.IsActive = true;
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Doctor reactivated successfully!");
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reactivate doctor.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reactivate doctor: " + ex.Message);
+        }
+    }
+
+    public class CreateDoctorRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string Specialization { get; set; } = string.Empty;
+        public string LicenseNumber { get; set; } = string.Empty;
+    }
+
+    public class UpdateDoctorRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string Specialization { get; set; } = string.Empty;
+        public string LicenseNumber { get; set; } = string.Empty;
+        public string? Password { get; set; }
+    }
+}
+
+<style>
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .action-buttons .rz-button {
+        margin: 2px;
+    }
+
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+    }
+
+    .status-badge.active {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+
+    .status-badge.inactive {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+
+    .badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .badge.badge-info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .badge.badge-secondary {
+        background-color: #e2e3e5;
+        color: #383d41;
+    }
+
+    .text-muted {
+        color: #6c757d;
+        font-size: 12px;
+    }
+
+    .license-number {
+        font-family: monospace;
+        font-size: 12px;
+        background-color: #f8f9fa;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+
+    .grid-info {
+        margin-bottom: 15px;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        border-left: 4px solid #007bff;
+    }
+
+    .grid-info i {
+        margin-right: 5px;
+        color: #007bff;
+    }
+
+    .custom-filters {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        border: 1px solid #dee2e6;
+    }
+
+    .custom-filters .form-label {
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 5px;
+    }
+
+    .custom-filters .row {
+        margin: 0;
+    }
+
+    .custom-filters .col-md-3 {
+        padding: 0 10px;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    .form-group {
+        flex: 1;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #333;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        text-decoration: none;
+        display: inline-block;
+        text-align: center;
+        transition: all 0.15s ease-in-out;
+    }
+
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background-color: #0056b3;
+    }
+
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+        background-color: #545b62;
+    }
+
+    .btn:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+    }
+
+    .add-doctor-btn {
+        background-color: #28a745;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 500;
+        transition: background-color 0.15s ease-in-out;
+    }
+
+    .add-doctor-btn:hover {
+        background-color: #218838;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        max-width: 600px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        padding: 20px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        color: #333;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6c757d;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .close-btn:hover {
+        color: #333;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .modal-footer {
+        padding: 20px;
+        border-top: 1px solid #dee2e6;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .doctor-details-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    .detail-section h4 {
+        color: #007bff;
+        margin-bottom: 15px;
+        font-size: 16px;
+        border-bottom: 2px solid #e9ecef;
+        padding-bottom: 5px;
+    }
+
+    .detail-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #f8f9fa;
+    }
+
+    .detail-label {
+        font-weight: 500;
+        color: #6c757d;
+        min-width: 120px;
+    }
+
+    .detail-value {
+        color: #333;
+        text-align: right;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .loading-spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>

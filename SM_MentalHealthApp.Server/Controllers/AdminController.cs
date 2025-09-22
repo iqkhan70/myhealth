@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
+using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Shared;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.EntityFrameworkCore;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -9,10 +13,12 @@ namespace SM_MentalHealthApp.Server.Controllers
     public class AdminController : ControllerBase
     {
         private readonly IAdminService _adminService;
+        private readonly JournalDbContext _context;
 
-        public AdminController(IAdminService adminService)
+        public AdminController(IAdminService adminService, JournalDbContext context)
         {
             _adminService = adminService;
+            _context = context;
         }
 
         [HttpGet("doctors")]
@@ -120,6 +126,171 @@ namespace SM_MentalHealthApp.Server.Controllers
                 return StatusCode(500, $"Error retrieving doctors for patient: {ex.Message}");
             }
         }
+
+        [HttpPost("create-doctor")]
+        public async Task<ActionResult> CreateDoctor([FromBody] CreateDoctorRequest request)
+        {
+            try
+            {
+                // Check if email already exists
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+                if (existingUser != null)
+                {
+                    return BadRequest("A doctor with this email already exists.");
+                }
+
+                // Create new doctor user
+                var doctor = new User
+                {
+                    FirstName = request.FirstName,
+                    LastName = request.LastName,
+                    Email = request.Email,
+                    PasswordHash = HashPassword(request.Password),
+                    DateOfBirth = request.DateOfBirth,
+                    Gender = request.Gender,
+                    RoleId = 2, // Doctor role
+                    Specialization = request.Specialization,
+                    LicenseNumber = request.LicenseNumber,
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true,
+                    MustChangePassword = true // Force password change on first login
+                };
+
+                _context.Users.Add(doctor);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Doctor created successfully", doctorId = doctor.Id });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error creating doctor: {ex.Message}");
+            }
+        }
+
+        [HttpPut("doctors/{id}")]
+        public async Task<ActionResult> UpdateDoctor(int id, [FromBody] UpdateDoctorRequest request)
+        {
+            try
+            {
+                var doctor = await _context.Users.FindAsync(id);
+                if (doctor == null)
+                {
+                    return NotFound("Doctor not found.");
+                }
+
+                if (doctor.RoleId != 2)
+                {
+                    return BadRequest("User is not a doctor.");
+                }
+
+                // Check if email already exists (excluding current doctor)
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email && u.Id != id);
+
+                if (existingUser != null)
+                {
+                    return BadRequest("A user with this email already exists.");
+                }
+
+                // Update doctor information
+                doctor.FirstName = request.FirstName;
+                doctor.LastName = request.LastName;
+                doctor.Email = request.Email;
+                doctor.DateOfBirth = request.DateOfBirth;
+                doctor.Gender = request.Gender;
+                doctor.Specialization = request.Specialization;
+                doctor.LicenseNumber = request.LicenseNumber;
+
+                // Update password if provided
+                if (!string.IsNullOrWhiteSpace(request.Password))
+                {
+                    doctor.PasswordHash = HashPassword(request.Password);
+                    doctor.MustChangePassword = true;
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Doctor updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error updating doctor: {ex.Message}");
+            }
+        }
+
+        [HttpDelete("doctors/{id}/deactivate")]
+        public async Task<ActionResult> DeactivateDoctor(int id)
+        {
+            try
+            {
+                var doctor = await _context.Users.FindAsync(id);
+                if (doctor == null)
+                {
+                    return NotFound("Doctor not found.");
+                }
+
+                if (doctor.RoleId != 2)
+                {
+                    return BadRequest("User is not a doctor.");
+                }
+
+                doctor.IsActive = false;
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Doctor deactivated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error deactivating doctor: {ex.Message}");
+            }
+        }
+
+        [HttpPost("doctors/{id}/reactivate")]
+        public async Task<ActionResult> ReactivateDoctor(int id)
+        {
+            try
+            {
+                var doctor = await _context.Users.FindAsync(id);
+                if (doctor == null)
+                {
+                    return NotFound("Doctor not found.");
+                }
+
+                if (doctor.RoleId != 2)
+                {
+                    return BadRequest("User is not a doctor.");
+                }
+
+                doctor.IsActive = true;
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Doctor reactivated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error reactivating doctor: {ex.Message}");
+            }
+        }
+
+        private string HashPassword(string password)
+        {
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                var salt = new byte[16];
+                rng.GetBytes(salt);
+
+                using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 10000, HashAlgorithmName.SHA256))
+                {
+                    var hash = pbkdf2.GetBytes(32);
+                    var hashBytes = new byte[48];
+                    Array.Copy(salt, 0, hashBytes, 0, 16);
+                    Array.Copy(hash, 0, hashBytes, 16, 32);
+                    return Convert.ToBase64String(hashBytes);
+                }
+            }
+        }
     }
 
     public class AssignPatientRequest
@@ -132,5 +303,29 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         public int PatientId { get; set; }
         public int DoctorId { get; set; }
+    }
+
+    public class CreateDoctorRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string Specialization { get; set; } = string.Empty;
+        public string LicenseNumber { get; set; } = string.Empty;
+    }
+
+    public class UpdateDoctorRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string Specialization { get; set; } = string.Empty;
+        public string LicenseNumber { get; set; } = string.Empty;
+        public string? Password { get; set; }
     }
 }

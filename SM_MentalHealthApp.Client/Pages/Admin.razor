@@ -244,6 +244,7 @@
     // Search functionality for doctor overview
     private string doctorSearchTerm = string.Empty;
 
+
     protected override async Task OnInitializedAsync()
     {
         // Wait for authentication to be initialized
@@ -415,6 +416,7 @@
         }
     }
 
+
     public class AssignPatientRequest
     {
         public int PatientId { get; set; }
@@ -438,4 +440,5 @@
         public string? DoctorSpecialization { get; set; }
         public DateTime AssignedDate { get; set; }
     }
+
 }
