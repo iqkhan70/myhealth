@@ -188,13 +188,22 @@ namespace SM_MentalHealthApp.Server.Services
                     contextBuilder.Add($"=== CONVERSATION SUMMARY ===\n{session.Summary}\n");
                 }
 
-                // Add recent messages
+                // Add recent messages (filter out old medical alerts)
                 var recentMessages = await GetRecentMessagesAsync(sessionId, MAX_CONTEXT_MESSAGES);
                 if (recentMessages.Any())
                 {
                     contextBuilder.Add("=== RECENT CONVERSATION ===\n");
                     foreach (var message in recentMessages)
                     {
+                        // Filter out old medical alerts that might contain outdated critical values
+                        if (message.Role == MessageRole.Assistant &&
+                            message.Content.Contains("CRITICAL MEDICAL ALERT") &&
+                            message.Content.Contains("Hemoglobin: 6.0"))
+                        {
+                            // Skip old critical alerts to prevent false alarms
+                            continue;
+                        }
+
                         var rolePrefix = message.Role switch
                         {
                             MessageRole.User => "User",

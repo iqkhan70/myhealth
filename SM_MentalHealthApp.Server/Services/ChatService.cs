@@ -233,22 +233,22 @@ namespace SM_MentalHealthApp.Server.Services
             context.AppendLine("- Be concise and avoid repetitive information");
             context.AppendLine("- Always remind that this is AI assistance and final decisions are the doctor's responsibility");
 
-            // Use intelligent context service for smart question processing
+            // ALWAYS use direct content analysis for medical questions to ensure progression analysis works
+            _logger.LogInformation("=== FORCING DIRECT CONTENT ANALYSIS ===");
+            _logger.LogInformation("Patient ID: {PatientId}, Doctor ID: {DoctorId}, Original Prompt: {OriginalPrompt}", patientId, doctorId, originalPrompt);
+
             try
             {
-                _logger.LogInformation("=== USING INTELLIGENT CONTEXT SERVICE ===");
-                _logger.LogInformation("Patient ID: {PatientId}, Doctor ID: {DoctorId}, Original Prompt: {OriginalPrompt}", patientId, doctorId, originalPrompt);
-                var intelligentContext = await _intelligentContextService.ProcessQuestionAsync(originalPrompt, patientId, doctorId);
-                _logger.LogInformation("Intelligent context length: {Length}", intelligentContext.Length);
-                _logger.LogInformation("Intelligent context preview: {Preview}", intelligentContext.Substring(0, Math.Min(200, intelligentContext.Length)));
-                context.AppendLine($"\n{intelligentContext}");
+                var enhancedContext = await _contentAnalysisService.BuildEnhancedContextAsync(patientId, originalPrompt);
+                _logger.LogInformation("Enhanced context length: {Length}", enhancedContext.Length);
+                _logger.LogInformation("Enhanced context preview: {Preview}", enhancedContext.Substring(0, Math.Min(500, enhancedContext.Length)));
+                context.AppendLine($"\n{enhancedContext}");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error using intelligent context service, falling back to basic context");
-                // Fallback to basic context
-                context.AppendLine($"\nDoctor asks: {originalPrompt}");
-                context.AppendLine("\nRespond as a clinical AI assistant, providing detailed insights and recommendations.");
+                _logger.LogError(ex, "Error using content analysis service, falling back to intelligent context");
+                var intelligentContext = await _intelligentContextService.ProcessQuestionAsync(originalPrompt, patientId, doctorId);
+                context.AppendLine($"\n{intelligentContext}");
             }
 
             var prompt = context.ToString();

@@ -229,7 +229,10 @@ If you need general medical information without patient context, I recommend con
             }
 
             // Use the HuggingFace service for medical questions
+            _logger.LogInformation("Calling BuildEnhancedContextAsync for patient {PatientId}", patientId);
             var enhancedContext = await _contentAnalysisService.BuildEnhancedContextAsync(patientId, question);
+            _logger.LogInformation("BuildEnhancedContextAsync returned context length: {Length}", enhancedContext.Length);
+            _logger.LogInformation("Enhanced context preview: {Preview}", enhancedContext.Substring(0, Math.Min(500, enhancedContext.Length)));
             return await _huggingFaceService.GenerateResponse(enhancedContext);
         }
 

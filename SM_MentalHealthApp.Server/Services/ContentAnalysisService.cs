@@ -301,7 +301,41 @@ namespace SM_MentalHealthApp.Server.Services
 
                     if (!string.IsNullOrEmpty(latestAnalysis.ExtractedText))
                     {
-                        context.AppendLine($"Test Results: {latestAnalysis.ExtractedText}");
+                        context.AppendLine($"Current Test Results: {latestAnalysis.ExtractedText}");
+                        context.AppendLine();
+                    }
+
+                    // Show progression analysis - compare latest with previous results
+                    if (sortedAnalyses.Count > 1)
+                    {
+                        var previousAnalysis = sortedAnalyses[1];
+                        context.AppendLine("=== PROGRESSION ANALYSIS ===");
+                        context.AppendLine($"Previous Results ({previousAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}): {previousAnalysis.ExtractedText}");
+                        context.AppendLine($"Current Results ({latestAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}): {latestAnalysis.ExtractedText}");
+                        context.AppendLine();
+
+                        // Analyze improvement or deterioration
+                        var currentHasCritical = latestAnalysis.AnalysisResults.ContainsKey("CriticalValues");
+                        var previousHasCritical = previousAnalysis.AnalysisResults.ContainsKey("CriticalValues");
+                        var currentHasNormal = latestAnalysis.AnalysisResults.ContainsKey("NormalValues");
+                        var previousHasNormal = previousAnalysis.AnalysisResults.ContainsKey("NormalValues");
+
+                        if (previousHasCritical && !currentHasCritical && currentHasNormal)
+                        {
+                            context.AppendLine("✅ **IMPROVEMENT NOTED:** Previous results showed critical values, but current results show normal values. This indicates positive progress, though continued monitoring is recommended.");
+                        }
+                        else if (!previousHasCritical && currentHasCritical)
+                        {
+                            context.AppendLine("⚠️ **DETERIORATION NOTED:** Current results show critical values where previous results were normal. Immediate attention may be required.");
+                        }
+                        else if (previousHasCritical && currentHasCritical)
+                        {
+                            context.AppendLine("🚨 **CRITICAL VALUES PERSIST:** Both previous and current results show critical values. Immediate medical attention is required.");
+                        }
+                        else
+                        {
+                            context.AppendLine("📊 **STABLE CONDITION:** Results remain consistent between previous and current tests.");
+                        }
                         context.AppendLine();
                     }
 
@@ -312,7 +346,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                     if (hasCriticalValues || hasAbnormalValues || hasNormalValues)
                     {
-                        context.AppendLine("Current Status:");
+                        context.AppendLine("Current Status Assessment:");
 
                         if (hasCriticalValues)
                         {
@@ -320,7 +354,7 @@ namespace SM_MentalHealthApp.Server.Services
                             if (criticalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
                             {
                                 var criticalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                                context.AppendLine("  Critical Values: " + string.Join(", ", criticalValues));
+                                context.AppendLine("  🚨 Critical Values: " + string.Join(", ", criticalValues));
                             }
                         }
 
@@ -330,7 +364,7 @@ namespace SM_MentalHealthApp.Server.Services
                             if (abnormalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
                             {
                                 var abnormalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                                context.AppendLine("  Abnormal Values: " + string.Join(", ", abnormalValues));
+                                context.AppendLine("  ⚠️ Abnormal Values: " + string.Join(", ", abnormalValues));
                             }
                         }
 
@@ -340,7 +374,7 @@ namespace SM_MentalHealthApp.Server.Services
                             if (normalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
                             {
                                 var normalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                                context.AppendLine("  Normal Values: " + string.Join(", ", normalValues));
+                                context.AppendLine("  ✅ Normal Values: " + string.Join(", ", normalValues));
                             }
                         }
                         context.AppendLine();
