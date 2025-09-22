@@ -2,6 +2,20 @@ using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 
+public class UserUpdateRequest
+{
+    public int Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public DateTime DateOfBirth { get; set; }
+    public string? Gender { get; set; }
+    public int RoleId { get; set; }
+    public bool IsActive { get; set; }
+    public string? Specialization { get; set; }
+    public string? LicenseNumber { get; set; }
+}
+
 namespace SM_MentalHealthApp.Server.Controllers
 {
     [ApiController]
@@ -59,15 +73,29 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPut("{id}")]
-        public async Task<ActionResult<User>> UpdateUser(int id, [FromBody] User user)
+        public async Task<ActionResult<User>> UpdateUser(int id, [FromBody] UserUpdateRequest request)
         {
-            if (id != user.Id)
+            if (id != request.Id)
             {
                 return BadRequest("ID mismatch");
             }
 
             try
             {
+                var user = new User
+                {
+                    Id = request.Id,
+                    FirstName = request.FirstName,
+                    LastName = request.LastName,
+                    Email = request.Email,
+                    DateOfBirth = request.DateOfBirth,
+                    Gender = request.Gender,
+                    RoleId = request.RoleId,
+                    IsActive = request.IsActive,
+                    Specialization = request.Specialization,
+                    LicenseNumber = request.LicenseNumber
+                };
+
                 var updatedUser = await _userService.UpdateUserAsync(user);
                 return Ok(updatedUser);
             }

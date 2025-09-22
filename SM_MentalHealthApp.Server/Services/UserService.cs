@@ -18,7 +18,7 @@ namespace SM_MentalHealthApp.Server.Services
             // Check if user with email already exists
             var existingUser = await _context.Users
                 .FirstOrDefaultAsync(u => u.Email == user.Email);
-            
+
             if (existingUser != null)
             {
                 throw new InvalidOperationException("A user with this email already exists.");
@@ -72,6 +72,8 @@ namespace SM_MentalHealthApp.Server.Services
             existingUser.Email = user.Email;
             existingUser.DateOfBirth = user.DateOfBirth;
             existingUser.Gender = user.Gender;
+            existingUser.RoleId = user.RoleId;
+            existingUser.IsActive = user.IsActive;
             existingUser.LastLoginAt = DateTime.UtcNow;
 
             // Update role-specific fields if they exist
@@ -151,8 +153,8 @@ namespace SM_MentalHealthApp.Server.Services
                 .GroupBy(e => e.Mood)
                 .ToDictionary(g => g.Key, g => g.Count());
 
-            var averageMood = moodCounts.Any() 
-                ? moodCounts.OrderByDescending(kvp => kvp.Value).First().Key 
+            var averageMood = moodCounts.Any()
+                ? moodCounts.OrderByDescending(kvp => kvp.Value).First().Key
                 : "Unknown";
 
             return new UserStats

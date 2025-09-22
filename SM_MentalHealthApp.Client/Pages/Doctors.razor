@@ -92,17 +92,24 @@
                     <Columns>
                         <RadzenDataGridColumn TItem="User" Property="FirstName" Title="Name" Width="200px" Filterable="true">
                             <Template Context="doctor">
-                                <div>
-                                    <strong>@doctor.FirstName @doctor.LastName</strong>
-                                    <br />
-                                    <small class="text-muted">@doctor.Email</small>
-                                </div>
+                                @if (doctor != null)
+                                {
+                                    <div>
+                                        <strong>@(doctor.FirstName ?? "") @(doctor.LastName ?? "")</strong>
+                                        <br />
+                                        <small class="text-muted">@(doctor.Email ?? "")</small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="text-muted">Invalid doctor data</div>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="Specialization" Title="Specialization" Width="150px" Filterable="true">
                             <Template Context="doctor">
-                                @if (!string.IsNullOrEmpty(doctor.Specialization))
+                                @if (doctor != null && !string.IsNullOrEmpty(doctor.Specialization))
                                 {
                                     <span class="badge badge-info">@doctor.Specialization</span>
                                 }
@@ -115,7 +122,7 @@
 
                         <RadzenDataGridColumn TItem="User" Property="LicenseNumber" Title="License Number" Width="150px" Filterable="true">
                             <Template Context="doctor">
-                                @if (!string.IsNullOrEmpty(doctor.LicenseNumber))
+                                @if (doctor != null && !string.IsNullOrEmpty(doctor.LicenseNumber))
                                 {
                                     <span class="license-number">@doctor.LicenseNumber</span>
                                 }
@@ -128,13 +135,20 @@
 
                         <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="120px" Filterable="true">
                             <Template Context="doctor">
-                                @doctor.DateOfBirth.ToString("MMM dd, yyyy")
+                                @if (doctor != null)
+                                {
+                                    @doctor.DateOfBirth.ToString("MMM dd, yyyy")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="Gender" Title="Gender" Width="100px" Filterable="true">
                             <Template Context="doctor">
-                                @if (!string.IsNullOrEmpty(doctor.Gender))
+                                @if (doctor != null && !string.IsNullOrEmpty(doctor.Gender))
                                 {
                                     <span class="badge badge-secondary">@doctor.Gender</span>
                                 }
@@ -147,27 +161,50 @@
 
                         <RadzenDataGridColumn TItem="User" Property="IsActive" Title="Status" Width="100px" Filterable="false">
                             <Template Context="doctor">
-                                <span class="status-badge @(doctor.IsActive ? "active" : "inactive")">
-                                    @(doctor.IsActive ? "Active" : "Inactive")
-                                </span>
+                                @if (doctor != null)
+                                {
+                                    <span class="status-badge @(doctor.IsActive ? "active" : "inactive")">
+                                        @(doctor.IsActive ? "Active" : "Inactive")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="LastLoginAt" Title="Last Login" Width="120px" Filterable="true">
                             <Template Context="doctor">
-                                @(doctor.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")
+                                @if (doctor != null)
+                                {
+                                    @(doctor.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="CreatedAt" Title="Member Since" Width="120px" Filterable="true">
                             <Template Context="doctor">
-                                @doctor.CreatedAt.ToString("MMM dd, yyyy")
+                                @if (doctor != null)
+                                {
+                                    @doctor.CreatedAt.ToString("MMM dd, yyyy")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="User" Property="Actions" Title="Actions" Width="200px" Sortable="false" Filterable="false">
+                        <RadzenDataGridColumn TItem="User" Property="Actions" Title="Actions" Width="250px" Sortable="false" Filterable="false">
                             <Template Context="doctor">
-                                <div class="action-buttons">
+                                @if (doctor != null)
+                                {
+                                    <div class="action-buttons">
                                     <RadzenButton Icon="visibility" 
                                                 ButtonStyle="ButtonStyle.Info" 
                                                 ButtonType="ButtonType.Button" 
@@ -201,6 +238,11 @@
                                                     Title="Reactivate" />
                                     }
                                 </div>
+                                }
+                                else
+                                {
+                                    <div class="text-muted">Invalid doctor data</div>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
                     </Columns>
@@ -356,7 +398,6 @@
             
             <div class="modal-footer">
                 <button @onclick="CloseDoctorDetails" class="btn btn-secondary">Close</button>
-                <button @onclick="() => { CloseDoctorDetails(); EditDoctor(selectedDoctor); }" class="btn btn-primary">Edit Doctor</button>
             </div>
         </div>
     </div>
@@ -412,9 +453,17 @@
             {
                 doctors = new(); // No access
             }
+            
+            // Debug: Check for null doctors
+            var nullDoctors = doctors.Where(d => d == null).Count();
+            if (nullDoctors > 0)
+            {
+                Console.WriteLine($"Warning: Found {nullDoctors} null doctors in the list");
+            }
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"Error loading doctors: {ex.Message}");
             NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load doctors: " + ex.Message);
         }
         finally
@@ -425,18 +474,18 @@
 
     private List<User> GetFilteredDoctors()
     {
-        var filtered = doctors.Where(d => d.RoleId == 2).AsEnumerable(); // Only doctors
+        var filtered = doctors.Where(d => d != null && d.RoleId == 2).AsEnumerable(); // Only doctors
 
         // Apply status filter
         if (selectedStatusFilter.HasValue)
         {
-            filtered = filtered.Where(d => d.IsActive == selectedStatusFilter.Value);
+            filtered = filtered.Where(d => d != null && d.IsActive == selectedStatusFilter.Value);
         }
 
         // Apply specialization filter
         if (!string.IsNullOrEmpty(selectedSpecializationFilter))
         {
-            filtered = filtered.Where(d => d.Specialization == selectedSpecializationFilter);
+            filtered = filtered.Where(d => d != null && d.Specialization == selectedSpecializationFilter);
         }
 
         return filtered.ToList();
@@ -458,16 +507,18 @@
 
     private void EditDoctor(User doctor)
     {
+        if (doctor == null) return;
+        
         editingDoctor = doctor;
         doctorForm = new CreateDoctorRequest
         {
-            FirstName = doctor.FirstName,
-            LastName = doctor.LastName,
-            Email = doctor.Email,
+            FirstName = doctor.FirstName ?? string.Empty,
+            LastName = doctor.LastName ?? string.Empty,
+            Email = doctor.Email ?? string.Empty,
             DateOfBirth = doctor.DateOfBirth,
-            Gender = doctor.Gender ?? "",
-            Specialization = doctor.Specialization ?? "",
-            LicenseNumber = doctor.LicenseNumber ?? ""
+            Gender = doctor.Gender ?? string.Empty,
+            Specialization = doctor.Specialization ?? string.Empty,
+            LicenseNumber = doctor.LicenseNumber ?? string.Empty
         };
         showDoctorForm = true;
     }
@@ -558,6 +609,8 @@
 
     private void ViewDoctorDetails(User doctor)
     {
+        if (doctor == null) return;
+        
         selectedDoctor = doctor;
         showDoctorDetails = true;
     }
@@ -570,6 +623,8 @@
 
     private async Task DeactivateDoctor(User doctor)
     {
+        if (doctor == null) return;
+        
         try
         {
             var result = await Http.DeleteAsync($"api/admin/doctors/{doctor.Id}/deactivate");
@@ -591,6 +646,8 @@
 
     private async Task ReactivateDoctor(User doctor)
     {
+        if (doctor == null) return;
+        
         try
         {
             var result = await Http.PostAsync($"api/admin/doctors/{doctor.Id}/reactivate", null);

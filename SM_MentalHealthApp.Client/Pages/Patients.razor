@@ -98,23 +98,37 @@
                     <Columns>
                         <RadzenDataGridColumn TItem="User" Property="FirstName" Title="Name" Width="200px" Filterable="true">
                             <Template Context="user">
-                                <div>
-                                    <strong>@user.FirstName @user.LastName</strong>
-                                    <br />
-                                    <small class="text-muted">@user.Email</small>
-                                </div>
+                                @if (user != null)
+                                {
+                                    <div>
+                                        <strong>@(user.FirstName ?? "") @(user.LastName ?? "")</strong>
+                                        <br />
+                                        <small class="text-muted">@(user.Email ?? "")</small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="text-muted">Invalid user data</div>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="120px" Filterable="true">
                             <Template Context="user">
-                                @user.DateOfBirth.ToString("MMM dd, yyyy")
+                                @if (user != null)
+                                {
+                                    @user.DateOfBirth.ToString("MMM dd, yyyy")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="Gender" Title="Gender" Width="100px" Filterable="true">
                             <Template Context="user">
-                                @if (!string.IsNullOrEmpty(user.Gender))
+                                @if (user != null && !string.IsNullOrEmpty(user.Gender))
                                 {
                                     <span class="badge badge-info">@user.Gender</span>
                                 }
@@ -127,33 +141,63 @@
 
                         <RadzenDataGridColumn TItem="User" Property="IsActive" Title="Status" Width="100px" Filterable="false">
                             <Template Context="user">
-                                <span class="status-badge @(user.IsActive ? "active" : "inactive")">
-                                    @(user.IsActive ? "Active" : "Inactive")
-                                </span>
+                                @if (user != null)
+                                {
+                                    <span class="status-badge @(user.IsActive ? "active" : "inactive")">
+                                        @(user.IsActive ? "Active" : "Inactive")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="JournalEntries" Title="Journal Entries" Width="120px" Filterable="false" Sortable="false">
                             <Template Context="user">
-                                <span class="badge badge-primary">@user.JournalEntries.Count</span>
+                                @if (user != null)
+                                {
+                                    <span class="badge badge-primary">@user.JournalEntries.Count</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="LastLoginAt" Title="Last Login" Width="120px" Filterable="true">
                             <Template Context="user">
-                                @(user.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")
+                                @if (user != null)
+                                {
+                                    @(user.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="CreatedAt" Title="Member Since" Width="120px" Filterable="true">
                             <Template Context="user">
-                                @user.CreatedAt.ToString("MMM dd, yyyy")
+                                @if (user != null)
+                                {
+                                    @user.CreatedAt.ToString("MMM dd, yyyy")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="Actions" Title="Actions" Width="250px" Sortable="false" Filterable="false">
                             <Template Context="user">
-                                <div class="action-buttons">
+                                @if (user != null)
+                                {
+                                    <div class="action-buttons">
                                     <RadzenButton Icon="visibility" 
                                                 ButtonStyle="ButtonStyle.Info" 
                                                 ButtonType="ButtonType.Button" 
@@ -213,6 +257,11 @@
                                         }
                                     }
                                 </div>
+                                }
+                                else
+                                {
+                                    <div class="text-muted">Invalid user data</div>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
                     </Columns>
@@ -341,7 +390,6 @@
             
             <div class="modal-footer">
                 <button @onclick="ClosePatientDetails" class="btn btn-secondary">Close</button>
-                <button @onclick="() => { ClosePatientDetails(); EditUser(selectedUser); }" class="btn btn-primary">Edit User</button>
             </div>
         </div>
     </div>
@@ -542,9 +590,17 @@
             
             // Load journal entry counts for each patient
             await LoadJournalEntryCounts();
+            
+            // Debug: Check for null users
+            var nullUsers = users.Where(u => u == null).Count();
+            if (nullUsers > 0)
+            {
+                Console.WriteLine($"Warning: Found {nullUsers} null users in the list");
+            }
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"Error loading users: {ex.Message}");
             NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load users: " + ex.Message);
         }
         finally
@@ -578,12 +634,12 @@
 
     private List<User> GetFilteredUsers()
     {
-        var filtered = users.Where(u => u.RoleId == 1).AsEnumerable();
+        var filtered = users.Where(u => u != null && u.RoleId == 1).AsEnumerable();
 
         // Apply status filter
         if (selectedStatusFilter.HasValue)
         {
-            filtered = filtered.Where(u => u.IsActive == selectedStatusFilter.Value);
+            filtered = filtered.Where(u => u != null && u.IsActive == selectedStatusFilter.Value);
         }
 
         // Apply journal entries filter
@@ -620,15 +676,17 @@
 
     private void EditUser(User user)
     {
+        if (user == null) return;
+        
         editingUser = user;
         userForm = new User
         {
             Id = user.Id,
-            FirstName = user.FirstName,
-            LastName = user.LastName,
-            Email = user.Email,
+            FirstName = user.FirstName ?? string.Empty,
+            LastName = user.LastName ?? string.Empty,
+            Email = user.Email ?? string.Empty,
             DateOfBirth = user.DateOfBirth,
-            Gender = user.Gender,
+            Gender = user.Gender ?? string.Empty,
             IsActive = user.IsActive
         };
         showPatientForm = true;
@@ -657,7 +715,7 @@
             
             if (editingUser == null)
             {
-                var result = await Http.PostAsJsonAsync("api/patient", userForm);
+                var result = await Http.PostAsJsonAsync("api/user", userForm);
                 if (result.IsSuccessStatusCode)
                 {
                     var newUser = await result.Content.ReadFromJsonAsync<User>();
@@ -675,7 +733,7 @@
             }
             else
             {
-                var result = await Http.PutAsJsonAsync($"api/patient/{userForm.Id}", userForm);
+                var result = await Http.PutAsJsonAsync($"api/user/{userForm.Id}", userForm);
                 if (result.IsSuccessStatusCode)
                 {
                     var updatedUser = await result.Content.ReadFromJsonAsync<User>();
@@ -710,6 +768,8 @@
 
     private void ViewUserDetails(User user)
     {
+        if (user == null) return;
+        
         selectedUser = user;
         showPatientDetails = true;
     }
@@ -722,6 +782,8 @@
 
     private async Task ViewUserStats(User user)
     {
+        if (user == null) return;
+        
         try
         {
             selectedUser = user;
@@ -744,6 +806,8 @@
 
     private async Task DeactivateUser(User user)
     {
+        if (user == null) return;
+        
         try
         {
             var result = await Http.DeleteAsync($"api/user/{user.Id}");
@@ -765,6 +829,8 @@
 
     private async Task ReactivateUser(User user)
     {
+        if (user == null) return;
+        
         try
         {
             user.IsActive = true;
@@ -795,6 +861,8 @@
 
     private async Task ShowAssignPatientModal(User user)
     {
+        if (user == null) return;
+        
         try
         {
             selectedUser = user;
@@ -869,6 +937,8 @@
 
     private void ShowUnassignConfirmation(User user)
     {
+        if (user == null) return;
+        
         Console.WriteLine($"ShowUnassignConfirmation called for user: {user.FirstName} {user.LastName}");
         selectedUser = user;
         showUnassignConfirmation = true;

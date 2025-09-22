@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SM_MentalHealthApp.Shared
 {
     public class Role
@@ -33,10 +35,15 @@ namespace SM_MentalHealthApp.Shared
         public string? LicenseNumber { get; set; }
 
         // Navigation properties
+        [JsonIgnore]
         public Role Role { get; set; } = null!;
+        [JsonIgnore]
         public List<JournalEntry> JournalEntries { get; set; } = new();
+        [JsonIgnore]
         public List<ChatSession> ChatSessions { get; set; } = new();
+        [JsonIgnore]
         public List<UserAssignment> Assignments { get; set; } = new(); // As assigner
+        [JsonIgnore]
         public List<UserAssignment> AssignedTo { get; set; } = new(); // As assignee
 
         public string FullName => $"{FirstName} {LastName} ({Email})";
