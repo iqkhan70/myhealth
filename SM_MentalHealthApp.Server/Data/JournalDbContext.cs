@@ -104,7 +104,7 @@ namespace SM_MentalHealthApp.Server.Data
                   modelBuilder.Entity<ChatMessage>(entity =>
                   {
                         entity.HasKey(e => e.Id);
-                        entity.Property(e => e.Content).IsRequired().HasMaxLength(10000);
+                        entity.Property(e => e.Content).IsRequired().HasColumnType("TEXT");
                         entity.Property(e => e.Metadata).HasMaxLength(1000);
                         entity.Property(e => e.Role).HasConversion<string>();
                         entity.Property(e => e.MessageType).HasConversion<string>();

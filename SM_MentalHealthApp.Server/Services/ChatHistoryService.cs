@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Shared;
 using System.Text.Json;
@@ -22,13 +23,15 @@ namespace SM_MentalHealthApp.Server.Services
     public class ChatHistoryService : IChatHistoryService
     {
         private readonly JournalDbContext _context;
+        private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<ChatHistoryService> _logger;
         private const int MAX_CONTEXT_MESSAGES = 20;
         private const int SUMMARY_THRESHOLD = 50;
 
-        public ChatHistoryService(JournalDbContext context, ILogger<ChatHistoryService> logger)
+        public ChatHistoryService(JournalDbContext context, IServiceProvider serviceProvider, ILogger<ChatHistoryService> logger)
         {
             _context = context;
+            _serviceProvider = serviceProvider;
             _logger = logger;
         }
 
@@ -391,7 +394,11 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                var session = await _context.ChatSessions
+                // Create a new DbContext instance for this background operation
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<JournalDbContext>();
+
+                var session = await context.ChatSessions
                     .Include(s => s.Messages.OrderBy(m => m.Timestamp))
                     .Include(s => s.Patient)
                     .Include(s => s.User)
@@ -435,7 +442,7 @@ Please provide a structured summary in 2-3 sentences that would be useful for cl
                 if (!string.IsNullOrEmpty(summary))
                 {
                     session.Summary = summary;
-                    await _context.SaveChangesAsync();
+                    await context.SaveChangesAsync();
                     _logger.LogInformation("Generated summary for session {SessionId}", sessionId);
                 }
             }

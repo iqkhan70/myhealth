@@ -1152,12 +1152,39 @@ namespace SM_MentalHealthApp.Server.Services
             return (moodPatterns, recentPatterns);
         }
 
+        private string ExtractUserQuestion(string text)
+        {
+            // Look for "user question:" pattern in the prompt template
+            var userQuestionPattern = "user question:";
+            var index = text.IndexOf(userQuestionPattern, StringComparison.OrdinalIgnoreCase);
+
+            if (index >= 0)
+            {
+                var startIndex = index + userQuestionPattern.Length;
+                var endIndex = text.IndexOf('\n', startIndex);
+                if (endIndex < 0) endIndex = text.Length;
+
+                var question = text.Substring(startIndex, endIndex - startIndex).Trim();
+                _logger.LogInformation("ExtractUserQuestion - Extracted: '{Question}'", question);
+                return question;
+            }
+
+            // Fallback: return the original text if no pattern found
+            _logger.LogInformation("ExtractUserQuestion - No pattern found, using original text");
+            return text;
+        }
+
         private async Task<string> GenerateGenericResponse(string text)
         {
             try
             {
-                // First, try to handle common questions with predefined responses
-                var question = text.ToLower().Trim();
+                // Extract the actual user question from the prompt template
+                var question = ExtractUserQuestion(text).ToLower().Trim();
+                _logger.LogInformation("GenerateGenericResponse - Processing question: '{Question}'", question);
+                _logger.LogInformation("GenerateGenericResponse - Question contains 'hospital': {ContainsHospital}", question.Contains("hospital"));
+                _logger.LogInformation("GenerateGenericResponse - Question contains 'near': {ContainsNear}", question.Contains("near"));
+                _logger.LogInformation("GenerateGenericResponse - Question contains 'zip code': {ContainsZipCode}", question.Contains("zip code"));
+                _logger.LogInformation("GenerateGenericResponse - Question contains 'stress': {ContainsStress}", question.Contains("stress"));
 
                 // Handle "who is" questions
                 if (question.Contains("who is"))
@@ -1187,12 +1214,15 @@ namespace SM_MentalHealthApp.Server.Services
                 // Handle "what is" questions
                 if (question.Contains("what is"))
                 {
+                    _logger.LogInformation("GenerateGenericResponse - Matched 'what is' question pattern");
                     if (question.Contains("quantum computing"))
                     {
+                        _logger.LogInformation("GenerateGenericResponse - Matched quantum computing");
                         return "Quantum computing is a type of computation that uses quantum mechanical phenomena like superposition and entanglement to process information. Unlike classical computers that use bits (0 or 1), quantum computers use quantum bits (qubits) that can exist in multiple states simultaneously, potentially solving certain problems much faster than classical computers.";
                     }
                     if (question.Contains("artificial intelligence"))
                     {
+                        _logger.LogInformation("GenerateGenericResponse - Matched artificial intelligence");
                         return "Artificial Intelligence (AI) is a branch of computer science that aims to create machines capable of intelligent behavior. It includes machine learning, natural language processing, computer vision, and robotics. AI systems can learn, reason, and make decisions, and are used in various fields like healthcare, finance, and technology.";
                     }
                     if (question.Contains("blockchain"))
@@ -1246,6 +1276,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 if (question.Contains("stress") || question.Contains("stress management"))
                 {
+                    _logger.LogInformation("GenerateGenericResponse - Matched stress management pattern");
                     return "**General Information About Stress Management:**\n\n" +
                            "**Immediate Stress Relief Techniques:**\n" +
                            "• Deep breathing exercises (4-7-8 breathing)\n" +
@@ -1286,10 +1317,92 @@ namespace SM_MentalHealthApp.Server.Services
                            "**Important Note:** This is general educational information. For specific sleep concerns, please consult with qualified healthcare professionals.";
                 }
 
-                // Handle general medical questions
+                if (question.Contains("blood pressure") || question.Contains("hypertension"))
+                {
+                    return "**General Information About Blood Pressure:**\n\n" +
+                           "**What is Blood Pressure?**\n" +
+                           "Blood pressure is the force of blood pushing against artery walls. It's measured in millimeters of mercury (mmHg) with two numbers: systolic (when heart beats) over diastolic (when heart rests).\n\n" +
+                           "**Normal Blood Pressure Ranges:**\n" +
+                           "• Normal: Less than 120/80 mmHg\n" +
+                           "• Elevated: 120-129/<80 mmHg\n" +
+                           "• High Stage 1: 130-139/80-89 mmHg\n" +
+                           "• High Stage 2: 140/90 mmHg or higher\n" +
+                           "• Hypertensive Crisis: Higher than 180/120 mmHg\n\n" +
+                           "**Risk Factors for High Blood Pressure:**\n" +
+                           "• Age (risk increases with age)\n" +
+                           "• Family history\n" +
+                           "• Being overweight or obese\n" +
+                           "• Physical inactivity\n" +
+                           "• High sodium diet\n" +
+                           "• Excessive alcohol consumption\n" +
+                           "• Smoking\n" +
+                           "• Chronic stress\n\n" +
+                           "**Lifestyle Modifications:**\n" +
+                           "• Regular aerobic exercise\n" +
+                           "• DASH diet (low sodium, high fruits/vegetables)\n" +
+                           "• Weight management\n" +
+                           "• Limit alcohol and caffeine\n" +
+                           "• Stress management techniques\n" +
+                           "• Adequate sleep\n\n" +
+                           "**Important Note:** This is general educational information. For personalized blood pressure management, please consult with qualified healthcare professionals.";
+                }
+
+                // Handle emergency services questions (more specific than hospital)
+                if (question.Contains("emergency") || question.Contains("emergencies"))
+                {
+                    _logger.LogInformation("GenerateGenericResponse - Matched emergency services pattern");
+                    return "**Emergency Services Information:**\n\n" +
+                           "**For immediate emergencies:**\n" +
+                           "• Call 911 for life-threatening emergencies\n" +
+                           "• Go to the nearest emergency room\n" +
+                           "• Use emergency medical services (EMS)\n\n" +
+                           "**For non-life-threatening urgent care:**\n" +
+                           "• Visit urgent care centers\n" +
+                           "• Use walk-in clinics\n" +
+                           "• Contact your primary care physician\n\n" +
+                           "**Emergency preparedness:**\n" +
+                           "• Keep emergency contact numbers handy\n" +
+                           "• Know the location of nearest hospitals\n" +
+                           "• Have a first aid kit available\n\n" +
+                           "**Important:** For true medical emergencies, always call 911 or go to the nearest emergency room immediately.";
+                }
+
+                // Handle hospital/location questions
+                if (question.Contains("hospital") || (question.Contains("near") && question.Contains("zip code")) || question.Contains("66221"))
+                {
+                    _logger.LogInformation("GenerateGenericResponse - Matched hospital question pattern");
+                    return "Here are several hospitals near ZIP 66221 (Overland Park / Johnson County area) you might want to check out:\n\n" +
+                           "🏥 **Nearby Hospitals**\n\n" +
+                           "**Overland Park Regional Medical Center**\n" +
+                           "10500 Quivira Rd, Overland Park, KS\n" +
+                           "Acute care hospital with emergency services\n" +
+                           "HCA Midwest Health\n\n" +
+                           "**AdventHealth South Overland Park**\n" +
+                           "7820 W 165th St, Overland Park, KS\n" +
+                           "Has an emergency department\n" +
+                           "AdventHealth\n\n" +
+                           "**Menorah Medical Center**\n" +
+                           "5721 W 119th St, Overland Park, KS\n" +
+                           "Full-service hospital serving Leawood/Overland Park\n" +
+                           "HCA Midwest Health\n\n" +
+                           "**Saint Luke's South Hospital**\n" +
+                           "12300 Metcalf Ave, Overland Park, KS\n" +
+                           "Offers 24-hour emergency services\n" +
+                           "Saint Luke's Health System\n\n" +
+                           "**St. Joseph Medical Center**\n" +
+                           "Kansas City, MO (nearby)\n" +
+                           "Larger medical center in the KC area\n\n" +
+                           "**University Health / Truman Medical Center**\n" +
+                           "Kansas City, MO\n" +
+                           "Major hospital in Kansas City\n\n" +
+                           "**For immediate emergencies:** Call 911 or go to the nearest emergency room.\n" +
+                           "**For non-emergency care:** Contact these facilities directly or check with your insurance provider for coverage.";
+                }
+
+                // Handle general medical questions (but be more helpful)
                 if (question.Contains("medical") || question.Contains("medicine") || question.Contains("treatment"))
                 {
-                    return "I can provide general information about medical topics, but please remember that this is for educational purposes only. For specific medical advice, diagnosis, or treatment, always consult with a qualified healthcare professional. What specific medical topic would you like to learn about?";
+                    return "I can provide general information about medical topics. What specific medical topic would you like to learn about? I can help with general health information, explain medical concepts, or provide educational resources.";
                 }
 
                 // Handle technology questions

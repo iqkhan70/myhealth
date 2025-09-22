@@ -425,20 +425,30 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                // Get conversation context from chat history
-                var conversationContext = await _chatHistoryService.BuildConversationContextAsync(sessionId);
-
-                // Build the base prompt
+                // For generic mode, we want a fresh start without medical-focused conversation history
+                // This ensures the AI responds like ChatGPT rather than continuing medical patterns
                 var basePrompt = BuildGenericPrompt(originalPrompt, userRoleId);
 
-                // Combine with conversation context
+                // Only include very recent conversation context (last 3 messages) to maintain some continuity
+                // but avoid the medical pattern repetition
+                var recentMessages = await _chatHistoryService.GetRecentMessagesAsync(sessionId, 3);
+
                 var contextBuilder = new System.Text.StringBuilder();
                 contextBuilder.AppendLine(basePrompt);
 
-                if (!string.IsNullOrEmpty(conversationContext))
+                if (recentMessages.Any())
                 {
-                    contextBuilder.AppendLine("\n=== CONVERSATION HISTORY ===");
-                    contextBuilder.AppendLine(conversationContext);
+                    contextBuilder.AppendLine("\n=== RECENT CONVERSATION ===");
+                    foreach (var message in recentMessages)
+                    {
+                        var rolePrefix = message.Role switch
+                        {
+                            MessageRole.User => "User",
+                            MessageRole.Assistant => "AI",
+                            _ => "System"
+                        };
+                        contextBuilder.AppendLine($"{rolePrefix}: {message.Content}");
+                    }
                 }
 
                 return contextBuilder.ToString();
@@ -488,26 +498,16 @@ namespace SM_MentalHealthApp.Server.Services
             var user = _userService.GetUserByIdAsync(userRoleId == 2 ? 2 : 3).Result; // Default to doctor or admin
             if (user != null)
             {
-                context.AppendLine($"You are a helpful AI assistant helping {user.FirstName} {user.LastName}.");
+                context.AppendLine($"Hello! I'm your AI assistant. I can help you with any topic - medical research, general knowledge, technical questions, writing, analysis, or any other questions you have. How can I assist you today?");
             }
             else
             {
-                context.AppendLine("You are a helpful AI assistant.");
+                context.AppendLine("Hello! I'm your AI assistant. I can help you with any topic - medical research, general knowledge, technical questions, writing, analysis, or any other questions you have. How can I assist you today?");
             }
 
-            // Generic AI instructions - like ChatGPT
-            context.AppendLine("\nGENERIC AI ASSISTANCE GUIDELINES:");
-            context.AppendLine("- You are a general-purpose AI assistant similar to ChatGPT");
-            context.AppendLine("- You can help with any topic: medical research, general knowledge, technical questions, writing, analysis, etc.");
-            context.AppendLine("- Provide accurate, helpful, and detailed responses");
-            context.AppendLine("- If you don't know something, say so honestly");
-            context.AppendLine("- Be conversational and engaging");
-            context.AppendLine("- For medical topics, provide general information but always recommend consulting healthcare professionals for specific medical advice");
-            context.AppendLine("- For technical topics, provide clear explanations and examples when possible");
-            context.AppendLine("- Be respectful and professional in all interactions");
-
-            context.AppendLine($"\nUser asks: {originalPrompt}");
-            context.AppendLine("\nRespond as a helpful, knowledgeable AI assistant.");
+            // Direct question without medical disclaimers
+            context.AppendLine($"\nUser question: {originalPrompt}");
+            context.AppendLine("\nPlease provide a helpful, informative response to this question.");
 
             return context.ToString();
         }
