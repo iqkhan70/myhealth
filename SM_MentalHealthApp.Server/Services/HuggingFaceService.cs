@@ -1174,6 +1174,32 @@ namespace SM_MentalHealthApp.Server.Services
             return text;
         }
 
+        private string ExtractProgressionSection(string text)
+        {
+            // Look for the progression analysis section specifically
+            var progressionStart = text.IndexOf("=== PROGRESSION ANALYSIS ===", StringComparison.OrdinalIgnoreCase);
+            if (progressionStart >= 0)
+            {
+                var sectionStart = progressionStart;
+                var sectionEnd = text.IndexOf("=== USER QUESTION ===", StringComparison.OrdinalIgnoreCase);
+                if (sectionEnd < 0)
+                {
+                    sectionEnd = text.IndexOf("=== CONVERSATION HISTORY ===", StringComparison.OrdinalIgnoreCase);
+                }
+                if (sectionEnd < 0)
+                {
+                    sectionEnd = text.Length;
+                }
+
+                var progressionSection = text.Substring(sectionStart, sectionEnd - sectionStart);
+                _logger.LogInformation("ExtractProgressionSection - Found progression section: {Length} chars", progressionSection.Length);
+                return progressionSection;
+            }
+
+            _logger.LogInformation("ExtractProgressionSection - No progression analysis section found");
+            return string.Empty;
+        }
+
         private async Task<string> GenerateGenericResponse(string text)
         {
             try
@@ -1534,9 +1560,9 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Check for medical data
                 var hasMedicalData = text.Contains("=== MEDICAL DATA SUMMARY ===");
-                var hasCriticalValues = text.Contains("Critical Values:") || text.Contains("6.0") || text.Contains("180/110");
+                var hasCriticalValues = text.Contains("Critical Values:") || text.Contains("6.0") || text.Contains("180/110") || text.Contains("CRITICAL MEDICAL ALERT");
                 var hasAbnormalValues = text.Contains("Abnormal Values:");
-                var hasNormalValues = text.Contains("Normal Values:");
+                var hasNormalValues = text.Contains("Normal Values:") || text.Contains("IMPROVEMENT NOTED");
 
                 // Check for journal entries
                 var hasJournalEntries = text.Contains("=== RECENT JOURNAL ENTRIES ===");
@@ -1557,13 +1583,41 @@ namespace SM_MentalHealthApp.Server.Services
 
                         if (hasCriticalValues)
                         {
-                            response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                            response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
-                            response.AppendLine();
-                            response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                            response.AppendLine("- These values indicate a medical emergency");
-                            response.AppendLine("- Contact emergency services if symptoms worsen");
-                            response.AppendLine("- Patient needs immediate medical evaluation");
+                            // Check the CURRENT medical data in the progression analysis section, not conversation history
+                            var progressionSection = ExtractProgressionSection(text);
+                            if (!string.IsNullOrEmpty(progressionSection))
+                            {
+                                if (progressionSection.Contains("IMPROVEMENT NOTED"))
+                                {
+                                    response.AppendLine("✅ **IMPROVEMENT NOTED:** Previous results showed critical values, but current results show normal values.");
+                                    response.AppendLine("This indicates positive progress, though continued monitoring is recommended.");
+                                }
+                                else if (progressionSection.Contains("DETERIORATION NOTED"))
+                                {
+                                    response.AppendLine("⚠️ **DETERIORATION NOTED:** Current results show critical values where previous results were normal.");
+                                    response.AppendLine("Immediate attention may be required.");
+                                }
+                                else
+                                {
+                                    response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                    response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
+                                    response.AppendLine();
+                                    response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                                    response.AppendLine("- These values indicate a medical emergency");
+                                    response.AppendLine("- Contact emergency services if symptoms worsen");
+                                    response.AppendLine("- Patient needs immediate medical evaluation");
+                                }
+                            }
+                            else
+                            {
+                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
+                                response.AppendLine();
+                                response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                                response.AppendLine("- These values indicate a medical emergency");
+                                response.AppendLine("- Contact emergency services if symptoms worsen");
+                                response.AppendLine("- Patient needs immediate medical evaluation");
+                            }
                         }
                         else if (hasAbnormalValues)
                         {
@@ -1571,7 +1625,16 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else if (hasNormalValues)
                         {
-                            response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                            // Check if this is showing improvement from previous critical values
+                            if (text.Contains("IMPROVEMENT NOTED"))
+                            {
+                                response.AppendLine("✅ **IMPROVEMENT NOTED:** Previous results showed critical values, but current results show normal values.");
+                                response.AppendLine("This indicates positive progress, though continued monitoring is recommended.");
+                            }
+                            else
+                            {
+                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                            }
                         }
                         else
                         {

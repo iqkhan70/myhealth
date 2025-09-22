@@ -199,8 +199,9 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             // Get already processed content analyses from database
+            var contentIds = patientContents.Select(c => c.Id).ToList();
             var analyses = await _context.ContentAnalyses
-                .Where(ca => _context.Contents.Any(c => c.Id == ca.ContentId && c.PatientId == patientId && c.IsActive))
+                .Where(ca => contentIds.Contains(ca.ContentId))
                 .OrderByDescending(ca => ca.ProcessedAt)
                 .Take(10) // Limit to recent analyses
                 .ToListAsync();
