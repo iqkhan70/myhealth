@@ -58,6 +58,7 @@ builder.Services.AddScoped<ContentService>();
 builder.Services.AddScoped<IContentAnalysisService, ContentAnalysisService>();
 builder.Services.AddScoped<IMultimediaAnalysisService, MultimediaAnalysisService>();
 builder.Services.AddScoped<IChatHistoryService, ChatHistoryService>();
+builder.Services.AddScoped<IIntelligentContextService, IntelligentContextService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

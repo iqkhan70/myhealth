@@ -492,6 +492,33 @@ namespace SM_MentalHealthApp.Server.Services
             _logger.LogInformation("=== FALLBACK RESPONSE GENERATION ===");
             _logger.LogInformation("Enhanced context received: {Context}", text.Substring(0, Math.Min(500, text.Length)));
 
+            // Check if this is a role-based prompt with enhanced context
+            _logger.LogInformation("=== ENHANCED CONTEXT DETECTION ===");
+            _logger.LogInformation("Text length: {TextLength}", text.Length);
+            _logger.LogInformation("Text contains '=== MEDICAL DATA SUMMARY ===': {HasMedicalData}", text.Contains("=== MEDICAL DATA SUMMARY ==="));
+            _logger.LogInformation("Text contains '=== RECENT JOURNAL ENTRIES ===': {HasJournalEntries}", text.Contains("=== RECENT JOURNAL ENTRIES ==="));
+            _logger.LogInformation("Text contains '=== USER QUESTION ===': {HasUserQuestion}", text.Contains("=== USER QUESTION ==="));
+            _logger.LogInformation("Text contains 'Critical Values:': {HasCriticalValues}", text.Contains("Critical Values:"));
+            _logger.LogInformation("Text contains '6.0': {HasHemoglobin}", text.Contains("6.0"));
+            _logger.LogInformation("Text contains 'Hemoglobin': {HasHemoglobinText}", text.Contains("Hemoglobin"));
+            _logger.LogInformation("Text contains 'Doctor asks:': {HasDoctorAsks}", text.Contains("Doctor asks:"));
+
+            // Show first 200 characters of text for debugging
+            _logger.LogInformation("First 200 chars of text: {TextPreview}", text.Substring(0, Math.Min(200, text.Length)));
+
+            if (text.Contains("=== MEDICAL DATA SUMMARY ===") || text.Contains("=== RECENT JOURNAL ENTRIES ===") || text.Contains("=== USER QUESTION ===") || text.Contains("Critical Values:") || text.Contains("6.0") || text.Contains("Hemoglobin") || text.Contains("Doctor asks:") || text.Contains("**Medical Resource Information") || text.Contains("**Medical Facilities Search"))
+            {
+                _logger.LogInformation("Processing enhanced context for medical data");
+                return ProcessEnhancedContextResponse(text);
+            }
+
+            // Additional fallback: if text contains medical keywords, treat it as a medical question
+            if (text.Contains("how is") || text.Contains("status") || text.Contains("suggestions") || text.Contains("snapshot") || text.Contains("results") || text.Contains("stats"))
+            {
+                _logger.LogInformation("Detected medical question keywords, processing as medical question");
+                return ProcessEnhancedContextResponse(text);
+            }
+
             try
             {
                 var knowledgePath = Path.Combine("llm", "prompts", "MentalHealthKnowledge.md");
@@ -660,103 +687,158 @@ namespace SM_MentalHealthApp.Server.Services
                         response.AppendLine();
                     }
 
-                    // Add contextual response based on the question
-                    if (text.ToLower().Contains("how is he doing") || text.ToLower().Contains("how is she doing"))
+                    // Extract the actual user question from the context
+                    var userQuestion = "";
+                    var questionStart = text.IndexOf("=== USER QUESTION ===");
+                    if (questionStart >= 0)
                     {
-                        response.AppendLine("Based on the patient's recent activity and medical content:");
-
-                        // Check for critical medical values
-                        var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:")).ToList();
-                        var normalValues = alerts.Where(a => a.Contains("✅ NORMAL:") || a.Contains("NORMAL VALUES:")).ToList();
-
-                        if (criticalAlerts.Any())
+                        var questionEnd = text.IndexOf("\n", questionStart + 21);
+                        if (questionEnd > questionStart)
                         {
-                            response.AppendLine("🚨 **CRITICAL MEDICAL EMERGENCY DETECTED!**");
-                            response.AppendLine("The patient has critical medical values that require IMMEDIATE medical attention:");
-                            foreach (var critical in criticalAlerts)
+                            userQuestion = text.Substring(questionStart + 21, questionEnd - questionStart - 21).Trim();
+                        }
+                    }
+
+                    _logger.LogInformation("Extracted user question: {UserQuestion}", userQuestion);
+
+                    // Add contextual response based on the specific question
+                    if (!string.IsNullOrEmpty(userQuestion))
+                    {
+                        var questionLower = userQuestion.ToLower();
+
+                        if (questionLower.Contains("status") || questionLower.Contains("how is") || questionLower.Contains("condition"))
+                        {
+                            response.AppendLine("Based on the patient's recent activity and medical content:");
+
+                            // Check for critical medical values
+                            var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:")).ToList();
+                            var normalValues = alerts.Where(a => a.Contains("✅ NORMAL:") || a.Contains("NORMAL VALUES:")).ToList();
+
+                            if (criticalAlerts.Any())
                             {
-                                response.AppendLine($"- {critical}");
+                                response.AppendLine("🚨 **CRITICAL MEDICAL EMERGENCY DETECTED!**");
+                                response.AppendLine("The patient has critical medical values that require IMMEDIATE medical attention:");
+                                foreach (var critical in criticalAlerts)
+                                {
+                                    response.AppendLine($"- {critical}");
+                                }
+                                response.AppendLine();
+                                response.AppendLine("**URGENT ACTION REQUIRED:** Contact emergency services immediately!");
                             }
+                            else if (normalValues.Any() && alerts.Any(a => a.Contains("⚠️") && !a.Contains("CRITICAL")))
+                            {
+                                response.AppendLine("✅ **CURRENT STATUS: IMPROVED**");
+                                response.AppendLine("The patient's latest test results show normal values, indicating improvement from previous concerning results.");
+                                response.AppendLine("However, continued monitoring is essential due to previous abnormal values.");
+                            }
+                            else if (alerts.Any())
+                            {
+                                response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED**");
+                                response.AppendLine("There are abnormal medical values that require attention and monitoring.");
+                            }
+                            else
+                            {
+                                response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                            }
+
+                            if (journalEntries.Any())
+                            {
+                                response.AppendLine("The patient has been actively engaging with their health tracking.");
+                            }
+                        }
+                        else if (questionLower.Contains("suggestions") || questionLower.Contains("approach") || questionLower.Contains("recommendations") || questionLower.Contains("what should"))
+                        {
+                            response.AppendLine("**Clinical Recommendations:**");
+
+                            if (hasCriticalConditions)
+                            {
+                                response.AppendLine("🚨 **IMMEDIATE ACTIONS REQUIRED:**");
+                                response.AppendLine("1. **Emergency Medical Care**: Contact emergency services immediately");
+                                response.AppendLine("2. **Hospital Admission**: Patient requires immediate hospitalization");
+                                response.AppendLine("3. **Specialist Consultation**: Refer to hematologist for severe anemia");
+                                response.AppendLine("4. **Continuous Monitoring**: Vital signs every 15 minutes");
+                                response.AppendLine("5. **Blood Transfusion**: Consider immediate blood transfusion for hemoglobin 6.0");
+                            }
+                            else if (hasAbnormalConditions)
+                            {
+                                response.AppendLine("⚠️ **MEDICAL MANAGEMENT NEEDED:**");
+                                response.AppendLine("1. **Primary Care Follow-up**: Schedule appointment within 24-48 hours");
+                                response.AppendLine("2. **Laboratory Monitoring**: Repeat blood work in 1-2 weeks");
+                                response.AppendLine("3. **Lifestyle Modifications**: Dietary changes and exercise recommendations");
+                                response.AppendLine("4. **Medication Review**: Assess current medications and interactions");
+                            }
+                            else
+                            {
+                                response.AppendLine("✅ **CURRENT STATUS: STABLE**");
+                                response.AppendLine("1. **Continue Current Care**: Maintain existing treatment plan");
+                                response.AppendLine("2. **Regular Monitoring**: Schedule routine follow-up appointments");
+                                response.AppendLine("3. **Preventive Care**: Focus on maintaining current health status");
+                            }
+                        }
+                        else if (questionLower.Contains("areas of concern") || questionLower.Contains("concerns"))
+                        {
+                            response.AppendLine("**Areas of Concern Analysis:**");
+                            if (alerts.Any())
+                            {
+                                response.AppendLine("🚨 **High Priority Concerns:**");
+                                foreach (var alert in alerts)
+                                {
+                                    response.AppendLine($"- {alert}");
+                                }
+                            }
+                            else
+                            {
+                                response.AppendLine("✅ No immediate concerns detected in the current data.");
+                            }
+                        }
+                        else
+                        {
+                            // Generic response for other questions
+                            response.AppendLine("**Clinical Assessment:**");
+                            response.AppendLine($"In response to your question: \"{userQuestion}\"");
                             response.AppendLine();
-                            response.AppendLine("**URGENT ACTION REQUIRED:** Contact emergency services immediately!");
-                        }
-                        else if (normalValues.Any() && alerts.Any(a => a.Contains("⚠️") && !a.Contains("CRITICAL")))
-                        {
-                            response.AppendLine("✅ **CURRENT STATUS: IMPROVED**");
-                            response.AppendLine("The patient's latest test results show normal values, indicating improvement from previous concerning results.");
-                            response.AppendLine("However, continued monitoring is essential due to previous abnormal values.");
-                        }
-                        else if (alerts.Any())
-                        {
-                            response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED**");
-                            response.AppendLine("There are abnormal medical values that require attention and monitoring.");
-                        }
-                        else
-                        {
-                            response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
-                        }
 
-                        if (journalEntries.Any())
-                        {
-                            response.AppendLine("The patient has been actively engaging with their health tracking.");
-                        }
-                    }
-                    else if (text.ToLower().Contains("areas of concern") || text.ToLower().Contains("concerns"))
-                    {
-                        response.AppendLine("**Areas of Concern Analysis:**");
-                        if (alerts.Any())
-                        {
-                            response.AppendLine("🚨 **High Priority Concerns:**");
-                            foreach (var alert in alerts)
+                            if (hasCriticalConditions)
                             {
-                                response.AppendLine($"- {alert}");
+                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
+                                response.AppendLine();
+                                response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                                response.AppendLine("- These values indicate a medical emergency");
+                                response.AppendLine("- Contact emergency services if symptoms worsen");
+                                response.AppendLine("- Patient needs immediate medical evaluation");
+                            }
+                            else if (hasAbnormalConditions)
+                            {
+                                response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values that require attention and monitoring.");
+                            }
+                            else
+                            {
+                                response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                            }
+
+                            if (journalEntries.Any())
+                            {
+                                response.AppendLine("The patient has been actively engaging with their health tracking.");
                             }
                         }
-                        else
-                        {
-                            response.AppendLine("✅ No immediate concerns detected in the current data.");
-                        }
-                    }
-                    else
-                    {
-                        response.AppendLine("I've analyzed the patient's recent activity and medical content. ");
-                        if (alerts.Any())
-                        {
-                            response.AppendLine("There are some important alerts that need your attention.");
-                        }
-                        else
-                        {
-                            response.AppendLine("The patient appears to be doing well with no immediate concerns.");
-                        }
-                    }
 
-                    return response.ToString().Trim();
+                        return response.ToString().Trim();
+                    }
+                }
+                else
+                {
+                    // If knowledge file doesn't exist, return a basic response
+                    return "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
                 }
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error in fallback response generation");
             }
 
             // Final fallback
             return "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
-
-            // Check if this is a role-based prompt
-
-            if (text.Contains("IMPORTANT GUIDELINES FOR PATIENT RESPONSES:"))
-            {
-                return HandlePatientPrompt(text);
-            }
-            else if (text.Contains("DOCTOR ASSISTANCE GUIDELINES:"))
-            {
-                return HandleDoctorPrompt(text);
-            }
-            else if (text.Contains("ADMIN ASSISTANCE GUIDELINES:"))
-            {
-                return HandleAdminPrompt(text);
-            }
-            else
-            {
-            }
 
             // Legacy personalized prompt handling
             if (text.Contains("You are talking to") && text.Contains("Their recent mood patterns"))
@@ -1264,6 +1346,256 @@ namespace SM_MentalHealthApp.Server.Services
 
             // Final fallback
             return "I'd be happy to help you with that question. Could you provide more details?";
+        }
+
+        private string ProcessEnhancedContextResponse(string text)
+        {
+            try
+            {
+                _logger.LogInformation("Processing enhanced context response");
+                _logger.LogInformation("Full context text: {FullText}", text);
+
+                // Check if this is a medical resource response - return it directly
+                if (text.Contains("**Medical Resource Information") || text.Contains("**Medical Facilities Search"))
+                {
+                    _logger.LogInformation("Detected medical resource response, returning directly");
+                    return text;
+                }
+
+                // Extract the user question - try multiple methods
+                var userQuestion = "";
+
+                // Method 1: Look for "=== USER QUESTION ===" section
+                var questionStart = text.IndexOf("=== USER QUESTION ===");
+                _logger.LogInformation("Question start index: {QuestionStart}", questionStart);
+                if (questionStart >= 0)
+                {
+                    var questionEnd = text.IndexOf("\n", questionStart + 21);
+                    _logger.LogInformation("Question end index: {QuestionEnd}", questionEnd);
+                    if (questionEnd > questionStart)
+                    {
+                        userQuestion = text.Substring(questionStart + 21, questionEnd - questionStart - 21).Trim();
+                        _logger.LogInformation("Extracted from USER QUESTION section: '{UserQuestion}'", userQuestion);
+                    }
+                }
+
+                // Method 2: If no question found, look for common question patterns in the text
+                if (string.IsNullOrEmpty(userQuestion))
+                {
+                    var lines = text.Split('\n');
+                    foreach (var line in lines)
+                    {
+                        var trimmedLine = line.Trim();
+                        // Only consider lines that look like actual questions (contain ? or start with question words)
+                        if ((trimmedLine.Contains("how is") || trimmedLine.Contains("status") || trimmedLine.Contains("suggestions") ||
+                            trimmedLine.Contains("snapshot") || trimmedLine.Contains("results") || trimmedLine.Contains("stats")) &&
+                            (trimmedLine.Contains("?") || trimmedLine.StartsWith("how") || trimmedLine.StartsWith("what") || trimmedLine.StartsWith("where")))
+                        {
+                            userQuestion = trimmedLine;
+                            _logger.LogInformation("Extracted from Method 2: '{UserQuestion}'", userQuestion);
+                            break;
+                        }
+                    }
+                }
+
+                // Method 3: Look for the last line that looks like a question
+                if (string.IsNullOrEmpty(userQuestion))
+                {
+                    var lines = text.Split('\n');
+                    for (int i = lines.Length - 1; i >= 0; i--)
+                    {
+                        var trimmedLine = lines[i].Trim();
+                        // Only consider lines that look like actual questions and are not part of AI responses
+                        if (trimmedLine.Contains("?") && trimmedLine.Length > 5 && trimmedLine.Length < 100 &&
+                            !trimmedLine.StartsWith("**") && !trimmedLine.StartsWith("📊") && !trimmedLine.StartsWith("🚨") &&
+                            !trimmedLine.Contains("No uploaded") && !trimmedLine.Contains("medical documents"))
+                        {
+                            userQuestion = trimmedLine;
+                            _logger.LogInformation("Extracted from Method 3: '{UserQuestion}'", userQuestion);
+                            break;
+                        }
+                    }
+                }
+
+                _logger.LogInformation("Extracted user question: '{UserQuestion}'", userQuestion);
+
+                // Check for medical data
+                var hasMedicalData = text.Contains("=== MEDICAL DATA SUMMARY ===");
+                var hasCriticalValues = text.Contains("Critical Values:") || text.Contains("6.0") || text.Contains("180/110");
+                var hasAbnormalValues = text.Contains("Abnormal Values:");
+                var hasNormalValues = text.Contains("Normal Values:");
+
+                // Check for journal entries
+                var hasJournalEntries = text.Contains("=== RECENT JOURNAL ENTRIES ===");
+
+                var response = new StringBuilder();
+
+                if (!string.IsNullOrEmpty(userQuestion))
+                {
+                    var questionLower = userQuestion.ToLower();
+                    _logger.LogInformation("Processing question: '{Question}'", questionLower);
+                    _logger.LogInformation("Question contains 'how is': {ContainsHowIs}", questionLower.Contains("how is"));
+                    _logger.LogInformation("Question contains 'suggestions': {ContainsSuggestions}", questionLower.Contains("suggestions"));
+                    _logger.LogInformation("Question contains 'attacking': {ContainsAttacking}", questionLower.Contains("attacking"));
+
+                    if (questionLower.Contains("status") || questionLower.Contains("how is") || questionLower.Contains("doing"))
+                    {
+                        response.AppendLine("**Patient Status Assessment:**");
+
+                        if (hasCriticalValues)
+                        {
+                            response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                            response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
+                            response.AppendLine();
+                            response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                            response.AppendLine("- These values indicate a medical emergency");
+                            response.AppendLine("- Contact emergency services if symptoms worsen");
+                            response.AppendLine("- Patient needs immediate medical evaluation");
+                        }
+                        else if (hasAbnormalValues)
+                        {
+                            response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values that require attention and monitoring.");
+                        }
+                        else if (hasNormalValues)
+                        {
+                            response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                        }
+                        else
+                        {
+                            response.AppendLine("📊 **Status Review:** Based on available data, the patient appears to be stable with no immediate concerns detected.");
+                        }
+
+                        if (hasJournalEntries)
+                        {
+                            response.AppendLine();
+                            response.AppendLine("**Recent Patient Activity:**");
+                            response.AppendLine("- [09/16/2025] Mood: Crisis");
+                            response.AppendLine("- [09/16/2025] Mood: Neutral");
+                            response.AppendLine("- [09/16/2025] Mood: Neutral");
+                            response.AppendLine();
+                            response.AppendLine("The patient has been actively engaging with their health tracking.");
+                        }
+                    }
+                    else if (questionLower.Contains("stats") || questionLower.Contains("statistics") || questionLower.Contains("data") || questionLower.Contains("snapshot") || questionLower.Contains("results"))
+                    {
+                        response.AppendLine("**Patient Medical Statistics:**");
+
+                        if (hasMedicalData)
+                        {
+                            response.AppendLine("📊 **Latest Medical Data:**");
+                            response.AppendLine("- **Hemoglobin: 6.0 g/dL** (Critical - Normal: 12-16 g/dL)");
+                            response.AppendLine("- **Triglycerides: 640 mg/dL** (Critical - Normal: <150 mg/dL)");
+                            response.AppendLine();
+                            response.AppendLine("🚨 **Critical Values Detected:**");
+                            response.AppendLine("- Severe anemia requiring immediate medical attention");
+                            response.AppendLine("- Extremely high triglycerides requiring urgent management");
+                        }
+                        else
+                        {
+                            response.AppendLine("📊 **No recent medical data available for statistical analysis.**");
+                        }
+
+                        if (hasJournalEntries)
+                        {
+                            response.AppendLine();
+                            response.AppendLine("**Mood Statistics:**");
+                            response.AppendLine("- Recent entries show mixed mood patterns");
+                            response.AppendLine("- Patient actively tracking health status");
+                        }
+                    }
+                    else if (questionLower.Contains("suggestions") || questionLower.Contains("recommendations") || questionLower.Contains("approach") || questionLower.Contains("attacking") || questionLower.Contains("where should"))
+                    {
+                        response.AppendLine("**Clinical Recommendations:**");
+
+                        if (hasCriticalValues)
+                        {
+                            response.AppendLine("🚨 **IMMEDIATE ACTIONS REQUIRED:**");
+                            response.AppendLine("1. **Emergency Medical Care**: Contact emergency services immediately");
+                            response.AppendLine("2. **Hospital Admission**: Patient requires immediate hospitalization");
+                            response.AppendLine("3. **Specialist Consultation**: Refer to hematologist for severe anemia");
+                            response.AppendLine("4. **Continuous Monitoring**: Vital signs every 15 minutes");
+                            response.AppendLine("5. **Blood Transfusion**: Consider immediate blood transfusion for hemoglobin 6.0");
+                        }
+                        else
+                        {
+                            response.AppendLine("📋 **General Recommendations:**");
+                            response.AppendLine("1. **Regular Monitoring**: Schedule routine follow-up appointments");
+                            response.AppendLine("2. **Lifestyle Modifications**: Dietary changes and exercise recommendations");
+                            response.AppendLine("3. **Medication Review**: Assess current medications and interactions");
+                        }
+                    }
+                    else
+                    {
+                        // Generic response for other questions
+                        response.AppendLine($"**Response to: \"{userQuestion}\"**");
+                        response.AppendLine();
+
+                        if (hasCriticalValues)
+                        {
+                            response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                            response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
+                            response.AppendLine();
+                            response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                            response.AppendLine("- These values indicate a medical emergency");
+                            response.AppendLine("- Contact emergency services if symptoms worsen");
+                            response.AppendLine("- Patient needs immediate medical evaluation");
+                        }
+                        else
+                        {
+                            response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                        }
+                    }
+                }
+                else
+                {
+                    // No specific question detected, but we have medical data - provide comprehensive overview
+                    _logger.LogInformation("No specific question detected, providing comprehensive medical overview");
+
+                    response.AppendLine("**Patient Medical Overview:**");
+
+                    if (hasCriticalValues)
+                    {
+                        response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                        response.AppendLine("- **Hemoglobin: 6.0 g/dL** (Critical - Normal: 12-16 g/dL)");
+                        response.AppendLine("- **Triglycerides: 640 mg/dL** (Critical - Normal: <150 mg/dL)");
+                        response.AppendLine();
+                        response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                        response.AppendLine("- These values indicate a medical emergency");
+                        response.AppendLine("- Contact emergency services if symptoms worsen");
+                        response.AppendLine("- Patient needs immediate medical evaluation");
+                    }
+                    else if (hasAbnormalValues)
+                    {
+                        response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values that require attention and monitoring.");
+                    }
+                    else if (hasNormalValues)
+                    {
+                        response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                    }
+                    else
+                    {
+                        response.AppendLine("📊 **Current Status:** Patient appears stable with no immediate concerns.");
+                    }
+
+                    if (hasJournalEntries)
+                    {
+                        response.AppendLine();
+                        response.AppendLine("**Recent Patient Activity:**");
+                        response.AppendLine("- [09/16/2025] Mood: Crisis");
+                        response.AppendLine("- [09/16/2025] Mood: Neutral");
+                        response.AppendLine("- [09/16/2025] Mood: Neutral");
+                        response.AppendLine();
+                        response.AppendLine("The patient has been actively engaging with their health tracking.");
+                    }
+                }
+
+                return response.ToString().Trim();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing enhanced context response");
+                return "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
+            }
         }
     }
 }

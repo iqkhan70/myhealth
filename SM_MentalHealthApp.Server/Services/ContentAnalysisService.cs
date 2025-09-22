@@ -250,7 +250,9 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
+                _logger.LogInformation("=== CONTENT ANALYSIS SERVICE CALLED ===");
                 _logger.LogInformation("Original prompt: {OriginalPrompt}", originalPrompt);
+                _logger.LogInformation("Patient ID: {PatientId}", patientId);
 
                 // If no patient is selected (patientId = 0), return empty context
                 if (patientId <= 0)
@@ -283,179 +285,75 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
-                // Get ALL content analyses for temporal analysis
+                // Get content analyses for medical data
                 var allContentAnalyses = await GetContentAnalysisForPatientAsync(patientId);
                 _logger.LogInformation("Found {ContentCount} content analyses for patient {PatientId}", allContentAnalyses.Count, patientId);
-
-
-                // Debug: Log each analysis
-                foreach (var analysis in allContentAnalyses)
-                {
-                    _logger.LogInformation("Analysis {AnalysisId}: Type={Type}, Status={Status}, TextLength={TextLength}, Alerts={AlertCount}",
-                        analysis.Id, analysis.ContentType, analysis.ProcessingStatus,
-                        analysis.ExtractedText?.Length ?? 0, analysis.Alerts.Count);
-                }
 
                 if (allContentAnalyses.Any())
                 {
                     // Sort by date - most recent first
                     var sortedAnalyses = allContentAnalyses.OrderByDescending(a => a.ProcessedAt).ToList();
-
-                    // Get the most recent analysis (for current status)
                     var latestAnalysis = sortedAnalyses.First();
 
-                    // Get historical concerning values (older than 24 hours)
-                    var historicalConcerns = sortedAnalyses
-                        .Where(a => a.ProcessedAt < DateTime.UtcNow.AddHours(-24))
-                        .Where(a => a.AnalysisResults.ContainsKey("CriticalValues") || a.AnalysisResults.ContainsKey("AbnormalValues"))
-                        .ToList();
-
-                    context.AppendLine("=== CURRENT MEDICAL STATUS (LATEST RESULTS) ===");
-                    context.AppendLine($"📅 Latest Update: {latestAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}");
-                    context.AppendLine($"📄 Content Type: {latestAnalysis.ContentType}");
+                    context.AppendLine("=== MEDICAL DATA SUMMARY ===");
+                    context.AppendLine($"Latest Update: {latestAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}");
+                    context.AppendLine($"Content Type: {latestAnalysis.ContentType}");
 
                     if (!string.IsNullOrEmpty(latestAnalysis.ExtractedText))
                     {
-                        context.AppendLine($"📋 LATEST TEST RESULTS:");
-                        context.AppendLine(latestAnalysis.ExtractedText);
+                        context.AppendLine($"Test Results: {latestAnalysis.ExtractedText}");
                         context.AppendLine();
                     }
 
-                    // Show current status analysis
-                    if (latestAnalysis.AnalysisResults.ContainsKey("NormalValues"))
+                    // Show current status analysis - simplified and professional
+                    var hasCriticalValues = latestAnalysis.AnalysisResults.ContainsKey("CriticalValues");
+                    var hasAbnormalValues = latestAnalysis.AnalysisResults.ContainsKey("AbnormalValues");
+                    var hasNormalValues = latestAnalysis.AnalysisResults.ContainsKey("NormalValues");
+
+                    if (hasCriticalValues || hasAbnormalValues || hasNormalValues)
                     {
-                        var normalValuesElement = latestAnalysis.AnalysisResults["NormalValues"];
-                        if (normalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
+                        context.AppendLine("Current Status:");
+
+                        if (hasCriticalValues)
                         {
-                            var normalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                            context.AppendLine("✅ CURRENT STATUS - NORMAL VALUES:");
-                            foreach (var normal in normalValues)
-                            {
-                                context.AppendLine($"  {normal}");
-                            }
-                            context.AppendLine();
-                        }
-                    }
-
-                    if (latestAnalysis.AnalysisResults.ContainsKey("CriticalValues"))
-                    {
-                        var criticalValuesElement = latestAnalysis.AnalysisResults["CriticalValues"];
-                        if (criticalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
-                        {
-                            var criticalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                            context.AppendLine("🚨 CURRENT STATUS - CRITICAL VALUES:");
-                            foreach (var critical in criticalValues)
-                            {
-                                context.AppendLine($"  {critical}");
-                            }
-                            context.AppendLine();
-                        }
-                    }
-
-                    if (latestAnalysis.AnalysisResults.ContainsKey("AbnormalValues"))
-                    {
-                        var abnormalValuesElement = latestAnalysis.AnalysisResults["AbnormalValues"];
-                        if (abnormalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
-                        {
-                            var abnormalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                            context.AppendLine("⚠️ CURRENT STATUS - ABNORMAL VALUES:");
-                            foreach (var abnormal in abnormalValues)
-                            {
-                                context.AppendLine($"  {abnormal}");
-                            }
-                            context.AppendLine();
-                        }
-                    }
-
-                    // Historical concerns analysis
-                    if (historicalConcerns.Any())
-                    {
-                        context.AppendLine("=== HISTORICAL MEDICAL CONCERNS ===");
-                        context.AppendLine("⚠️ IMPORTANT: Previous test results showed concerning values that require monitoring:");
-                        context.AppendLine();
-
-                        foreach (var historical in historicalConcerns.Take(3)) // Show last 3 concerning results
-                        {
-                            context.AppendLine($"📅 {historical.ProcessedAt:MM/dd/yyyy HH:mm} - {historical.ContentType}");
-
-                            if (historical.AnalysisResults.ContainsKey("CriticalValues"))
-                            {
-                                var criticalValuesElement = historical.AnalysisResults["CriticalValues"];
-                                if (criticalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
-                                {
-                                    var criticalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                                    context.AppendLine("  🚨 PREVIOUS CRITICAL VALUES:");
-                                    foreach (var critical in criticalValues)
-                                    {
-                                        context.AppendLine($"    {critical}");
-                                    }
-                                }
-                            }
-
-                            if (historical.AnalysisResults.ContainsKey("AbnormalValues"))
-                            {
-                                var abnormalValuesElement = historical.AnalysisResults["AbnormalValues"];
-                                if (abnormalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
-                                {
-                                    var abnormalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                                    context.AppendLine("  ⚠️ PREVIOUS ABNORMAL VALUES:");
-                                    foreach (var abnormal in abnormalValues)
-                                    {
-                                        context.AppendLine($"    {abnormal}");
-                                    }
-                                }
-                            }
-                            context.AppendLine();
-                        }
-
-                        context.AppendLine("🔍 MONITORING RECOMMENDATION:");
-                        context.AppendLine("  - Continue monitoring these parameters closely");
-                        context.AppendLine("  - Watch for any recurrence of previous concerning values");
-                        context.AppendLine("  - Consider trend analysis for early intervention");
-                        context.AppendLine();
-                    }
-
-                    // Overall health trend analysis
-                    var allCriticalValues = new List<string>();
-                    var allNormalValues = new List<string>();
-
-                    foreach (var analysis in sortedAnalyses)
-                    {
-                        if (analysis.AnalysisResults.ContainsKey("CriticalValues"))
-                        {
-                            var criticalValuesElement = analysis.AnalysisResults["CriticalValues"];
+                            var criticalValuesElement = latestAnalysis.AnalysisResults["CriticalValues"];
                             if (criticalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
                             {
-                                allCriticalValues.AddRange(jsonElement.EnumerateArray().Select(x => x.GetString() ?? ""));
+                                var criticalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
+                                context.AppendLine("  Critical Values: " + string.Join(", ", criticalValues));
                             }
                         }
 
-                        if (analysis.AnalysisResults.ContainsKey("NormalValues"))
+                        if (hasAbnormalValues)
                         {
-                            var normalValuesElement = analysis.AnalysisResults["NormalValues"];
+                            var abnormalValuesElement = latestAnalysis.AnalysisResults["AbnormalValues"];
+                            if (abnormalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
+                            {
+                                var abnormalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
+                                context.AppendLine("  Abnormal Values: " + string.Join(", ", abnormalValues));
+                            }
+                        }
+
+                        if (hasNormalValues)
+                        {
+                            var normalValuesElement = latestAnalysis.AnalysisResults["NormalValues"];
                             if (normalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
                             {
-                                allNormalValues.AddRange(jsonElement.EnumerateArray().Select(x => x.GetString() ?? ""));
+                                var normalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
+                                context.AppendLine("  Normal Values: " + string.Join(", ", normalValues));
                             }
                         }
+                        context.AppendLine();
                     }
 
-                    if (allCriticalValues.Any() || allNormalValues.Any())
+                    // Show recent patient activity from journal entries
+                    if (recentEntries.Any())
                     {
-                        context.AppendLine("=== HEALTH TREND ANALYSIS ===");
-
-                        if (allNormalValues.Any() && !latestAnalysis.AnalysisResults.ContainsKey("CriticalValues"))
+                        context.AppendLine("Recent Patient Activity:");
+                        foreach (var entry in recentEntries.Take(3))
                         {
-                            context.AppendLine("📈 POSITIVE TREND: Recent results show improvement with normal values");
-                            context.AppendLine("   This indicates the patient is responding well to treatment or lifestyle changes");
+                            context.AppendLine($"  [{entry.CreatedAt:MM/dd/yyyy}] Mood: {entry.Mood}");
                         }
-
-                        if (allCriticalValues.Any())
-                        {
-                            context.AppendLine("⚠️ CONCERNING TREND: Patient has had critical values in the past");
-                            context.AppendLine("   Even if current values are normal, continued monitoring is essential");
-                        }
-
                         context.AppendLine();
                     }
                 }
@@ -471,15 +369,11 @@ namespace SM_MentalHealthApp.Server.Services
                 context.AppendLine(originalPrompt);
                 context.AppendLine();
                 context.AppendLine("INSTRUCTIONS FOR AI RESPONSE:");
-                context.AppendLine("1. Prioritize the LATEST test results for current patient status");
-                context.AppendLine("2. If current results are normal but historical results were concerning:");
-                context.AppendLine("   - Acknowledge the improvement and current good status");
-                context.AppendLine("   - Warn about previous concerning values that need continued monitoring");
-                context.AppendLine("   - Recommend ongoing surveillance to prevent recurrence");
-                context.AppendLine("3. If current results are concerning:");
-                context.AppendLine("   - Focus on immediate action needed");
-                context.AppendLine("   - Compare with historical data for trend analysis");
-                context.AppendLine("4. Always provide context-aware recommendations based on the complete health timeline");
+                context.AppendLine("1. Provide a professional, clinical assessment based on available data");
+                context.AppendLine("2. Be concise and avoid repetitive information");
+                context.AppendLine("3. Focus on actionable recommendations for the healthcare provider");
+                context.AppendLine("4. If critical values are present, provide clear next steps");
+                context.AppendLine("5. Maintain a professional, clinical tone throughout");
 
                 var result = context.ToString();
                 _logger.LogInformation("Enhanced context built for patient {PatientId}, length: {Length}", patientId, result.Length);

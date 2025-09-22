@@ -3,193 +3,193 @@ using SM_MentalHealthApp.Shared;
 
 namespace SM_MentalHealthApp.Server.Data
 {
-    public class JournalDbContext : DbContext
-    {
-        public JournalDbContext(DbContextOptions<JournalDbContext> options) : base(options) { }
+      public class JournalDbContext : DbContext
+      {
+            public JournalDbContext(DbContextOptions<JournalDbContext> options) : base(options) { }
 
-        public DbSet<Role> Roles { get; set; }
-        public DbSet<User> Users { get; set; }
-        public DbSet<UserAssignment> UserAssignments { get; set; }
-        public DbSet<JournalEntry> JournalEntries { get; set; }
-        public DbSet<ChatSession> ChatSessions { get; set; }
-        public DbSet<ChatMessage> ChatMessages { get; set; }
-        public DbSet<ContentItem> Contents { get; set; }
-        public DbSet<ContentAnalysis> ContentAnalyses { get; set; }
-        public DbSet<ContentAlert> ContentAlerts { get; set; }
+            public DbSet<Role> Roles { get; set; }
+            public DbSet<User> Users { get; set; }
+            public DbSet<UserAssignment> UserAssignments { get; set; }
+            public DbSet<JournalEntry> JournalEntries { get; set; }
+            public DbSet<ChatSession> ChatSessions { get; set; }
+            public DbSet<ChatMessage> ChatMessages { get; set; }
+            public DbSet<ContentItem> Contents { get; set; }
+            public DbSet<ContentAnalysis> ContentAnalyses { get; set; }
+            public DbSet<ContentAlert> ContentAlerts { get; set; }
 
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-
-            // Configure Role entity
-            modelBuilder.Entity<Role>(entity =>
+            protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Name).IsRequired().HasMaxLength(50);
-                entity.Property(e => e.Description).HasMaxLength(200);
-                entity.HasIndex(e => e.Name).IsUnique();
-            });
+                  base.OnModelCreating(modelBuilder);
 
-            // Configure User entity
-            modelBuilder.Entity<User>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
-                entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
-                entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
-                entity.HasIndex(e => e.Email).IsUnique();
-                entity.Property(e => e.Gender).HasMaxLength(20);
-                entity.Property(e => e.Specialization).HasMaxLength(100);
-                entity.Property(e => e.LicenseNumber).HasMaxLength(50);
+                  // Configure Role entity
+                  modelBuilder.Entity<Role>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Name).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.Description).HasMaxLength(200);
+                        entity.HasIndex(e => e.Name).IsUnique();
+                  });
 
-                // Foreign key relationship to Role
-                entity.HasOne(e => e.Role)
-                      .WithMany(r => r.Users)
-                      .HasForeignKey(e => e.RoleId)
-                      .OnDelete(DeleteBehavior.Restrict);
-            });
+                  // Configure User entity
+                  modelBuilder.Entity<User>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
+                        entity.HasIndex(e => e.Email).IsUnique();
+                        entity.Property(e => e.Gender).HasMaxLength(20);
+                        entity.Property(e => e.Specialization).HasMaxLength(100);
+                        entity.Property(e => e.LicenseNumber).HasMaxLength(50);
 
-            // Configure UserAssignment junction table (User-to-User relationships)
-            modelBuilder.Entity<UserAssignment>(entity =>
-            {
-                entity.HasKey(e => new { e.AssignerId, e.AssigneeId });
+                        // Foreign key relationship to Role
+                        entity.HasOne(e => e.Role)
+                        .WithMany(r => r.Users)
+                        .HasForeignKey(e => e.RoleId)
+                        .OnDelete(DeleteBehavior.Restrict);
+                  });
 
-                entity.HasOne(e => e.Assigner)
-                      .WithMany(u => u.Assignments)
-                      .HasForeignKey(e => e.AssignerId)
-                      .OnDelete(DeleteBehavior.Cascade);
+                  // Configure UserAssignment junction table (User-to-User relationships)
+                  modelBuilder.Entity<UserAssignment>(entity =>
+                  {
+                        entity.HasKey(e => new { e.AssignerId, e.AssigneeId });
 
-                entity.HasOne(e => e.Assignee)
-                      .WithMany(u => u.AssignedTo)
-                      .HasForeignKey(e => e.AssigneeId)
-                      .OnDelete(DeleteBehavior.Cascade);
-            });
+                        entity.HasOne(e => e.Assigner)
+                        .WithMany(u => u.Assignments)
+                        .HasForeignKey(e => e.AssignerId)
+                        .OnDelete(DeleteBehavior.Cascade);
 
-            // Configure JournalEntry entity
-            modelBuilder.Entity<JournalEntry>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Text).IsRequired();
-                entity.Property(e => e.Mood).HasMaxLength(50);
+                        entity.HasOne(e => e.Assignee)
+                        .WithMany(u => u.AssignedTo)
+                        .HasForeignKey(e => e.AssigneeId)
+                        .OnDelete(DeleteBehavior.Cascade);
+                  });
 
-                // Foreign key relationship
-                entity.HasOne(e => e.User)
-                      .WithMany(u => u.JournalEntries)
-                      .HasForeignKey(e => e.UserId)
-                      .OnDelete(DeleteBehavior.Cascade);
-            });
+                  // Configure JournalEntry entity
+                  modelBuilder.Entity<JournalEntry>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Text).IsRequired();
+                        entity.Property(e => e.Mood).HasMaxLength(50);
 
-            // Configure ChatSession entity
-            modelBuilder.Entity<ChatSession>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.SessionId).IsRequired().HasMaxLength(100);
-                entity.HasIndex(e => e.SessionId).IsUnique();
-                entity.Property(e => e.Summary).HasMaxLength(2000);
-                entity.Property(e => e.PrivacyLevel).HasConversion<string>();
+                        // Foreign key relationship
+                        entity.HasOne(e => e.User)
+                        .WithMany(u => u.JournalEntries)
+                        .HasForeignKey(e => e.UserId)
+                        .OnDelete(DeleteBehavior.Cascade);
+                  });
 
-                // Foreign key relationships
-                entity.HasOne(e => e.User)
-                      .WithMany(u => u.ChatSessions)
-                      .HasForeignKey(e => e.UserId)
-                      .OnDelete(DeleteBehavior.Cascade);
+                  // Configure ChatSession entity
+                  modelBuilder.Entity<ChatSession>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.SessionId).IsRequired().HasMaxLength(100);
+                        entity.HasIndex(e => e.SessionId).IsUnique();
+                        entity.Property(e => e.Summary).HasMaxLength(2000);
+                        entity.Property(e => e.PrivacyLevel).HasConversion<string>();
 
-                entity.HasOne(e => e.Patient)
-                      .WithMany()
-                      .HasForeignKey(e => e.PatientId)
-                      .OnDelete(DeleteBehavior.SetNull);
-            });
+                        // Foreign key relationships
+                        entity.HasOne(e => e.User)
+                        .WithMany(u => u.ChatSessions)
+                        .HasForeignKey(e => e.UserId)
+                        .OnDelete(DeleteBehavior.Cascade);
 
-            // Configure ChatMessage entity
-            modelBuilder.Entity<ChatMessage>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Content).IsRequired().HasMaxLength(4000);
-                entity.Property(e => e.Metadata).HasMaxLength(1000);
-                entity.Property(e => e.Role).HasConversion<string>();
-                entity.Property(e => e.MessageType).HasConversion<string>();
+                        entity.HasOne(e => e.Patient)
+                        .WithMany()
+                        .HasForeignKey(e => e.PatientId)
+                        .OnDelete(DeleteBehavior.SetNull);
+                  });
 
-                // Foreign key relationship
-                entity.HasOne(e => e.Session)
-                      .WithMany(s => s.Messages)
-                      .HasForeignKey(e => e.SessionId)
-                      .OnDelete(DeleteBehavior.Cascade);
-            });
+                  // Configure ChatMessage entity
+                  modelBuilder.Entity<ChatMessage>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Content).IsRequired().HasMaxLength(10000);
+                        entity.Property(e => e.Metadata).HasMaxLength(1000);
+                        entity.Property(e => e.Role).HasConversion<string>();
+                        entity.Property(e => e.MessageType).HasConversion<string>();
 
-            // Configure ContentItem entity
-            modelBuilder.Entity<ContentItem>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.ContentGuid).IsRequired();
-                entity.HasIndex(e => e.ContentGuid).IsUnique();
-                entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
-                entity.Property(e => e.Description).HasMaxLength(1000);
-                entity.Property(e => e.FileName).IsRequired().HasMaxLength(255);
-                entity.Property(e => e.OriginalFileName).IsRequired().HasMaxLength(255);
-                entity.Property(e => e.ContentType).IsRequired().HasMaxLength(100);
-                entity.Property(e => e.S3Bucket).IsRequired().HasMaxLength(100);
-                entity.Property(e => e.S3Key).IsRequired().HasMaxLength(500);
-                // entity.Property(e => e.S3Url).HasMaxLength(1000); // Removed - URLs generated on-demand
+                        // Foreign key relationship
+                        entity.HasOne(e => e.Session)
+                        .WithMany(s => s.Messages)
+                        .HasForeignKey(e => e.SessionId)
+                        .OnDelete(DeleteBehavior.Cascade);
+                  });
 
-                // Foreign key relationships
-                entity.HasOne(e => e.Patient)
-                      .WithMany()
-                      .HasForeignKey(e => e.PatientId)
-                      .OnDelete(DeleteBehavior.Cascade);
+                  // Configure ContentItem entity
+                  modelBuilder.Entity<ContentItem>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.ContentGuid).IsRequired();
+                        entity.HasIndex(e => e.ContentGuid).IsUnique();
+                        entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+                        entity.Property(e => e.Description).HasMaxLength(1000);
+                        entity.Property(e => e.FileName).IsRequired().HasMaxLength(255);
+                        entity.Property(e => e.OriginalFileName).IsRequired().HasMaxLength(255);
+                        entity.Property(e => e.ContentType).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.S3Bucket).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.S3Key).IsRequired().HasMaxLength(500);
+                        // entity.Property(e => e.S3Url).HasMaxLength(1000); // Removed - URLs generated on-demand
 
-                entity.HasOne(e => e.AddedByUser)
-                      .WithMany()
-                      .HasForeignKey(e => e.AddedByUserId)
-                      .OnDelete(DeleteBehavior.SetNull);
-            });
+                        // Foreign key relationships
+                        entity.HasOne(e => e.Patient)
+                        .WithMany()
+                        .HasForeignKey(e => e.PatientId)
+                        .OnDelete(DeleteBehavior.Cascade);
 
-            // Configure ContentAnalysis entity
-            modelBuilder.Entity<ContentAnalysis>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.ContentType).IsRequired().HasMaxLength(50);
-                entity.Property(e => e.ExtractedText).HasColumnType("TEXT");
-                entity.Property(e => e.ProcessingStatus).IsRequired().HasMaxLength(50);
-                entity.Property(e => e.ErrorMessage).HasMaxLength(1000);
+                        entity.HasOne(e => e.AddedByUser)
+                        .WithMany()
+                        .HasForeignKey(e => e.AddedByUserId)
+                        .OnDelete(DeleteBehavior.SetNull);
+                  });
 
-                // Configure Dictionary as JSON
-                entity.Property(e => e.AnalysisResults)
-                      .HasConversion(
-                          v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions)null),
-                          v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(v, (System.Text.Json.JsonSerializerOptions)null) ?? new Dictionary<string, object>())
-                      .HasColumnType("JSON");
+                  // Configure ContentAnalysis entity
+                  modelBuilder.Entity<ContentAnalysis>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.ContentType).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.ExtractedText).HasColumnType("TEXT");
+                        entity.Property(e => e.ProcessingStatus).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.ErrorMessage).HasMaxLength(1000);
 
-                // Foreign key relationship
-                entity.HasOne(e => e.Content)
-                      .WithMany()
-                      .HasForeignKey(e => e.ContentId)
-                      .OnDelete(DeleteBehavior.Cascade);
+                        // Configure Dictionary as JSON
+                        entity.Property(e => e.AnalysisResults)
+                        .HasConversion(
+                            v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions)null),
+                            v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(v, (System.Text.Json.JsonSerializerOptions)null) ?? new Dictionary<string, object>())
+                        .HasColumnType("JSON");
 
-                // Add unique constraint to prevent duplicate analyses for the same content
-                entity.HasIndex(e => e.ContentId)
-                      .IsUnique();
-            });
+                        // Foreign key relationship
+                        entity.HasOne(e => e.Content)
+                        .WithMany()
+                        .HasForeignKey(e => e.ContentId)
+                        .OnDelete(DeleteBehavior.Cascade);
 
-            // Configure ContentAlert entity
-            modelBuilder.Entity<ContentAlert>(entity =>
-            {
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.AlertType).IsRequired().HasMaxLength(50);
-                entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
-                entity.Property(e => e.Description).HasMaxLength(1000);
-                entity.Property(e => e.Severity).IsRequired().HasMaxLength(20);
+                        // Add unique constraint to prevent duplicate analyses for the same content
+                        entity.HasIndex(e => e.ContentId)
+                        .IsUnique();
+                  });
 
-                // Foreign key relationships
-                entity.HasOne(e => e.Content)
-                      .WithMany()
-                      .HasForeignKey(e => e.ContentId)
-                      .OnDelete(DeleteBehavior.Cascade);
+                  // Configure ContentAlert entity
+                  modelBuilder.Entity<ContentAlert>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.AlertType).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+                        entity.Property(e => e.Description).HasMaxLength(1000);
+                        entity.Property(e => e.Severity).IsRequired().HasMaxLength(20);
 
-                entity.HasOne(e => e.Patient)
-                      .WithMany()
-                      .HasForeignKey(e => e.PatientId)
-                      .OnDelete(DeleteBehavior.Cascade);
-            });
-        }
-    }
+                        // Foreign key relationships
+                        entity.HasOne(e => e.Content)
+                        .WithMany()
+                        .HasForeignKey(e => e.ContentId)
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.Patient)
+                        .WithMany()
+                        .HasForeignKey(e => e.PatientId)
+                        .OnDelete(DeleteBehavior.Cascade);
+                  });
+            }
+      }
 }

@@ -32,8 +32,8 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.Property<string>("Content")
                         .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("varchar(4000)");
+                        .HasMaxLength(10000)
+                        .HasColumnType("varchar(10000)");
 
                     b.Property<bool>("IsMedicalData")
                         .HasColumnType("tinyint(1)");

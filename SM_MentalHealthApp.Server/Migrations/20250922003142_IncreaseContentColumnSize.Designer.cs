@@ -12,8 +12,8 @@ using SM_MentalHealthApp.Server.Data;
 namespace SM_MentalHealthApp.Server.Migrations
 {
     [DbContext(typeof(JournalDbContext))]
-    [Migration("20250915191529_AddMultimediaAnalysis")]
-    partial class AddMultimediaAnalysis
+    [Migration("20250922003142_IncreaseContentColumnSize")]
+    partial class IncreaseContentColumnSize
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -24,6 +24,47 @@ namespace SM_MentalHealthApp.Server.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.ChatMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("varchar(10000)");
+
+                    b.Property<bool>("IsMedicalData")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("MessageType")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Metadata")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("SessionId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId");
+
+                    b.ToTable("ChatMessages");
+                });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.ChatSession", b =>
                 {
@@ -39,18 +80,34 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<DateTime?>("LastActivityAt")
+                    b.Property<DateTime>("LastActivityAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<int>("MessageCount")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PatientId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PrivacyLevel")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<string>("SessionId")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<string>("Summary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)");
+
                     b.Property<int>("UserId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PatientId");
 
                     b.HasIndex("SessionId")
                         .IsUnique();
@@ -154,7 +211,8 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ContentId");
+                    b.HasIndex("ContentId")
+                        .IsUnique();
 
                     b.ToTable("ContentAnalyses");
                 });
@@ -398,13 +456,31 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.ToTable("UserAssignments");
                 });
 
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.ChatMessage", b =>
+                {
+                    b.HasOne("SM_MentalHealthApp.Shared.ChatSession", "Session")
+                        .WithMany("Messages")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Session");
+                });
+
             modelBuilder.Entity("SM_MentalHealthApp.Shared.ChatSession", b =>
                 {
+                    b.HasOne("SM_MentalHealthApp.Shared.User", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("SM_MentalHealthApp.Shared.User", "User")
                         .WithMany("ChatSessions")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Patient");
 
                     b.Navigation("User");
                 });
@@ -502,6 +578,11 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Navigation("Assignee");
 
                     b.Navigation("Assigner");
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.ChatSession", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.Role", b =>

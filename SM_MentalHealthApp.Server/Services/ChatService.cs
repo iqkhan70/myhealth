@@ -13,16 +13,18 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly JournalService _journalService;
         private readonly UserService _userService;
         private readonly IContentAnalysisService _contentAnalysisService;
+        private readonly IIntelligentContextService _intelligentContextService;
         private readonly IChatHistoryService _chatHistoryService;
         private readonly ILogger<ChatService> _logger;
 
-        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, IChatHistoryService chatHistoryService, ILogger<ChatService> logger)
+        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, IIntelligentContextService intelligentContextService, IChatHistoryService chatHistoryService, ILogger<ChatService> logger)
         {
             _conversationRepository = conversationRepository;
             _huggingFaceService = huggingFaceService;
             _journalService = journalService;
             _userService = userService;
             _contentAnalysisService = contentAnalysisService;
+            _intelligentContextService = intelligentContextService;
             _chatHistoryService = chatHistoryService;
             _logger = logger;
         }
@@ -168,15 +170,19 @@ namespace SM_MentalHealthApp.Server.Services
             context.AppendLine("- Be supportive, empathetic, and encouraging");
             context.AppendLine("- Keep responses conversational and non-clinical");
 
-            // Use enhanced context that includes both journal entries AND content analysis
+            // Use intelligent context service for smart question processing
             try
             {
-                var enhancedContext = await _contentAnalysisService.BuildEnhancedContextAsync(userId, originalPrompt);
-                context.AppendLine($"\n{enhancedContext}");
+                _logger.LogInformation("=== USING INTELLIGENT CONTEXT SERVICE FOR PATIENT ===");
+                _logger.LogInformation("Patient ID: {PatientId}, User ID: {UserId}, Original Prompt: {OriginalPrompt}", userId, userId, originalPrompt);
+                var intelligentContext = await _intelligentContextService.ProcessQuestionAsync(originalPrompt, userId, userId);
+                _logger.LogInformation("Intelligent context length: {Length}", intelligentContext.Length);
+                _logger.LogInformation("Intelligent context preview: {Preview}", intelligentContext.Substring(0, Math.Min(200, intelligentContext.Length)));
+                context.AppendLine($"\n{intelligentContext}");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error building enhanced context for patient {UserId}, falling back to basic context", userId);
+                _logger.LogError(ex, "Error using intelligent context service for patient, falling back to basic context");
                 // Fallback to basic context
                 context.AppendLine($"\nPatient asks: {originalPrompt}");
                 context.AppendLine("\nRespond as a supportive mental health companion, following the guidelines above.");
@@ -215,36 +221,32 @@ namespace SM_MentalHealthApp.Server.Services
                 }
             }
 
-            // Doctor-specific instructions - clinical and detailed
+            // Doctor-specific instructions - clinical and professional
             context.AppendLine("\nDOCTOR ASSISTANCE GUIDELINES:");
-            context.AppendLine("- You can provide clinical insights and treatment suggestions");
-            context.AppendLine("- You can analyze patient data and identify patterns");
-            context.AppendLine("- You can suggest potential diagnoses based on symptoms and patterns");
-            context.AppendLine("- You can recommend treatment approaches and interventions");
-            context.AppendLine("- You can provide medication considerations (but remind doctor to verify with current guidelines)");
-            context.AppendLine("- You can suggest follow-up questions to ask the patient");
-            context.AppendLine("- Be clinical but accessible in your language");
-            context.AppendLine("- Always remind the doctor that this is AI assistance and final decisions are theirs");
+            context.AppendLine("- Provide clinical insights and evidence-based recommendations");
+            context.AppendLine("- Analyze patient data and identify relevant patterns");
+            context.AppendLine("- Suggest potential diagnoses based on available information");
+            context.AppendLine("- Recommend appropriate treatment approaches and interventions");
+            context.AppendLine("- Provide medication considerations (remind doctor to verify with current guidelines)");
+            context.AppendLine("- Suggest relevant follow-up questions for the patient");
+            context.AppendLine("- Maintain a professional, clinical tone throughout");
+            context.AppendLine("- Be concise and avoid repetitive information");
+            context.AppendLine("- Always remind that this is AI assistance and final decisions are the doctor's responsibility");
 
-            // Use enhanced context that includes both journal entries AND content analysis
-            if (patientId > 0)
+            // Use intelligent context service for smart question processing
+            try
             {
-
-                try
-                {
-                    var enhancedContext = await _contentAnalysisService.BuildEnhancedContextAsync(patientId, originalPrompt);
-                    context.AppendLine($"\n{enhancedContext}");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error building enhanced context for patient {PatientId}, falling back to basic context", patientId);
-                    // Fallback to basic context
-                    context.AppendLine($"\nDoctor asks: {originalPrompt}");
-                    context.AppendLine("\nRespond as a clinical AI assistant, providing detailed insights and recommendations.");
-                }
+                _logger.LogInformation("=== USING INTELLIGENT CONTEXT SERVICE ===");
+                _logger.LogInformation("Patient ID: {PatientId}, Doctor ID: {DoctorId}, Original Prompt: {OriginalPrompt}", patientId, doctorId, originalPrompt);
+                var intelligentContext = await _intelligentContextService.ProcessQuestionAsync(originalPrompt, patientId, doctorId);
+                _logger.LogInformation("Intelligent context length: {Length}", intelligentContext.Length);
+                _logger.LogInformation("Intelligent context preview: {Preview}", intelligentContext.Substring(0, Math.Min(200, intelligentContext.Length)));
+                context.AppendLine($"\n{intelligentContext}");
             }
-            else
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Error using intelligent context service, falling back to basic context");
+                // Fallback to basic context
                 context.AppendLine($"\nDoctor asks: {originalPrompt}");
                 context.AppendLine("\nRespond as a clinical AI assistant, providing detailed insights and recommendations.");
             }
