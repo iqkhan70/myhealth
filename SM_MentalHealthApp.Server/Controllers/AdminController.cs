@@ -169,6 +169,46 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        [HttpPost("create-patient")]
+        public async Task<ActionResult> CreatePatient([FromBody] CreatePatientRequest request)
+        {
+            try
+            {
+                // Check if email already exists
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+                if (existingUser != null)
+                {
+                    return BadRequest("A patient with this email already exists.");
+                }
+
+                // Create new patient user
+                var patient = new User
+                {
+                    FirstName = request.FirstName,
+                    LastName = request.LastName,
+                    Email = request.Email,
+                    PasswordHash = HashPassword(request.Password),
+                    DateOfBirth = request.DateOfBirth,
+                    Gender = request.Gender,
+                    RoleId = 1, // Patient role
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true,
+                    MustChangePassword = true // Force password change on first login
+                };
+
+                _context.Users.Add(patient);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Patient created successfully", patientId = patient.Id });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error creating patient: {ex.Message}");
+            }
+        }
+
         [HttpPut("doctors/{id}")]
         public async Task<ActionResult> UpdateDoctor(int id, [FromBody] UpdateDoctorRequest request)
         {
@@ -326,6 +366,26 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string Gender { get; set; } = string.Empty;
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
+        public string? Password { get; set; }
+    }
+
+    public class CreatePatientRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+    }
+
+    public class UpdatePatientRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
         public string? Password { get; set; }
     }
 }

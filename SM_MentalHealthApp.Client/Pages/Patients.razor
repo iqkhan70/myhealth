@@ -6,6 +6,29 @@
 @using SM_MentalHealthApp.Client.Services
 @using System.Net.Http
 
+@code {
+    // CreatePatientRequest class for the form
+    public class CreatePatientRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+    }
+
+    public class UpdatePatientRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string? Password { get; set; }
+    }
+}
+
 <div class="users-page">
     <div class="users-header">
         @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
@@ -282,35 +305,46 @@
             </div>
             
             <div class="modal-body">
-                <div class="form-group">
-                    <label>First Name *</label>
-                    <input @bind="userForm.FirstName" class="form-input" />
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>First Name *</label>
+                        <input @bind="patientForm.FirstName" class="form-input" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Last Name *</label>
+                        <input @bind="patientForm.LastName" class="form-input" />
+                    </div>
                 </div>
                 
-                <div class="form-group">
-                    <label>Last Name *</label>
-                    <input @bind="userForm.LastName" class="form-input" />
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Email *</label>
+                        <input @bind="patientForm.Email" type="email" class="form-input" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Password @(editingUser == null ? "*" : "(leave blank to keep current)")</label>
+                        <input @bind="patientForm.Password" type="password" class="form-input" />
+                    </div>
                 </div>
                 
-                <div class="form-group">
-                    <label>Email *</label>
-                    <input @bind="userForm.Email" type="email" class="form-input" />
-                </div>
-                
-                <div class="form-group">
-                    <label>Date of Birth *</label>
-                    <input @bind="userForm.DateOfBirth" type="date" class="form-input" />
-                </div>
-                
-                <div class="form-group">
-                    <label>Gender</label>
-                    <select @bind="userForm.Gender" class="form-input">
-                        <option value="">Select Gender</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Other">Other</option>
-                        <option value="Prefer not to say">Prefer not to say</option>
-                    </select>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date of Birth *</label>
+                        <input @bind="patientForm.DateOfBirth" type="date" class="form-input" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Gender</label>
+                        <select @bind="patientForm.Gender" class="form-input">
+                            <option value="">Select Gender</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                            <option value="Prefer not to say">Prefer not to say</option>
+                        </select>
+                    </div>
                 </div>
             </div>
             
@@ -540,7 +574,7 @@
     private bool isAssigning = false;
     private bool isUnassigning = false;
     private User? editingUser;
-    private User userForm = new();
+    private CreatePatientRequest patientForm = new();
     private List<User> availableDoctors = new();
     private int selectedDoctorId = 0;
     
@@ -670,7 +704,7 @@
     private void ShowAddPatientForm()
     {
         editingUser = null;
-        userForm = new User { DateOfBirth = DateTime.Now.AddYears(-25) };
+        patientForm = new CreatePatientRequest { DateOfBirth = DateTime.Now.AddYears(-25) };
         showPatientForm = true;
     }
 
@@ -679,15 +713,13 @@
         if (user == null) return;
         
         editingUser = user;
-        userForm = new User
+        patientForm = new CreatePatientRequest
         {
-            Id = user.Id,
             FirstName = user.FirstName ?? string.Empty,
             LastName = user.LastName ?? string.Empty,
             Email = user.Email ?? string.Empty,
             DateOfBirth = user.DateOfBirth,
-            Gender = user.Gender ?? string.Empty,
-            IsActive = user.IsActive
+            Gender = user.Gender ?? string.Empty
         };
         showPatientForm = true;
     }
@@ -696,16 +728,22 @@
     {
         showPatientForm = false;
         editingUser = null;
-        userForm = new User();
+        patientForm = new CreatePatientRequest();
     }
 
     private async Task SavePatient()
     {
-        if (string.IsNullOrWhiteSpace(userForm.FirstName) || 
-            string.IsNullOrWhiteSpace(userForm.LastName) || 
-            string.IsNullOrWhiteSpace(userForm.Email))
+        if (string.IsNullOrWhiteSpace(patientForm.FirstName) || 
+            string.IsNullOrWhiteSpace(patientForm.LastName) || 
+            string.IsNullOrWhiteSpace(patientForm.Email))
         {
             NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Please fill in all required fields.");
+            return;
+        }
+
+        if (editingUser == null && string.IsNullOrWhiteSpace(patientForm.Password))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Password is required for new patients.");
             return;
         }
 
@@ -715,15 +753,12 @@
             
             if (editingUser == null)
             {
-                var result = await Http.PostAsJsonAsync("api/user", userForm);
+                // Create new patient using the admin endpoint
+                var result = await Http.PostAsJsonAsync("api/admin/create-patient", patientForm);
                 if (result.IsSuccessStatusCode)
                 {
-                    var newUser = await result.Content.ReadFromJsonAsync<User>();
-                    if (newUser != null)
-                    {
-                        users.Insert(0, newUser);
-                        NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient added successfully!");
-                    }
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient added successfully!");
+                    await LoadPatients(); // Reload the list
                 }
                 else
                 {
@@ -733,19 +768,22 @@
             }
             else
             {
-                var result = await Http.PutAsJsonAsync($"api/user/{userForm.Id}", userForm);
+                // Update existing patient
+                var updateRequest = new UpdatePatientRequest
+                {
+                    FirstName = patientForm.FirstName,
+                    LastName = patientForm.LastName,
+                    Email = patientForm.Email,
+                    DateOfBirth = patientForm.DateOfBirth,
+                    Gender = patientForm.Gender,
+                    Password = string.IsNullOrWhiteSpace(patientForm.Password) ? null : patientForm.Password
+                };
+
+                var result = await Http.PutAsJsonAsync($"api/user/{editingUser.Id}", updateRequest);
                 if (result.IsSuccessStatusCode)
                 {
-                    var updatedUser = await result.Content.ReadFromJsonAsync<User>();
-                    if (updatedUser != null)
-                    {
-                        var index = users.FindIndex(p => p.Id == updatedUser.Id);
-                        if (index >= 0)
-                        {
-                            users[index] = updatedUser;
-                        }
-                        NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient updated successfully!");
-                    }
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient updated successfully!");
+                    await LoadPatients(); // Reload the list
                 }
                 else
                 {
@@ -1172,5 +1210,37 @@
     .btn-danger:hover {
         background-color: #c82333;
         border-color: #bd2130;
+    }
+
+    /* Form styling */
+    .form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    .form-group {
+        flex: 1;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #333;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
     }
 </style>
