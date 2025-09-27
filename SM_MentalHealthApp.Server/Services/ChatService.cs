@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using SM_MentalHealthApp.Server.Services;
+using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Shared;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,9 +16,10 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly IContentAnalysisService _contentAnalysisService;
         private readonly IIntelligentContextService _intelligentContextService;
         private readonly IChatHistoryService _chatHistoryService;
+        private readonly JournalDbContext _context;
         private readonly ILogger<ChatService> _logger;
 
-        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, IIntelligentContextService intelligentContextService, IChatHistoryService chatHistoryService, ILogger<ChatService> logger)
+        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, IIntelligentContextService intelligentContextService, IChatHistoryService chatHistoryService, JournalDbContext context, ILogger<ChatService> logger)
         {
             _conversationRepository = conversationRepository;
             _huggingFaceService = huggingFaceService;
@@ -26,6 +28,7 @@ namespace SM_MentalHealthApp.Server.Services
             _contentAnalysisService = contentAnalysisService;
             _intelligentContextService = intelligentContextService;
             _chatHistoryService = chatHistoryService;
+            _context = context;
             _logger = logger;
         }
 
@@ -396,20 +399,34 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                // Get conversation context from chat history
-                var conversationContext = await _chatHistoryService.BuildConversationContextAsync(sessionId);
-
                 // Build the base prompt
                 var basePrompt = await BuildRoleBasedPrompt(originalPrompt, patientId, userId, userRoleId);
 
-                // Combine with conversation context
+                // Check if there are emergency incidents for this patient
+                var hasEmergencies = await _context.EmergencyIncidents
+                    .AnyAsync(e => e.PatientId == patientId);
+
                 var contextBuilder = new System.Text.StringBuilder();
                 contextBuilder.AppendLine(basePrompt);
 
-                if (!string.IsNullOrEmpty(conversationContext))
+                // If there are emergency incidents, SKIP conversation history entirely
+                if (hasEmergencies)
                 {
-                    contextBuilder.AppendLine("\n=== CONVERSATION HISTORY ===");
-                    contextBuilder.AppendLine(conversationContext);
+                    _logger.LogInformation("Emergency incidents detected for patient {PatientId}, skipping conversation history", patientId);
+                    contextBuilder.AppendLine("\n=== EMERGENCY MODE ===");
+                    contextBuilder.AppendLine("START YOUR RESPONSE WITH: 🚨 CRITICAL EMERGENCY ALERT:");
+                    contextBuilder.AppendLine("THEN LIST THE EMERGENCY INCIDENTS");
+                    contextBuilder.AppendLine("THEN DISCUSS OTHER MEDICAL DATA");
+                }
+                else
+                {
+                    // Only add conversation history if no emergency incidents
+                    var conversationContext = await _chatHistoryService.BuildConversationContextAsync(sessionId);
+                    if (!string.IsNullOrEmpty(conversationContext))
+                    {
+                        contextBuilder.AppendLine("\n=== CONVERSATION HISTORY ===");
+                        contextBuilder.AppendLine(conversationContext);
+                    }
                 }
 
                 return contextBuilder.ToString();

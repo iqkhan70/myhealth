@@ -33,6 +33,10 @@
         @* Doctor-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
         {
+            <a href="/emergency-dashboard" class="nav-item @(GetActiveClass("/emergency-dashboard"))">
+                <i class="nav-icon">🚨</i>
+                <span>Emergency Dashboard</span>
+            </a>
             <a href="/users" class="nav-item @(GetActiveClass("/users"))">
                 <i class="nav-icon">👥</i>
                 <span>My Patients</span>
@@ -58,6 +62,10 @@
         @* Admin-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 3) // Admin
         {
+            <a href="/emergency-dashboard" class="nav-item @(GetActiveClass("/emergency-dashboard"))">
+                <i class="nav-icon">🚨</i>
+                <span>Emergency Dashboard</span>
+            </a>
             <a href="/admin" class="nav-item @(GetActiveClass("/admin"))">
                 <i class="nav-icon">⚙️</i>
                 <span>Admin Panel</span>

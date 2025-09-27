@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Shared;
 using SM_MentalHealthApp.Server.Services;
 

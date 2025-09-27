@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
+using Microsoft.Extensions.Logging;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -25,7 +26,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("patient/{patientId}/alerts")]
-        public async Task<ActionResult<List<SM_MentalHealthApp.Shared.ContentAlert>>> GetContentAlerts(int patientId)
+        public async Task<ActionResult<List<Shared.ContentAlert>>> GetContentAlerts(int patientId)
         {
             try
             {
@@ -59,7 +60,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("patient/{patientId}/analysis")]
-        public async Task<ActionResult<List<SM_MentalHealthApp.Shared.ContentAnalysis>>> GetContentAnalysis(int patientId)
+        public async Task<ActionResult<List<Shared.ContentAnalysis>>> GetContentAnalysis(int patientId)
         {
             try
             {
@@ -86,7 +87,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPost("content/{contentId}/analyze")]
-        public async Task<ActionResult<SM_MentalHealthApp.Shared.ContentAnalysis>> AnalyzeContent(int contentId)
+        public async Task<ActionResult<Shared.ContentAnalysis>> AnalyzeContent(int contentId)
         {
             try
             {
@@ -102,7 +103,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Get content item and analyze it
                 // This would need to be implemented to get content by ID
                 // For now, return a placeholder
-                return Ok(new SM_MentalHealthApp.Shared.ContentAnalysis
+                return Ok(new Shared.ContentAnalysis
                 {
                     ContentId = contentId,
                     ContentType = "Unknown",

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Shared;
+using SM_MentalHealthApp.Server.Models;
 
 namespace SM_MentalHealthApp.Server.Data
 {
@@ -16,6 +17,10 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<ContentItem> Contents { get; set; }
             public DbSet<ContentAnalysis> ContentAnalyses { get; set; }
             public DbSet<ContentAlert> ContentAlerts { get; set; }
+
+            // Emergency system entities
+            public DbSet<RegisteredDevice> RegisteredDevices { get; set; }
+            public DbSet<EmergencyIncident> EmergencyIncidents { get; set; }
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -189,6 +194,63 @@ namespace SM_MentalHealthApp.Server.Data
                         .WithMany()
                         .HasForeignKey(e => e.PatientId)
                         .OnDelete(DeleteBehavior.Cascade);
+                  });
+
+                  // Configure RegisteredDevice entity
+                  modelBuilder.Entity<RegisteredDevice>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.DeviceId).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.DeviceName).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.DeviceType).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.DeviceModel).HasMaxLength(100);
+                        entity.Property(e => e.OperatingSystem).HasMaxLength(50);
+                        entity.Property(e => e.DeviceToken).IsRequired().HasMaxLength(500);
+                        entity.Property(e => e.PublicKey).IsRequired().HasMaxLength(2000);
+                        entity.Property(e => e.LastKnownLocation).HasMaxLength(500);
+
+                        entity.HasIndex(e => e.DeviceId).IsUnique();
+                        entity.HasIndex(e => e.DeviceToken).IsUnique();
+
+                        // Foreign key relationship to User
+                        entity.HasOne(e => e.Patient)
+                        .WithMany()
+                        .HasForeignKey(e => e.PatientId)
+                        .OnDelete(DeleteBehavior.Cascade);
+                  });
+
+                  // Configure EmergencyIncident entity
+                  modelBuilder.Entity<EmergencyIncident>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.EmergencyType).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.Severity).IsRequired().HasMaxLength(20);
+                        entity.Property(e => e.Message).HasMaxLength(1000);
+                        entity.Property(e => e.DeviceId).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.DeviceToken).IsRequired().HasMaxLength(500);
+                        entity.Property(e => e.DoctorResponse).HasMaxLength(1000);
+                        entity.Property(e => e.ActionTaken).HasMaxLength(1000);
+                        entity.Property(e => e.Resolution).HasMaxLength(1000);
+                        entity.Property(e => e.VitalSignsJson).HasMaxLength(2000);
+                        entity.Property(e => e.LocationJson).HasMaxLength(1000);
+                        entity.Property(e => e.IpAddress).HasMaxLength(50);
+                        entity.Property(e => e.UserAgent).HasMaxLength(500);
+
+                        entity.HasIndex(e => e.PatientId);
+                        entity.HasIndex(e => e.DoctorId);
+                        entity.HasIndex(e => e.Timestamp);
+                        entity.HasIndex(e => e.DeviceToken);
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.Patient)
+                        .WithMany()
+                        .HasForeignKey(e => e.PatientId)
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.Doctor)
+                        .WithMany()
+                        .HasForeignKey(e => e.DoctorId)
+                        .OnDelete(DeleteBehavior.Restrict);
                   });
             }
       }

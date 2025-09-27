@@ -286,6 +286,88 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
+                // Get emergency incidents for the patient
+                var recentEmergencies = await _context.EmergencyIncidents
+                    .Where(e => e.PatientId == patientId)
+                    .OrderByDescending(e => e.Timestamp)
+                    .Take(3)
+                    .ToListAsync();
+
+                _logger.LogInformation("Found {EmergencyCount} emergency incidents for patient {PatientId}", recentEmergencies.Count, patientId);
+
+                if (recentEmergencies.Any())
+                {
+                    context.AppendLine("=== RECENT EMERGENCY INCIDENTS ===");
+                    foreach (var emergency in recentEmergencies)
+                    {
+                        context.AppendLine($"[{emergency.Timestamp:MM/dd/yyyy HH:mm}] {emergency.EmergencyType} - {emergency.Severity}");
+                        if (!string.IsNullOrEmpty(emergency.Message))
+                        {
+                            context.AppendLine($"Message: {emergency.Message}");
+                        }
+                        if (!string.IsNullOrEmpty(emergency.VitalSignsJson))
+                        {
+                            try
+                            {
+                                var vitals = JsonSerializer.Deserialize<dynamic>(emergency.VitalSignsJson);
+                                context.AppendLine($"Vital Signs: {emergency.VitalSignsJson}");
+                            }
+                            catch
+                            {
+                                context.AppendLine($"Vital Signs: Available but not parsed");
+                            }
+                        }
+                        context.AppendLine($"Status: {(emergency.IsAcknowledged ? "Acknowledged" : "Pending")}");
+
+                        // Add clinical significance for specific emergency types
+                        switch (emergency.EmergencyType.ToLower())
+                        {
+                            case "fall":
+                                context.AppendLine("CLINICAL SIGNIFICANCE: Fall incidents are critical for patient safety and may indicate:");
+                                context.AppendLine("- Risk of injury, fractures, or head trauma");
+                                context.AppendLine("- Potential medication side effects or dizziness");
+                                context.AppendLine("- Need for mobility assessment and fall prevention measures");
+                                context.AppendLine("- Possible underlying health conditions affecting balance");
+                                break;
+                            case "cardiac":
+                                context.AppendLine("CLINICAL SIGNIFICANCE: Cardiac emergencies require immediate attention for:");
+                                context.AppendLine("- Heart attack, arrhythmia, or cardiac arrest risk");
+                                context.AppendLine("- Vital signs monitoring and emergency intervention");
+                                context.AppendLine("- Medication review and cardiac assessment");
+                                break;
+                            case "panic attack":
+                                context.AppendLine("CLINICAL SIGNIFICANCE: Panic attacks indicate:");
+                                context.AppendLine("- Acute anxiety episode requiring immediate intervention");
+                                context.AppendLine("- Need for breathing techniques and calming strategies");
+                                context.AppendLine("- Possible medication adjustment or crisis intervention");
+                                break;
+                            case "seizure":
+                                context.AppendLine("CLINICAL SIGNIFICANCE: Seizure incidents require:");
+                                context.AppendLine("- Immediate medical attention and safety measures");
+                                context.AppendLine("- Neurological assessment and medication review");
+                                context.AppendLine("- Monitoring for post-seizure complications");
+                                break;
+                            case "overdose":
+                                context.AppendLine("CLINICAL SIGNIFICANCE: Overdose incidents are life-threatening:");
+                                context.AppendLine("- Immediate emergency medical intervention required");
+                                context.AppendLine("- Risk of respiratory depression and organ damage");
+                                context.AppendLine("- Need for substance abuse assessment and intervention");
+                                break;
+                            case "self harm":
+                                context.AppendLine("CLINICAL SIGNIFICANCE: Self-harm incidents indicate:");
+                                context.AppendLine("- Acute mental health crisis requiring immediate intervention");
+                                context.AppendLine("- Risk of suicide or serious injury");
+                                context.AppendLine("- Need for crisis counseling and safety planning");
+                                break;
+                        }
+                        context.AppendLine();
+                    }
+
+                    // Add explicit instruction to prioritize emergency data
+                    context.AppendLine("⚠️ CRITICAL: The above emergency incidents require IMMEDIATE ATTENTION and should be the PRIMARY FOCUS of your response!");
+                    context.AppendLine();
+                }
+
                 // Get content analyses for medical data
                 var allContentAnalyses = await GetContentAnalysisForPatientAsync(patientId);
                 _logger.LogInformation("Found {ContentCount} content analyses for patient {PatientId}", allContentAnalyses.Count, patientId);
@@ -400,15 +482,60 @@ namespace SM_MentalHealthApp.Server.Services
                     context.AppendLine();
                 }
 
+                // Add emergency trend analysis
+                if (recentEmergencies.Any())
+                {
+                    context.AppendLine("=== EMERGENCY TREND ANALYSIS ===");
+
+                    var criticalEmergencies = recentEmergencies.Count(e => e.Severity == "Critical");
+                    var highEmergencies = recentEmergencies.Count(e => e.Severity == "High");
+                    var acknowledgedEmergencies = recentEmergencies.Count(e => e.IsAcknowledged);
+
+                    if (criticalEmergencies > 0)
+                    {
+                        context.AppendLine($"🚨 CRITICAL ALERT: {criticalEmergencies} critical emergency(ies) in recent history");
+                    }
+                    if (highEmergencies > 0)
+                    {
+                        context.AppendLine($"⚠️ HIGH PRIORITY: {highEmergencies} high-severity emergency(ies) in recent history");
+                    }
+
+                    var emergencyTypes = recentEmergencies.GroupBy(e => e.EmergencyType)
+                        .Select(g => $"{g.Key} ({g.Count()})")
+                        .ToList();
+                    context.AppendLine($"Emergency Types: {string.Join(", ", emergencyTypes)}");
+
+                    // Add specific analysis for Fall incidents
+                    var fallIncidents = recentEmergencies.Where(e => e.EmergencyType.ToLower() == "fall").ToList();
+                    if (fallIncidents.Any())
+                    {
+                        context.AppendLine($"⚠️ FALL RISK ALERT: {fallIncidents.Count} fall incident(s) detected - this is a critical safety concern");
+                        context.AppendLine("   - Falls are the leading cause of injury in elderly and at-risk patients");
+                        context.AppendLine("   - Multiple falls may indicate declining mobility or medication issues");
+                        context.AppendLine("   - Immediate fall risk assessment and prevention measures recommended");
+                        context.AppendLine("   - Consider physical therapy, home safety evaluation, and medication review");
+                    }
+
+                    var responseRate = recentEmergencies.Count > 0 ? (double)acknowledgedEmergencies / recentEmergencies.Count * 100 : 100;
+                    context.AppendLine($"Response Rate: {responseRate:F1}% ({acknowledgedEmergencies}/{recentEmergencies.Count} acknowledged)");
+
+                    if (responseRate < 100)
+                    {
+                        context.AppendLine("⚠️ Some emergencies are still pending acknowledgment");
+                    }
+
+                    context.AppendLine();
+                }
+
                 context.AppendLine($"=== USER QUESTION ===");
                 context.AppendLine(originalPrompt);
                 context.AppendLine();
                 context.AppendLine("INSTRUCTIONS FOR AI RESPONSE:");
-                context.AppendLine("1. Provide a professional, clinical assessment based on available data");
-                context.AppendLine("2. Be concise and avoid repetitive information");
-                context.AppendLine("3. Focus on actionable recommendations for the healthcare provider");
-                context.AppendLine("4. If critical values are present, provide clear next steps");
-                context.AppendLine("5. Maintain a professional, clinical tone throughout");
+                context.AppendLine("RESPOND WITH THIS EXACT FORMAT:");
+                context.AppendLine("1. Start with: '🚨 CRITICAL EMERGENCY ALERT: [number] emergency incidents detected'");
+                context.AppendLine("2. List each emergency incident");
+                context.AppendLine("3. Then discuss other medical data");
+                context.AppendLine("4. Keep response under 200 words");
 
                 var result = context.ToString();
                 _logger.LogInformation("Enhanced context built for patient {PatientId}, length: {Length}", patientId, result.Length);

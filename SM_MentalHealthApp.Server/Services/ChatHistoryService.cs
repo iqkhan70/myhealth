@@ -195,12 +195,15 @@ namespace SM_MentalHealthApp.Server.Services
                     contextBuilder.Add("=== RECENT CONVERSATION ===\n");
                     foreach (var message in recentMessages)
                     {
-                        // Filter out old medical alerts that might contain outdated critical values
+                        // Filter out old AI responses that ignore emergency incidents
                         if (message.Role == MessageRole.Assistant &&
-                            message.Content.Contains("CRITICAL MEDICAL ALERT") &&
-                            message.Content.Contains("Hemoglobin: 6.0"))
+                            (message.Content.Contains("IMPROVEMENT NOTED") ||
+                             message.Content.Contains("DETERIORATION NOTED")) &&
+                            !message.Content.Contains("EMERGENCY") &&
+                            !message.Content.Contains("Fall") &&
+                            !message.Content.Contains("CRITICAL ALERT"))
                         {
-                            // Skip old critical alerts to prevent false alarms
+                            // Skip old AI responses that don't prioritize emergency incidents
                             continue;
                         }
 

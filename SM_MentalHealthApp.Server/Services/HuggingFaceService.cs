@@ -428,10 +428,289 @@ namespace SM_MentalHealthApp.Server.Services
             return response.ToString().Trim();
         }
 
+        private string GenerateEmergencyResponse(string text)
+        {
+            try
+            {
+                // Extract emergency information from the text
+                var unacknowledgedCount = 0;
+                var acknowledgedCount = 0;
+                var unacknowledgedDetails = new List<string>();
+                var acknowledgedDetails = new List<string>();
+
+                // Parse emergency incidents with acknowledgment status - use multiline regex
+                var emergencyMatches = System.Text.RegularExpressions.Regex.Matches(text, @"\[([^\]]+)\] (Fall|Cardiac|Panic Attack|Seizure|Overdose|Self Harm) - (Critical|High|Medium|Low).*?Status: (Acknowledged|Pending)", System.Text.RegularExpressions.RegexOptions.Singleline);
+
+                _logger.LogInformation("Found {Count} emergency matches in text", emergencyMatches.Count);
+
+                foreach (System.Text.RegularExpressions.Match match in emergencyMatches)
+                {
+                    var timestamp = match.Groups[1].Value;
+                    var type = match.Groups[2].Value;
+                    var severity = match.Groups[3].Value;
+                    var status = match.Groups[4].Value;
+
+                    var detail = $"- {type} - {severity} at {timestamp}";
+
+                    if (status == "Acknowledged")
+                    {
+                        acknowledgedCount++;
+                        acknowledgedDetails.Add(detail);
+                    }
+                    else
+                    {
+                        unacknowledgedCount++;
+                        unacknowledgedDetails.Add(detail);
+                    }
+                }
+
+                _logger.LogInformation("Emergency parsing complete: {UnacknowledgedCount} unacknowledged, {AcknowledgedCount} acknowledged",
+                    unacknowledgedCount, acknowledgedCount);
+
+                // Build the response based on acknowledgment status
+                var response = new StringBuilder();
+
+                if (unacknowledgedCount > 0)
+                {
+                    response.AppendLine("🚨 **CRITICAL EMERGENCY ALERT:** " + unacknowledgedCount + " unacknowledged emergency incident(s) detected!");
+                    response.AppendLine();
+                    response.AppendLine("**Unacknowledged Emergencies:**");
+                    foreach (var detail in unacknowledgedDetails)
+                    {
+                        response.AppendLine(detail);
+                    }
+                    response.AppendLine();
+                    response.AppendLine("**Immediate Actions Required:**");
+                    response.AppendLine("1. Acknowledge all emergency incidents immediately");
+                    response.AppendLine("2. Contact patient for status check");
+                    response.AppendLine("3. Conduct fall risk assessment");
+                    response.AppendLine("4. Review medications for side effects");
+                    response.AppendLine("5. Consider emergency medical intervention");
+                    response.AppendLine();
+                }
+
+                if (acknowledgedCount > 0)
+                {
+                    if (unacknowledgedCount > 0)
+                    {
+                        response.AppendLine("**Previously Acknowledged Emergencies:**");
+                    }
+                    else
+                    {
+                        response.AppendLine("📋 **Emergency History:** " + acknowledgedCount + " previously acknowledged incident(s)");
+                    }
+                    foreach (var detail in acknowledgedDetails)
+                    {
+                        response.AppendLine(detail);
+                    }
+                    response.AppendLine();
+                }
+
+                if (unacknowledgedCount == 0 && acknowledgedCount > 0)
+                {
+                    response.AppendLine("✅ **All emergencies have been acknowledged**");
+                    response.AppendLine("**Follow-up Actions:**");
+                    response.AppendLine("1. Monitor patient for any new incidents");
+                    response.AppendLine("2. Review emergency patterns for trends");
+                    response.AppendLine("3. Consider preventive measures");
+                    response.AppendLine();
+                }
+
+                // Extract and analyze medical data for critical values
+                var medicalDataMatch = System.Text.RegularExpressions.Regex.Match(text, @"=== MEDICAL DATA SUMMARY ===(.*?)=== PROGRESSION ANALYSIS ===", System.Text.RegularExpressions.RegexOptions.Singleline);
+                if (medicalDataMatch.Success)
+                {
+                    var medicalData = medicalDataMatch.Groups[1].Value.Trim();
+                    if (!string.IsNullOrEmpty(medicalData))
+                    {
+                        response.AppendLine("**Medical Data Analysis:**");
+
+                        // Check for critical medical values
+                        var criticalAlerts = new List<string>();
+
+                        // Check Blood Pressure (normal: <120/80, high: >140/90, critical: >180/110)
+                        var bpMatch = System.Text.RegularExpressions.Regex.Match(medicalData, @"Blood Pressure:\s*(\d+)/(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (bpMatch.Success)
+                        {
+                            var systolic = int.Parse(bpMatch.Groups[1].Value);
+                            var diastolic = int.Parse(bpMatch.Groups[2].Value);
+
+                            if (systolic >= 180 || diastolic >= 110)
+                            {
+                                criticalAlerts.Add($"🚨 **CRITICAL BLOOD PRESSURE**: {systolic}/{diastolic} - HYPERTENSIVE CRISIS! Immediate medical intervention required!");
+                            }
+                            else if (systolic >= 140 || diastolic >= 90)
+                            {
+                                criticalAlerts.Add($"⚠️ **HIGH BLOOD PRESSURE**: {systolic}/{diastolic} - Requires immediate attention");
+                            }
+                        }
+
+                        // Check Hemoglobin (normal: 12-16 g/dL for men, 11-15 for women)
+                        var hbMatch = System.Text.RegularExpressions.Regex.Match(medicalData, @"Hemoglobin:\s*(\d+\.?\d*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (hbMatch.Success)
+                        {
+                            var hemoglobin = double.Parse(hbMatch.Groups[1].Value);
+                            if (hemoglobin < 7.0)
+                            {
+                                criticalAlerts.Add($"🚨 **CRITICAL HEMOGLOBIN**: {hemoglobin} g/dL - SEVERE ANEMIA! Blood transfusion may be required!");
+                            }
+                            else if (hemoglobin < 10.0)
+                            {
+                                criticalAlerts.Add($"⚠️ **LOW HEMOGLOBIN**: {hemoglobin} g/dL - Moderate anemia, requires monitoring");
+                            }
+                        }
+
+                        // Check Triglycerides (normal: <150 mg/dL, high: >200, very high: >500)
+                        var trigMatch = System.Text.RegularExpressions.Regex.Match(medicalData, @"Triglycerides:\s*(\d+\.?\d*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (trigMatch.Success)
+                        {
+                            var triglycerides = double.Parse(trigMatch.Groups[1].Value);
+                            if (triglycerides >= 500)
+                            {
+                                criticalAlerts.Add($"🚨 **CRITICAL TRIGLYCERIDES**: {triglycerides} mg/dL - EXTREMELY HIGH! Risk of pancreatitis!");
+                            }
+                            else if (triglycerides >= 200)
+                            {
+                                criticalAlerts.Add($"⚠️ **HIGH TRIGLYCERIDES**: {triglycerides} mg/dL - Requires dietary intervention");
+                            }
+                        }
+
+                        // Add critical alerts if any found
+                        if (criticalAlerts.Any())
+                        {
+                            response.AppendLine("🚨 **CRITICAL MEDICAL VALUES DETECTED:**");
+                            foreach (var alert in criticalAlerts)
+                            {
+                                response.AppendLine(alert);
+                            }
+                            response.AppendLine();
+                            response.AppendLine("**IMMEDIATE ACTIONS REQUIRED:**");
+                            response.AppendLine("1. Contact patient immediately for status check");
+                            response.AppendLine("2. Consider emergency medical evaluation");
+                            response.AppendLine("3. Review medications and adjust as needed");
+                            response.AppendLine("4. Monitor vital signs closely");
+                            response.AppendLine();
+                        }
+
+                        response.AppendLine("**Full Medical Data:**");
+                        response.AppendLine(medicalData);
+                    }
+                }
+                else
+                {
+                    response.AppendLine("**Medical Data:** [Review other patient data as secondary priority]");
+                }
+
+                return response.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating emergency response");
+                return "🚨 **CRITICAL EMERGENCY ALERT:** Emergency incidents detected requiring immediate attention!";
+            }
+        }
+
+        private async Task<string> GenerateHybridEmergencyResponse(string text)
+        {
+            try
+            {
+                // Generate the emergency part using hardcoded logic
+                var emergencyResponse = GenerateEmergencyResponse(text);
+
+                // For medical data, use a simplified AI prompt
+                var medicalPrompt = "Based on the medical data in this context, provide a brief clinical assessment focusing on test results and trends. Keep it under 100 words: " + text;
+
+                var requestBody = new
+                {
+                    inputs = medicalPrompt,
+                    parameters = new
+                    {
+                        max_new_tokens = 50,
+                        temperature = 0.3,
+                        do_sample = true,
+                        return_full_text = false
+                    }
+                };
+
+                var json = JsonSerializer.Serialize(requestBody);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                try
+                {
+                    var response = await _httpClient.PostAsync(
+                        "https://api-inference.huggingface.co/models/microsoft/DialoGPT-small",
+                        content);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var responseContent = await response.Content.ReadAsStringAsync();
+                        var responseData = JsonSerializer.Deserialize<JsonElement[]>(responseContent);
+
+                        if (responseData.Length > 0)
+                        {
+                            var medicalData = responseData[0].GetProperty("generated_text").GetString() ?? "";
+
+                            // Clean up the response
+                            if (medicalData.StartsWith(medicalPrompt))
+                            {
+                                medicalData = medicalData.Substring(medicalPrompt.Length).Trim();
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(medicalData))
+                            {
+                                // Replace the placeholder with actual medical data
+                                return emergencyResponse.Replace("**Medical Data:** [Review other patient data as secondary priority]",
+                                    "**Medical Data:** " + medicalData);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error getting medical data from AI, using fallback");
+                }
+
+                // Fallback to original emergency response
+                return emergencyResponse;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating hybrid emergency response");
+                return GenerateEmergencyResponse(text);
+            }
+        }
+
         public async Task<string> GenerateResponse(string text, bool isGenericMode = false)
         {
             try
             {
+                // Log the first 500 characters of the text to see what we're working with
+                _logger.LogInformation("GenerateResponse called with text preview: {TextPreview}",
+                    text.Length > 500 ? text.Substring(0, 500) + "..." : text);
+
+                // Check if this is an emergency case and use hybrid approach
+                _logger.LogInformation("Checking for emergency incidents in text. Contains 'RECENT EMERGENCY INCIDENTS': {HasEmergency}, Contains 'Fall': {HasFall}",
+                    text.Contains("RECENT EMERGENCY INCIDENTS"), text.Contains("Fall"));
+
+                // Also check for other emergency-related patterns
+                _logger.LogInformation("Additional checks - Contains 'EMERGENCY': {HasEmergency2}, Contains 'Fall - Critical': {HasFallCritical}",
+                    text.Contains("EMERGENCY"), text.Contains("Fall - Critical"));
+
+                if (text.Contains("RECENT EMERGENCY INCIDENTS") && text.Contains("Fall"))
+                {
+                    _logger.LogInformation("Emergency case detected, using hybrid approach");
+                    return await GenerateHybridEmergencyResponse(text);
+                }
+                else if (text.Contains("EMERGENCY") && text.Contains("Fall"))
+                {
+                    _logger.LogInformation("Emergency case detected (alternative pattern), using hybrid approach");
+                    return await GenerateHybridEmergencyResponse(text);
+                }
+                else
+                {
+                    _logger.LogInformation("No emergency case detected, using normal AI response");
+                }
+
                 // For generic mode, use a different model and approach
                 if (isGenericMode)
                 {

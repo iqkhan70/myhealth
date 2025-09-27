@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Shared;
 using System.Text;
