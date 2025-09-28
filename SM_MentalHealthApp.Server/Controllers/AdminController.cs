@@ -52,6 +52,162 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        /// <summary>
+        /// Perform AI health check on a patient and send alert if severe
+        /// </summary>
+        [HttpPost("ai-health-check/{patientId}")]
+        public async Task<ActionResult> PerformAiHealthCheck(int patientId)
+        {
+            try
+            {
+                _logger.LogInformation("Starting AI health check for patient {PatientId}", patientId);
+
+                // Verify patient exists and is active
+                var patient = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == patientId && u.RoleId == 1 && u.IsActive);
+
+                if (patient == null)
+                {
+                    return NotFound("Patient not found or inactive");
+                }
+
+                // Get assigned doctors for this patient
+                var assignedDoctors = await _context.UserAssignments
+                    .Where(ua => ua.AssigneeId == patientId)
+                    .Include(ua => ua.Assigner)
+                    .Select(ua => ua.Assigner)
+                    .Where(d => d.IsActive)
+                    .ToListAsync();
+
+                if (!assignedDoctors.Any())
+                {
+                    return BadRequest("No doctors assigned to this patient");
+                }
+
+                // Build comprehensive context for AI analysis
+                var contentAnalysisService = HttpContext.RequestServices.GetRequiredService<IContentAnalysisService>();
+                var patientContext = await contentAnalysisService.BuildEnhancedContextAsync(patientId, $"AI Health Check for Patient {patient.FirstName} {patient.LastName}");
+
+                _logger.LogInformation("Built context for patient {PatientId}, length: {ContextLength}", patientId, patientContext.Length);
+
+                // Use HuggingFace service to analyze patient's current status
+                var huggingFaceService = HttpContext.RequestServices.GetRequiredService<HuggingFaceService>();
+
+                // Get AI analysis for this patient with full context
+                var aiResponse = await huggingFaceService.GenerateResponse(patientContext);
+
+                _logger.LogInformation("AI Response for patient {PatientId}: {Response}", patientId, aiResponse);
+
+                // Check if AI indicates high severity
+                bool isHighSeverity = IsAiResponseIndicatingHighSeverity(aiResponse);
+
+                if (isHighSeverity)
+                {
+                    _logger.LogInformation("AI detected high severity for patient {PatientId}. Sending alerts to doctors.", patientId);
+
+                    // Send SMS alerts to all assigned doctors
+                    var notificationService = HttpContext.RequestServices.GetRequiredService<INotificationService>();
+                    var alertsSent = 0;
+
+                    foreach (var doctor in assignedDoctors)
+                    {
+                        try
+                        {
+                            var alert = new global::SM_MentalHealthApp.Shared.EmergencyAlert
+                            {
+                                Id = 0, // AI-generated alert
+                                PatientId = patient.Id,
+                                PatientName = $"{patient.FirstName} {patient.LastName}",
+                                PatientEmail = patient.Email,
+                                EmergencyType = "AI Health Alert",
+                                Severity = "High",
+                                Message = $"AI Health Check detected concerning patterns for {patient.FirstName} {patient.LastName}",
+                                Timestamp = DateTime.UtcNow,
+                                DeviceId = "AI-SYSTEM"
+                            };
+
+                            await notificationService.SendEmergencyAlert(doctor.Id, alert);
+                            alertsSent++;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to send AI health alert to doctor {DoctorId}", doctor.Id);
+                        }
+                    }
+
+                    return Ok(new
+                    {
+                        success = true,
+                        severity = "High",
+                        aiResponse = aiResponse,
+                        alertsSent = alertsSent,
+                        doctorsNotified = assignedDoctors.Count,
+                        message = $"AI detected high severity. {alertsSent} doctors notified."
+                    });
+                }
+                else
+                {
+                    _logger.LogInformation("AI health check for patient {PatientId} shows normal status", patientId);
+
+                    return Ok(new
+                    {
+                        success = true,
+                        severity = "Normal",
+                        aiResponse = aiResponse,
+                        alertsSent = 0,
+                        message = "AI health check shows normal status. No alerts sent."
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error performing AI health check for patient {PatientId}", patientId);
+                return StatusCode(500, $"Error performing AI health check: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Analyze AI response to determine if it indicates high severity
+        /// </summary>
+        private bool IsAiResponseIndicatingHighSeverity(string aiResponse)
+        {
+            if (string.IsNullOrEmpty(aiResponse))
+                return false;
+
+            var response = aiResponse.ToLower();
+
+            // Check for high-severity keywords and patterns
+            var highSeverityKeywords = new[]
+            {
+                "critical", "urgent", "immediate", "emergency", "severe", "concerning",
+                "high risk", "dangerous", "alarming", "serious", "crisis", "acute",
+                "unacknowledged", "fall", "heart attack", "stroke", "suicide",
+                "self-harm", "overdose", "chest pain", "difficulty breathing"
+            };
+
+            var severityScore = 0;
+            foreach (var keyword in highSeverityKeywords)
+            {
+                if (response.Contains(keyword))
+                {
+                    severityScore++;
+                }
+            }
+
+            // Also check for specific medical value alerts
+            if (response.Contains("blood pressure") && (response.Contains("high") || response.Contains("elevated")))
+                severityScore += 2;
+
+            if (response.Contains("hemoglobin") && response.Contains("low"))
+                severityScore += 2;
+
+            if (response.Contains("triglycerides") && response.Contains("high"))
+                severityScore += 1;
+
+            // Consider high severity if multiple indicators or critical keywords found
+            return severityScore >= 2 || response.Contains("critical") || response.Contains("emergency") || response.Contains("unacknowledged");
+        }
+
         [HttpGet("assignments")]
         public async Task<ActionResult<List<UserAssignment>>> GetAssignments()
         {
