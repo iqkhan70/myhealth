@@ -364,6 +364,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+vonage.txt
 
 # JetBrains Rider
 .idea/

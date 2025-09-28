@@ -19,6 +19,9 @@
         public string? MobilePhone { get; set; }
     }
 
+    // Track original values for dirty field detection
+    private User? _originalUser;
+
     public class UpdatePatientRequest
     {
         public string FirstName { get; set; } = string.Empty;
@@ -402,6 +405,10 @@
                             <span class="detail-value">@(selectedUser.Gender ?? "Not specified")</span>
                         </div>
                         <div class="detail-item">
+                            <span class="detail-label">Mobile Phone:</span>
+                            <span class="detail-value">@(selectedUser.MobilePhone ?? "Not provided")</span>
+                        </div>
+                        <div class="detail-item">
                             <span class="detail-label">Status:</span>
                             <span class="status-badge @(selectedUser.IsActive ? "active" : "inactive")">
                                 @(selectedUser.IsActive ? "Active" : "Inactive")
@@ -726,13 +733,15 @@
         if (user == null) return;
         
         editingUser = user;
+        _originalUser = user; // Store original for dirty field detection
         patientForm = new CreatePatientRequest
         {
             FirstName = user.FirstName ?? string.Empty,
             LastName = user.LastName ?? string.Empty,
             Email = user.Email ?? string.Empty,
             DateOfBirth = user.DateOfBirth,
-            Gender = user.Gender ?? string.Empty
+            Gender = user.Gender ?? string.Empty,
+            MobilePhone = user.MobilePhone ?? string.Empty
         };
         showPatientForm = true;
     }
@@ -781,18 +790,63 @@
             }
             else
             {
-                // Update existing patient
-                var updateRequest = new UpdatePatientRequest
+                // Update existing patient - only send changed fields
+                var updateRequest = new UpdatePatientRequest();
+                
+                // Only include fields that have actually changed
+                if (_originalUser != null)
                 {
-                    FirstName = patientForm.FirstName,
-                    LastName = patientForm.LastName,
-                    Email = patientForm.Email,
-                    DateOfBirth = patientForm.DateOfBirth,
-                    Gender = patientForm.Gender,
-                    Password = string.IsNullOrWhiteSpace(patientForm.Password) ? null : patientForm.Password
-                };
+                    Console.WriteLine($"DEBUG - Original: FirstName='{_originalUser.FirstName}', LastName='{_originalUser.LastName}', Email='{_originalUser.Email}', MobilePhone='{_originalUser.MobilePhone}'");
+                    Console.WriteLine($"DEBUG - Form: FirstName='{patientForm.FirstName}', LastName='{patientForm.LastName}', Email='{patientForm.Email}', MobilePhone='{patientForm.MobilePhone}'");
+                    
+                    // Only set properties that have actually changed
+                    if (!string.IsNullOrWhiteSpace(patientForm.FirstName) && patientForm.FirstName != (_originalUser.FirstName ?? string.Empty))
+                    {
+                        updateRequest.FirstName = patientForm.FirstName;
+                        Console.WriteLine("DEBUG - FirstName changed, including in request");
+                    }
+                    
+                    if (!string.IsNullOrWhiteSpace(patientForm.LastName) && patientForm.LastName != (_originalUser.LastName ?? string.Empty))
+                    {
+                        updateRequest.LastName = patientForm.LastName;
+                        Console.WriteLine("DEBUG - LastName changed, including in request");
+                    }
+                    
+                    if (!string.IsNullOrWhiteSpace(patientForm.Email) && patientForm.Email != (_originalUser.Email ?? string.Empty))
+                    {
+                        updateRequest.Email = patientForm.Email;
+                        Console.WriteLine("DEBUG - Email changed, including in request");
+                    }
+                    
+                    if (patientForm.DateOfBirth != _originalUser.DateOfBirth)
+                    {
+                        updateRequest.DateOfBirth = patientForm.DateOfBirth;
+                        Console.WriteLine("DEBUG - DateOfBirth changed, including in request");
+                    }
+                    
+                    if (!string.IsNullOrWhiteSpace(patientForm.Gender) && patientForm.Gender != (_originalUser.Gender ?? string.Empty))
+                    {
+                        updateRequest.Gender = patientForm.Gender;
+                        Console.WriteLine("DEBUG - Gender changed, including in request");
+                    }
+                    
+                    if (patientForm.MobilePhone != (_originalUser.MobilePhone ?? string.Empty))
+                    {
+                        updateRequest.MobilePhone = patientForm.MobilePhone;
+                        Console.WriteLine("DEBUG - MobilePhone changed, including in request");
+                    }
+                    
+                    // Only include password if provided
+                    if (!string.IsNullOrWhiteSpace(patientForm.Password))
+                    {
+                        updateRequest.Password = patientForm.Password;
+                        Console.WriteLine("DEBUG - Password provided, including in request");
+                    }
+                    
+                    Console.WriteLine($"DEBUG - Final request: FirstName='{updateRequest.FirstName}', LastName='{updateRequest.LastName}', Email='{updateRequest.Email}', MobilePhone='{updateRequest.MobilePhone}', Password='{updateRequest.Password}'");
+                }
 
-                var result = await Http.PutAsJsonAsync($"api/user/{editingUser.Id}", updateRequest);
+                var result = await Http.PutAsJsonAsync($"api/admin/update-patient/{editingUser.Id}", updateRequest);
                 if (result.IsSuccessStatusCode)
                 {
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient updated successfully!");

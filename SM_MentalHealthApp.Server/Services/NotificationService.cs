@@ -11,12 +11,14 @@ namespace SM_MentalHealthApp.Server.Services
     {
         private readonly JournalDbContext _context;
         private readonly ILogger<NotificationService> _logger;
+        private readonly ISmsService _smsService;
         private readonly ConcurrentDictionary<int, List<SM_MentalHealthApp.Shared.EmergencyAlert>> _pendingAlerts = new();
 
-        public NotificationService(JournalDbContext context, ILogger<NotificationService> logger)
+        public NotificationService(JournalDbContext context, ILogger<NotificationService> logger, ISmsService smsService)
         {
             _context = context;
             _logger = logger;
+            _smsService = smsService;
         }
 
         public async Task SendEmergencyAlert(int doctorId, SM_MentalHealthApp.Shared.EmergencyAlert alert)
@@ -30,13 +32,15 @@ namespace SM_MentalHealthApp.Server.Services
                 }
                 _pendingAlerts[doctorId].Add(alert);
 
+                // Send SMS notification to doctor
+                await SendSmsNotificationToDoctor(doctorId, alert);
+
                 // Log the alert
                 _logger.LogInformation("Emergency alert queued for doctor {DoctorId}: {AlertType}",
                     doctorId, alert.EmergencyType);
 
                 // In a real implementation, this would trigger WebSocket notifications
                 // For now, we'll just log it
-                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -115,6 +119,47 @@ namespace SM_MentalHealthApp.Server.Services
                 return result;
             }
             return new List<SM_MentalHealthApp.Shared.EmergencyAlert>();
+        }
+
+        private async Task SendSmsNotificationToDoctor(int doctorId, SM_MentalHealthApp.Shared.EmergencyAlert alert)
+        {
+            try
+            {
+                // Get doctor's phone number from database
+                var doctor = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == doctorId && u.RoleId == 2); // RoleId 2 = Doctor
+
+                if (doctor == null)
+                {
+                    _logger.LogWarning("Doctor {DoctorId} not found for SMS notification", doctorId);
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(doctor.MobilePhone))
+                {
+                    _logger.LogWarning("Doctor {DoctorId} ({DoctorName}) has no mobile phone number configured",
+                        doctorId, doctor.FullName);
+                    return;
+                }
+
+                // Send SMS via Vonage
+                var smsSent = await _smsService.SendEmergencyAlertAsync(doctor.MobilePhone, alert);
+
+                if (smsSent)
+                {
+                    _logger.LogInformation("Emergency SMS sent to doctor {DoctorId} ({DoctorName}) at {PhoneNumber}",
+                        doctorId, doctor.FullName, doctor.MobilePhone);
+                }
+                else
+                {
+                    _logger.LogError("Failed to send emergency SMS to doctor {DoctorId} ({DoctorName}) at {PhoneNumber}",
+                        doctorId, doctor.FullName, doctor.MobilePhone);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending SMS notification to doctor {DoctorId}", doctorId);
+            }
         }
     }
 }

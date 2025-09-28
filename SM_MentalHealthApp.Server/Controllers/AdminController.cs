@@ -5,6 +5,7 @@ using SM_MentalHealthApp.Shared;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -14,11 +15,13 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         private readonly IAdminService _adminService;
         private readonly JournalDbContext _context;
+        private readonly ILogger<AdminController> _logger;
 
-        public AdminController(IAdminService adminService, JournalDbContext context)
+        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger)
         {
             _adminService = adminService;
             _context = context;
+            _logger = logger;
         }
 
         [HttpGet("doctors")]
@@ -211,6 +214,92 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        [HttpPut("update-patient/{id}")]
+        public async Task<ActionResult> UpdatePatient(int id, [FromBody] UpdatePatientRequest request)
+        {
+            try
+            {
+                var patient = await _context.Users.FindAsync(id);
+                if (patient == null)
+                {
+                    return NotFound("Patient not found.");
+                }
+
+                if (patient.RoleId != 1)
+                {
+                    return BadRequest("User is not a patient.");
+                }
+
+                // Debug logging
+                _logger.LogInformation("UpdatePatient - ID: {Id}, Request: FirstName='{FirstName}', LastName='{LastName}', Email='{Email}', MobilePhone='{MobilePhone}', Password='{Password}'",
+                    id, request.FirstName, request.LastName, request.Email, request.MobilePhone,
+                    string.IsNullOrEmpty(request.Password) ? "NULL" : "PROVIDED");
+
+                _logger.LogInformation("UpdatePatient - Current: FirstName='{FirstName}', LastName='{LastName}', Email='{Email}', MobilePhone='{MobilePhone}'",
+                    patient.FirstName, patient.LastName, patient.Email, patient.MobilePhone);
+
+                // Check if email already exists (excluding current patient)
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email && u.Id != id);
+
+                if (existingUser != null)
+                {
+                    return BadRequest("A user with this email already exists.");
+                }
+
+                // Update patient information only if field is provided, not empty, and different
+                if (!string.IsNullOrWhiteSpace(request.FirstName) && patient.FirstName != request.FirstName)
+                {
+                    patient.FirstName = request.FirstName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.LastName) && patient.LastName != request.LastName)
+                {
+                    patient.LastName = request.LastName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Email) && patient.Email != request.Email)
+                {
+                    patient.Email = request.Email;
+                }
+
+                if (request.DateOfBirth.HasValue && patient.DateOfBirth != request.DateOfBirth.Value)
+                {
+                    patient.DateOfBirth = request.DateOfBirth.Value;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Gender) && patient.Gender != request.Gender)
+                {
+                    patient.Gender = request.Gender;
+                }
+
+                // MobilePhone can be null, so check if it's provided and different
+                if (request.MobilePhone != null && patient.MobilePhone != request.MobilePhone)
+                {
+                    patient.MobilePhone = request.MobilePhone;
+                }
+
+                // Update password only if provided and not empty
+                if (!string.IsNullOrWhiteSpace(request.Password))
+                {
+                    patient.PasswordHash = HashPassword(request.Password);
+                    patient.MustChangePassword = true;
+                }
+
+                await _context.SaveChangesAsync();
+
+                // Debug logging after update
+                _logger.LogInformation("UpdatePatient - After: FirstName='{FirstName}', LastName='{LastName}', Email='{Email}', MobilePhone='{MobilePhone}', MustChangePassword={MustChangePassword}",
+                    patient.FirstName, patient.LastName, patient.Email, patient.MobilePhone, patient.MustChangePassword);
+
+                return Ok(new { message = "Patient updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error updating patient: {ex.Message}");
+            }
+        }
+
         [HttpPut("doctors/{id}")]
         public async Task<ActionResult> UpdateDoctor(int id, [FromBody] UpdateDoctorRequest request)
         {
@@ -236,17 +325,48 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return BadRequest("A user with this email already exists.");
                 }
 
-                // Update doctor information
-                doctor.FirstName = request.FirstName;
-                doctor.LastName = request.LastName;
-                doctor.Email = request.Email;
-                doctor.DateOfBirth = request.DateOfBirth;
-                doctor.Gender = request.Gender;
-                doctor.MobilePhone = request.MobilePhone;
-                doctor.Specialization = request.Specialization;
-                doctor.LicenseNumber = request.LicenseNumber;
+                // Update doctor information only if field is provided, not empty, and different
+                if (!string.IsNullOrWhiteSpace(request.FirstName) && doctor.FirstName != request.FirstName)
+                {
+                    doctor.FirstName = request.FirstName;
+                }
 
-                // Update password if provided
+                if (!string.IsNullOrWhiteSpace(request.LastName) && doctor.LastName != request.LastName)
+                {
+                    doctor.LastName = request.LastName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Email) && doctor.Email != request.Email)
+                {
+                    doctor.Email = request.Email;
+                }
+
+                if (request.DateOfBirth.HasValue && doctor.DateOfBirth != request.DateOfBirth.Value)
+                {
+                    doctor.DateOfBirth = request.DateOfBirth.Value;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Gender) && doctor.Gender != request.Gender)
+                {
+                    doctor.Gender = request.Gender;
+                }
+
+                if (request.MobilePhone != null && doctor.MobilePhone != request.MobilePhone)
+                {
+                    doctor.MobilePhone = request.MobilePhone;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Specialization) && doctor.Specialization != request.Specialization)
+                {
+                    doctor.Specialization = request.Specialization;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.LicenseNumber) && doctor.LicenseNumber != request.LicenseNumber)
+                {
+                    doctor.LicenseNumber = request.LicenseNumber;
+                }
+
+                // Update password only if provided and not empty
                 if (!string.IsNullOrWhiteSpace(request.Password))
                 {
                     doctor.PasswordHash = HashPassword(request.Password);
@@ -363,14 +483,14 @@ namespace SM_MentalHealthApp.Server.Controllers
 
     public class UpdateDoctorRequest
     {
-        public string FirstName { get; set; } = string.Empty;
-        public string LastName { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public DateTime DateOfBirth { get; set; }
-        public string Gender { get; set; } = string.Empty;
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? Gender { get; set; }
         public string? MobilePhone { get; set; }
-        public string Specialization { get; set; } = string.Empty;
-        public string LicenseNumber { get; set; } = string.Empty;
+        public string? Specialization { get; set; }
+        public string? LicenseNumber { get; set; }
         public string? Password { get; set; }
     }
 
@@ -387,11 +507,11 @@ namespace SM_MentalHealthApp.Server.Controllers
 
     public class UpdatePatientRequest
     {
-        public string FirstName { get; set; } = string.Empty;
-        public string LastName { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public DateTime DateOfBirth { get; set; }
-        public string Gender { get; set; } = string.Empty;
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? Gender { get; set; }
         public string? MobilePhone { get; set; }
         public string? Password { get; set; }
     }

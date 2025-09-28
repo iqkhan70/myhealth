@@ -370,6 +370,10 @@
                             <span class="detail-value">@(selectedDoctor.Gender ?? "Not specified")</span>
                         </div>
                         <div class="detail-item">
+                            <span class="detail-label">Mobile Phone:</span>
+                            <span class="detail-value">@(selectedDoctor.MobilePhone ?? "Not provided")</span>
+                        </div>
+                        <div class="detail-item">
                             <span class="detail-label">Status:</span>
                             <span class="status-badge @(selectedDoctor.IsActive ? "active" : "inactive")">
                                 @(selectedDoctor.IsActive ? "Active" : "Inactive")
@@ -521,6 +525,7 @@
         if (doctor == null) return;
         
         editingDoctor = doctor;
+        _originalDoctor = doctor; // Store original for dirty field detection
         doctorForm = new CreateDoctorRequest
         {
             FirstName = doctor.FirstName ?? string.Empty,
@@ -528,6 +533,7 @@
             Email = doctor.Email ?? string.Empty,
             DateOfBirth = doctor.DateOfBirth,
             Gender = doctor.Gender ?? string.Empty,
+            MobilePhone = doctor.MobilePhone ?? string.Empty,
             Specialization = doctor.Specialization ?? string.Empty,
             LicenseNumber = doctor.LicenseNumber ?? string.Empty
         };
@@ -580,18 +586,41 @@
             }
             else
             {
-                // Update existing doctor
-                var updateRequest = new UpdateDoctorRequest
+                // Update existing doctor - only send changed fields
+                var updateRequest = new UpdateDoctorRequest();
+                
+                // Only include fields that have actually changed
+                if (_originalDoctor != null)
                 {
-                    FirstName = doctorForm.FirstName,
-                    LastName = doctorForm.LastName,
-                    Email = doctorForm.Email,
-                    DateOfBirth = doctorForm.DateOfBirth,
-                    Gender = doctorForm.Gender,
-                    Specialization = doctorForm.Specialization,
-                    LicenseNumber = doctorForm.LicenseNumber,
-                    Password = string.IsNullOrWhiteSpace(doctorForm.Password) ? null : doctorForm.Password
-                };
+                    // Only set properties that have actually changed
+                    if (!string.IsNullOrWhiteSpace(doctorForm.FirstName) && doctorForm.FirstName != (_originalDoctor.FirstName ?? string.Empty))
+                        updateRequest.FirstName = doctorForm.FirstName;
+                    
+                    if (!string.IsNullOrWhiteSpace(doctorForm.LastName) && doctorForm.LastName != (_originalDoctor.LastName ?? string.Empty))
+                        updateRequest.LastName = doctorForm.LastName;
+                    
+                    if (!string.IsNullOrWhiteSpace(doctorForm.Email) && doctorForm.Email != (_originalDoctor.Email ?? string.Empty))
+                        updateRequest.Email = doctorForm.Email;
+                    
+                    if (doctorForm.DateOfBirth != _originalDoctor.DateOfBirth)
+                        updateRequest.DateOfBirth = doctorForm.DateOfBirth;
+                    
+                    if (!string.IsNullOrWhiteSpace(doctorForm.Gender) && doctorForm.Gender != (_originalDoctor.Gender ?? string.Empty))
+                        updateRequest.Gender = doctorForm.Gender;
+                    
+                    if (doctorForm.MobilePhone != (_originalDoctor.MobilePhone ?? string.Empty))
+                        updateRequest.MobilePhone = doctorForm.MobilePhone;
+                    
+                    if (!string.IsNullOrWhiteSpace(doctorForm.Specialization) && doctorForm.Specialization != (_originalDoctor.Specialization ?? string.Empty))
+                        updateRequest.Specialization = doctorForm.Specialization;
+                    
+                    if (!string.IsNullOrWhiteSpace(doctorForm.LicenseNumber) && doctorForm.LicenseNumber != (_originalDoctor.LicenseNumber ?? string.Empty))
+                        updateRequest.LicenseNumber = doctorForm.LicenseNumber;
+                    
+                    // Only include password if provided
+                    if (!string.IsNullOrWhiteSpace(doctorForm.Password))
+                        updateRequest.Password = doctorForm.Password;
+                }
 
                 var result = await Http.PutAsJsonAsync($"api/admin/doctors/{editingDoctor.Id}", updateRequest);
                 if (result.IsSuccessStatusCode)
@@ -690,6 +719,9 @@
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
     }
+
+    // Track original values for dirty field detection
+    private User? _originalDoctor;
 
     public class UpdateDoctorRequest
     {
