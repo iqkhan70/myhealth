@@ -150,6 +150,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     PasswordHash = HashPassword(request.Password),
                     DateOfBirth = request.DateOfBirth,
                     Gender = request.Gender,
+                    MobilePhone = request.MobilePhone,
                     RoleId = 2, // Doctor role
                     Specialization = request.Specialization,
                     LicenseNumber = request.LicenseNumber,
@@ -192,6 +193,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     PasswordHash = HashPassword(request.Password),
                     DateOfBirth = request.DateOfBirth,
                     Gender = request.Gender,
+                    MobilePhone = request.MobilePhone,
                     RoleId = 1, // Patient role
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true,
@@ -240,6 +242,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 doctor.Email = request.Email;
                 doctor.DateOfBirth = request.DateOfBirth;
                 doctor.Gender = request.Gender;
+                doctor.MobilePhone = request.MobilePhone;
                 doctor.Specialization = request.Specialization;
                 doctor.LicenseNumber = request.LicenseNumber;
 
@@ -353,6 +356,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string Password { get; set; } = string.Empty;
         public DateTime DateOfBirth { get; set; }
         public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
     }
@@ -364,6 +368,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string Email { get; set; } = string.Empty;
         public DateTime DateOfBirth { get; set; }
         public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
         public string? Password { get; set; }
@@ -377,6 +382,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string Password { get; set; } = string.Empty;
         public DateTime DateOfBirth { get; set; }
         public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
     }
 
     public class UpdatePatientRequest
@@ -386,6 +392,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string Email { get; set; } = string.Empty;
         public DateTime DateOfBirth { get; set; }
         public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
         public string? Password { get; set; }
     }
 }

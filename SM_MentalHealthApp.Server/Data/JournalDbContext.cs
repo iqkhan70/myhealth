@@ -44,6 +44,7 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
                         entity.HasIndex(e => e.Email).IsUnique();
                         entity.Property(e => e.Gender).HasMaxLength(20);
+                        entity.Property(e => e.MobilePhone).HasMaxLength(20);
                         entity.Property(e => e.Specialization).HasMaxLength(100);
                         entity.Property(e => e.LicenseNumber).HasMaxLength(50);
 

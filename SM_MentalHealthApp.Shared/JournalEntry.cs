@@ -23,6 +23,7 @@ namespace SM_MentalHealthApp.Shared
         public string PasswordHash { get; set; } = string.Empty;
         public DateTime DateOfBirth { get; set; }
         public string? Gender { get; set; }
+        public string? MobilePhone { get; set; } // Mobile phone for SMS alerts
         public int RoleId { get; set; } = 1; // Default to Patient role
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastLoginAt { get; set; }
@@ -129,6 +130,7 @@ namespace SM_MentalHealthApp.Shared
         public string Password { get; set; } = string.Empty;
         public DateTime DateOfBirth { get; set; }
         public string? Gender { get; set; }
+        public string? MobilePhone { get; set; } // Mobile phone for SMS alerts
         public int RoleId { get; set; } = 1; // Default to Patient role
 
         // Doctor-specific fields (optional)
