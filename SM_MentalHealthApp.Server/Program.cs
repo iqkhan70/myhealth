@@ -111,26 +111,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Serve static files from the client's wwwroot directory
+// Enable static files and Blazor WebAssembly support
+app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
-        Path.Combine(Directory.GetCurrentDirectory(), "..", "SM_MentalHealthApp.Client", "bin", "Debug", "net9.0", "wwwroot")),
-    RequestPath = "",
-    OnPrepareResponse = ctx =>
-    {
-        // Set proper MIME types for Blazor WebAssembly files
-        if (ctx.File.Name.EndsWith(".wasm"))
-        {
-            ctx.Context.Response.Headers.Append("Content-Type", "application/wasm");
-        }
-        else if (ctx.File.Name.EndsWith(".js"))
-        {
-            ctx.Context.Response.Headers.Append("Content-Type", "application/javascript");
-        }
-    }
-});
 
 app.UseCors("AllowBlazorClient");
 app.UseAuthentication();
