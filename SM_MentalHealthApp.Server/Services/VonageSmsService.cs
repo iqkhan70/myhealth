@@ -106,21 +106,10 @@ namespace SM_MentalHealthApp.Server.Services
                 // TODO: Replace this with actual Vonage API implementation
                 // This is a placeholder that simulates the API call
 
-                _logger.LogInformation("PLACEHOLDER: Would send SMS via Vonage API");
-                _logger.LogInformation("API Key: {ApiKey}", _apiKey);
-                _logger.LogInformation("From: {FromNumber}", _fromNumber);
-                _logger.LogInformation("To: {PhoneNumber}", phoneNumber);
+                _logger.LogInformation("Sending SMS via Vonage API - From: {FromNumber}, To: {PhoneNumber}", _fromNumber, phoneNumber);
                 _logger.LogInformation("Message: {Message}", message);
 
-                // Simulate API call delay
-                await Task.Delay(100);
-
-                // For POC, always return true
-                // In production, this would make actual HTTP call to Vonage
-                return true;
-
-                /* 
-                // ACTUAL VONAGE API IMPLEMENTATION (uncomment when ready):
+                // ACTUAL VONAGE API IMPLEMENTATION:
                 var requestBody = new
                 {
                     from = _fromNumber,
@@ -132,15 +121,21 @@ namespace SM_MentalHealthApp.Server.Services
                 var json = JsonSerializer.Serialize(requestBody);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
+                _logger.LogInformation("Making Vonage API call to: https://rest.nexmo.com/sms/json");
+                _logger.LogInformation("Request body: {RequestBody}", json);
+
                 var response = await _httpClient.PostAsync(
                     $"https://rest.nexmo.com/sms/json?api_key={_apiKey}&api_secret={_apiSecret}",
                     content);
 
+                var responseContent = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation("Vonage API Response: Status={StatusCode}, Content={Content}",
+                    response.StatusCode, responseContent);
+
                 if (response.IsSuccessStatusCode)
                 {
-                    var responseContent = await response.Content.ReadAsStringAsync();
                     var result = JsonSerializer.Deserialize<JsonElement>(responseContent);
-                    
+
                     // Check if message was accepted
                     if (result.TryGetProperty("messages", out var messages) && messages.GetArrayLength() > 0)
                     {
@@ -148,13 +143,17 @@ namespace SM_MentalHealthApp.Server.Services
                         if (firstMessage.TryGetProperty("status", out var status))
                         {
                             var statusValue = status.GetString();
+                            _logger.LogInformation("Vonage message status: {Status}", statusValue);
                             return statusValue == "0"; // 0 means success in Vonage API
                         }
                     }
                 }
+                else
+                {
+                    _logger.LogError("Vonage API call failed: {StatusCode} - {Content}", response.StatusCode, responseContent);
+                }
 
                 return false;
-                */
             }
             catch (Exception ex)
             {
