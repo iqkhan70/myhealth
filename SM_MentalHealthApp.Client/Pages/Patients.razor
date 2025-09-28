@@ -633,9 +633,9 @@
             {
                 users = await Http.GetFromJsonAsync<List<User>>("api/doctor/my-patients") ?? new();
             }
-            else if (AuthService.CurrentUser?.RoleId == 3) // Admin - load all users
+            else if (AuthService.CurrentUser?.RoleId == 3) // Admin - load all patients
             {
-                users = await Http.GetFromJsonAsync<List<User>>("api/user") ?? new();
+                users = await Http.GetFromJsonAsync<List<User>>("api/admin/patients") ?? new();
             }
             else
             {
