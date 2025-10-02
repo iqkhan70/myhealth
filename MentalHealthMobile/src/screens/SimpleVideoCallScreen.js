@@ -10,12 +10,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 // Note: RTCView not available in Expo managed workflow
 import WebRTCService from '../services/WebRTCService';
-import { useWebSocket } from '../context/WebSocketContext';
+import { useRealtime } from '../context/RealtimeContext';
 
 export default function SimpleVideoCallScreen({ route, navigation }) {
   const { patient, doctor, callType, isInitiator } = route.params || {};
   const targetUser = patient || doctor;
-  const { socket, endCall } = useWebSocket();
+  const { isConnected } = useRealtime();
   
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
@@ -34,8 +34,8 @@ export default function SimpleVideoCallScreen({ route, navigation }) {
 
   const initializeCall = async () => {
     try {
-      // Initialize WebRTC service with socket
-        WebRTCService.initialize(socket);
+      // Initialize WebRTC service
+        WebRTCService.initialize();
       
       // Set up callbacks
       WebRTCService.setCallbacks({
@@ -77,10 +77,7 @@ export default function SimpleVideoCallScreen({ route, navigation }) {
 
   const handleEndCall = () => {
       WebRTCService.endCall();
-      if (socket) {
-        endCall();
-      }
-    navigation.goBack();
+      navigation.goBack();
   };
 
   const toggleMute = () => {

@@ -8,12 +8,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import WebRTCService from '../services/WebRTCService';
-import { useWebSocket } from '../context/WebSocketContext';
+import { useRealtime } from '../context/RealtimeContext';
 
 export default function SimpleAudioCallScreen({ route, navigation }) {
   const { patient, doctor, callType, isInitiator } = route.params || {};
   const targetUser = patient || doctor;
-  const { socket, endCall } = useWebSocket();
+  const { isConnected } = useRealtime();
   
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(false);
@@ -42,8 +42,8 @@ export default function SimpleAudioCallScreen({ route, navigation }) {
 
   const initializeCall = async () => {
     try {
-      // Initialize WebRTC service with socket
-        WebRTCService.initialize(socket);
+      // Initialize WebRTC service
+        WebRTCService.initialize();
       
       // Set up callbacks
       WebRTCService.setCallbacks({
@@ -84,10 +84,7 @@ export default function SimpleAudioCallScreen({ route, navigation }) {
 
   const handleEndCall = () => {
       WebRTCService.endCall();
-      if (socket) {
-        endCall();
-      }
-    navigation.goBack();
+      navigation.goBack();
   };
 
   const toggleMute = () => {
