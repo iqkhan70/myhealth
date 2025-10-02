@@ -332,12 +332,8 @@ export const RealtimeProvider = ({ children }) => {
                     }
                     
                     const updatedMessages = [...existingMessages, message];
-                    // Sort messages by timestamp
-                    newChatHistory[otherUserId] = updatedMessages.sort((a, b) => {
-                      const timeA = new Date(a.timestamp).getTime();
-                      const timeB = new Date(b.timestamp).getTime();
-                      return timeA - timeB;
-                    });
+                    // Use database ordering - no client-side sorting needed
+                    newChatHistory[otherUserId] = updatedMessages;
                   } else {
                     console.log('Skipping duplicate message:', message.message);
                   }
@@ -418,7 +414,7 @@ export const RealtimeProvider = ({ children }) => {
         const data = await response.json();
         console.log('Message sent:', data);
         
-        // Add message to local state
+        // Add message to local state and chat history
         const localMessage = {
           id: Date.now().toString(),
           targetUserId,
@@ -428,7 +424,18 @@ export const RealtimeProvider = ({ children }) => {
           timestamp: new Date().toISOString(),
           isSent: true
         };
+        
+        // Add to global messages
         setMessages(prev => [...prev, localMessage]);
+        
+        // Add to chat history for immediate display
+        setChatHistory(prev => {
+          const existingMessages = prev[targetUserId] || [];
+          return {
+            ...prev,
+            [targetUserId]: [...existingMessages, localMessage]
+          };
+        });
       } else {
         console.error('Failed to send message:', response.status);
       }
@@ -556,14 +563,8 @@ export const RealtimeProvider = ({ children }) => {
   const getMessagesForUser = (otherUserId) => {
     const historyMessages = chatHistory[otherUserId] || [];
     
-    // Sort by timestamp (ascending - oldest first, newest last)
-    const sortedMessages = historyMessages.sort((a, b) => {
-      const timeA = new Date(a.timestamp).getTime();
-      const timeB = new Date(b.timestamp).getTime();
-      return timeA - timeB;
-    });
-    
-    return sortedMessages;
+    // Return messages in database order - no client-side sorting needed
+    return historyMessages;
   };
 
   // Force refresh - restart polling

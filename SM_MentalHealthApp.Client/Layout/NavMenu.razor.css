@@ -38,7 +38,21 @@
     padding: 0;
     height: 100%;
     overflow-y: auto;
-    background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    background: linear-gradient(180deg, #2c3e50 0%, #34495e 50%, #3498db 100%) !important;
+}
+
+/* Override the rz-layout-sidebar white background */
+.rz-layout-sidebar {
+    background: linear-gradient(180deg, #2c3e50 0%, #34495e 50%, #3498db 100%) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Override global link styles for navigation */
+.nav-menu a,
+.nav-menu .nav-item a,
+.nav-menu .nav-item ::deep a {
+    color: #ffffff !important;
+    text-decoration: none !important;
 }
 
 .nav-menu-items {
@@ -57,36 +71,58 @@
     display: flex;
     align-items: center;
     padding: 16px 20px;
-    color: #e0e6ed;
+    color: #ffffff !important;
     text-decoration: none;
     border-radius: 12px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    font-size: 15px;
-    font-weight: 500;
+    font-size: 16px;
+    font-weight: 800;
     height: auto;
     line-height: 1.4;
     min-height: 56px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.4);
     backdrop-filter: blur(10px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    text-shadow: 0 3px 6px rgba(0, 0, 0, 0.8);
+    letter-spacing: 0.5px;
 }
 
 .nav-item ::deep a:hover {
-    background: rgba(255, 255, 255, 0.15);
-    color: #ffffff;
+    background: #f8f9fa !important;
+    color: #333333 !important;
     transform: translateX(8px) scale(1.02);
-    border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    border-color: #2196F3 !important;
+    box-shadow: 0 6px 20px rgba(33, 150, 243, 0.3) !important;
+    text-shadow: none !important;
+}
+
+/* More specific hover override */
+.nav-menu .nav-item ::deep a:hover {
+    background: #f8f9fa !important;
+    color: #333333 !important;
+    border-color: #2196F3 !important;
+    text-shadow: none !important;
+}
+
+/* Override global nav-item hover from app.css */
+.rz-layout-sidebar .nav-item:hover,
+.rz-layout-sidebar .nav-item ::deep a:hover {
+    background: #f8f9fa !important;
+    color: #333333 !important;
+    border-color: #2196F3 !important;
+    text-shadow: none !important;
 }
 
 .nav-item ::deep a.active {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    font-weight: 600;
-    border-color: rgba(255, 255, 255, 0.3);
+    color: #ffffff !important;
+    font-weight: 800;
+    border-color: rgba(255, 255, 255, 0.7);
     box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
     transform: translateX(4px);
+    text-shadow: 0 3px 6px rgba(0, 0, 0, 0.8);
+    letter-spacing: 0.5px;
 }
 
 /* Special Chat Navigation Item - Eye-catching but elegant */

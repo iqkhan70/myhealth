@@ -27,10 +27,6 @@ else
                         <h1>Health Journal</h1>
                     </div>
                     <div class="header-user-info">
-                        <div class="connection-status @(WebSocketService.IsConnected ? "connected" : "disconnected")">
-                            <div class="connection-dot"></div>
-                            <span>@(WebSocketService.IsConnected ? "Connected" : "Disconnected")</span>
-                        </div>
                         <div class="user-details">
                             <span class="user-name">@AuthService.CurrentUser.FullName</span>
                             <span class="user-email">@AuthService.CurrentUser.Email</span>
@@ -62,25 +58,15 @@ else
 <IncomingCallModal IncomingCall="@incomingCall" OnCallAccepted="@HandleCallAccepted"
     OnCallDeclined="@HandleCallDeclined" />
 
-<!-- Connection Status Indicator -->
-@if (AuthService.CurrentUser != null)
-{
-    <div class="connection-status @(isSignalRConnected ? "connected" : "disconnected")">
-        <i class="fas fa-circle"></i>
-        @(isSignalRConnected ? "Connected" : "Disconnected")
-    </div>
-}
 
 @code {
     private CallInvitation? incomingCall;
-    private bool isSignalRConnected = false;
 
     protected override async Task OnInitializedAsync()
     {
         // Set up SignalR event handlers
         WebSocketService.OnIncomingCall += HandleIncomingCall;
         WebSocketService.OnNewMessage += HandleNewMessage;
-        WebSocketService.OnConnectionChanged += HandleConnectionChanged;
         WebSocketService.OnCallEnded += HandleCallEnded;
 
         // Start SignalR connection if user is authenticated
@@ -107,11 +93,6 @@ else
         $"Message from {message.SenderName}");
     }
 
-    private void HandleConnectionChanged(bool connected)
-    {
-        isSignalRConnected = connected;
-        InvokeAsync(StateHasChanged);
-    }
 
     private void HandleCallEnded(string callId)
     {
@@ -163,7 +144,6 @@ else
         // Clean up event handlers
         WebSocketService.OnIncomingCall -= HandleIncomingCall;
         WebSocketService.OnNewMessage -= HandleNewMessage;
-        WebSocketService.OnConnectionChanged -= HandleConnectionChanged;
         WebSocketService.OnCallEnded -= HandleCallEnded;
 
         await WebSocketService.StopAsync();

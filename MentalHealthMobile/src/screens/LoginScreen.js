@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Image,
+  ScrollView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../context/AuthContext';
@@ -35,21 +36,12 @@ export default function LoginScreen() {
     }
   };
 
-  const fillDoctorCredentials = () => {
-    setEmail('dr.sarah@mentalhealth.com');
-    setPassword('doctor123');
-  };
-
-  const fillPatientCredentials = () => {
-    setEmail('john.doe@email.com');
-    setPassword('patient123');
-  };
 
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
     >
       <StatusBar style="light" />
       
@@ -62,67 +54,56 @@ export default function LoginScreen() {
       </View>
 
       <View style={styles.form}>
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Enter your email"
-            placeholderTextColor="#999"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="next"
-            blurOnSubmit={false}
-          />
-        </View>
-
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Enter your password"
-            placeholderTextColor="#999"
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="done"
-            onSubmitEditing={handleLogin}
-          />
-        </View>
-
-        <TouchableOpacity 
-          style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
-          onPress={handleLogin}
-          disabled={isLoading}
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {isLoading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.loginButtonText}>Sign In</Text>
-          )}
-        </TouchableOpacity>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Enter your email"
+              placeholderTextColor="#999"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="next"
+              blurOnSubmit={false}
+            />
+          </View>
 
-        <View style={styles.quickLoginContainer}>
-          <Text style={styles.quickLoginTitle}>Quick Login (Demo)</Text>
-          
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Enter your password"
+              placeholderTextColor="#999"
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+            />
+          </View>
+
           <TouchableOpacity 
-            style={styles.quickLoginButton}
-            onPress={fillDoctorCredentials}
+            style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+            onPress={handleLogin}
+            disabled={isLoading}
           >
-            <Text style={styles.quickLoginText}>👨‍⚕️ Login as Doctor</Text>
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.loginButtonText}>Sign In</Text>
+            )}
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.quickLoginButton, styles.patientButton]}
-            onPress={fillPatientCredentials}
-          >
-            <Text style={styles.quickLoginText}>👤 Login as Patient</Text>
-          </TouchableOpacity>
-        </View>
+        </ScrollView>
       </View>
     </KeyboardAvoidingView>
   );
@@ -162,12 +143,17 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
   },
   form: {
-    flex: 1,
     backgroundColor: '#fff',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     paddingHorizontal: 30,
     paddingTop: 40,
+    paddingBottom: 40,
+    minHeight: 400,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
   inputContainer: {
     marginBottom: 25,
@@ -211,33 +197,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
-  },
-  quickLoginContainer: {
-    marginTop: 30,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  quickLoginTitle: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 15,
-  },
-  quickLoginButton: {
-    backgroundColor: '#f0f0f0',
-    height: 45,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  patientButton: {
-    backgroundColor: '#e8f5e8',
-  },
-  quickLoginText: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
   },
 });

@@ -9,7 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
@@ -18,13 +17,10 @@ import { useRealtime } from '../context/RealtimeContext';
 export default function SimpleChatScreen({ route, navigation }) {
   const [newMessage, setNewMessage] = useState('');
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const [forceUpdate, setForceUpdate] = useState(0);
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState(null);
   const scrollViewRef = useRef(null);
   const { user } = useAuth();
-  const { sendMessage, isConnected, initiateCall, loadChatHistory, getMessagesForUser, chatHistory, messages: globalMessages, refreshMessages, forceRefresh, debugPollingStatus } = useRealtime();
+  const { sendMessage, isConnected, initiateCall, loadChatHistory, getMessagesForUser, messages: globalMessages, forceRefresh } = useRealtime();
   const { targetUser, chatType } = route.params || {};
   
   // Get messages for the current target user using the reliable method
@@ -60,27 +56,6 @@ export default function SimpleChatScreen({ route, navigation }) {
     }
   }, [messages.length]); // Only trigger on message count change, not content change
 
-  // Auto-refresh messages every 5 seconds (less frequent to reduce jumping)
-  useEffect(() => {
-    if (targetUser && isConnected) {
-      // Start auto-refresh timer
-      const interval = setInterval(() => {
-        console.log('Auto-refreshing messages...');
-        // Only refresh if user is not actively scrolling
-        if (!isRefreshing) {
-          handleRefreshSilently();
-        }
-      }, 5000); // Increased from 3 to 5 seconds
-      
-      setAutoRefreshInterval(interval);
-      
-      // Cleanup on unmount or when dependencies change
-      return () => {
-        clearInterval(interval);
-        setAutoRefreshInterval(null);
-      };
-    }
-  }, [targetUser, isConnected]);
 
   // Function to scroll to bottom
   const scrollToBottom = () => {
@@ -97,17 +72,31 @@ export default function SimpleChatScreen({ route, navigation }) {
     setShowScrollButton(!isAtBottom && messages.length > 3);
   };
 
-  // Auto-refresh when screen comes into focus
+  // Load chat history when screen comes into focus
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       console.log('Chat screen focused - refreshing messages');
       if (isConnected && targetUser) {
-        handleRefresh();
+        // Force refresh to get latest messages
+        forceRefresh();
+        loadChatHistoryForUser();
       }
     });
 
     return unsubscribe;
   }, [navigation, isConnected, targetUser]);
+
+  // Gentle periodic refresh every 10 seconds to ensure messages are up to date
+  useEffect(() => {
+    if (targetUser && isConnected) {
+      const interval = setInterval(() => {
+        console.log('Gentle refresh for messages...');
+        forceRefresh();
+      }, 10000); // 10 seconds - much less frequent
+      
+      return () => clearInterval(interval);
+    }
+  }, [targetUser, isConnected]);
 
   useEffect(() => {
     // Set navigation header
@@ -130,18 +119,6 @@ export default function SimpleChatScreen({ route, navigation }) {
       ),
       headerRight: () => (
         <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => debugState()}
-          >
-            <Ionicons name="bug" size={24} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => handleRefresh()}
-          >
-            <Ionicons name="refresh" size={24} color="#fff" />
-          </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerButton}
             onPress={() => handleVideoCall()}
@@ -187,83 +164,35 @@ export default function SimpleChatScreen({ route, navigation }) {
     }
   }, [targetUser, isConnected]);
 
-  // Handle pull-to-refresh (with scrolling)
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      console.log('Manual refresh triggered');
-      await forceRefresh();
-      if (targetUser) {
-        console.log('Loading chat history for user:', targetUser.id);
-        await loadChatHistory(targetUser.id);
-        
-        // Force scroll to bottom after refresh
-        setTimeout(() => {
-          scrollToBottom();
-        }, 500);
-      }
-    } catch (error) {
-      console.error('Error refreshing messages:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
 
-  // Silent refresh for auto-refresh (no scrolling)
-  const handleRefreshSilently = async () => {
-    try {
-      console.log('Silent refresh triggered');
-      await forceRefresh();
-      if (targetUser) {
-        console.log('Loading chat history for user:', targetUser.id);
-        await loadChatHistory(targetUser.id);
-        // No scrolling for silent refresh
-      }
-    } catch (error) {
-      console.error('Error in silent refresh:', error);
-    }
-  };
 
-  // Debug function to check current state
-  const debugState = () => {
-    console.log('=== DEBUG STATE ===');
-    console.log('Target User:', targetUser);
-    console.log('Is Connected:', isConnected);
-    console.log('Messages Count:', messages.length);
-    console.log('Chat History Keys:', Object.keys(chatHistory));
-    console.log('Global Messages Count:', globalMessages.length);
-    console.log('Messages for this user:', getMessagesForUser(targetUser?.id));
-    console.log('Force Update Counter:', forceUpdate);
-    console.log('==================');
-    
-    // Also check polling status
-    debugPollingStatus();
-    
-    // Force a re-render
-    setForceUpdate(prev => prev + 1);
-  };
 
   const handleSendMessage = () => {
     if (!newMessage.trim() || !targetUser) return;
 
+    // Store the message to send
+    const messageToSend = newMessage.trim();
+    
+    // Clear input immediately for better UX
+    setNewMessage('');
+
     // Send via realtime service if connected
     if (isConnected) {
-      sendMessage(targetUser.id, newMessage);
+      sendMessage(targetUser.id, messageToSend);
       
-      // Clear input immediately
-      setNewMessage('');
-      
-      // Gentle refresh without aggressive scrolling
+      // Gentle refresh to ensure message appears
       setTimeout(() => {
-        handleRefreshSilently();
-      }, 300);
+        forceRefresh();
+      }, 500);
       
       // Single, smooth scroll to bottom after sending
       setTimeout(() => {
         scrollToBottom();
-      }, 500);
+      }, 1000);
     } else {
       console.warn('Not connected to realtime service');
+      // Restore message if not connected
+      setNewMessage(messageToSend);
     }
   };
 
@@ -347,15 +276,6 @@ export default function SimpleChatScreen({ route, navigation }) {
         keyboardShouldPersistTaps="handled"
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor="#2196F3"
-            title="Pull to refresh messages"
-            titleColor="#666"
-          />
-        }
       >
         {isLoadingHistory ? (
           <View style={styles.loadingContainer}>
