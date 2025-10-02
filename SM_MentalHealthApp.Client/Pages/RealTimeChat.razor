@@ -1,0 +1,1158 @@
+@page "/real-time-chat"
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Shared
+@using System.Text.Json
+@inject IAuthService AuthService
+@inject IRealtimeService RealtimeService
+@inject HttpClient Http
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Real-Time Chat</PageTitle>
+
+<div class="chat-container">
+    <!-- Header -->
+    <div class="chat-header">
+        <div class="header-left">
+            <h3>
+                @if (AuthService.CurrentUser?.RoleId == 2)
+                {
+                    <text>💬 Patient Chat</text>
+                }
+                else
+                {
+                    <text>💬 Doctor Chat</text>
+                }
+            </h3>
+            <div class="connection-indicator">
+                <div class="connection-dot @(RealtimeService.IsConnected ? "connected" : "disconnected")"></div>
+                <span>@(RealtimeService.IsConnected ? "Connected" : "Disconnected")</span>
+                @if (!RealtimeService.IsConnected)
+                {
+                    <button class="retry-btn" @onclick="RetryConnection" title="Retry Connection">
+                        <i class="fas fa-refresh"></i>
+                    </button>
+                }
+            </div>
+            <div class="debug-info">
+                <small>Messages: @messages.Count | Connection ID: @(RealtimeService.ConnectionId ?? "None") | Last Update: @DateTime.Now.ToString("HH:mm:ss")</small>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="action-btn refresh-btn" @onclick="LoadUsers" disabled="@isLoadingUsers"
+                title="Refresh Users">
+                <i class="fas fa-refresh @(isLoadingUsers ? "spinning" : "")"></i>
+            </button>
+            <button class="action-btn settings-btn" @onclick="ShowSettings" title="Settings">
+                <i class="fas fa-cog"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="chat-main">
+        <!-- Sidebar with users -->
+        <div class="chat-sidebar">
+            <div class="sidebar-header">
+                <h4>
+                    @if (AuthService.CurrentUser?.RoleId == 2)
+                    {
+                        <text>My Patients</text>
+                    }
+                    else
+                    {
+                        <text>My Doctors</text>
+                    }
+                </h4>
+                <button class="refresh-btn" @onclick="LoadUsers" disabled="@isLoadingUsers">
+                    <i class="fas fa-refresh @(isLoadingUsers ? "spinning" : "")"></i>
+                </button>
+            </div>
+
+            <div class="user-list">
+                @if (isLoadingUsers)
+                {
+                    <div class="loading-item">
+                        <div class="loading-spinner"></div>
+                        <span>Loading...</span>
+                    </div>
+                }
+                else if (users.Any())
+                {
+                    @foreach (var user in users)
+                    {
+                        <div class="user-item @(selectedUser?.Id == user.Id ? "selected" : "")"
+                            @onclick="async () => await SelectUser(user)">
+                            <div class="user-avatar">
+                                @user.FirstName?.Substring(0, 1).ToUpper()
+                            </div>
+                            <div class="user-info">
+                                <div class="user-name">@user.FirstName @user.LastName</div>
+                                <div class="user-status">
+                                    @if (AuthService.CurrentUser?.RoleId == 2 && !string.IsNullOrEmpty(user.Email))
+                                    {
+                                        <span class="user-email">@user.Email</span>
+                                    }
+                                    else if (AuthService.CurrentUser?.RoleId == 1 && !string.IsNullOrEmpty(user.Specialization))
+                                    {
+                                        <span class="user-specialization">@user.Specialization</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="user-actions">
+                                <button class="action-btn video-btn" @onclick:stopPropagation="true"
+                                    @onclick="() => InitiateVideoCall(user)" title="Video Call">
+                                    <i class="fas fa-video"></i>
+                                </button>
+                                <button class="action-btn audio-btn" @onclick:stopPropagation="true"
+                                    @onclick="() => InitiateAudioCall(user)" title="Audio Call">
+                                    <i class="fas fa-phone"></i>
+                                </button>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="empty-state">
+                        <i class="fas fa-users"></i>
+                        <p>
+                            @if (AuthService.CurrentUser?.RoleId == 2)
+                            {
+                                <text>No patients assigned</text>
+                            }
+                            else
+                            {
+                                <text>No doctors assigned</text>
+                            }
+                        </p>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Chat area -->
+        <div class="chat-area">
+            @if (selectedUser != null)
+            {
+                <div class="chat-header-selected">
+                    <div class="selected-user-info">
+                        <div class="selected-user-avatar">
+                            @selectedUser.FirstName?.Substring(0, 1).ToUpper()
+                        </div>
+                        <div>
+                            <div class="selected-user-name">@selectedUser.FirstName @selectedUser.LastName</div>
+                            <div class="selected-user-role">
+                                @if (AuthService.CurrentUser?.RoleId == 2)
+                                {
+                                    <text>Patient</text>
+                                }
+                                else
+                                {
+                                    <text>Doctor - @selectedUser.Specialization</text>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="messages-container" @ref="messagesContainer">
+                    @if (isLoadingHistory)
+                    {
+                        <div class="loading-messages">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Loading chat history...</p>
+                        </div>
+                    }
+                    else if (messages.Any())
+                    {
+                        @foreach (var message in messages)
+                        {
+                            <div class="message @(message.SenderId == AuthService.CurrentUser?.Id ? "sent" : "received")">
+                                <div class="message-content">
+                                    <div class="message-text">@message.Message</div>
+                                    <div class="message-time">@message.Timestamp.ToString("HH:mm")</div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="no-messages">
+                            <i class="fas fa-comments"></i>
+                            <p>Start a conversation with @selectedUser.FirstName</p>
+                        </div>
+                    }
+                </div>
+
+                <div class="message-input-area">
+                    <div class="input-container">
+                        <input type="text" @bind="newMessage" @bind:event="oninput" @onkeydown="HandleKeyDown" placeholder="Type a message... (Press Enter to send)"
+                            class="message-input" disabled="@(!RealtimeService.IsConnected)" />
+                        <button class="send-btn" @onclick="SendMessage"
+                            disabled="@(string.IsNullOrWhiteSpace(newMessage) || !RealtimeService.IsConnected)">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="no-selection">
+                    <i class="fas fa-comment-dots"></i>
+                    <h4>Select a conversation</h4>
+                    <p>
+                        @if (AuthService.CurrentUser?.RoleId == 2)
+                        {
+                            <text>Choose a patient from the sidebar to start chatting</text>
+                        }
+                        else
+                        {
+                            <text>Choose a doctor from the sidebar to start chatting</text>
+                        }
+                    </p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .chat-container {
+        height: calc(100vh - 120px);
+        display: flex;
+        flex-direction: column;
+        background: #f5f5f5;
+    }
+
+    .chat-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .chat-header h3 {
+        margin: 0;
+        color: white;
+        font-size: 24px;
+        font-weight: 600;
+    }
+
+    .connection-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.1);
+        padding: 6px 12px;
+        border-radius: 20px;
+        backdrop-filter: blur(10px);
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .connection-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #f44336;
+    }
+
+    .connection-dot.connected {
+        background: #4CAF50;
+    }
+
+    .retry-btn {
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-left: 8px;
+        font-size: 12px;
+        transition: all 0.3s ease;
+    }
+
+    .retry-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: scale(1.05);
+    }
+
+    .chat-main {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+    }
+
+    .chat-sidebar {
+        width: 350px;
+        background: white;
+        border-right: 1px solid #e0e0e0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .sidebar-header {
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .sidebar-header h4 {
+        margin: 0;
+        color: #333;
+    }
+
+    .refresh-btn {
+        background: none;
+        border: none;
+        color: #666;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 4px;
+        transition: all 0.2s;
+    }
+
+    .refresh-btn:hover {
+        background: #f0f0f0;
+        color: #333;
+    }
+
+    .spinning {
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .user-list {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    .user-item {
+        padding: 15px 20px;
+        border-bottom: 1px solid #f0f0f0;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .user-item:hover {
+        background: #f8f9fa;
+    }
+
+    .user-item.selected {
+        background: #e3f2fd;
+        border-right: 3px solid #2196F3;
+    }
+
+    .user-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #2196F3;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 16px;
+    }
+
+    .user-info {
+        flex: 1;
+    }
+
+    .user-name {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 4px;
+    }
+
+    .user-email,
+    .user-specialization {
+        font-size: 12px;
+        color: #666;
+    }
+
+    .user-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .action-btn {
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        font-size: 14px;
+    }
+
+    .video-btn {
+        background: #4CAF50;
+        color: white;
+    }
+
+    .video-btn:hover {
+        background: #45a049;
+    }
+
+    .audio-btn {
+        background: #FF9800;
+        color: white;
+    }
+
+    .audio-btn:hover {
+        background: #f57c00;
+    }
+
+    .chat-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: white;
+    }
+
+    .chat-header-selected {
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+        background: #fafafa;
+    }
+
+    .selected-user-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .selected-user-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: #2196F3;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 18px;
+    }
+
+    .selected-user-name {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 4px;
+    }
+
+    .selected-user-role {
+        font-size: 14px;
+        color: #666;
+    }
+
+    .messages-container {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .message {
+        display: flex;
+    }
+
+    .message.sent {
+        justify-content: flex-end;
+    }
+
+    .message.received {
+        justify-content: flex-start;
+    }
+
+    .message-content {
+        max-width: 70%;
+        padding: 12px 16px;
+        border-radius: 18px;
+        position: relative;
+    }
+
+    .message.sent .message-content {
+        background: #2196F3;
+        color: white;
+    }
+
+    .message.received .message-content {
+        background: #f0f0f0;
+        color: #333;
+    }
+
+    .message-text {
+        margin-bottom: 4px;
+    }
+
+    .message-time {
+        font-size: 11px;
+        opacity: 0.7;
+    }
+
+    .message-input-area {
+        padding: 20px;
+        border-top: 1px solid #e0e0e0;
+        background: #fafafa;
+    }
+
+    .input-container {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .message-input {
+        flex: 1;
+        padding: 12px 16px;
+        border: 1px solid #ddd;
+        border-radius: 25px;
+        outline: none;
+        font-size: 14px;
+    }
+
+    .message-input:focus {
+        border-color: #2196F3;
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+    }
+    
+    .message-input:disabled {
+        background-color: #f5f5f5;
+        cursor: not-allowed;
+    }
+
+    .send-btn {
+        width: 45px;
+        height: 45px;
+        border: none;
+        border-radius: 50%;
+        background: #2196F3;
+        color: white;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+    }
+
+    .send-btn:hover:not(:disabled) {
+        background: #1976D2;
+    }
+
+    .send-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+    }
+
+    .no-selection,
+    .no-messages,
+    .empty-state,
+    .loading-item,
+    .loading-messages {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #666;
+        text-align: center;
+    }
+
+    .no-selection i,
+    .no-messages i,
+    .empty-state i {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .loading-messages i {
+        font-size: 24px;
+        margin-bottom: 12px;
+        color: #2196F3;
+    }
+
+    .loading-messages p {
+        margin: 0;
+        font-size: 14px;
+    }
+
+    .loading-spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #2196F3;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 8px;
+    }
+</style>
+
+<script>
+    window.setupPageVisibilityListener = (dotNetRef) => {
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                // Page became visible, notify the component
+                dotNetRef.invokeMethodAsync('OnPageVisible');
+            }
+        });
+    };
+
+    window.scrollToBottom = (element) => {
+        if (element && element.scrollTop !== undefined) {
+            element.scrollTop = element.scrollHeight;
+        }
+    };
+</script>
+
+@code {
+    private List<User> users = new();
+    private User? selectedUser;
+    private List<SM_MentalHealthApp.Client.Services.ChatMessage> messages = new();
+    private string newMessage = string.Empty;
+    private bool isLoadingUsers = false;
+    private bool isLoadingHistory = false;
+    private bool isHistoryLoaded = false;
+    private ElementReference messagesContainer;
+    private Timer? autoRefreshTimer;
+    private bool isAutoRefreshing = false;
+    private int lastMessageCount = 0;
+    private bool isProcessingNewMessage = false;
+    private DateTime lastScrollTime = DateTime.MinValue;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Set up realtime event handlers
+        RealtimeService.OnNewMessage += HandleNewMessage;
+        RealtimeService.OnIncomingCall += HandleIncomingCall;
+
+        // Load users when component initializes
+        await LoadUsers();
+        
+        // Load chat history if a user is already selected (when coming back to the page)
+        if (selectedUser != null && RealtimeService.IsConnected)
+        {
+            Console.WriteLine("Loading chat history on initialization for selected user:", selectedUser.Id);
+            await LoadChatHistory();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Start SignalR connection if not already connected
+            if (!RealtimeService.IsConnected)
+            {
+                Console.WriteLine("Starting realtime connection...");
+                await RealtimeService.StartAsync();
+                Console.WriteLine($"Realtime connection status: {RealtimeService.IsConnected}");
+            }
+            
+            // Set up page visibility change listener
+            await JS.InvokeVoidAsync("setupPageVisibilityListener", DotNetObjectReference.Create(this));
+            
+            // Start auto-refresh timer (every 5 seconds)
+            StartAutoRefresh();
+        }
+
+        // Only scroll to bottom if there are new messages AND it's not an auto-refresh
+        // AND we haven't scrolled recently (debounce)
+        if (messages.Count > lastMessageCount && !isAutoRefreshing &&
+            (DateTime.Now - lastScrollTime).TotalMilliseconds > 500)
+        {
+            lastMessageCount = messages.Count;
+            lastScrollTime = DateTime.Now;
+            // Add a small delay to ensure the message is fully rendered
+            await Task.Delay(100);
+            await ScrollToBottom();
+        }
+        
+        // Reset the new message processing flag
+        isProcessingNewMessage = false;
+    }
+
+    private async Task LoadUsers()
+    {
+        isLoadingUsers = true;
+        StateHasChanged();
+
+        try
+        {
+            var token = AuthService.Token;
+            if (string.IsNullOrEmpty(token))
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Authentication token not found");
+                return;
+            }
+
+            string endpoint = AuthService.CurrentUser?.RoleId == 2
+            ? "/api/mobile/doctor/patients"
+            : "/api/mobile/patient/doctors";
+
+            var response = await Http.GetAsync(endpoint);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<List<User>>();
+                users = result ?? new List<User>();
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error",
+                $"Failed to load users: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error",
+            $"Failed to load users: {ex.Message}");
+        }
+        finally
+        {
+            isLoadingUsers = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadChatHistory()
+    {
+        if (selectedUser == null || !RealtimeService.IsConnected || isLoadingHistory || isHistoryLoaded)
+        {
+            Console.WriteLine($"Cannot load chat history - selectedUser: {selectedUser != null}, IsConnected: {RealtimeService.IsConnected}, isLoading: {isLoadingHistory}, isLoaded: {isHistoryLoaded}");
+            return;
+        }
+
+        isLoadingHistory = true;
+        StateHasChanged();
+
+        try
+        {
+            Console.WriteLine($"Loading chat history for user: {selectedUser.Id}, ConnectionId: {RealtimeService.ConnectionId}");
+            
+            var request = new
+            {
+                connectionId = RealtimeService.ConnectionId,
+                otherUserId = selectedUser.Id
+            };
+
+            var response = await Http.PostAsJsonAsync("http://localhost:5262/api/realtime/get-message-history", request);
+
+            Console.WriteLine($"Chat history response status: {response.StatusCode}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Chat history response content: {responseContent}");
+                
+                var result = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                
+                if (result.TryGetProperty("messages", out var messagesElement) && messagesElement.ValueKind == JsonValueKind.Array)
+                {
+                    var historyMessages = new List<SM_MentalHealthApp.Client.Services.ChatMessage>();
+                    
+                    foreach (var msgElement in messagesElement.EnumerateArray())
+                    {
+                        if (msgElement.TryGetProperty("id", out var idElement) &&
+                            msgElement.TryGetProperty("senderId", out var senderIdElement) &&
+                            msgElement.TryGetProperty("receiverId", out var receiverIdElement) &&
+                            msgElement.TryGetProperty("message", out var messageElement) &&
+                            msgElement.TryGetProperty("senderName", out var senderNameElement) &&
+                            msgElement.TryGetProperty("timestamp", out var timestampElement))
+                        {
+                            var message = new SM_MentalHealthApp.Client.Services.ChatMessage
+                            {
+                                Id = idElement.GetInt32().ToString(),
+                                SenderId = senderIdElement.GetInt32(),
+                                TargetUserId = receiverIdElement.GetInt32(),
+                                Message = messageElement.GetString() ?? "",
+                                SenderName = senderNameElement.GetString() ?? "Unknown"
+                            };
+
+                            // Parse timestamp
+                            if (DateTime.TryParse(timestampElement.GetString(), out DateTime timestamp))
+                            {
+                                message.Timestamp = timestamp;
+                            }
+                            else
+                            {
+                                message.Timestamp = DateTime.UtcNow;
+                            }
+
+                            historyMessages.Add(message);
+                        }
+                    }
+
+                    // Sort by timestamp and add to messages
+                    messages = historyMessages.OrderBy(m => m.Timestamp).ToList();
+                    Console.WriteLine($"Loaded {messages.Count} chat history messages");
+                    
+                    // Log the first and last few messages to verify ordering
+                    if (messages.Count > 0)
+                    {
+                        Console.WriteLine($"First message: {messages.First().Message} at {messages.First().Timestamp:HH:mm:ss}");
+                        Console.WriteLine($"Last message: {messages.Last().Message} at {messages.Last().Timestamp:HH:mm:ss}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("No messages found in history or invalid response format");
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Failed to load chat history: {response.StatusCode} - {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading chat history: {ex.Message}");
+        }
+        finally
+        {
+            isLoadingHistory = false;
+            isHistoryLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectUser(User user)
+    {
+        // Always load chat history, even if it's the same user (in case user navigated away and came back)
+        selectedUser = user;
+        messages.Clear(); // Clear previous messages
+        isHistoryLoaded = false; // Reset flag for new user
+        lastMessageCount = 0; // Reset message count for new user
+        
+        // Wait for connection to be established before loading chat history
+        if (!RealtimeService.IsConnected)
+        {
+            Console.WriteLine("Waiting for connection before loading chat history...");
+            // Wait a bit for connection to be established
+            await Task.Delay(1000);
+        }
+        
+        // Load chat history for the selected user
+        Console.WriteLine($"Selecting user {user.Id} - loading chat history");
+        await LoadChatHistory();
+        
+        // Restart auto-refresh for the new user
+        StartAutoRefresh();
+        
+        StateHasChanged();
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(newMessage) || selectedUser == null || !RealtimeService.IsConnected)
+            return;
+
+        try
+        {
+            await RealtimeService.SendMessageAsync(selectedUser.Id, newMessage);
+
+            // Add message locally immediately for better UX
+            var localMessage = new SM_MentalHealthApp.Client.Services.ChatMessage
+            {
+                Id = $"local_{Guid.NewGuid()}",
+                SenderId = AuthService.CurrentUser?.Id ?? 0,
+                TargetUserId = selectedUser.Id,
+                Message = newMessage,
+                SenderName = $"{AuthService.CurrentUser?.FirstName} {AuthService.CurrentUser?.LastName}",
+                Timestamp = DateTime.UtcNow
+            };
+
+            messages.Add(localMessage);
+            messages = messages.OrderBy(m => m.Timestamp).ToList();
+            newMessage = string.Empty;
+            
+            // Mark that we just sent a message to trigger scroll in OnAfterRenderAsync
+            isProcessingNewMessage = true;
+            lastMessageCount = messages.Count;
+            
+            Console.WriteLine($"Sent message locally: {localMessage.Message} at {localMessage.Timestamp:HH:mm:ss} - Total messages: {messages.Count}");
+            
+            StateHasChanged();
+            
+            // Scroll to bottom immediately after sending message
+            await Task.Delay(100); // Small delay to ensure message is rendered
+            await ScrollToBottom();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error",
+            $"Failed to send message: {ex.Message}");
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        Console.WriteLine($"Key pressed: {e.Key}");
+        if (e.Key == "Enter" || e.Key == "NumpadEnter")
+        {
+            Console.WriteLine($"Enter key detected. Message: '{newMessage}', Connected: {RealtimeService.IsConnected}");
+            // Only send if we have a message and are connected
+            if (!string.IsNullOrWhiteSpace(newMessage) && RealtimeService.IsConnected)
+            {
+                Console.WriteLine("Sending message via Enter key");
+                await SendMessage();
+            }
+        }
+    }
+
+    private async void HandleNewMessage(SM_MentalHealthApp.Client.Services.ChatMessage message)
+    {
+        // Only add message if it's for the currently selected conversation
+        if (selectedUser != null &&
+        ((message.SenderId == selectedUser.Id && message.TargetUserId == AuthService.CurrentUser?.Id) ||
+        (message.SenderId == AuthService.CurrentUser?.Id && message.TargetUserId == selectedUser.Id)))
+        {
+            // Check if this is a replacement for a local message we sent
+            var localMessage = messages.FirstOrDefault(m => 
+                m.Id.StartsWith("local_") &&
+                m.Message == message.Message &&
+                m.SenderId == message.SenderId &&
+                m.TargetUserId == message.TargetUserId &&
+                Math.Abs((m.Timestamp - message.Timestamp).TotalSeconds) < 5
+            );
+            
+            if (localMessage != null)
+            {
+                // Replace local message with server message
+                var index = messages.IndexOf(localMessage);
+                messages[index] = message;
+                messages = messages.OrderBy(m => m.Timestamp).ToList();
+                
+                Console.WriteLine($"Replaced local message with server message: {message.Message} (ID: {message.Id})");
+            }
+            else if (!messages.Any(m => m.Id == message.Id))
+            {
+                // Only mark as processing if it's a message from someone else (not our own)
+                if (message.SenderId != AuthService.CurrentUser?.Id)
+                {
+                    isProcessingNewMessage = true;
+                }
+                
+                // Add message and sort immediately
+                messages.Add(message);
+                //messages = messages.OrderBy(m => m.Timestamp).ToList();
+                
+                Console.WriteLine($"Added new message: {message.Message} at {message.Timestamp:HH:mm:ss} - Total messages: {messages.Count}");
+            }
+            else
+            {
+                Console.WriteLine($"Skipping duplicate message: {message.Message} (ID: {message.Id})");
+            }
+            
+            await InvokeAsync(StateHasChanged);
+            // Don't scroll here - let OnAfterRenderAsync handle it naturally
+        }
+    }
+
+    private async Task RetryConnection()
+    {
+        try
+        {
+            await RealtimeService.StopAsync();
+            await Task.Delay(1000);
+            await RealtimeService.StartAsync();
+            NotificationService.Notify(NotificationSeverity.Info, "Connection", "Retrying connection...");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Connection Failed", ex.Message);
+        }
+    }
+
+    private async Task InitiateVideoCall(User user)
+    {
+        if (!RealtimeService.IsConnected)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Not connected to server");
+            return;
+        }
+
+        try
+        {
+            await RealtimeService.InitiateCallAsync(user.Id, "video");
+            NotificationService.Notify(NotificationSeverity.Info, "Call Initiated",
+            $"Video call request sent to {user.FirstName} {user.LastName}");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error",
+            $"Failed to initiate call: {ex.Message}");
+        }
+    }
+
+    private async Task InitiateAudioCall(User user)
+    {
+        if (!RealtimeService.IsConnected)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Not connected to server");
+            return;
+        }
+
+        try
+        {
+            await RealtimeService.InitiateCallAsync(user.Id, "audio");
+            NotificationService.Notify(NotificationSeverity.Info, "Call Initiated",
+            $"Audio call request sent to {user.FirstName} {user.LastName}");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error",
+            $"Failed to initiate call: {ex.Message}");
+        }
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("scrollToBottom", messagesContainer);
+        }
+        catch
+        {
+            // Ignore JS errors
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnPageVisible()
+    {
+        Console.WriteLine("Page became visible - checking if we need to load chat history");
+        
+        // Load chat history if a user is selected and we're connected
+        if (selectedUser != null && RealtimeService.IsConnected)
+        {
+            Console.WriteLine("Page visible - loading chat history for selected user:", selectedUser.Id);
+            await LoadChatHistory();
+            StateHasChanged();
+        }
+    }
+
+    private void ShowSettings()
+    {
+        NotificationService.Notify(NotificationSeverity.Info, "Settings", "Settings panel coming soon!");
+    }
+
+
+    private async void HandleIncomingCall(CallInvitation call)
+    {
+        try
+        {
+            var confirmed = await DialogService.Confirm(
+            $"Incoming {call.CallType} call from {call.CallerName}",
+            "Incoming Call",
+            new ConfirmOptions
+            {
+                OkButtonText = "Accept",
+                CancelButtonText = "Reject",
+                ShowClose = false
+            });
+
+            if (confirmed == true)
+            {
+                await RealtimeService.AcceptCallAsync(call.CallId);
+                NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
+                $"You are now in a {call.CallType} call with {call.CallerName}");
+            }
+            else
+            {
+                await RealtimeService.RejectCallAsync(call.CallId);
+                NotificationService.Notify(NotificationSeverity.Info, "Call Rejected",
+                $"You rejected the call from {call.CallerName}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error",
+            $"Failed to handle incoming call: {ex.Message}");
+        }
+    }
+
+    private void StartAutoRefresh()
+    {
+        // Stop existing timer if any
+        autoRefreshTimer?.Dispose();
+        
+        // Start new timer for auto-refresh every 5 seconds
+        autoRefreshTimer = new Timer(async _ => await AutoRefreshMessages(), null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
+    }
+
+    private async Task AutoRefreshMessages()
+    {
+        if (isAutoRefreshing || selectedUser == null || !RealtimeService.IsConnected)
+            return;
+
+        try
+        {
+            isAutoRefreshing = true;
+            
+            // Load fresh chat history to ensure we have the latest messages
+            await LoadChatHistory();
+            
+            // Only scroll to bottom if there are new messages (not on every refresh)
+            // This prevents constant jumping when user is reading
+            // The scroll will happen naturally when new messages arrive
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Auto-refresh error: {ex.Message}");
+        }
+        finally
+        {
+            isAutoRefreshing = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        RealtimeService.OnNewMessage -= HandleNewMessage;
+        RealtimeService.OnIncomingCall -= HandleIncomingCall;
+        autoRefreshTimer?.Dispose();
+    }
+}

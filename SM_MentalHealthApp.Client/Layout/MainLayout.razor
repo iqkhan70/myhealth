@@ -1,9 +1,12 @@
 ﻿@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
 @inherits LayoutComponentBase
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 @inject IAuthService AuthService
+@inject IWebSocketService WebSocketService
 @inject NavigationManager Navigation
+@implements IAsyncDisposable
 
 @if (!AuthService.IsInitialized)
 {
@@ -24,6 +27,10 @@ else
                         <h1>Health Journal</h1>
                     </div>
                     <div class="header-user-info">
+                        <div class="connection-status @(WebSocketService.IsConnected ? "connected" : "disconnected")">
+                            <div class="connection-dot"></div>
+                            <span>@(WebSocketService.IsConnected ? "Connected" : "Disconnected")</span>
+                        </div>
                         <div class="user-details">
                             <span class="user-name">@AuthService.CurrentUser.FullName</span>
                             <span class="user-email">@AuthService.CurrentUser.Email</span>
@@ -51,7 +58,88 @@ else
     </div>
 }
 
+<!-- Incoming Call Modal -->
+<IncomingCallModal IncomingCall="@incomingCall" OnCallAccepted="@HandleCallAccepted"
+    OnCallDeclined="@HandleCallDeclined" />
+
+<!-- Connection Status Indicator -->
+@if (AuthService.CurrentUser != null)
+{
+    <div class="connection-status @(isSignalRConnected ? "connected" : "disconnected")">
+        <i class="fas fa-circle"></i>
+        @(isSignalRConnected ? "Connected" : "Disconnected")
+    </div>
+}
+
 @code {
+    private CallInvitation? incomingCall;
+    private bool isSignalRConnected = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Set up SignalR event handlers
+        WebSocketService.OnIncomingCall += HandleIncomingCall;
+        WebSocketService.OnNewMessage += HandleNewMessage;
+        WebSocketService.OnConnectionChanged += HandleConnectionChanged;
+        WebSocketService.OnCallEnded += HandleCallEnded;
+
+        // Start SignalR connection if user is authenticated
+        if (AuthService.CurrentUser != null)
+        {
+            await WebSocketService.StartAsync();
+        }
+    }
+
+    private void HandleIncomingCall(CallInvitation call)
+    {
+        incomingCall = call;
+        InvokeAsync(StateHasChanged);
+
+        // Show notification
+        NotificationService.Notify(NotificationSeverity.Info, "Incoming Call",
+        $"{call.CallType} call from {call.CallerName}");
+    }
+
+    private void HandleNewMessage(ChatMessage message)
+    {
+        // Show notification for new messages
+        NotificationService.Notify(NotificationSeverity.Info, "New Message",
+        $"Message from {message.SenderName}");
+    }
+
+    private void HandleConnectionChanged(bool connected)
+    {
+        isSignalRConnected = connected;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleCallEnded(string callId)
+    {
+        if (incomingCall?.CallId == callId)
+        {
+            incomingCall = null;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task HandleCallAccepted(CallInvitation call)
+    {
+        incomingCall = null;
+
+        // For web app, we can't handle actual video/audio calls like mobile
+        // But we can show a message or redirect to a call page
+        NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
+        "Call accepted. Video/audio calling is best supported on mobile devices.");
+
+        StateHasChanged();
+    }
+
+    private async Task HandleCallDeclined(CallInvitation call)
+    {
+        incomingCall = null;
+        StateHasChanged();
+    }
+
     private void ShowAbout()
     {
         DialogService.Open("About", ds =>
@@ -65,7 +153,19 @@ else
 
     private async Task Logout()
     {
+        await WebSocketService.StopAsync();
         await AuthService.LogoutAsync();
         Navigation.NavigateTo("/login");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Clean up event handlers
+        WebSocketService.OnIncomingCall -= HandleIncomingCall;
+        WebSocketService.OnNewMessage -= HandleNewMessage;
+        WebSocketService.OnConnectionChanged -= HandleConnectionChanged;
+        WebSocketService.OnCallEnded -= HandleCallEnded;
+
+        await WebSocketService.StopAsync();
     }
 }

@@ -529,6 +529,45 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.ToTable("Roles");
                 });
 
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.SmsMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsRead")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("ReceiverId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SenderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceiverId", "IsRead");
+
+                    b.HasIndex("SenderId", "ReceiverId", "SentAt");
+
+                    b.ToTable("SmsMessages");
+                });
+
             modelBuilder.Entity("SM_MentalHealthApp.Shared.User", b =>
                 {
                     b.Property<int>("Id")
@@ -745,6 +784,25 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Navigation("EnteredByUser");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.SmsMessage", b =>
+                {
+                    b.HasOne("SM_MentalHealthApp.Shared.User", "Receiver")
+                        .WithMany()
+                        .HasForeignKey("ReceiverId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SM_MentalHealthApp.Shared.User", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Receiver");
+
+                    b.Navigation("Sender");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.User", b =>

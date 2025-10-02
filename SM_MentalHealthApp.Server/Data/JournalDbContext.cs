@@ -14,6 +14,7 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<JournalEntry> JournalEntries { get; set; }
             public DbSet<ChatSession> ChatSessions { get; set; }
             public DbSet<ChatMessage> ChatMessages { get; set; }
+            public DbSet<SmsMessage> SmsMessages { get; set; }
             public DbSet<ContentItem> Contents { get; set; }
             public DbSet<ContentAnalysis> ContentAnalyses { get; set; }
             public DbSet<ContentAlert> ContentAlerts { get; set; }
@@ -252,6 +253,30 @@ namespace SM_MentalHealthApp.Server.Data
                         .WithMany()
                         .HasForeignKey(e => e.DoctorId)
                         .OnDelete(DeleteBehavior.Restrict);
+                  });
+
+                  // Configure SmsMessage entity
+                  modelBuilder.Entity<SmsMessage>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Message).IsRequired().HasMaxLength(1000);
+                        entity.Property(e => e.SentAt).IsRequired();
+                        entity.Property(e => e.IsRead).HasDefaultValue(false);
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.Sender)
+                        .WithMany()
+                        .HasForeignKey(e => e.SenderId)
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                        entity.HasOne(e => e.Receiver)
+                        .WithMany()
+                        .HasForeignKey(e => e.ReceiverId)
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                        // Indexes for performance
+                        entity.HasIndex(e => new { e.SenderId, e.ReceiverId, e.SentAt });
+                        entity.HasIndex(e => new { e.ReceiverId, e.IsRead });
                   });
             }
       }

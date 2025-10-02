@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using SM_MentalHealthApp.Client;
 using SM_MentalHealthApp.Client.Services;
 using Radzen;
+using Microsoft.AspNetCore.SignalR.Client;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -14,5 +15,10 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<TooltipService>();
 builder.Services.AddScoped<ContextMenuService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+// Add SignalR for real-time communication
+builder.Services.AddScoped<ISignalRService, SignalRService>();
+builder.Services.AddScoped<IWebSocketService, WebSocketService>();
+builder.Services.AddScoped<IRealtimeService, RealtimeService>();
 
 await builder.Build().RunAsync();

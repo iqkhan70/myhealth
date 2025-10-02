@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mental Health Mobile Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: white;
+            min-height: 100vh;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+
+        .login-screen {
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #2196F3;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .input {
+            width: 100%;
+            padding: 12px 15px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .button {
+            width: 100%;
+            padding: 15px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .button:hover {
+            background: #1976d2;
+        }
+
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .demo-credentials {
+            margin-top: 30px;
+            padding: 15px;
+            background: #e3f2fd;
+            border-radius: 8px;
+            text-align: left;
+        }
+
+        .demo-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #1976d2;
+            margin-bottom: 5px;
+        }
+
+        .demo-text {
+            font-size: 12px;
+            color: #1976d2;
+            margin-bottom: 2px;
+        }
+
+        .header {
+            background: #2196F3;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header-title {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .header-subtitle {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        .logout-button {
+            margin-top: 10px;
+            padding: 8px 20px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            border-radius: 15px;
+            color: white;
+            cursor: pointer;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .user-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .user-info {
+            flex: 1;
+        }
+
+        .user-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .user-email {
+            font-size: 14px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .user-specialization {
+            font-size: 12px;
+            color: #2196F3;
+            margin-top: 2px;
+        }
+
+        .user-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            background: #f0f0f0;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .action-button:hover {
+            background: #e0e0e0;
+        }
+
+        .footer {
+            margin-top: 30px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .footer-text {
+            font-size: 12px;
+            color: #666;
+            line-height: 18px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading {
+            opacity: 0.6;
+        }
+
+        .error {
+            color: #f44336;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .success {
+            color: #4CAF50;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Login Screen -->
+        <div id="loginScreen" class="login-screen">
+            <h1 class="title">Mental Health App</h1>
+            <p class="subtitle">Mobile Demo (Web Version)</p>
+            
+            <input type="email" id="email" class="input" placeholder="Email" autocomplete="email">
+            <input type="password" id="password" class="input" placeholder="Password" autocomplete="current-password">
+            
+            <button id="loginButton" class="button" onclick="login()">Login</button>
+            
+            <div id="loginMessage"></div>
+            
+            <div class="demo-credentials">
+                <div class="demo-title">Demo Credentials:</div>
+                <div class="demo-text">Admin: admin@mentalhealth.com / demo123</div>
+                <div class="demo-text">Doctor: dr.sarah@mentalhealth.com / demo123</div>
+                <div class="demo-text">Patient: john@doe.com / demo123</div>
+            </div>
+        </div>
+
+        <!-- Main App Screen -->
+        <div id="mainScreen" class="hidden">
+            <div class="header">
+                <div class="header-title" id="welcomeText">Welcome!</div>
+                <div class="header-subtitle" id="roleText">Dashboard</div>
+                <button class="logout-button" onclick="logout()">Logout</button>
+            </div>
+
+            <div class="content">
+                <div class="section-title" id="sectionTitle">Loading...</div>
+                <div id="usersList"></div>
+
+                <div class="footer">
+                    <div class="footer-text">
+                        This is a simplified web demo version.<br>
+                        Full features include real-time chat, video calls, and more.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:5262/api';
+        let currentUser = null;
+        let authToken = null;
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const loginButton = document.getElementById('loginButton');
+            const loginMessage = document.getElementById('loginMessage');
+
+            if (!email || !password) {
+                showMessage('Please enter email and password', 'error');
+                return;
+            }
+
+            loginButton.disabled = true;
+            loginButton.textContent = 'Logging in...';
+            loginMessage.innerHTML = '';
+
+            try {
+                console.log('Attempting login with:', email);
+                const response = await fetch(`${API_BASE_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, password }),
+                });
+
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (data.success) {
+                    currentUser = data.user;
+                    authToken = data.token;
+                    showMessage(`Welcome ${data.user.firstName}!`, 'success');
+                    
+                    setTimeout(() => {
+                        showMainScreen();
+                        loadUsers();
+                    }, 1000);
+                } else {
+                    showMessage(data.message || 'Invalid credentials', 'error');
+                    console.error('Login failed:', data);
+                }
+            } catch (error) {
+                showMessage('Network error. Please check your connection.', 'error');
+                console.error('Login error:', error);
+            }
+
+            loginButton.disabled = false;
+            loginButton.textContent = 'Login';
+        }
+
+        function showMessage(message, type) {
+            const loginMessage = document.getElementById('loginMessage');
+            loginMessage.innerHTML = `<div class="${type}">${message}</div>`;
+        }
+
+        function showMainScreen() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('mainScreen').classList.remove('hidden');
+            
+            document.getElementById('welcomeText').textContent = `Welcome, ${currentUser.firstName}!`;
+            document.getElementById('roleText').textContent = `${currentUser.roleId === 2 ? 'Doctor' : 'Patient'} Dashboard`;
+        }
+
+        async function loadUsers() {
+            const sectionTitle = document.getElementById('sectionTitle');
+            const usersList = document.getElementById('usersList');
+            
+            try {
+                let endpoint, title;
+                if (currentUser.roleId === 2) { // Doctor
+                    endpoint = '/mobile/doctor/patients';
+                    title = 'My Patients';
+                } else { // Patient
+                    endpoint = '/mobile/patient/doctors';
+                    title = 'My Doctors';
+                }
+
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                    },
+                });
+                
+                if (response.ok) {
+                    const users = await response.json();
+                    sectionTitle.textContent = `${title} (${users.length})`;
+                    displayUsers(users);
+                } else {
+                    sectionTitle.textContent = `${title} (Error loading)`;
+                    usersList.innerHTML = '<div class="error">Failed to load users</div>';
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
+                sectionTitle.textContent = 'Error loading data';
+                usersList.innerHTML = '<div class="error">Network error</div>';
+            }
+        }
+
+        function displayUsers(users) {
+            const usersList = document.getElementById('usersList');
+            
+            if (users.length === 0) {
+                usersList.innerHTML = '<div class="user-card">No users assigned</div>';
+                return;
+            }
+
+            usersList.innerHTML = users.map(user => `
+                <div class="user-card">
+                    <div class="user-info">
+                        <div class="user-name">
+                            ${currentUser.roleId === 1 ? 'Dr. ' : ''}${user.firstName} ${user.lastName}
+                        </div>
+                        <div class="user-email">${user.email}</div>
+                        ${user.specialization ? `<div class="user-specialization">${user.specialization}</div>` : ''}
+                    </div>
+                    <div class="user-actions">
+                        <button class="action-button" onclick="startChat('${user.firstName} ${user.lastName}')" title="Chat">💬</button>
+                        <button class="action-button" onclick="startCall('${user.firstName} ${user.lastName}', 'Video')" title="Video Call">📹</button>
+                        <button class="action-button" onclick="startCall('${user.firstName} ${user.lastName}', 'Audio')" title="Audio Call">📞</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function startChat(userName) {
+            alert(`Start chat with ${userName}?\n\nNote: Full chat functionality will be implemented with SignalR in the complete version.`);
+        }
+
+        function startCall(userName, callType) {
+            alert(`Start ${callType} call with ${userName}?\n\nNote: WebRTC calling will be implemented in the production version.`);
+        }
+
+        function logout() {
+            currentUser = null;
+            authToken = null;
+            document.getElementById('email').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('loginMessage').innerHTML = '';
+            document.getElementById('mainScreen').classList.add('hidden');
+            document.getElementById('loginScreen').classList.remove('hidden');
+        }
+
+        // Test server connectivity
+        async function testConnection() {
+            try {
+                console.log('Testing server connection...');
+                const response = await fetch(`${API_BASE_URL}/auth/test`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                console.log('Server connection test:', response.status);
+                return response.ok;
+            } catch (error) {
+                console.error('Server connection failed:', error);
+                return false;
+            }
+        }
+
+        // Allow Enter key to login
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('email').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') login();
+            });
+            document.getElementById('password').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') login();
+            });
+            
+            // Test connection on page load
+            testConnection().then(connected => {
+                if (!connected) {
+                    showMessage('Warning: Cannot connect to server. Make sure the server is running on http://localhost:5262', 'error');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

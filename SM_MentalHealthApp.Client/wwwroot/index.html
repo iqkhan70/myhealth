@@ -163,12 +163,13 @@
         }
     };
 
-    window.scrollToBottom = () => {
-        const chatMessages = document.getElementById('chatMessages');
-        if (chatMessages) {
+    window.scrollToBottom = (element) => {
+        // If element is provided, use it; otherwise look for default chat container
+        const container = element || document.getElementById('chatMessages') || document.querySelector('.messages-container');
+        if (container) {
             // Smooth scroll to bottom
-            chatMessages.scrollTo({
-                top: chatMessages.scrollHeight,
+            container.scrollTo({
+                top: container.scrollHeight,
                 behavior: 'smooth'
             });
         }
@@ -185,6 +186,40 @@
                 messageElement.style.opacity = '1';
                 messageElement.style.transform = 'translateY(0)';
             }, 50);
+        }
+    };
+
+    // Incoming call sound
+    window.playIncomingCallSound = () => {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Create a repeating ring tone
+            const playRing = () => {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.1);
+                gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            };
+            
+            // Play ring tone 3 times
+            playRing();
+            setTimeout(playRing, 700);
+            setTimeout(playRing, 1400);
+            
+        } catch (error) {
+            console.error('Error playing incoming call sound:', error);
         }
     };
 </script>
