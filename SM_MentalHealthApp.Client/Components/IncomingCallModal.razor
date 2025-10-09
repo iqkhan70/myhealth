@@ -236,25 +236,93 @@
 
     private async Task AcceptCall()
     {
-        if (IncomingCall != null)
+        if (IncomingCall == null)
         {
-            await SignalRService.AcceptCallAsync(IncomingCall.CallId);
-            await OnCallAccepted.InvokeAsync(IncomingCall);
+            Console.WriteLine("IncomingCall is null in AcceptCall");
+            return;
+        }
 
-            NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
-            $"Accepted {IncomingCall.CallType} call from {IncomingCall.CallerName}");
+        try
+        {
+            if (SignalRService == null)
+            {
+                Console.WriteLine("SignalRService is null in AcceptCall");
+            }
+            else
+            {
+                await SignalRService.AcceptCallAsync(IncomingCall.CallId);
+            }
+
+            if (OnCallAccepted.HasDelegate)
+            {
+                await OnCallAccepted.InvokeAsync(IncomingCall);
+            }
+
+            try
+            {
+                NotificationService?.Notify(NotificationSeverity.Success, "Call Accepted",
+                    $"Accepted {IncomingCall.CallType} call from {IncomingCall.CallerName}");
+            }
+            catch (Exception notifEx)
+            {
+                Console.WriteLine($"NotificationService failed in AcceptCall: {notifEx.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in AcceptCall: {ex.Message}\n{ex}");
+            try
+            {
+                NotificationService?.Notify(NotificationSeverity.Error, "Call Error",
+                    $"Failed to accept call: {ex.Message}");
+            }
+            catch { }
         }
     }
 
     private async Task DeclineCall()
     {
-        if (IncomingCall != null)
+        if (IncomingCall == null)
         {
-            await SignalRService.RejectCallAsync(IncomingCall.CallId);
-            await OnCallDeclined.InvokeAsync(IncomingCall);
+            Console.WriteLine("IncomingCall is null in DeclineCall");
+            return;
+        }
 
-            NotificationService.Notify(NotificationSeverity.Info, "Call Declined",
-            $"Declined {IncomingCall.CallType} call from {IncomingCall.CallerName}");
+        try
+        {
+            if (SignalRService == null)
+            {
+                Console.WriteLine("SignalRService is null in DeclineCall");
+            }
+            else
+            {
+                await SignalRService.RejectCallAsync(IncomingCall.CallId);
+            }
+
+            if (OnCallDeclined.HasDelegate)
+            {
+                await OnCallDeclined.InvokeAsync(IncomingCall);
+            }
+
+            try
+            {
+                NotificationService?.Notify(NotificationSeverity.Info, "Call Declined",
+                    $"Declined {IncomingCall.CallType} call from {IncomingCall.CallerName}");
+            }
+            catch (Exception notifEx)
+            {
+                Console.WriteLine($"NotificationService failed in DeclineCall: {notifEx.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in DeclineCall: {ex.Message}\n{ex}");
+            try
+            {
+                NotificationService?.Notify(NotificationSeverity.Error, "Call Error",
+                    $"Failed to decline call: {ex.Message}");
+            }
+            catch { }
         }
     }
 }

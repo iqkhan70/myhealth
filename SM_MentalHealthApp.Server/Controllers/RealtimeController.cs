@@ -47,7 +47,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 var connectionId = Guid.NewGuid().ToString();
                 // Remove any existing connection for this user
-                if (_userConnections.TryGetValue(userId.Value, out var existingConnectionId))
+                if (_userConnections.TryGetValue(userId.Value, out var existingConnectionId) && !string.IsNullOrEmpty(existingConnectionId))
                 {
                     _connections.Remove(existingConnectionId);
                     _userConnections.Remove(userId.Value);
@@ -96,6 +96,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 return BadRequest($"Disconnect failed: {ex.Message}");
             }
         }
+
 
         [HttpPost("send-message")]
         public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest request)
@@ -171,10 +172,32 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                // Verify connection exists
-                if (!_connections.TryGetValue(request.ConnectionId, out var callerConnection))
+                // For mobile connections, we don't need to verify the connection exists
+                // as mobile apps use a fixed connection ID
+                RealtimeConnection? callerConnection = null;
+                if (request.ConnectionId != "mobile-connection")
                 {
-                    return BadRequest("Invalid connection");
+                    if (!_connections.TryGetValue(request.ConnectionId, out callerConnection))
+                    {
+                        return BadRequest("Invalid connection");
+                    }
+                }
+                else
+                {
+                    // For mobile, get the caller ID from the JWT token
+                    var userId = await AuthenticateToken();
+                    if (userId == null)
+                    {
+                        return Unauthorized("Invalid or missing token");
+                    }
+
+                    // Create a temporary connection object for mobile
+                    callerConnection = new RealtimeConnection
+                    {
+                        ConnectionId = request.ConnectionId,
+                        UserId = userId.Value,
+                        LastPing = DateTime.UtcNow
+                    };
                 }
 
                 // Check if target user is connected
@@ -185,12 +208,14 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 var callData = new
                 {
-                    type = "incoming-call",
-                    callId = Guid.NewGuid().ToString(),
+                    type = "incoming_call",
                     callerId = callerConnection.UserId,
-                    callerName = "User", // This should be fetched from database
+                    callerName = "Mobile User", // TODO: Get actual user name from database
                     callType = request.CallType,
-                    timestamp = DateTime.UtcNow.ToString("O")
+                    channelName = request.ChannelName,
+                    timestamp = DateTime.UtcNow,
+                    agoraAppId = "efa11b3a7d05409ca979fb25a5b489ae", // Replace with your actual Agora App ID
+                    agoraToken = GenerateAgoraToken(request.ChannelName, callerConnection.UserId)
                 };
 
                 // Store the call for the target user to poll
@@ -328,6 +353,14 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        private string GenerateAgoraToken(string channelName, int userId)
+        {
+            // For now, return a placeholder token
+            // In a real implementation, you would generate a proper Agora token
+            // using Agora's token generation service
+            return $"agora_token_{channelName}_{userId}_{DateTime.UtcNow.Ticks}";
+        }
+
         private async Task<int?> AuthenticateToken()
         {
             try
@@ -438,5 +471,20 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         public string ConnectionId { get; set; } = string.Empty;
         public int OtherUserId { get; set; }
+    }
+
+    public class InitiateCallRequest
+    {
+        public string ConnectionId { get; set; } = string.Empty;
+        public int TargetUserId { get; set; }
+        public string CallType { get; set; } = string.Empty; // "video" or "audio"
+        public string ChannelName { get; set; } = string.Empty;
+    }
+
+    public class SendMessageRequest
+    {
+        public string ConnectionId { get; set; } = string.Empty;
+        public int TargetUserId { get; set; }
+        public string Message { get; set; } = string.Empty;
     }
 }

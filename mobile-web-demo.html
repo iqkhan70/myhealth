@@ -203,6 +203,149 @@
             display: none;
         }
 
+        /* Call Modal Styles */
+        .call-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .call-content {
+            background: #1a1a1a;
+            border-radius: 10px;
+            padding: 20px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80%;
+            color: white;
+        }
+
+        .call-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+
+        .call-header h3 {
+            margin: 0;
+            color: #2196F3;
+        }
+
+        .end-call-btn {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .end-call-btn:hover {
+            background: #d32f2f;
+        }
+
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            height: 300px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .local-video {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 120px;
+            height: 90px;
+            background: #333;
+            border-radius: 5px;
+            border: 2px solid #2196F3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #ccc;
+        }
+
+        .local-video::before {
+            content: "You";
+        }
+
+        .remote-video {
+            width: 100%;
+            height: 100%;
+            background: #222;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: #ccc;
+        }
+
+        .remote-video::before {
+            content: "Waiting for other participant...";
+        }
+
+        .audio-call .audio-call-info {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .caller-avatar {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+
+        .audio-call-info p {
+            font-size: 18px;
+            color: #ccc;
+            margin: 0;
+        }
+
+        .call-controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .control-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: #333;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-btn:hover {
+            background: #555;
+        }
+
+        .control-btn:active {
+            background: #2196F3;
+        }
+
         .loading {
             opacity: 0.6;
         }
@@ -227,8 +370,8 @@
             <h1 class="title">Mental Health App</h1>
             <p class="subtitle">Mobile Demo (Web Version)</p>
             
-            <input type="email" id="email" class="input" placeholder="Email" autocomplete="email">
-            <input type="password" id="password" class="input" placeholder="Password" autocomplete="current-password">
+            <input type="email" id="email" class="input" placeholder="john@doe.com" autocomplete="email">
+            <input type="password" id="password" class="input" placeholder="demo123" autocomplete="current-password">
             
             <button id="loginButton" class="button" onclick="login()">Login</button>
             
@@ -265,9 +408,11 @@
     </div>
 
     <script>
+        console.log('Mobile demo script loading...');
         const API_BASE_URL = 'http://localhost:5262/api';
         let currentUser = null;
         let authToken = null;
+        console.log('API_BASE_URL set to:', API_BASE_URL);
 
         async function login() {
             const email = document.getElementById('email').value;
@@ -319,6 +464,11 @@
             loginButton.disabled = false;
             loginButton.textContent = 'Login';
         }
+        
+        console.log('Login function defined:', typeof login);
+        
+        // Make login function globally accessible
+        window.login = login;
 
         function showMessage(message, type) {
             const loginMessage = document.getElementById('loginMessage');
@@ -398,8 +548,150 @@
             alert(`Start chat with ${userName}?\n\nNote: Full chat functionality will be implemented with SignalR in the complete version.`);
         }
 
-        function startCall(userName, callType) {
-            alert(`Start ${callType} call with ${userName}?\n\nNote: WebRTC calling will be implemented in the production version.`);
+        async function startCall(userName, callType) {
+            if (callType === 'video') {
+                await startVideoCall(userName);
+            } else if (callType === 'audio') {
+                await startAudioCall(userName);
+            }
+        }
+
+        async function startVideoCall(userName) {
+            try {
+                // Create video call modal
+                const modal = document.createElement('div');
+                modal.className = 'call-modal';
+                modal.innerHTML = `
+                    <div class="call-content">
+                        <div class="call-header">
+                            <h3>Video Call with ${userName}</h3>
+                            <button onclick="endCall()" class="end-call-btn">End Call</button>
+                        </div>
+                        <div class="video-container">
+                            <div id="localVideo" class="local-video"></div>
+                            <div id="remoteVideo" class="remote-video"></div>
+                        </div>
+                        <div class="call-controls">
+                            <button id="muteBtn" onclick="toggleMute()" class="control-btn">🎤</button>
+                            <button id="videoBtn" onclick="toggleVideo()" class="control-btn">📹</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+
+                // Initialize Agora WebRTC
+                await initializeAgoraCall('video');
+            } catch (error) {
+                console.error('Video call error:', error);
+                alert('Failed to start video call: ' + error.message);
+            }
+        }
+
+        async function startAudioCall(userName) {
+            try {
+                // Create audio call modal
+                const modal = document.createElement('div');
+                modal.className = 'call-modal';
+                modal.innerHTML = `
+                    <div class="call-content audio-call">
+                        <div class="call-header">
+                            <h3>Audio Call with ${userName}</h3>
+                            <button onclick="endCall()" class="end-call-btn">End Call</button>
+                        </div>
+                        <div class="audio-call-info">
+                            <div class="caller-avatar">🎧</div>
+                            <p>Calling ${userName}...</p>
+                        </div>
+                        <div class="call-controls">
+                            <button id="muteBtn" onclick="toggleMute()" class="control-btn">🎤</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+
+                // Initialize Agora WebRTC for audio only
+                await initializeAgoraCall('audio');
+            } catch (error) {
+                console.error('Audio call error:', error);
+                alert('Failed to start audio call: ' + error.message);
+            }
+        }
+
+        let agoraClient = null;
+        let localTracks = {
+            videoTrack: null,
+            audioTrack: null
+        };
+
+        async function initializeAgoraCall(callType) {
+            try {
+                // Get Agora token from server
+                const response = await fetch(`${API_BASE_URL}/agora/token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        channelName: `call_${currentUser.id}_${Date.now()}`,
+                        uid: currentUser.id
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to get Agora token');
+                }
+
+                const tokenData = await response.json();
+
+                // Initialize Agora client (would need Agora SDK loaded)
+                console.log('Agora token received:', tokenData);
+                
+                // Simulate call connection
+                setTimeout(() => {
+                    const callText = document.querySelector('.call-content p');
+                    if (callText) {
+                        callText.textContent = 'Connected';
+                    }
+                }, 2000);
+
+            } catch (error) {
+                console.error('Agora initialization error:', error);
+                throw error;
+            }
+        }
+
+        function toggleMute() {
+            const btn = document.getElementById('muteBtn');
+            btn.textContent = btn.textContent === '🎤' ? '🔇' : '🎤';
+        }
+
+        function toggleVideo() {
+            const btn = document.getElementById('videoBtn');
+            btn.textContent = btn.textContent === '📹' ? '📷' : '📹';
+        }
+
+        function endCall() {
+            const modal = document.querySelector('.call-modal');
+            if (modal) {
+                modal.remove();
+            }
+            
+            // Clean up Agora resources
+            if (agoraClient) {
+                agoraClient.leave();
+                agoraClient = null;
+            }
+            
+            if (localTracks.videoTrack) {
+                localTracks.videoTrack.close();
+                localTracks.videoTrack = null;
+            }
+            
+            if (localTracks.audioTrack) {
+                localTracks.audioTrack.close();
+                localTracks.audioTrack = null;
+            }
         }
 
         function logout() {

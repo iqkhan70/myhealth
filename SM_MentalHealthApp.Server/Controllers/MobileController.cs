@@ -5,6 +5,8 @@ using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Shared;
 using System.Security.Claims;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.SignalR;
+using SM_MentalHealthApp.Server.Hubs;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -15,11 +17,13 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         private readonly JournalDbContext _context;
         private readonly ILogger<MobileController> _logger;
+        private readonly IHubContext<MobileHub> _hubContext;
 
-        public MobileController(JournalDbContext context, ILogger<MobileController> logger)
+        public MobileController(JournalDbContext context, ILogger<MobileController> logger, IHubContext<MobileHub> hubContext)
         {
             _context = context;
             _logger = logger;
+            _hubContext = hubContext;
         }
 
         /// <summary>
@@ -129,7 +133,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Send a chat message
         /// </summary>
         [HttpPost("chat/send")]
-        public async Task<ActionResult> SendChatMessage([FromBody] SendMessageRequest request)
+        public async Task<ActionResult> SendChatMessage([FromBody] SendMobileMessageRequest request)
         {
             try
             {
@@ -177,7 +181,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Initiate a call (video/audio)
         /// </summary>
         [HttpPost("call/initiate")]
-        public async Task<ActionResult> InitiateCall([FromBody] InitiateCallRequest request)
+        public async Task<ActionResult> InitiateCall([FromBody] MobileInitiateCallRequest request)
         {
             try
             {
@@ -206,13 +210,48 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 if (!hasRelationship)
                 {
-                    return Forbid("No relationship exists with target user");
+                    return BadRequest("No relationship exists with target user");
                 }
 
-                // TODO: Send call invitation via WebSocket to target user
-                // TODO: Store call record in database
+                // Get caller info for the notification
+                var caller = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == callerId);
 
-                return Ok(new { success = true, message = "Call initiated successfully" });
+                if (caller == null)
+                {
+                    return BadRequest("Caller not found");
+                }
+
+                // Create call invitation data
+                var callId = Guid.NewGuid().ToString();
+                var callData = new
+                {
+                    CallId = callId,
+                    CallerId = callerId,
+                    CallerName = $"{caller.FirstName} {caller.LastName}",
+                    CallerRole = caller.RoleId == 2 ? "Doctor" : "Patient",
+                    CallType = request.CallType,
+                    Timestamp = DateTime.UtcNow.ToString("O")
+                };
+
+                // Send call invitation via SignalR to all connected clients
+                // The clients will filter based on their user ID
+                var callDataWithTarget = new
+                {
+                    CallId = callId,
+                    CallerId = callerId,
+                    CallerName = $"{caller.FirstName} {caller.LastName}",
+                    CallerRole = caller.RoleId == 2 ? "Doctor" : "Patient",
+                    CallType = request.CallType,
+                    TargetUserId = request.TargetUserId, // Add target user ID for client-side filtering
+                    Timestamp = DateTime.UtcNow.ToString("O")
+                };
+
+                await _hubContext.Clients.All.SendAsync("incoming-call", callDataWithTarget);
+
+                _logger.LogInformation("Call invitation sent via SignalR from {CallerId} to {TargetUserId}", callerId, request.TargetUserId);
+
+                return Ok(new { success = true, message = "Call initiated successfully", callId = callId });
             }
             catch (Exception ex)
             {
@@ -255,24 +294,111 @@ namespace SM_MentalHealthApp.Server.Controllers
                 return StatusCode(500, "Error retrieving profile");
             }
         }
+
+        [HttpPost("send-message")]
+        [Authorize]
+        public async Task<ActionResult> SendMessage([FromBody] SendMobileMessageRequest request)
+        {
+            try
+            {
+                var userIdClaim = User.FindFirst("userId")?.Value;
+                if (!int.TryParse(userIdClaim, out int senderId))
+                {
+                    return Unauthorized("Invalid user token");
+                }
+
+                _logger.LogInformation("Sending message from {SenderId} to {TargetUserId}", senderId, request.TargetUserId);
+
+                // Verify target user exists and relationship exists
+                var hasRelationship = await _context.UserAssignments
+                    .AnyAsync(ua =>
+                        (ua.AssignerId == senderId && ua.AssigneeId == request.TargetUserId) ||
+                        (ua.AssignerId == request.TargetUserId && ua.AssigneeId == senderId));
+
+                if (!hasRelationship)
+                {
+                    return Forbid("No relationship exists with target user");
+                }
+
+                // Save message to database
+                var smsMessage = new SmsMessage
+                {
+                    SenderId = senderId,
+                    ReceiverId = request.TargetUserId,
+                    Message = request.Message,
+                    SentAt = DateTime.UtcNow,
+                    IsRead = false
+                };
+
+                _context.SmsMessages.Add(smsMessage);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Message saved: '{Message}' from {SenderId} to {ReceiverId}",
+                    request.Message, senderId, request.TargetUserId);
+
+                return Ok(new { message = "Message sent successfully", messageId = smsMessage.Id });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending message");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpGet("messages/{targetUserId}")]
+        [Authorize]
+        public async Task<ActionResult> GetMessages(int targetUserId, [FromQuery] int limit = 50)
+        {
+            try
+            {
+                var userIdClaim = User.FindFirst("userId")?.Value;
+                if (!int.TryParse(userIdClaim, out int userId))
+                {
+                    return Unauthorized("Invalid user token");
+                }
+
+                // Get messages between the two users
+                var messages = await _context.SmsMessages
+                    .Where(m =>
+                        (m.SenderId == userId && m.ReceiverId == targetUserId) ||
+                        (m.SenderId == targetUserId && m.ReceiverId == userId))
+                    .OrderByDescending(m => m.SentAt)
+                    .Take(limit)
+                    .Select(m => new
+                    {
+                        id = m.Id,
+                        senderId = m.SenderId,
+                        receiverId = m.ReceiverId,
+                        message = m.Message,
+                        sentAt = m.SentAt,
+                        isRead = m.IsRead,
+                        isMe = m.SenderId == userId
+                    })
+                    .ToListAsync();
+
+                return Ok(messages.OrderBy(m => m.sentAt));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting messages");
+                return StatusCode(500, "Internal server error");
+            }
+        }
     }
 
     // Request DTOs
-    public class SendMessageRequest
+    public class MobileInitiateCallRequest
     {
-        public string ConnectionId { get; set; } = string.Empty;
+        public int TargetUserId { get; set; }
+        public string CallType { get; set; } = string.Empty; // "Video" or "Audio"
+    }
+
+    public class SendMobileMessageRequest
+    {
         public int TargetUserId { get; set; }
         public string Message { get; set; } = string.Empty;
     }
 
-    public class InitiateCallRequest
-    {
-        public string ConnectionId { get; set; } = string.Empty;
-        public int TargetUserId { get; set; }
-        public string CallType { get; set; } = string.Empty; // "video" or "audio"
-    }
-
-    // Response DTOs
     public class ChatMessage
     {
         public int Id { get; set; }

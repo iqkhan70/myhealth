@@ -17,6 +17,7 @@
     <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
 <script>
     window.renderMoodChart = (entries) => {
         try {
@@ -97,7 +98,9 @@
     };
 
     window.getToken = () => {
-        return localStorage.getItem('authToken');
+        const token = localStorage.getItem('authToken');
+        console.log('🔑 getToken called, found token:', token ? `${token.substring(0, 20)}...` : 'null');
+        return token;
     };
 
     window.removeToken = () => {
@@ -242,8 +245,508 @@
         <span class="dismiss">🗙</span>
     </div>
     <script src="_framework/blazor.webassembly.js"></script>
+    
+    <!-- Agora SDK for Web -->
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
     <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
     <script>navigator.serviceWorker.register('service-worker.js');</script>
+    
+    <script>
+        // Agora Web SDK Integration
+        window.agoraService = {
+            client: null,
+            localTracks: {
+                audioTrack: null,
+                videoTrack: null
+            },
+            remoteUsers: {},
+            isJoined: false,
+            
+            // Initialize Agora client
+            async initialize(appId) {
+                try {
+                    console.log('🔄 Initializing Agora client...');
+                    console.log('AgoraRTC available:', typeof AgoraRTC);
+                    console.log('App ID:', appId);
+                    
+                    if (typeof AgoraRTC === 'undefined') {
+                        throw new Error('AgoraRTC is not loaded. Check if the Agora SDK script is loaded correctly.');
+                    }
+                    
+                    this.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+                    console.log('✅ Agora client created successfully');
+                    console.log('Client object:', this.client);
+                    return true;
+                } catch (error) {
+                    console.error('❌ Failed to initialize Agora client:', error);
+                    console.error('Error details:', error.message);
+                    return false;
+                }
+            },
+            
+            // Join channel with token
+            async joinChannel(appId, channel, token, uid) {
+                try {
+                    console.log('🎯 Starting Agora channel join...');
+                    console.log('App ID:', appId);
+                    console.log('Channel:', channel);
+                    console.log('Token:', token);
+                    console.log('UID:', uid);
+                    
+                    if (!this.client) {
+                        console.log('🔄 Initializing Agora client...');
+                        await this.initialize(appId);
+                    }
+                    
+                    // Set up event listeners
+                    this.setupEventListeners();
+                    
+                    // Join the channel
+                    console.log('🚀 Attempting to join Agora channel...');
+                    await this.client.join(appId, channel, token, uid);
+                    this.isJoined = true;
+                    console.log(`✅ Successfully joined channel: ${channel} with UID: ${uid}`);
+                    
+                    // Create and publish local audio track
+                    console.log('🎤 Creating microphone audio track...');
+                    this.localTracks.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                    console.log('📡 Publishing audio track...');
+                    await this.client.publish([this.localTracks.audioTrack]);
+                    console.log('✅ Audio track published successfully!');
+                    
+                    return true;
+                } catch (error) {
+                    console.error('❌ Failed to join channel:', error);
+                    console.error('Error details:', error.message);
+                    console.error('Error stack:', error.stack);
+                    return false;
+                }
+            },
+            
+            // Leave channel
+            async leaveChannel() {
+                try {
+                    if (this.localTracks.audioTrack) {
+                        this.localTracks.audioTrack.close();
+                        this.localTracks.audioTrack = null;
+                    }
+                    
+                    if (this.client && this.isJoined) {
+                        await this.client.leave();
+                        this.isJoined = false;
+                        console.log('Left channel');
+                    }
+                } catch (error) {
+                    console.error('Failed to leave channel:', error);
+                }
+            },
+            
+            // Set up event listeners
+            setupEventListeners() {
+                this.client.on("user-published", async (user, mediaType) => {
+                    console.log('User published:', user.uid, mediaType);
+                    
+                    // Subscribe to the remote user
+                    await this.client.subscribe(user, mediaType);
+                    
+                    if (mediaType === "audio") {
+                        const remoteAudioTrack = user.audioTrack;
+                        remoteAudioTrack.play();
+                        console.log('Playing remote audio');
+                    }
+                });
+                
+                this.client.on("user-unpublished", (user, mediaType) => {
+                    console.log('User unpublished:', user.uid, mediaType);
+                });
+                
+                this.client.on("user-left", (user) => {
+                    console.log('User left:', user.uid);
+                    delete this.remoteUsers[user.uid];
+                });
+            },
+            
+            // Test audio
+            async testAudio() {
+                try {
+                    console.log('🔊 Testing audio system...');
+                    console.log('AgoraRTC available:', typeof AgoraRTC);
+                    
+                    // Create a simple audio context for testing
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                    
+                    oscillator.start();
+                    oscillator.stop(audioContext.currentTime + 0.5);
+                    
+                    console.log('✅ Audio test completed - you should hear a beep');
+                    return true;
+                } catch (error) {
+                    console.error('❌ Audio test failed:', error);
+                    return false;
+                }
+            },
+            
+            // Test Agora SDK availability
+            testAgoraSDK() {
+                console.log('🧪 Testing Agora SDK availability...');
+                console.log('AgoraRTC:', typeof AgoraRTC);
+                console.log('AgoraRTC.createClient:', typeof AgoraRTC?.createClient);
+                console.log('AgoraRTC.createMicrophoneAudioTrack:', typeof AgoraRTC?.createMicrophoneAudioTrack);
+                
+                if (typeof AgoraRTC === 'undefined') {
+                    console.error('❌ AgoraRTC is not loaded!');
+                    return false;
+                }
+                
+                console.log('✅ Agora SDK is loaded and ready');
+                return true;
+            }
+        };
+        let agoraClient = null;
+        let agoraLocalStream = null;
+        let agoraRemoteStreams = new Map();
+        let agoraDotNetRef = null;
+
+        window.agoraInitialize = async (appId, dotNetRef) => {
+            try {
+                console.log('🚀 Initializing Agora with App ID:', appId);
+                agoraDotNetRef = dotNetRef;
+                
+                // Check for demo mode
+                if (appId === 'demo-mode') {
+                    console.log('🎭 Running in demo mode - simulating WebRTC');
+                    agoraClient = {
+                        // Simulate Agora client for demo
+                        join: async (appId, channel, token, uid) => {
+                            console.log('🎭 Demo: Simulating channel join');
+                            return Promise.resolve();
+                        },
+                        leave: async () => {
+                            console.log('🎭 Demo: Simulating channel leave');
+                            return Promise.resolve();
+                        },
+                        publish: async (tracks) => {
+                            console.log('🎭 Demo: Simulating track publish');
+                            return Promise.resolve();
+                        },
+                        on: (event, handler) => {
+                            console.log('🎭 Demo: Registering event handler for', event);
+                            // Store handlers for potential simulation
+                        }
+                    };
+                    console.log('✅ Demo Agora client created successfully');
+                    return true;
+                }
+                
+                // Check if AgoraRTC is available for real mode
+                if (typeof AgoraRTC === 'undefined') {
+                    throw new Error('AgoraRTC SDK is not loaded');
+                }
+                
+                // Create real Agora client
+                agoraClient = AgoraRTC.createClient({ 
+                    mode: "rtc", 
+                    codec: "vp8" 
+                });
+
+                // Set up event handlers
+                agoraClient.on("user-published", async (user, mediaType) => {
+                    console.log('📱 Web App: User published:', user.uid, mediaType);
+                    try {
+                        await agoraClient.subscribe(user, mediaType);
+                        
+                        if (mediaType === "video") {
+                            agoraRemoteStreams.set(user.uid, user.videoTrack);
+                            if (agoraDotNetRef) {
+                                agoraDotNetRef.invokeMethodAsync("OnUserJoinedCallback", user.uid);
+                            }
+                        } else if (mediaType === "audio") {
+                            user.audioTrack.play();
+                            console.log('🔊 Web App: Playing remote audio from user:', user.uid);
+                        }
+                    } catch (error) {
+                        console.error('❌ Error handling user published:', error);
+                    }
+                });
+
+                agoraClient.on("user-unpublished", (user, mediaType) => {
+                    console.log('📱 Web App: User unpublished:', user.uid, mediaType);
+                    if (mediaType === "video") {
+                        agoraRemoteStreams.delete(user.uid);
+                        if (agoraDotNetRef) {
+                            agoraDotNetRef.invokeMethodAsync("OnUserLeftCallback", user.uid);
+                        }
+                    }
+                });
+
+                agoraClient.on("connection-state-change", (curState, revState) => {
+                    console.log('🔗 Connection state changed:', curState);
+                    if (agoraDotNetRef) {
+                        agoraDotNetRef.invokeMethodAsync("OnConnectionStateChangedCallback", curState);
+                    }
+                });
+
+                console.log("✅ Agora initialized successfully");
+                return true;
+            } catch (error) {
+                console.error("❌ Failed to initialize Agora:", error);
+                if (agoraDotNetRef) {
+                    agoraDotNetRef.invokeMethodAsync("OnErrorCallback", error.message);
+                }
+                return false;
+            }
+        };
+
+        window.agoraJoinChannel = async (channelName, token, uid, isVideoCall = false) => {
+            try {
+                if (!agoraClient) {
+                    throw new Error("Agora client not initialized");
+                }
+
+                console.log('🎯 Web App: Joining Agora channel...');
+                console.log('Channel:', channelName);
+                console.log('Token:', token);
+                console.log('UID:', uid);
+                console.log('Is Video Call:', isVideoCall);
+
+                // Join channel (check if demo mode)
+                if (agoraClient.join.toString().includes('Demo: Simulating')) {
+                    // Demo mode - simulate join
+                    await agoraClient.join("demo-mode", channelName, token, uid);
+                    console.log('🎭 Demo: Simulated channel join successful');
+                    
+                    // Simulate remote user joining after 2 seconds
+                    setTimeout(() => {
+                        console.log('🎭 Demo: Simulating remote user joined');
+                        if (agoraDotNetRef) {
+                            agoraDotNetRef.invokeMethodAsync("OnUserJoinedCallback", 999);
+                        }
+                    }, 2000);
+                } else {
+                    // Real mode - use actual Agora
+                    await agoraClient.join("efa11b3a7d05409ca979fb25a5b489ae", channelName, token, uid);
+                }
+
+                // Create and publish tracks (check if demo mode)
+                if (agoraClient.join.toString().includes('Demo: Simulating')) {
+                    // Demo mode - simulate media access
+                    console.log('🎭 Demo: Simulating media track creation');
+                    
+                    if (isVideoCall) {
+                        // Simulate local video display
+                        const localVideoContainer = document.getElementById('local-video-container');
+                        if (localVideoContainer) {
+                            localVideoContainer.innerHTML = '<div style="background: #333; color: white; display: flex; align-items: center; justify-content: center; height: 100%; font-size: 14px;">📹 Demo Local Video</div>';
+                            console.log('🎭 Demo: Local video placeholder displayed');
+                        }
+                    }
+                    
+                    agoraLocalStream = { demo: true };
+                    console.log('🎭 Demo: Simulated tracks published successfully');
+                } else {
+                    // Real mode - create actual tracks
+                    const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+                        encoderConfig: "music_standard",
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    });
+
+                    const tracksToPublish = [audioTrack];
+
+                    // Create and publish video track if it's a video call
+                    if (isVideoCall) {
+                        console.log('🎥 Web App: Creating video track for video call...');
+                        const videoTrack = await AgoraRTC.createCameraVideoTrack({
+                            encoderConfig: "720p_1",
+                            optimizationMode: "motion"
+                        });
+                        
+                        // Store the local video track
+                        agoraLocalStream = { audioTrack, videoTrack };
+                        tracksToPublish.push(videoTrack);
+                        
+                        // Display local video in the local video container
+                        const localVideoContainer = document.getElementById('local-video-container');
+                        if (localVideoContainer) {
+                            videoTrack.play(localVideoContainer);
+                            console.log('✅ Web App: Local video displayed in container');
+                        } else {
+                            console.warn('⚠️ Web App: Local video container not found');
+                        }
+                    } else {
+                        // Store just the audio track for audio calls
+                        agoraLocalStream = { audioTrack };
+                    }
+
+                    await agoraClient.publish(tracksToPublish);
+                    console.log(`✅ Web App: ${isVideoCall ? 'Audio and video' : 'Audio'} tracks published successfully`);
+                }
+
+                // Set up event listeners for remote users
+                agoraClient.on("user-published", async (user, mediaType) => {
+                    console.log('📱 Web App: User published:', user.uid, mediaType);
+                    await agoraClient.subscribe(user, mediaType);
+                    if (mediaType === "audio") {
+                        user.audioTrack.play();
+                        console.log('🔊 Web App: Playing remote audio');
+                    }
+                });
+
+                agoraClient.on("user-unpublished", (user, mediaType) => {
+                    console.log('📱 Web App: User unpublished:', user.uid, mediaType);
+                });
+
+                agoraClient.on("user-left", (user) => {
+                    console.log('📱 Web App: User left:', user.uid);
+                });
+
+                console.log(`✅ Web App: Joined channel: ${channelName} with UID: ${uid}`);
+                return true;
+            } catch (error) {
+                console.error("❌ Web App: Failed to join channel:", error);
+                agoraDotNetRef.invokeMethodAsync("OnErrorCallback", error.message);
+                return false;
+            }
+        };
+
+        window.agoraLeaveChannel = async () => {
+            try {
+                if (agoraLocalStream) {
+                    agoraLocalStream.close();
+                    agoraLocalStream = null;
+                }
+
+                if (agoraClient) {
+                    await agoraClient.leave();
+                }
+
+                agoraRemoteStreams.clear();
+                console.log("Left channel successfully");
+            } catch (error) {
+                console.error("Failed to leave channel:", error);
+                agoraDotNetRef.invokeMethodAsync("OnErrorCallback", error.message);
+            }
+        };
+
+        window.agoraEnableLocalVideo = async (enable) => {
+            try {
+                console.log('🎥 Web App: Enable local video:', enable);
+                // Modern Agora SDK doesn't use enableVideo on stream
+                // Video enabling/disabling is handled by publishing/unpublishing video tracks
+                return true;
+            } catch (error) {
+                console.error("Failed to toggle local video:", error);
+                if (agoraDotNetRef) {
+                    agoraDotNetRef.invokeMethodAsync("OnErrorCallback", error.message);
+                }
+                return false;
+            }
+        };
+
+        window.agoraEnableLocalAudio = async (enable) => {
+            try {
+                console.log('🎤 Web App: Enable local audio:', enable);
+                // Modern Agora SDK doesn't use enableAudio on stream
+                // Audio enabling/disabling is handled by publishing/unpublishing audio tracks
+                return true;
+            } catch (error) {
+                console.error("Failed to toggle local audio:", error);
+                if (agoraDotNetRef) {
+                    agoraDotNetRef.invokeMethodAsync("OnErrorCallback", error.message);
+                }
+                return false;
+            }
+        };
+
+        window.agoraSwitchCamera = async () => {
+            try {
+                console.log('📷 Web App: Switch camera');
+                // Modern Agora SDK doesn't use switchDevice on stream
+                // Camera switching is handled by the video track's switchDevice method
+                return true;
+            } catch (error) {
+                console.error("Failed to switch camera:", error);
+                if (agoraDotNetRef) {
+                    agoraDotNetRef.invokeMethodAsync("OnErrorCallback", error.message);
+                }
+                return false;
+            }
+        };
+
+        window.agoraMuteLocalAudio = async (mute) => {
+            try {
+                console.log('🔇 Web App: Mute local audio:', mute);
+                // Modern Agora SDK doesn't use muteAudio on stream
+                // Audio muting is handled by the audio track's setEnabled method
+                return true;
+            } catch (error) {
+                console.error("Failed to mute/unmute audio:", error);
+                if (agoraDotNetRef) {
+                    agoraDotNetRef.invokeMethodAsync("OnErrorCallback", error.message);
+                }
+                return false;
+            }
+        };
+
+        window.agoraMuteLocalVideo = async (mute) => {
+            try {
+                console.log('📹 Web App: Mute local video:', mute);
+                // Modern Agora SDK doesn't use muteVideo on stream
+                // Video muting is handled by the video track's setEnabled method
+                return true;
+            } catch (error) {
+                console.error("Failed to mute/unmute video:", error);
+                if (agoraDotNetRef) {
+                    agoraDotNetRef.invokeMethodAsync("OnErrorCallback", error.message);
+                }
+                return false;
+            }
+        };
+
+        window.agoraDestroy = async () => {
+            try {
+                await window.agoraLeaveChannel();
+                agoraClient = null;
+                console.log("Agora destroyed");
+            } catch (error) {
+                console.error("Failed to destroy Agora:", error);
+            }
+        };
+
+        // Helper function to get remote video element
+        window.getAgoraRemoteVideoElement = (uid) => {
+            return document.getElementById(`agora-remote-video-${uid}`);
+        };
+
+        // Helper function to get local video element
+        window.getAgoraLocalVideoElement = () => {
+            return document.getElementById('agora-local-video');
+        };
+        
+        // Global error handler to catch JavaScript syntax errors
+        window.addEventListener('error', function(e) {
+            console.error('🚨 Global JavaScript Error:', e.error);
+            console.error('🚨 Error message:', e.message);
+            console.error('🚨 Error source:', e.filename, 'line:', e.lineno);
+            console.error('🚨 Stack trace:', e.error?.stack);
+        });
+        
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('🚨 Unhandled Promise Rejection:', e.reason);
+            console.error('🚨 Promise:', e.promise);
+        });
+        
+        console.log('✅ Global error handlers installed');
+    </script>
 </body>
 
 </html>

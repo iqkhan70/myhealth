@@ -2,6 +2,8 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { authService } from '../services/authService';
 
+import { Platform } from 'react-native';
+
 const AuthContext = createContext();
 
 export const useAuth = () => {
@@ -46,8 +48,17 @@ export const AuthProvider = ({ children }) => {
         const { token: authToken, user: userData } = response;
         
         // Store in secure storage
-        await SecureStore.setItemAsync('authToken', authToken);
-        await SecureStore.setItemAsync('userData', JSON.stringify(userData));
+        // await SecureStore.setItemAsync('authToken', authToken);
+        // await SecureStore.setItemAsync('userData', JSON.stringify(userData));
+        
+        if (Platform.OS === 'web') {
+          localStorage.setItem('authToken', authToken);
+          localStorage.setItem('userData', JSON.stringify(userData));
+        } else {
+          await SecureStore.setItemAsync('authToken', authToken);
+          await SecureStore.setItemAsync('userData', JSON.stringify(userData));
+        }
+        
         
         setToken(authToken);
         setUser(userData);

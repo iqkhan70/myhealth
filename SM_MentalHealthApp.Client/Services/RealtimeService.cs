@@ -202,6 +202,21 @@ namespace SM_MentalHealthApp.Client.Services
                             _logger.LogDebug("Processed {MessageCount} messages", messageCount);
                         }
                     }
+
+                    if (result.TryGetProperty("calls", out var callsElement))
+                    {
+                        var calls = callsElement.EnumerateArray();
+                        var callCount = 0;
+                        foreach (var call in calls)
+                        {
+                            ProcessCall(call);
+                            callCount++;
+                        }
+                        if (callCount > 0)
+                        {
+                            _logger.LogDebug("Processed {CallCount} calls", callCount);
+                        }
+                    }
                 }
                 else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
                 {
@@ -333,6 +348,49 @@ namespace SM_MentalHealthApp.Client.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing message: {Message}", message);
+            }
+        }
+
+        private void ProcessCall(JsonElement call)
+        {
+            try
+            {
+                if (call.TryGetProperty("type", out var typeElement))
+                {
+                    var callType = typeElement.GetString();
+
+                    if (callType == "incoming_call")
+                    {
+                        var callInvitation = new CallInvitation
+                        {
+                            CallId = call.GetProperty("channelName").GetString() ?? "",
+                            CallerId = call.GetProperty("callerId").GetInt32(),
+                            CallerName = call.GetProperty("callerName").GetString() ?? "",
+                            CallerRole = "Unknown", // We don't have this in the new format
+                            CallType = call.GetProperty("callType").GetString() ?? "",
+                            Timestamp = DateTime.Parse(call.GetProperty("timestamp").GetString() ?? DateTime.UtcNow.ToString())
+                        };
+
+                        // Store Agora details for the call
+                        if (call.TryGetProperty("agoraAppId", out var appIdElement))
+                        {
+                            // Store Agora app ID and token for later use
+                            _logger.LogInformation("Agora App ID: {AppId}", appIdElement.GetString());
+                        }
+
+                        if (call.TryGetProperty("agoraToken", out var tokenElement))
+                        {
+                            // Store Agora token for later use
+                            _logger.LogInformation("Agora Token: {Token}", tokenElement.GetString());
+                        }
+
+                        OnIncomingCall?.Invoke(callInvitation);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing call");
             }
         }
 

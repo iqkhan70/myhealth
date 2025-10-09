@@ -578,8 +578,8 @@
                     <div class="warning-content">
                         <h4>Are you sure you want to unassign this patient?</h4>
                         <div class="patient-info">
-                            <p><strong>Patient:</strong> @selectedUser.FirstName @selectedUser.LastName</p>
-                            <p><strong>Email:</strong> @selectedUser.Email</p>
+                            <p><strong>Patient:</strong> @selectedUser?.FirstName @selectedUser?.LastName</p>
+                            <p><strong>Email:</strong> @selectedUser?.Email</p>
                         </div>
                         <div class="warning-message">
                             <p><strong>Important:</strong> Once unassigned, you will no longer have access to this patient's records. 

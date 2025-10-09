@@ -4,8 +4,9 @@
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 @inject IAuthService AuthService
-@inject IWebSocketService WebSocketService
+@inject ISignalRService SignalRService
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
 @if (!AuthService.IsInitialized)
@@ -65,19 +66,29 @@ else
     protected override async Task OnInitializedAsync()
     {
         // Set up SignalR event handlers
-        WebSocketService.OnIncomingCall += HandleIncomingCall;
-        WebSocketService.OnNewMessage += HandleNewMessage;
-        WebSocketService.OnCallEnded += HandleCallEnded;
+        SignalRService.OnIncomingCall += HandleIncomingCall;
+        SignalRService.OnNewMessage += HandleNewMessage;
+        SignalRService.OnCallEnded += HandleCallEnded;
 
         // Start SignalR connection if user is authenticated
         if (AuthService.CurrentUser != null)
         {
-            await WebSocketService.StartAsync();
+            Console.WriteLine("🔗 Web App: Starting SignalR connection for incoming calls...");
+            await SignalRService.StartAsync();
         }
     }
 
     private void HandleIncomingCall(CallInvitation call)
     {
+        // Filter calls - only show if this user is the target
+        var currentUserId = AuthService.CurrentUser?.Id;
+        if (currentUserId == null || call.TargetUserId != currentUserId)
+        {
+            Console.WriteLine($"🔍 Web App: Ignoring call - not for this user. Current: {currentUserId}, Target: {call.TargetUserId}");
+            return;
+        }
+
+        Console.WriteLine($"📞 Web App: Incoming call from {call.CallerName} ({call.CallType})");
         incomingCall = call;
         InvokeAsync(StateHasChanged);
 
@@ -107,10 +118,26 @@ else
     {
         incomingCall = null;
 
-        // For web app, we can't handle actual video/audio calls like mobile
-        // But we can show a message or redirect to a call page
-        NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
-        "Call accepted. Video/audio calling is best supported on mobile devices.");
+        try
+        {
+            // Navigate to the video call page to join the call
+            var callUrl = call.CallType?.ToLower() == "video"
+            ? $"/video-call/{call.CallerId}"
+            : $"/audio-call/{call.CallerId}";
+
+            Console.WriteLine($"🎯 Web App: Accepting {call.CallType} call from {call.CallerName}, navigating to {callUrl}");
+
+            NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
+            $"Joining {call.CallType} call with {call.CallerName}...");
+
+            Navigation.NavigateTo(callUrl);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Web App: Error accepting call: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Error, "Call Error",
+            $"Failed to join call: {ex.Message}");
+        }
 
         StateHasChanged();
     }
@@ -134,7 +161,7 @@ else
 
     private async Task Logout()
     {
-        await WebSocketService.StopAsync();
+        await SignalRService.StopAsync();
         await AuthService.LogoutAsync();
         Navigation.NavigateTo("/login");
     }
@@ -142,10 +169,10 @@ else
     public async ValueTask DisposeAsync()
     {
         // Clean up event handlers
-        WebSocketService.OnIncomingCall -= HandleIncomingCall;
-        WebSocketService.OnNewMessage -= HandleNewMessage;
-        WebSocketService.OnCallEnded -= HandleCallEnded;
+        SignalRService.OnIncomingCall -= HandleIncomingCall;
+        SignalRService.OnNewMessage -= HandleNewMessage;
+        SignalRService.OnCallEnded -= HandleCallEnded;
 
-        await WebSocketService.StopAsync();
+        await SignalRService.StopAsync();
     }
 }

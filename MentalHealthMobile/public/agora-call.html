@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agora Call</title>
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #000;
+            color: #fff;
+        }
+        #status {
+            font-size: 18px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        #users {
+            margin-top: 20px;
+        }
+        .user {
+            background: #333;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Initializing Agora...</div>
+    <div id="users"></div>
+    
+    <script>
+        let client = null;
+        let localTracks = {
+            audioTrack: null,
+            videoTrack: null
+        };
+        let remoteUsers = {};
+        let isJoined = false;
+
+        // Get parameters from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const appId = urlParams.get('appId') || 'efa11b3a7d05409ca979fb25a5b489ae';
+        const channel = urlParams.get('channel') || 'test_channel';
+        const token = urlParams.get('token') || null;
+        const uid = parseInt(urlParams.get('uid')) || Math.floor(Math.random() * 10000);
+
+        async function initializeAgora() {
+            try {
+                console.log('🎯 Mobile Agora: Initializing...');
+                console.log('App ID:', appId);
+                console.log('Channel:', channel);
+                console.log('Token:', token);
+                console.log('UID:', uid);
+
+                // Check if AgoraRTC is loaded
+                if (typeof AgoraRTC === 'undefined') {
+                    throw new Error('AgoraRTC SDK not loaded');
+                }
+
+                // Create Agora client
+                client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+                console.log('✅ Mobile Agora: Client created');
+
+                // Set up event listeners
+                client.on("user-published", async (user, mediaType) => {
+                    console.log('📱 Mobile Agora: User published:', user.uid, mediaType);
+                    await client.subscribe(user, mediaType);
+                    
+                    if (mediaType === "audio") {
+                        const remoteAudioTrack = user.audioTrack;
+                        remoteAudioTrack.play();
+                        console.log('🔊 Mobile Agora: Playing remote audio');
+                        
+                        // Add user to display
+                        addUserToDisplay(user.uid, 'Remote User');
+                    }
+                });
+
+                client.on("user-unpublished", (user, mediaType) => {
+                    console.log('📱 Mobile Agora: User unpublished:', user.uid, mediaType);
+                });
+
+                client.on("user-left", (user) => {
+                    console.log('📱 Mobile Agora: User left:', user.uid);
+                    removeUserFromDisplay(user.uid);
+                });
+
+                // Join the channel
+                console.log('🚀 Mobile Agora: Joining channel...');
+                await client.join(appId, channel, token, uid);
+                isJoined = true;
+                console.log('✅ Mobile Agora: Successfully joined channel');
+
+                // Create and publish local audio track
+                console.log('🎤 Mobile Agora: Creating microphone audio track...');
+                localTracks.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                console.log('📡 Mobile Agora: Publishing audio track...');
+                await client.publish([localTracks.audioTrack]);
+                console.log('✅ Mobile Agora: Audio track published successfully!');
+
+                // Update status
+                document.getElementById('status').innerHTML = `Connected to channel: ${channel} (UID: ${uid})`;
+                addUserToDisplay(uid, 'You');
+
+            } catch (error) {
+                console.error('❌ Mobile Agora: Error:', error);
+                document.getElementById('status').innerHTML = 'Error: ' + error.message;
+            }
+        }
+
+        function addUserToDisplay(uid, name) {
+            const usersDiv = document.getElementById('users');
+            const userDiv = document.createElement('div');
+            userDiv.className = 'user';
+            userDiv.id = 'user-' + uid;
+            userDiv.innerHTML = `${name} (UID: ${uid})`;
+            usersDiv.appendChild(userDiv);
+        }
+
+        function removeUserFromDisplay(uid) {
+            const userDiv = document.getElementById('user-' + uid);
+            if (userDiv) {
+                userDiv.remove();
+            }
+        }
+
+        // Cleanup function
+        window.cleanup = async () => {
+            try {
+                if (localTracks.audioTrack) {
+                    localTracks.audioTrack.close();
+                    localTracks.audioTrack = null;
+                }
+                
+                if (client && isJoined) {
+                    await client.leave();
+                    isJoined = false;
+                    console.log('📱 Mobile Agora: Left channel');
+                }
+            } catch (error) {
+                console.error('❌ Mobile Agora: Cleanup error:', error);
+            }
+        };
+
+        // Initialize when page loads
+        window.addEventListener('load', initializeAgora);
+    </script>
+</body>
+</html>

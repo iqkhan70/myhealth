@@ -61,6 +61,7 @@ builder.Services.AddScoped<IChatHistoryService, ChatHistoryService>();
 builder.Services.AddScoped<IIntelligentContextService, IntelligentContextService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ISmsService, VonageSmsService>();
+builder.Services.AddScoped<AgoraTokenService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -89,7 +90,7 @@ builder.Services.AddCors(options =>
         }
         else
         {
-            policy.WithOrigins("http://localhost:5262", "http://localhost:5282", "http://192.168.86.113:5262", "http://localhost:8080")
+            policy.WithOrigins("http://localhost:5262", "http://localhost:5282", "http://192.168.86.113:5262", "http://localhost:8080", "http://localhost:8081")
                   .AllowAnyHeader()
                   .AllowAnyMethod()
                   .AllowCredentials(); // Required for SignalR
@@ -140,8 +141,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Enable static files and Blazor WebAssembly support
-app.UseBlazorFrameworkFiles();
+// Enable static files (but not Blazor WebAssembly support - handled by separate HTTPS server)
 app.UseStaticFiles();
 
 app.UseCors("AllowBlazorClient");
@@ -149,15 +149,12 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 
-// Map API controllers first
+// Map API controllers
 app.MapControllers();
 app.MapRazorPages();
 
 // Map SignalR hub
 app.MapHub<SM_MentalHealthApp.Server.Hubs.MobileHub>("/mobilehub");
-
-// Fallback to Blazor WebAssembly for non-API routes only
-app.MapFallbackToFile("index.html");
 
 // TODO: Add database seeding later
 

@@ -1,0 +1,382 @@
+@page "/audio-call/{UserId:int}"
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Shared
+@inject IAgoraService AgoraService
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject NotificationService NotificationService
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<PageTitle>Audio Call</PageTitle>
+
+<div class="audio-call-container">
+    @if (!isInitialized)
+    {
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <p>Initializing audio call...</p>
+        </div>
+    }
+    else if (!isInCall)
+    {
+        <div class="call-setup">
+            <div class="call-info">
+                <h3>Audio Call with @targetUser?.FirstName @targetUser?.LastName</h3>
+                <p>Click "Start Call" to begin the audio call</p>
+            </div>
+            <div class="call-actions">
+                <button class="btn btn-primary btn-lg" @onclick="StartCall" disabled="@isConnecting">
+                    @if (isConnecting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
+                    Start Call
+                </button>
+                <button class="btn btn-secondary btn-lg" @onclick="CancelCall">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="audio-call-interface">
+            <!-- Audio Call Status -->
+            <div class="audio-status">
+                <div class="user-avatar">
+                    <i class="fas fa-user fa-4x"></i>
+                </div>
+                <h3>@targetUser?.FirstName @targetUser?.LastName</h3>
+                <p class="call-status">@callStatus</p>
+
+                @if (remoteUsers.Any())
+                {
+                    <p class="connected-status">
+                        <i class="fas fa-phone text-success"></i>
+                        Connected
+                    </p>
+                }
+                else
+                {
+                    <p class="connecting-status">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Connecting...
+                    </p>
+                }
+            </div>
+
+            <!-- Call Controls -->
+            <div class="call-controls">
+                <div class="control-buttons">
+                    <button class="control-btn @(isMuted ? "active" : "")" @onclick="ToggleMute"
+                        title="@(isMuted ? "Unmute" : "Mute")">
+                        <i class="fas @(isMuted ? "fa-microphone-slash" : "fa-microphone")"></i>
+                    </button>
+
+                    <button class="control-btn end-call" @onclick="EndCall" title="End Call">
+                        <i class="fas fa-phone-slash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger mt-3">
+            <strong>Error:</strong> @error
+        </div>
+    }
+</div>
+
+<style>
+    .audio-call-container {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        text-align: center;
+    }
+
+    .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 5px solid rgba(255, 255, 255, 0.3);
+        border-top: 5px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    .call-setup {
+        max-width: 400px;
+        padding: 40px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 15px;
+        backdrop-filter: blur(10px);
+    }
+
+    .call-info h3 {
+        margin-bottom: 10px;
+        font-size: 1.5rem;
+    }
+
+    .call-info p {
+        margin-bottom: 30px;
+        opacity: 0.9;
+    }
+
+    .call-actions {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+    }
+
+    .audio-call-interface {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 40px;
+        max-width: 400px;
+    }
+
+    .audio-status {
+        text-align: center;
+    }
+
+    .user-avatar {
+        width: 120px;
+        height: 120px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 20px;
+    }
+
+    .call-status {
+        font-size: 1.1rem;
+        margin: 10px 0;
+        opacity: 0.9;
+    }
+
+    .connected-status {
+        color: #4CAF50;
+        font-weight: bold;
+        margin-top: 15px;
+    }
+
+    .connecting-status {
+        color: #FFC107;
+        margin-top: 15px;
+    }
+
+    .call-controls {
+        display: flex;
+        justify-content: center;
+    }
+
+    .control-buttons {
+        display: flex;
+        gap: 20px;
+    }
+
+    .control-btn {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+        font-size: 1.5rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .control-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: scale(1.1);
+    }
+
+    .control-btn.active {
+        background: #f44336;
+    }
+
+    .control-btn.end-call {
+        background: #f44336;
+    }
+
+    .control-btn.end-call:hover {
+        background: #d32f2f;
+    }
+
+    @@keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public int UserId { get; set; }
+
+    private User? targetUser;
+    private bool isInitialized = false;
+    private bool isInCall = false;
+    private bool isConnecting = false;
+    private bool isMuted = false;
+    private string callStatus = "Initializing...";
+    private string error = "";
+    private List<uint> remoteUsers = new();
+    private string currentChannel = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get target user info
+            targetUser = await GetUserById(UserId);
+            if (targetUser == null)
+            {
+                error = "User not found";
+                return;
+            }
+
+            // Initialize Agora
+            var initialized = await AgoraService.InitializeAsync("demo-mode");
+            if (!initialized)
+            {
+                error = "Failed to initialize audio service";
+                return;
+            }
+
+            isInitialized = true;
+            callStatus = "Ready to call";
+        }
+        catch (Exception ex)
+        {
+            error = $"Initialization failed: {ex.Message}";
+        }
+    }
+
+    private async Task StartCall()
+    {
+        try
+        {
+            isConnecting = true;
+            callStatus = "Connecting...";
+
+            // Generate channel name
+            var channelName = $"call_{UserId}_{DateTime.UtcNow.Ticks}";
+
+            // Get Agora token
+            var token = await AgoraService.GetAgoraTokenAsync(channelName);
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new Exception("Failed to get call token");
+            }
+
+            // Generate UID
+            var uid = (uint)(AuthService.CurrentUser?.Id ?? 0);
+            if (uid == 0) uid = (uint)new Random().Next(100000, 999999);
+
+            // Join channel (audio call)
+            var success = await AgoraService.JoinChannelAsync(channelName, token, uid, false);
+            if (!success)
+            {
+                throw new Exception("Failed to join call");
+            }
+
+            isInCall = true;
+            currentChannel = channelName;
+            callStatus = "Connected";
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to start call: {ex.Message}";
+            callStatus = "Call failed";
+        }
+        finally
+        {
+            isConnecting = false;
+        }
+    }
+
+    private async Task EndCall()
+    {
+        try
+        {
+            await AgoraService.LeaveChannelAsync();
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to end call: {ex.Message}";
+        }
+    }
+
+    private Task CancelCall()
+    {
+        Navigation.NavigateTo("/");
+        return Task.CompletedTask;
+    }
+
+    private async Task ToggleMute()
+    {
+        try
+        {
+            isMuted = !isMuted;
+            await AgoraService.MuteLocalAudioAsync(isMuted);
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to toggle mute: {ex.Message}";
+        }
+    }
+
+    private Task<User?> GetUserById(int userId)
+    {
+        // This would typically call your user service
+        // For now, return a mock user
+        var user = new User
+        {
+            Id = userId,
+            FirstName = "Test",
+            LastName = "User"
+        };
+        return Task.FromResult<User?>(user);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (isInCall)
+            {
+                await AgoraService.LeaveChannelAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error disposing audio call: {ex.Message}");
+        }
+    }
+}

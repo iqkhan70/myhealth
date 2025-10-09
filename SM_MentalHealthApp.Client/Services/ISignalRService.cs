@@ -28,6 +28,7 @@ namespace SM_MentalHealthApp.Client.Services
     {
         public string CallId { get; set; } = string.Empty;
         public int CallerId { get; set; }
+        public int TargetUserId { get; set; }
         public string CallerName { get; set; } = string.Empty;
         public string CallerRole { get; set; } = string.Empty;
         public string CallType { get; set; } = string.Empty;

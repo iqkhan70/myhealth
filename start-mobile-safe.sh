@@ -6,7 +6,7 @@ echo "🚀 Starting Mental Health Mobile App with optimized settings..."
 ulimit -n 1048576
 
 # Navigate to the mobile app directory
-cd /Users/mohammedkhan/iq/health/MentalHealthMobile
+cd /Users/mohammedkhan/iq/health/MentalHealthMobileV54
 
 # Clean any existing Metro cache
 echo "🧹 Cleaning Metro cache..."

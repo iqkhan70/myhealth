@@ -8,6 +8,7 @@
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 @implements IDisposable
 
 <PageTitle>Real-Time Chat</PageTitle>
@@ -37,9 +38,46 @@
                         <i class="fas fa-refresh"></i>
                     </button>
                 }
+    <button class="test-call-btn" @onclick="TestIncomingCall" title="Test Incoming Call">
+        <i class="fas fa-phone"></i>
+    </button>
+    
+    <button class="test-audio-btn" @onclick="TestAudio" title="Test Audio System">
+        <i class="fas fa-volume-up"></i>
+    </button>
+    
+    <button class="test-agora-btn" @onclick="TestAgoraSDK" title="Test Agora SDK">
+        <i class="fas fa-cog"></i>
+    </button>
             </div>
         </div>
     </div>
+
+    <!-- Incoming Call Modal -->
+    @if (incomingCall != null)
+    {
+        <div class="incoming-call-modal">
+            <div class="incoming-call-content">
+                <div class="caller-info">
+                    <div class="caller-avatar">
+                        @incomingCall.CallerName?.Substring(0, 1).ToUpper()
+                    </div>
+                    <div class="caller-details">
+                        <h3>@incomingCall.CallerName</h3>
+                        <p>@(incomingCall.CallType == "video" ? "Video Call" : "Audio Call")</p>
+                    </div>
+                </div>
+                <div class="call-actions">
+                    <button class="btn btn-success btn-lg" @onclick="AcceptCall">
+                        <i class="fas fa-phone"></i> Accept
+                    </button>
+                    <button class="btn btn-danger btn-lg" @onclick="RejectCall">
+                        <i class="fas fa-phone-slash"></i> Decline
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
 
     <div class="chat-main">
         <!-- Sidebar with users -->
@@ -131,7 +169,7 @@
                         <div class="selected-user-avatar">
                             @selectedUser.FirstName?.Substring(0, 1).ToUpper()
                         </div>
-                        <div>
+                        <div class="user-details">
                             <div class="selected-user-name">@selectedUser.FirstName @selectedUser.LastName</div>
                             <div class="selected-user-role">
                                 @if (AuthService.CurrentUser?.RoleId == 2)
@@ -143,6 +181,14 @@
                                     <text>Doctor - @selectedUser.Specialization</text>
                                 }
                             </div>
+                        </div>
+                        <div class="call-buttons">
+                            <button class="btn btn-outline-primary btn-sm" @onclick="() => StartVideoCall(selectedUser.Id)" title="Start Video Call">
+                                <i class="fas fa-video"></i>
+                            </button>
+                            <button class="btn btn-outline-success btn-sm" @onclick="() => StartAudioCall(selectedUser.Id)" title="Start Audio Call">
+                                <i class="fas fa-phone"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -433,6 +479,69 @@
         cursor: not-allowed;
     }
 
+    .test-call-btn {
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        font-size: 14px;
+        background: rgba(76, 175, 80, 0.2);
+        color: #4CAF50;
+        margin-left: 8px;
+    }
+
+    .test-call-btn:hover {
+        background: rgba(76, 175, 80, 0.3);
+        transform: scale(1.1);
+    }
+
+    .test-audio-btn {
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        font-size: 14px;
+        background: rgba(33, 150, 243, 0.2);
+        color: #2196F3;
+        margin-left: 8px;
+    }
+
+    .test-audio-btn:hover {
+        background: rgba(33, 150, 243, 0.3);
+        transform: scale(1.1);
+    }
+
+    .test-agora-btn {
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        font-size: 14px;
+        background: rgba(255, 152, 0, 0.2);
+        color: #FF9800;
+        margin-left: 8px;
+    }
+
+    .test-agora-btn:hover {
+        background: rgba(255, 152, 0, 0.3);
+        transform: scale(1.1);
+    }
+
     .video-btn {
         background: #4CAF50;
         color: white;
@@ -468,6 +577,26 @@
         display: flex;
         align-items: center;
         gap: 12px;
+        justify-content: space-between;
+    }
+
+    .user-details {
+        flex: 1;
+    }
+
+    .call-buttons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .call-buttons .btn {
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
     }
 
     .selected-user-avatar {
@@ -639,6 +768,93 @@
         animation: spin 1s linear infinite;
         margin-bottom: 8px;
     }
+
+    /* Incoming Call Modal */
+    .incoming-call-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        opacity: 1;
+        transition: opacity 0.3s ease-in;
+    }
+
+    .incoming-call-content {
+        background: white;
+        border-radius: 20px;
+        padding: 40px;
+        text-align: center;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        max-width: 400px;
+        width: 90%;
+        transform: scale(1);
+        transition: transform 0.3s ease-out;
+    }
+
+    .caller-info {
+        margin-bottom: 30px;
+    }
+
+    .caller-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 20px;
+        font-size: 32px;
+        font-weight: bold;
+        color: white;
+    }
+
+    .caller-details h3 {
+        margin: 0 0 10px 0;
+        color: #333;
+        font-size: 24px;
+    }
+
+    .caller-details p {
+        margin: 0;
+        color: #666;
+        font-size: 16px;
+    }
+
+    .call-actions {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+    }
+
+    .call-actions .btn {
+        padding: 15px 30px;
+        font-size: 16px;
+        border-radius: 50px;
+        min-width: 120px;
+    }
+
+    .call-actions .btn-success {
+        background: #28a745;
+        border-color: #28a745;
+    }
+
+    .call-actions .btn-danger {
+        background: #dc3545;
+        border-color: #dc3545;
+    }
+
+    .call-actions .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    }
+
 </style>
 
 <script>
@@ -669,8 +885,10 @@
     private ElementReference messagesContainer;
     private Timer? autoRefreshTimer;
     private bool isAutoRefreshing = false;
+    
+    // Incoming call handling
+    private IncomingCall? incomingCall = null;
     private int lastMessageCount = 0;
-    private bool isProcessingNewMessage = false;
     private DateTime lastScrollTime = DateTime.MinValue;
 
     protected override async Task OnInitializedAsync()
@@ -722,7 +940,6 @@
         }
         
         // Reset the new message processing flag
-        isProcessingNewMessage = false;
     }
 
     private async Task LoadUsers()
@@ -921,7 +1138,6 @@
             newMessage = string.Empty;
             
             // Mark that we just sent a message to trigger scroll in OnAfterRenderAsync
-            isProcessingNewMessage = true;
             lastMessageCount = messages.Count;
             
             Console.WriteLine($"Sent message locally: {localMessage.Message} at {localMessage.Timestamp:HH:mm:ss} - Total messages: {messages.Count}");
@@ -984,7 +1200,7 @@
                 // Only mark as processing if it's a message from someone else (not our own)
                 if (message.SenderId != AuthService.CurrentUser?.Id)
                 {
-                    isProcessingNewMessage = true;
+                    // Message from someone else - will trigger scroll
                 }
                 
                 // Add message and sort immediately
@@ -1092,28 +1308,27 @@
     {
         try
         {
-            var confirmed = await DialogService.Confirm(
-            $"Incoming {call.CallType} call from {call.CallerName}",
-            "Incoming Call",
-            new ConfirmOptions
+            // Convert CallInvitation to IncomingCall for the modal
+            var incomingCallData = new IncomingCall
             {
-                OkButtonText = "Accept",
-                CancelButtonText = "Reject",
-                ShowClose = false
+                CallerName = call.CallerName,
+                CallType = call.CallType,
+                CallerId = call.CallerId,
+                CallTime = call.Timestamp
+            };
+
+            incomingCall = incomingCallData;
+            StateHasChanged();
+            
+            // Auto-dismiss after 30 seconds if not answered
+            Task.Delay(30000).ContinueWith(_ => {
+                if (incomingCall != null)
+                {
+                    incomingCall = null;
+                    InvokeAsync(StateHasChanged);
+                }
             });
 
-            if (confirmed == true)
-            {
-                await RealtimeService.AcceptCallAsync(call.CallId);
-                NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
-                $"You are now in a {call.CallType} call with {call.CallerName}");
-            }
-            else
-            {
-                await RealtimeService.RejectCallAsync(call.CallId);
-                NotificationService.Notify(NotificationSeverity.Info, "Call Rejected",
-                $"You rejected the call from {call.CallerName}");
-            }
         }
         catch (Exception ex)
         {
@@ -1157,10 +1372,191 @@
         }
     }
 
+
+    private void StartVideoCall(int userId)
+    {
+        // For now, just show a notification
+        NotificationService.Notify(NotificationSeverity.Info, "Video Call", 
+            $"Starting video call with user {userId}. This will open a new window.");
+        
+        // In a real implementation, you would:
+        // 1. Generate a call token
+        // 2. Open a new window with the video call interface
+        // 3. Use Agora SDK for web
+        Console.WriteLine($"Starting video call with user {userId}");
+    }
+
+    private void StartAudioCall(int userId)
+    {
+        // For now, just show a notification
+        NotificationService.Notify(NotificationSeverity.Info, "Audio Call", 
+            $"Starting audio call with user {userId}. This will open a new window.");
+        
+        // In a real implementation, you would:
+        // 1. Generate a call token
+        // 2. Open a new window with the audio call interface
+        // 3. Use Agora SDK for web
+        Console.WriteLine($"Starting audio call with user {userId}");
+    }
+
+    private async void AcceptCall()
+    {
+        if (incomingCall != null)
+        {
+            try
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Call Accepted", 
+                    $"Accepting {incomingCall.CallType} call from {incomingCall.CallerName}");
+                
+                // Use the channel name from the incoming call
+                var channelName = incomingCall.CallId;
+                
+                // Open the shared room for WebRTC connection
+                var sharedRoomUrl = $"https://localhost:5443/shared-room?mobile_call=true&caller={incomingCall.CallerName}&channel={channelName}";
+                
+                // Open the shared room in a new window
+                await JS.InvokeVoidAsync("open", sharedRoomUrl, "_blank");
+                
+                NotificationService.Notify(NotificationSeverity.Success, "Call Connected", 
+                    $"Opening shared room for {incomingCall.CallType} call! You should now be able to talk.");
+                
+                incomingCall = null;
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Call Error", 
+                    $"Failed to accept call: {ex.Message}");
+            }
+        }
+    }
+
+    private void RejectCall()
+    {
+        if (incomingCall != null)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Call Declined", 
+                $"Declined {incomingCall.CallType} call from {incomingCall.CallerName}");
+            
+            // In a real implementation, you would:
+            // 1. Send rejection signal to caller
+            // 2. Close the call interface
+            
+            incomingCall = null;
+            StateHasChanged();
+        }
+    }
+
+
+    private void TestIncomingCall()
+    {
+        incomingCall = new IncomingCall
+        {
+            CallerName = "Test User",
+            CallType = "video",
+            CallerId = 999,
+            CallId = $"test_call_{DateTime.UtcNow.Ticks}"
+        };
+        StateHasChanged();
+    }
+
+    private async void TestAudio()
+    {
+        try
+        {
+            NotificationService.Notify(NotificationSeverity.Info, "Testing Audio", 
+                "Testing audio system...");
+            
+            var result = await JS.InvokeAsync<bool>("agoraService.testAudio");
+            
+            if (result)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Audio Test", 
+                    "Audio system is working! You should have heard a beep sound.");
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Warning, "Audio Test", 
+                    "Audio test completed, but no sound was played. Audio system is configured.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Audio Test Failed", 
+                $"Audio test failed: {ex.Message}");
+        }
+    }
+
+    private async void TestAgoraSDK()
+    {
+        try
+        {
+            NotificationService.Notify(NotificationSeverity.Info, "Testing Agora SDK", 
+                "Checking if Agora SDK is loaded...");
+            
+            var result = await JS.InvokeAsync<bool>("agoraService.testAgoraSDK");
+            
+            if (result)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Agora SDK Test", 
+                    "Agora SDK is loaded and ready! Check console for details.");
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Agora SDK Test", 
+                    "Agora SDK is not loaded! Check console for details.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Agora SDK Test Failed", 
+                $"Agora SDK test failed: {ex.Message}");
+        }
+    }
+
+    // Agora callback methods
+    [JSInvokable]
+    public void OnUserJoinedCallback(int uid)
+    {
+        NotificationService.Notify(NotificationSeverity.Info, "User Joined", 
+            $"User {uid} joined the call");
+    }
+
+    [JSInvokable]
+    public void OnUserLeftCallback(int uid)
+    {
+        NotificationService.Notify(NotificationSeverity.Info, "User Left", 
+            $"User {uid} left the call");
+    }
+
+    [JSInvokable]
+    public void OnConnectionStateChangedCallback(string state)
+    {
+        NotificationService.Notify(NotificationSeverity.Info, "Connection State", 
+            $"Connection state: {state}");
+    }
+
+    [JSInvokable]
+    public void OnErrorCallback(string error)
+    {
+        NotificationService.Notify(NotificationSeverity.Error, "Agora Error", 
+            $"Agora error: {error}");
+    }
+
     public void Dispose()
     {
         RealtimeService.OnNewMessage -= HandleNewMessage;
         RealtimeService.OnIncomingCall -= HandleIncomingCall;
         autoRefreshTimer?.Dispose();
+    }
+
+    // Incoming call model
+    public class IncomingCall
+    {
+        public string CallerName { get; set; } = string.Empty;
+        public string CallType { get; set; } = string.Empty; // "video" or "audio"
+        public int CallerId { get; set; }
+        public string CallId { get; set; } = string.Empty; // Channel name
+        public DateTime CallTime { get; set; } = DateTime.UtcNow;
     }
 }

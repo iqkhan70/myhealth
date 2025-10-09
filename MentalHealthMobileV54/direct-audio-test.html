@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct Audio Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #000;
+            color: #fff;
+        }
+        .status {
+            font-size: 18px;
+            margin: 20px 0;
+            padding: 15px;
+            border: 2px solid #4CAF50;
+            border-radius: 5px;
+            background: #1a1a1a;
+        }
+        .button {
+            background: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        .button:hover {
+            background: #45a049;
+        }
+        .log {
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 12px;
+            background: #111;
+            padding: 10px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎵 Direct Audio Test</h1>
+    <div class="status" id="status">Ready to test audio...</div>
+    
+    <button class="button" onclick="testMicrophone()">Test Microphone Access</button>
+    <button class="button" onclick="testAudioPlayback()">Test Audio Playback</button>
+    <button class="button" onclick="testAgoraConnection()">Test Agora Connection</button>
+    
+    <div class="log" id="log"></div>
+    
+    <script>
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}<br>`;
+            console.log(message);
+        }
+        
+        async function testMicrophone() {
+            try {
+                log('🎤 Testing microphone access...');
+                
+                // Check if we're on HTTPS or localhost
+                if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                    log('⚠️ Microphone requires HTTPS or localhost. Current: ' + location.protocol + '//' + location.hostname);
+                    log('💡 Try accessing via: https://192.168.86.113:3002/direct-audio-test.html');
+                    return;
+                }
+                
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    log('❌ getUserMedia not available. This might be a Safari security restriction.');
+                    log('💡 Try using Chrome or Firefox, or enable microphone permissions in Safari settings.');
+                    return;
+                }
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+                log('✅ Microphone access granted');
+                log('📊 Audio tracks: ' + stream.getAudioTracks().length);
+                
+                // Test if we can record audio
+                const audioContext = new AudioContext();
+                const source = audioContext.createMediaStreamSource(stream);
+                const analyser = audioContext.createAnalyser();
+                source.connect(analyser);
+                
+                log('✅ Audio context created successfully');
+                stream.getTracks().forEach(track => track.stop());
+                
+            } catch (error) {
+                log('❌ Microphone error: ' + error.message);
+                log('💡 This is likely due to Safari security restrictions. Try Chrome or enable permissions.');
+            }
+        }
+        
+        async function testAudioPlayback() {
+            try {
+                log('🔊 Testing audio playback...');
+                const audioContext = new AudioContext();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                
+                oscillator.start();
+                log('✅ Playing test tone (440Hz)...');
+                
+                setTimeout(() => {
+                    oscillator.stop();
+                    log('✅ Test tone stopped');
+                }, 2000);
+                
+            } catch (error) {
+                log('❌ Audio playback error: ' + error.message);
+            }
+        }
+        
+        async function testAgoraConnection() {
+            try {
+                log('🎯 Testing Agora connection...');
+                
+                // Load Agora SDK
+                if (typeof AgoraRTC === 'undefined') {
+                    log('📥 Loading Agora SDK...');
+                    const script = document.createElement('script');
+                    script.src = 'https://download.agora.io/sdk/release/AgoraRTC_N-4.19.0.js';
+                    await new Promise((resolve, reject) => {
+                        script.onload = resolve;
+                        script.onerror = reject;
+                        document.head.appendChild(script);
+                    });
+                    log('✅ Agora SDK loaded');
+                }
+                
+                // Test connection
+                const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+                const appId = 'efa11b3a7d05409ca979fb25a5b489ae';
+                const channel = 'test_direct_' + Date.now();
+                const uid = Math.floor(Math.random() * 10000);
+                
+                log('🔄 Joining channel: ' + channel);
+                await client.join(appId, channel, null, uid);
+                log('✅ Joined channel successfully');
+                
+                // Create audio track
+                const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                await client.publish([audioTrack]);
+                log('✅ Audio track published');
+                
+                log('🎉 Agora connection successful! You should hear audio if another user joins.');
+                
+            } catch (error) {
+                log('❌ Agora error: ' + error.message);
+                log('❌ Error code: ' + (error.code || 'unknown'));
+            }
+        }
+        
+        // Auto-start microphone test
+        window.addEventListener('load', () => {
+            log('🚀 Page loaded, ready for testing');
+            testMicrophone();
+        });
+    </script>
+</body>
+</html>

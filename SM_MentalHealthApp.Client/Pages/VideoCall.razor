@@ -1,0 +1,522 @@
+@page "/video-call/{UserId:int}"
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Shared
+@inject IAgoraService AgoraService
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject NotificationService NotificationService
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<PageTitle>Video Call</PageTitle>
+
+<div class="video-call-container">
+    @if (!isInitialized)
+    {
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <p>Initializing video call...</p>
+        </div>
+    }
+    else if (!isInCall)
+    {
+        <div class="call-setup">
+            <div class="call-info">
+                <h3>Video Call with @targetUser?.FirstName @targetUser?.LastName</h3>
+                <p>Click "Start Call" to begin the video call</p>
+            </div>
+            <div class="call-actions">
+                <button class="btn btn-primary btn-lg" @onclick="StartCall" disabled="@isConnecting">
+                    @if (isConnecting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
+                    Start Call
+                </button>
+                <button class="btn btn-secondary btn-lg" @onclick="CancelCall">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="video-call-interface">
+            <!-- Remote Video -->
+            <div class="remote-video-container">
+                @if (remoteUsers.Any())
+                {
+                    @foreach (var uid in remoteUsers)
+                    {
+                        <div class="remote-video" id="agora-remote-video-@uid">
+                            <video id="agora-remote-video-@uid" autoplay playsinline></video>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="remote-video-placeholder">
+                        <i class="fas fa-user fa-4x"></i>
+                        <p>Waiting for @targetUser?.FirstName to join...</p>
+                        <p class="call-status">@callStatus</p>
+                    </div>
+                }
+            </div>
+
+            <!-- Local Video -->
+            <div id="local-video-container" class="local-video-container">
+                @if (!isVideoEnabled)
+                {
+                    <div class="video-off-overlay">
+                        <i class="fas fa-video-slash"></i>
+                    </div>
+                }
+            </div>
+
+            <!-- Call Controls -->
+            <div class="call-controls">
+                <div class="control-buttons">
+                    <button class="control-btn @(isMuted ? "active" : "")" @onclick="ToggleMute"
+                        title="@(isMuted ? "Unmute" : "Mute")">
+                        <i class="fas @(isMuted ? "fa-microphone-slash" : "fa-microphone")"></i>
+                    </button>
+                    <button class="control-btn @(!isVideoEnabled ? "active" : "")" @onclick="ToggleVideo"
+                        title="@(isVideoEnabled ? "Turn off camera" : "Turn on camera")">
+                        <i class="fas @(isVideoEnabled ? "fa-video" : "fa-video-slash")"></i>
+                    </button>
+                    <button class="control-btn" @onclick="SwitchCamera" title="Switch camera" disabled="@(!isVideoEnabled)">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="control-btn end-call" @onclick="EndCall" title="End call">
+                        <i class="fas fa-phone-slash"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Call Info -->
+            <div class="call-info-overlay">
+                <h4>@targetUser?.FirstName @targetUser?.LastName</h4>
+                <p>@callStatus</p>
+                @if (isInCall)
+                {
+                    <small>Channel: @currentChannel</small>
+                }
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger">
+            <strong>Error:</strong> @error
+            <button type="button" class="btn-close" @onclick="() => error = string.Empty"></button>
+        </div>
+    }
+</div>
+
+<style>
+    .video-call-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: #000;
+        z-index: 9999;
+    }
+
+    .loading-container {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        color: white;
+    }
+
+    .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 3px solid #333;
+        border-top: 3px solid #007bff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+    }
+
+    @@keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .call-setup {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        color: white;
+        text-align: center;
+    }
+
+    .call-info h3 {
+        margin-bottom: 20px;
+    }
+
+    .call-actions {
+        margin-top: 30px;
+    }
+
+    .call-actions .btn {
+        margin: 0 10px;
+        padding: 12px 30px;
+    }
+
+    .video-call-interface {
+        position: relative;
+        width: 100%;
+        height: 100vh;
+    }
+
+    .remote-video-container {
+        width: 100%;
+        height: 100%;
+        background: #1a1a1a;
+        position: relative;
+    }
+
+    .remote-video {
+        width: 100%;
+        height: 100%;
+    }
+
+    .remote-video video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .remote-video-placeholder {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        color: #666;
+    }
+
+    .remote-video-placeholder i {
+        margin-bottom: 20px;
+    }
+
+    .call-status {
+        color: #999;
+        font-size: 14px;
+    }
+
+    .local-video-container {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        width: 200px;
+        height: 150px;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 2px solid #fff;
+        background: #333;
+    }
+
+    .local-video-container video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .video-off-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #333;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: #666;
+    }
+
+    .call-controls {
+        position: absolute;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .control-buttons {
+        display: flex;
+        gap: 15px;
+    }
+
+    .control-btn {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .control-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+    }
+
+    .control-btn.active {
+        background: #ff4444;
+    }
+
+    .control-btn.end-call {
+        background: #ff4444;
+    }
+
+    .control-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .call-info-overlay {
+        position: absolute;
+        top: 30px;
+        left: 30px;
+        color: white;
+    }
+
+    .call-info-overlay h4 {
+        margin: 0 0 5px 0;
+        font-size: 18px;
+    }
+
+    .call-info-overlay p {
+        margin: 0 0 5px 0;
+        color: #ccc;
+    }
+
+    .call-info-overlay small {
+        color: #999;
+        font-size: 12px;
+    }
+</style>
+
+@code {
+    [Parameter] public int UserId { get; set; }
+
+    private User? targetUser;
+    private bool isInitialized = false;
+    private bool isInCall = false;
+    private bool isConnecting = false;
+    private bool isMuted = false;
+    private bool isVideoEnabled = true;
+    private string callStatus = "Initializing...";
+    private string currentChannel = string.Empty;
+    private List<uint> remoteUsers = new();
+    private string error = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get target user info
+            targetUser = await GetUserById(UserId);
+            if (targetUser == null)
+            {
+                error = "User not found";
+                return;
+            }
+
+            // Initialize Agora (using demo mode)
+            const string AGORA_APP_ID = "demo-mode"; // Demo mode for testing
+            isInitialized = await AgoraService.InitializeAsync(AGORA_APP_ID);
+
+            if (!isInitialized)
+            {
+                error = "Failed to initialize video call service";
+                return;
+            }
+
+            // Set up event handlers
+            AgoraService.OnUserJoined += HandleUserJoined;
+            AgoraService.OnUserLeft += HandleUserLeft;
+            AgoraService.OnConnectionStateChanged += HandleConnectionStateChanged;
+            AgoraService.OnError += HandleError;
+
+            callStatus = "Ready to call";
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to initialize: {ex.Message}";
+        }
+    }
+
+    private async Task StartCall()
+    {
+        try
+        {
+            isConnecting = true;
+            callStatus = "Connecting...";
+
+            // Create unique channel name
+            var channelName = $"call_{UserId}_{DateTime.UtcNow.Ticks}";
+
+            // Get Agora token
+            var token = await AgoraService.GetAgoraTokenAsync(channelName);
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new Exception("Failed to get call token");
+            }
+
+            // Generate UID
+            var uid = (uint)(AuthService.CurrentUser?.Id ?? 0);
+            if (uid == 0) uid = (uint)new Random().Next(100000, 999999);
+
+            // Join channel (this is always a video call since it's the VideoCall page)
+            var success = await AgoraService.JoinChannelAsync(channelName, token, uid);
+            if (!success)
+            {
+                throw new Exception("Failed to join call");
+            }
+
+            isInCall = true;
+            currentChannel = channelName;
+            callStatus = "Connected";
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to start call: {ex.Message}";
+            callStatus = "Call failed";
+        }
+        finally
+        {
+            isConnecting = false;
+        }
+    }
+
+    private async Task EndCall()
+    {
+        try
+        {
+            await AgoraService.LeaveChannelAsync();
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to end call: {ex.Message}";
+        }
+    }
+
+    private Task CancelCall()
+    {
+        Navigation.NavigateTo("/");
+        return Task.CompletedTask;
+    }
+
+    private async Task ToggleMute()
+    {
+        try
+        {
+            isMuted = !isMuted;
+            await AgoraService.MuteLocalAudioAsync(isMuted);
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to toggle mute: {ex.Message}";
+        }
+    }
+
+    private async Task ToggleVideo()
+    {
+        try
+        {
+            isVideoEnabled = !isVideoEnabled;
+            await AgoraService.EnableLocalVideoAsync(isVideoEnabled);
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to toggle video: {ex.Message}";
+        }
+    }
+
+    private async Task SwitchCamera()
+    {
+        try
+        {
+            await AgoraService.SwitchCameraAsync();
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to switch camera: {ex.Message}";
+        }
+    }
+
+    private void HandleUserJoined(uint uid)
+    {
+        remoteUsers.Add(uid);
+        StateHasChanged();
+    }
+
+    private void HandleUserLeft(uint uid)
+    {
+        remoteUsers.Remove(uid);
+        StateHasChanged();
+    }
+
+    private void HandleConnectionStateChanged(string state)
+    {
+        callStatus = state;
+        StateHasChanged();
+    }
+
+    private void HandleError(string errorMessage)
+    {
+        error = errorMessage;
+        StateHasChanged();
+    }
+
+    private Task<User?> GetUserById(int userId)
+    {
+        // This would typically call your user service
+        // For now, return a mock user
+        var user = new User
+        {
+            Id = userId,
+            FirstName = "Test",
+            LastName = "User"
+        };
+        return Task.FromResult<User?>(user);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (isInCall)
+            {
+                await AgoraService.LeaveChannelAsync();
+            }
+            await AgoraService.DestroyAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error disposing Agora: {ex.Message}");
+        }
+    }
+}
