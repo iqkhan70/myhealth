@@ -1,66 +1,50 @@
+// App.js
 import React, { useState, useEffect } from 'react';
 import {
-  StyleSheet,
-  Text,
-  View,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  ScrollView,
-  Platform,
-  KeyboardAvoidingView,
-  Modal,
-  SafeAreaView,
+  StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ScrollView,
+  Platform, KeyboardAvoidingView, Modal, SafeAreaView
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import SignalRService from './src/services/SignalRService';
-import WebRTCService from './src/services/WebRTCService';
+// ✅ Use Agora now
+import AgoraService from './src/services/AgoraService';
+import { RtcLocalView, RtcRemoteView } from 'react-native-agora';
 
-// Environment detection and API configuration
+// ---------- ENV / URLS ----------
 const getApiBaseUrl = () => {
   const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
-  
-  if (isWeb) {
-    // For web (browser), always use localhost
-    return 'http://localhost:5262/api';
-  } else {
-    // For native mobile, use network IP
-    // Note: Update this IP if your network changes
-    return 'http://192.168.86.28:5262/api';
-  }
+  if (isWeb) return 'http://localhost:5262/api';
+  return 'http://192.168.86.28:5262/api';
 };
-
 const API_BASE_URL = getApiBaseUrl();
 const SIGNALR_HUB_URL = API_BASE_URL.replace('/api', '/mobilehub');
 
-console.log('🌐 Environment Detection:');
-console.log('  Platform.OS:', Platform.OS);
-console.log('  Has DOM:', typeof window !== 'undefined' && typeof document !== 'undefined');
-console.log('  Hostname:', typeof window !== 'undefined' && window.location ? window.location.hostname : 'N/A');
-console.log('  API_BASE_URL:', API_BASE_URL);
-console.log('  SIGNALR_HUB_URL:', SIGNALR_HUB_URL);
+// 👉 Set your Agora App ID here (or pull from .env)
+const AGORA_APP_ID = 'efa11b3a7d05409ca979fb25a5b489ae';
 
+// ---------- APP ----------
 export default function App() {
-  // State management
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('john@doe.com');
   const [password, setPassword] = useState('demo123');
   const [loading, setLoading] = useState(false);
+
   const [contacts, setContacts] = useState([]);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [selectedContact, setSelectedContact] = useState(null);
-  const [callModal, setCallModal] = useState({ visible: false, targetUser: null, callType: null });
+
+  const [signalRConnected, setSignalRConnected] = useState(false);
+
+  // 🔔 Call modal state
+  const [callModal, setCallModal] = useState({ visible: false, targetUser: null, callType: null, channelName: null });
   const [remoteUsers, setRemoteUsers] = useState([]);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [agoraInitialized, setAgoraInitialized] = useState(false);
-  const [signalRConnected, setSignalRConnected] = useState(false);
-  const [incomingCall, setIncomingCall] = useState(null);
-  const [currentView, setCurrentView] = useState('contacts'); // 'contacts', 'chat'
 
-  // Initialize app
+  // ---------- INIT ----------
   useEffect(() => {
     checkAuthStatus();
     initializeServices();
@@ -71,94 +55,63 @@ export default function App() {
       const token = await AsyncStorage.getItem('userToken');
       const userData = await AsyncStorage.getItem('currentUser');
       if (token && userData) {
-        const user = JSON.parse(userData);
-        setUser(user);
-        await loadContactsForUser(user, token);
+        const u = JSON.parse(userData);
+        setUser(u);
+        await loadContactsForUser(u, token);
       }
-    } catch (error) {
-      console.error('Error checking auth status:', error);
+    } catch (e) {
+      console.error('Error checking auth:', e);
     }
   };
 
   const initializeServices = async () => {
     try {
-      console.log('🚀 Mobile: Initializing services...');
-      
-      // Initialize WebRTC service
-      const webRTCInitialized = await WebRTCService.initialize('demo-app-id');
-      if (webRTCInitialized) {
-        console.log('✅ Mobile: WebRTC service initialized');
+      console.log('🚀 Initializing Agora…');
+      const ok = await AgoraService.initialize(AGORA_APP_ID);
+      if (ok) {
         setAgoraInitialized(true);
-        
-        // Set up WebRTC event listeners
-        WebRTCService.setEventListener('onUserJoined', (uid) => {
-          console.log('📱 Mobile: Remote user joined:', uid);
-          setRemoteUsers(prev => [...prev, uid]);
+
+        // Hook Agora events → UI
+        AgoraService.setListener('onUserJoined', (uid) => {
+          setRemoteUsers((prev) => (prev.includes(uid) ? prev : [...prev, uid]));
         });
-        
-        WebRTCService.setEventListener('onUserLeft', (uid) => {
-          console.log('📱 Mobile: Remote user left:', uid);
-          setRemoteUsers(prev => prev.filter(u => u !== uid));
+        AgoraService.setListener('onUserLeft', (uid) => {
+          setRemoteUsers((prev) => prev.filter((id) => id !== uid));
         });
-        
-        WebRTCService.setEventListener('onConnectionStateChanged', (state) => {
-          console.log('🔗 Mobile: WebRTC connection state:', state);
+        AgoraService.setListener('onConnectionStateChanged', (state) => {
+          console.log('Agora state:', state);
         });
       }
-      
-      console.log('✅ Mobile: Services initialized successfully');
-    } catch (error) {
-      console.error('❌ Mobile: Failed to initialize services:', error);
+    } catch (e) {
+      console.error('❌ Failed to init services:', e);
     }
   };
 
-  // Authentication
+  // ---------- AUTH ----------
   const login = async () => {
     setLoading(true);
     try {
-      console.log('🔐 Attempting login to:', `${API_BASE_URL}/auth/login`);
-      console.log('🔐 Login data:', { email, password });
-      console.log('🔐 Platform:', Platform.OS);
-      console.log('🔐 Is Web:', Platform.OS === 'web');
-
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const resp = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
       });
-
-      console.log('Response status:', response.status);
-      const data = await response.json();
-      console.log('Response data:', data);
-
-      if (response.ok && data.success) {
+      const data = await resp.json();
+      if (resp.ok && data.success) {
         await AsyncStorage.setItem('userToken', data.token);
         await AsyncStorage.setItem('currentUser', JSON.stringify(data.user));
         setUser(data.user);
-        
-        // Load contacts with the user data directly since state update is async
+
         await loadContactsForUser(data.user, data.token);
-        
-        // Initialize SignalR for real-time communication
         await initializeSignalR(data.token);
-        
+
         Alert.alert('Success', 'Login successful!');
       } else {
         Alert.alert('Error', data.message || 'Login failed');
       }
-    } catch (error) {
-      console.error('❌ Login error:', error);
-      
-      let errorMessage = 'Network error. Please check your connection.';
-      if (error.message.includes('Network request failed')) {
-        errorMessage = `Cannot connect to server at ${API_BASE_URL}. Please check if:\n• Server is running\n• You're on the same network\n• IP address is correct`;
-      } else if (error.message.includes('timeout')) {
-        errorMessage = 'Connection timeout. Server may be slow or unreachable.';
-      }
-      
-      Alert.alert('Connection Error', errorMessage);
+    } catch (e) {
+      console.error('Login error:', e);
+      Alert.alert('Connection Error', `Cannot reach ${API_BASE_URL}`);
     } finally {
       setLoading(false);
     }
@@ -166,41 +119,33 @@ export default function App() {
 
   const logout = async () => {
     try {
-      // Disconnect SignalR
       await SignalRService.disconnect();
       setSignalRConnected(false);
-      
-      // Clean up WebRTC
-      await WebRTCService.destroy();
-      
-      // Clear storage and state
+      await AgoraService.leaveChannel();
+      await AgoraService.destroy();
+
       await AsyncStorage.removeItem('userToken');
       await AsyncStorage.removeItem('currentUser');
       setUser(null);
       setContacts([]);
       setMessages([]);
       setSelectedContact(null);
-      setCurrentView('contacts');
-      setIncomingCall(null);
-    } catch (error) {
-      console.error('Logout error:', error);
+      setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+      setRemoteUsers([]);
+    } catch (e) {
+      console.error('Logout error:', e);
     }
   };
 
-  // Initialize SignalR for real-time communication
+  // ---------- SIGNALR ----------
   const initializeSignalR = async (token) => {
     try {
-      console.log('🔗 Mobile: Initializing SignalR...');
-      
       const connected = await SignalRService.initialize(SIGNALR_HUB_URL, token);
       if (connected) {
         setSignalRConnected(true);
-        console.log('✅ Mobile: SignalR connected successfully');
-        
-        // Set up SignalR event listeners
+
         SignalRService.setEventListener('onMessageReceived', (message) => {
-          console.log('📨 Mobile: Message received:', message);
-          setMessages(prev => [...prev, {
+          setMessages((prev) => [...prev, {
             id: Date.now().toString(),
             text: message.message,
             isMe: false,
@@ -209,452 +154,328 @@ export default function App() {
             senderName: message.senderName || 'Unknown'
           }]);
         });
-        
+
+        // Optional: wire these if your server emits them
         SignalRService.setEventListener('onIncomingCall', (callData) => {
-          console.log('📞 Mobile: Incoming call:', callData);
-          setIncomingCall(callData);
-        });
-        
-        SignalRService.setEventListener('onCallAccepted', (callData) => {
-          console.log('✅ Mobile: Call accepted:', callData);
-          // Handle call accepted
-        });
-        
-        SignalRService.setEventListener('onCallRejected', (callData) => {
-          console.log('❌ Mobile: Call rejected:', callData);
-          setCallModal({ visible: false, targetUser: null, callType: null });
-        });
-        
-        SignalRService.setEventListener('onCallEnded', (callData) => {
-          console.log('👋 Mobile: Call ended:', callData);
-          setCallModal({ visible: false, targetUser: null, callType: null });
-          setRemoteUsers([]);
-        });
-        
-        SignalRService.setEventListener('onConnectionStateChanged', (state) => {
-          console.log('🔗 Mobile: SignalR connection state:', state);
-          setSignalRConnected(state === 'Connected');
+          // You can auto-open modal or show a dialog
+          console.log('Incoming call:', callData);
         });
       }
-    } catch (error) {
-      console.error('❌ Mobile: Failed to initialize SignalR:', error);
+    } catch (e) {
+      console.error('SignalR init error:', e);
     }
   };
 
-  // Load contacts for a specific user (used during login)
+  // ---------- CONTACTS ----------
   const loadContactsForUser = async (userData, token) => {
     try {
-      if (!userData || !token) {
-        console.log('❌ No user data or token provided for loading contacts');
-        return;
-      }
-
-      // Determine endpoint based on user role
       let endpoint;
       if (userData.roleId === 2 || userData.roleName === 'Doctor') {
         endpoint = `${API_BASE_URL}/mobile/doctor/patients`;
-        console.log('🏥 Loading patients for doctor from:', endpoint);
       } else {
         endpoint = `${API_BASE_URL}/mobile/patient/doctors`;
-        console.log('👤 Loading doctors for patient from:', endpoint);
       }
-
-      const response = await fetch(endpoint, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      console.log('📋 Contacts response status:', response.status);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📋 Contacts response data:', data);
-        
-        // The API returns the contacts directly as an array
-        setContacts(Array.isArray(data) ? data : []);
+      const resp = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      if (resp.ok) {
+        const arr = await resp.json();
+        setContacts(Array.isArray(arr) ? arr : []);
       } else {
-        const errorData = await response.json();
-        console.error('❌ Error response:', errorData);
         setContacts([]);
       }
-    } catch (error) {
-      console.error('❌ Error loading contacts:', error);
+    } catch (e) {
+      console.error('Contacts error:', e);
       setContacts([]);
     }
   };
 
-  // Load contacts based on user role (used for refresh)
   const loadContacts = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      if (!user || !token) {
-        console.log('No user or token available for loading contacts');
-        return;
-      }
-
+      if (!user || !token) return;
       await loadContactsForUser(user, token);
-    } catch (error) {
-      console.error('❌ Error loading contacts:', error);
+    } catch (e) {
+      console.error('loadContacts error:', e);
       setContacts([]);
     }
   };
 
-  // Chat functionality
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedContact) return;
-    
-    try {
-      console.log('📤 Mobile: Sending message:', newMessage);
-      
-      // Add message to local state immediately
-      const localMessage = {
-        id: Date.now().toString(),
-        text: newMessage.trim(),
-        isMe: true,
-        timestamp: new Date(),
-        senderId: user?.id,
-        senderName: `${user?.firstName} ${user?.lastName}`
-      };
-      setMessages(prev => [...prev, localMessage]);
-      
-      // Send via SignalR if connected
-      if (signalRConnected) {
-        await SignalRService.sendMessage(selectedContact.id, newMessage.trim());
-      }
-      
-      // Also send via REST API as backup
-      const response = await fetch(`${API_BASE_URL}/mobile/send-message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await AsyncStorage.getItem('userToken')}`,
-        },
-        body: JSON.stringify({
-          targetUserId: selectedContact.id,
-          message: newMessage.trim()
-        }),
-      });
-      
-      if (response.ok) {
-        console.log('✅ Mobile: Message sent via API');
-      }
-      
-      setNewMessage('');
-    } catch (error) {
-      console.error('❌ Mobile: Failed to send message:', error);
-    }
-  };
-
+  // ---------- CHAT ----------
   const openChat = (contact) => {
     setSelectedContact(contact);
     setCurrentView('chat');
-    // Load chat history for this contact
     loadChatHistory(contact.id);
   };
+
+  const [currentView, setCurrentView] = useState('contacts');
 
   const loadChatHistory = async (targetUserId) => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await fetch(`${API_BASE_URL}/mobile/messages/${targetUserId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      const resp = await fetch(`${API_BASE_URL}/mobile/messages/${targetUserId}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-
-      if (response.ok) {
-        const chatMessages = await response.json();
-        const formattedMessages = chatMessages.map(m => ({
-          id: m.id || Date.now().toString(),
-          text: m.message,
-          isMe: m.isMe,
-          timestamp: new Date(m.sentAt),
-          senderId: m.senderId,
-          senderName: m.senderName || 'Unknown'
-        }));
-        setMessages(formattedMessages);
-        console.log('📋 Mobile: Chat history loaded:', formattedMessages.length, 'messages');
+      if (resp.ok) {
+        const arr = await resp.json();
+        setMessages(
+          (arr || []).map((m, i) => ({
+            id: m.id || `${Date.now()}_${i}`,
+            text: m.message,
+            isMe: m.isMe,
+            timestamp: new Date(m.sentAt),
+            senderId: m.senderId,
+            senderName: m.senderName || 'Unknown'
+          }))
+        );
+      } else {
+        setMessages([]);
       }
-    } catch (error) {
-      console.error('❌ Mobile: Failed to load chat history:', error);
+    } catch (e) {
+      console.error('loadChatHistory error:', e);
       setMessages([]);
     }
   };
 
-  // Call functionality
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !selectedContact) return;
+    const msg = {
+      id: Date.now().toString(),
+      text: newMessage.trim(),
+      isMe: true,
+      timestamp: new Date(),
+      senderId: user?.id,
+      senderName: `${user?.firstName} ${user?.lastName}`
+    };
+    setMessages((prev) => [...prev, msg]);
+
+    try {
+      if (signalRConnected) {
+        await SignalRService.sendMessage(selectedContact.id, newMessage.trim());
+      }
+      const resp = await fetch(`${API_BASE_URL}/mobile/send-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${await AsyncStorage.getItem('userToken')}`
+        },
+        body: JSON.stringify({ targetUserId: selectedContact.id, message: newMessage.trim() })
+      });
+      // (optional) handle resp
+    } catch (e) {
+      console.error('sendMessage error:', e);
+    } finally {
+      setNewMessage('');
+    }
+  };
+
+  // ---------- CALLING (AGORA) ----------
+  // const fetchAgoraToken = async (channelName, uid) => {
+  //   try {
+  //     // Adjust to your backend route; return token string or null
+  //     const token = await AsyncStorage.getItem('userToken');
+  //     const resp = await fetch(`${API_BASE_URL}/mobile/agora/token?channel=${encodeURIComponent(channelName)}&uid=${uid}`, {
+  //       headers: { Authorization: `Bearer ${token}` }
+  //     });
+  //     if (resp.ok) {
+  //       const data = await resp.json();
+  //       // Expect { token: "..." } from server
+  //       return data?.token || null;
+  //     }
+  //   } catch (e) {
+  //     console.warn('Token fetch failed, will try null token:', e.message);
+  //   }
+  //   return null; // If your Agora project allows app certificate off / testing
+  // };
+
+  const fetchAgoraToken = async (channelName, uid) => {
+    try {
+      const apiBase = API_BASE_URL; // already resolves to localhost or LAN IP
+      const url = `${apiBase}/realtime/token?channel=${encodeURIComponent(channelName)}&uid=${uid}`;
+      console.log(`🎯 Fetching Agora token from: ${url}`);
+
+      const authToken = await AsyncStorage.getItem('userToken');
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${authToken || ''}`
+        },
+      });
+
+      if (!resp.ok) {
+        console.error(`❌ Token request failed with status ${resp.status}`);
+        const errText = await resp.text();
+        console.error('Response:', errText);
+        return null;
+      }
+
+      const data = await resp.json();
+      console.log('✅ Token response:', data);
+
+      // Expect backend to return { agoraAppId: "...", token: "..." }
+      return data?.token || null;
+    } catch (e) {
+      console.warn('⚠️ Token fetch failed, will try null token:', e.message);
+      return null; // fallback if backend or network unavailable
+    }
+  };
+
   const initiateCall = async (targetUserId, callType) => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const response = await fetch(`${API_BASE_URL}/mobile/call/initiate`, {
+      const resp = await fetch(`${API_BASE_URL}/mobile/call/initiate`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          targetUserId: targetUserId,
-          callType: callType,
-        }),
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserId, callType })
       });
-
-      const result = await response.json();
-      console.log('Call initiated:', result);
-      return result;
-    } catch (error) {
-      console.error('Error initiating call:', error);
-      throw error;
+      return await resp.json();
+    } catch (e) {
+      console.error('initiateCall error:', e);
+      throw e;
     }
   };
+
+  // const startCall = async (targetUser, callType) => {
+  //   try {
+  //     setCallModal({ visible: true, targetUser, callType, channelName: null });
+  //     setRemoteUsers([]);
+  //     setIsAudioMuted(false);
+  //     setIsVideoMuted(false);
+
+  //     // Notify server (SignalR/REST)
+  //     try {
+  //       await initiateCall(targetUser.id, callType);
+  //     } catch (e) {
+  //       console.warn('Server call notify failed (continuing):', e?.message);
+  //     }
+
+  //     if (!agoraInitialized) {
+  //       Alert.alert('Error', 'Agora not initialized');
+  //       setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+  //       return;
+  //     }
+
+  //     const channelName = `call_${targetUser.id}_${user?.id}`;
+  //     const uid = user?.id || Math.floor(Math.random() * 100000);
+  //     const withVideo = callType === 'Video';
+
+  //     // Get token from your API (or null if allowed)
+  //     //const rtcToken = await fetchAgoraToken(channelName, uid);
+  //     //const rtcToken = '007eJxTYNi+brKEfIHf7793Zjnc2s/I+X7GvLJAdvENDo/nTmPjkp+kwJCalmhomGScaJ5iYGpiYJmcaGlumZZkZJpommRiYZmYerDkRUZDICNDf996ZkYGCATx2Rhy85Myc1IZGACjtiDq';
+  //     const ok = await AgoraService.joinChannel({ token: rtcToken, channelName, uid, withVideo });
+      
+  //     // const ok = await AgoraService.joinChannel({
+  //     //   token: rtcToken,
+  //     //   channelName: "mobile",
+  //     //   uid: 0,          // or just omit it entirely
+  //     //   withVideo
+  //     // });
+      
+  //     if (!ok) {
+  //       throw new Error('Join channel failed');
+  //     }
+  //     setCallModal((prev) => ({ ...prev, channelName }));
+  //   } catch (e) {
+  //     console.error('startCall error:', e);
+  //     Alert.alert('Error', 'Failed to start call.');
+  //     setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+  //   }
+  // };
 
   const startCall = async (targetUser, callType) => {
-    console.log('🚀 startCall function ENTERED');
-    console.log('🚀 Parameters:', { targetUser: targetUser?.firstName, callType, agoraInitialized });
-    
-    try {
-      // Show call modal immediately
-      console.log('🎯 Mobile: Setting call modal visible...');
-      setCallModal({ visible: true, targetUser, callType });
-      
-      // Reset call state
-      setRemoteUsers([]);
-      setIsAudioMuted(false);
-      setIsVideoMuted(false);
-      
-      // Notify server about the call first
       try {
-        console.log('🎯 Mobile: Notifying server about call...');
-        await initiateCall(targetUser.id, callType);
-        console.log('✅ Mobile: Server notified about call');
-      } catch (serverError) {
-        console.warn('⚠️ Mobile: Failed to notify server about call:', serverError);
-      }
-      
-      // Join WebRTC channel
-      if (agoraInitialized) {
+        setCallModal({ visible: true, targetUser, callType, channelName: null });
+        setRemoteUsers([]);
+        setIsAudioMuted(false);
+        setIsVideoMuted(false);
+
+        // Notify server (optional)
         try {
-          console.log('🎯 Mobile: Joining WebRTC channel...');
-          const channelName = `call_${targetUser.id}_${user?.id}`;
-          const uid = user?.id || Math.floor(Math.random() * 100000);
-          const isVideoCall = callType === 'Video';
-          
-          const success = await WebRTCService.joinChannel(channelName, 'demo-token', uid, isVideoCall);
-          if (success) {
-            console.log('✅ Mobile: Successfully joined WebRTC channel');
-          } else {
-            console.warn('⚠️ Mobile: Failed to join WebRTC channel, using simulation');
-            // Simulate remote user joining for demo
-            setTimeout(() => {
-              console.log('📱 Mobile: Simulating remote user joined');
-              setRemoteUsers([999]);
-            }, 2000);
-          }
-        } catch (webRTCError) {
-          console.error('❌ Mobile: WebRTC error:', webRTCError);
-          // Fallback to simulation
-          setTimeout(() => {
-            console.log('📱 Mobile: Simulating remote user joined (fallback)');
-            setRemoteUsers([999]);
-          }, 2000);
+          await initiateCall(targetUser.id, callType);
+        } catch (e) {
+          console.warn('Server call notify failed (continuing):', e?.message);
         }
-      } else {
-        // Fallback simulation if WebRTC not initialized
-        console.log('🎤 Mobile: WebRTC not initialized, using simulation...');
-        setTimeout(() => {
-          console.log('📱 Mobile: Simulating remote user joined');
-          setRemoteUsers([999]);
-        }, 2000);
+
+        if (!agoraInitialized) {
+          Alert.alert('Error', 'Agora not initialized');
+          setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+          return;
+        }
+
+        // 🟢 define your channel & uid
+        const channelName = `call_${targetUser.id}_${user?.id}`;
+        const uid = user?.id || Math.floor(Math.random() * 100000);
+        const withVideo = callType === 'Video';
+
+        // 🟢 get token dynamically from backend (port 5262)
+        const rtcToken = await fetchAgoraToken(channelName, uid);
+        console.log('🎫 Agora Token:', rtcToken);
+
+        if (!rtcToken) {
+          Alert.alert('Error', 'Failed to fetch Agora token.');
+          setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+          return;
+        }
+
+        console.log("📞 Joining Agora:", { channelName, uid, token: rtcToken });
+        
+        // 🟢 now join the channel
+        const ok = await AgoraService.joinChannel({
+          token: rtcToken,
+          channelName,
+          uid,
+          withVideo,
+        });
+
+        //const ok = await AgoraService.joinChannel({ token: "DEV_702387eed4a52fcad5b0e9b041fff1ea79e1b7852bb769c1d9e4b1985654103", channelName: "test", uid: 0, withVideo });
+
+
+        if (!ok) throw new Error('Join channel failed');
+
+        setCallModal((prev) => ({ ...prev, channelName }));
+      } catch (e) {
+        console.error('startCall error:', e);
+        Alert.alert('Error', e.message || 'Failed to start call.');
+        setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
       }
-      
-    } catch (error) {
-      console.error('❌ Mobile: Error starting call:', error);
-      Alert.alert('Error', 'Failed to start call. Please check your connection.');
-      setCallModal({ visible: false, targetUser: null, callType: null });
-    }
-    
-    console.log('🚀 startCall function EXITING');
-  };
+    };
 
   const endCall = async () => {
-    console.log('👋 Ending call');
-    
     try {
-      // Leave WebRTC channel
-      await WebRTCService.leaveChannel();
-      console.log('✅ Mobile: Left WebRTC channel');
-    } catch (error) {
-      console.error('❌ Mobile: Error leaving WebRTC channel:', error);
+      await AgoraService.leaveChannel();
+    } catch (e) {
+      console.error('leave error:', e);
     }
-    
-    // Reset UI state
-    setCallModal({ visible: false, targetUser: null, callType: null });
+    setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
     setRemoteUsers([]);
     setIsAudioMuted(false);
     setIsVideoMuted(false);
   };
 
   const toggleMute = async () => {
-    const newMuteState = !isAudioMuted;
-    setIsAudioMuted(newMuteState);
-    
-    try {
-      await WebRTCService.muteLocalAudio(newMuteState);
-      console.log('🔇 Audio muted:', newMuteState);
-    } catch (error) {
-      console.error('❌ Mobile: Error toggling audio mute:', error);
-    }
+    const next = !isAudioMuted;
+    setIsAudioMuted(next);
+    await AgoraService.muteLocalAudio(next);
   };
 
   const toggleVideo = async () => {
-    const newMuteState = !isVideoMuted;
-    setIsVideoMuted(newMuteState);
-    
-    try {
-      await WebRTCService.muteLocalVideo(newMuteState);
-      console.log('📹 Video muted:', newMuteState);
-    } catch (error) {
-      console.error('❌ Mobile: Error toggling video mute:', error);
-    }
+    const next = !isVideoMuted;
+    setIsVideoMuted(next);
+    await AgoraService.muteLocalVideo(next);
   };
 
-
-  // Render functions
+  // ---------- RENDER ----------
   const renderLogin = () => (
     <SafeAreaView style={styles.container}>
       <View style={styles.loginContainer}>
         <Text style={styles.title}>Mental Health App</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={login}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>
-            {loading ? 'Logging in...' : 'Login'}
-          </Text>
+        <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" />
+        <TextInput style={styles.input} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
+        <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={login} disabled={loading}>
+          <Text style={styles.buttonText}>{loading ? 'Logging in…' : 'Login'}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
-
-  // const renderContacts = () => (
-  //   <SafeAreaView style={styles.container}>
-  //     <View style={styles.header}>
-  //       <Text style={styles.headerTitle}>Contacts</Text>
-  //       <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-  //         <Text style={styles.logoutButtonText}>Logout</Text>
-  //       </TouchableOpacity>
-  //     </View>
-  //     <ScrollView style={styles.contactsList}>
-  //       {contacts.map((contact) => (
-  //         <View key={contact.id} style={styles.contactItem}>
-  //           <TouchableOpacity
-  //             style={styles.contactInfo}
-  //             onPress={() => setSelectedContact(contact)}
-  //           >
-  //             <Text style={styles.contactName}>
-  //               {contact.firstName} {contact.lastName}
-  //             </Text>
-  //             <Text style={styles.contactRole}>{contact.roleName}</Text>
-  //           </TouchableOpacity>
-  //           <View style={styles.contactActions}>
-  //             <TouchableOpacity
-  //               style={[styles.actionButton, styles.audioButton]}
-  //               onPress={() => {
-  //                 console.log('🎯 Audio Call Button Pressed - Service initialized:', agoraInitialized);
-  //                 startCall(contact, 'Audio');
-  //               }}
-  //             >
-  //               <Text style={styles.actionButtonText}>📞</Text>
-  //             </TouchableOpacity>
-  //             <TouchableOpacity
-  //               style={[styles.actionButton, styles.videoButton]}
-  //               onPress={() => {
-  //                 console.log('🎯 Video Call Button Pressed - Service initialized:', agoraInitialized);
-  //                 startCall(contact, 'Video');
-  //               }}
-  //             >
-  //               <Text style={styles.actionButtonText}>📹</Text>
-  //             </TouchableOpacity>
-  //             <TouchableOpacity
-  //               style={[styles.actionButton, styles.chatButton]}
-  //               onPress={() => setSelectedContact(contact)}
-  //             >
-  //               <Text style={styles.actionButtonText}>💬</Text>
-  //             </TouchableOpacity>
-  //           </View>
-  //         </View>
-  //       ))}
-  //     </ScrollView>
-  //   </SafeAreaView>
-  // );
-
-  // const renderChat = () => (
-  //   <KeyboardAvoidingView 
-  //     style={styles.container} 
-  //     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-  //   >
-  //     <SafeAreaView style={styles.container}>
-  //       <View style={styles.header}>
-  //         <TouchableOpacity onPress={() => setSelectedContact(null)}>
-  //           <Text style={styles.backButton}>← Back</Text>
-  //         </TouchableOpacity>
-  //         <Text style={styles.headerTitle}>
-  //           {selectedContact?.firstName} {selectedContact?.lastName}
-  //         </Text>
-  //       </View>
-  //       <ScrollView style={styles.messagesList}>
-  //         {messages
-  //           .filter(msg => 
-  //             (msg.senderId === user.id && msg.recipientId === selectedContact.id) ||
-  //             (msg.senderId === selectedContact.id && msg.recipientId === user.id)
-  //           )
-  //           .map((message) => (
-  //             <View
-  //               key={message.id}
-  //               style={[
-  //                 styles.messageItem,
-  //                 message.senderId === user.id ? styles.sentMessage : styles.receivedMessage,
-  //               ]}
-  //             >
-  //               <Text style={styles.messageText}>{message.message}</Text>
-  //               <Text style={styles.messageTime}>
-  //                 {new Date(message.timestamp).toLocaleTimeString()}
-  //               </Text>
-  //             </View>
-  //           ))}
-  //       </ScrollView>
-  //       <View style={styles.messageInput}>
-  //         <TextInput
-  //           style={styles.messageTextInput}
-  //           placeholder="Type a message..."
-  //           value={newMessage}
-  //           onChangeText={setNewMessage}
-  //           multiline
-  //         />
-  //         <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-  //           <Text style={styles.sendButtonText}>Send</Text>
-  //         </TouchableOpacity>
-  //       </View>
-  //     </SafeAreaView>
-  //   </KeyboardAvoidingView>
-  // );
 
   const renderCallModal = () => (
     <Modal visible={callModal.visible} animationType="slide">
@@ -664,30 +485,39 @@ export default function App() {
             {callModal.callType} Call with {callModal.targetUser?.firstName}
           </Text>
           <Text style={styles.callStatus}>
-            {remoteUsers.length > 0 ? 'Connected' : 'Connecting...'}
+            {remoteUsers.length > 0 ? 'Connected' : 'Connecting…'}
           </Text>
         </View>
 
         <View style={styles.callContent}>
           {callModal.callType === 'Video' ? (
             <View style={styles.videoContainer}>
+              {/* Remote */}
               <View style={styles.remoteVideo}>
-                {remoteUsers.length > 0 ? (
-                  <Text style={styles.videoPlaceholder}>📹 Remote Video</Text>
+                {remoteUsers.length > 0 && callModal.channelName ? (
+                  <RtcRemoteView.SurfaceView
+                    uid={remoteUsers[0]}
+                    channelId={callModal.channelName}
+                    style={{ width: '100%', height: '100%' }}
+                  />
                 ) : (
-                  <Text style={styles.videoPlaceholder}>Waiting for remote user...</Text>
+                  <Text style={styles.videoPlaceholder}>Waiting for remote…</Text>
                 )}
               </View>
-              <View style={styles.localVideo}>
-                <Text style={styles.videoPlaceholder}>📱 Your Video</Text>
-              </View>
+              {/* Local PiP */}
+              {callModal.channelName ? (
+                <View style={styles.localVideo}>
+                  <RtcLocalView.SurfaceView
+                    channelId={callModal.channelName}
+                    style={{ width: '100%', height: '100%', borderRadius: 8 }}
+                  />
+                </View>
+              ) : null}
             </View>
           ) : (
             <View style={styles.audioContainer}>
               <Text style={styles.audioIndicator}>🎵 Audio Call Active</Text>
-              {remoteUsers.length > 0 && (
-                <Text style={styles.connectedIndicator}>✅ Connected</Text>
-              )}
+              {remoteUsers.length > 0 && <Text style={styles.connectedIndicator}>✅ Connected</Text>}
             </View>
           )}
         </View>
@@ -697,9 +527,7 @@ export default function App() {
             style={[styles.controlButton, isAudioMuted && styles.controlButtonActive]}
             onPress={toggleMute}
           >
-            <Text style={styles.controlButtonText}>
-              {isAudioMuted ? '🔇' : '🎤'}
-            </Text>
+            <Text style={styles.controlButtonText}>{isAudioMuted ? '🔇' : '🎤'}</Text>
           </TouchableOpacity>
 
           {callModal.callType === 'Video' && (
@@ -707,9 +535,7 @@ export default function App() {
               style={[styles.controlButton, isVideoMuted && styles.controlButtonActive]}
               onPress={toggleVideo}
             >
-              <Text style={styles.controlButtonText}>
-                {isVideoMuted ? '📹' : '📷'}
-              </Text>
+              <Text style={styles.controlButtonText}>{isVideoMuted ? '📹' : '📷'}</Text>
             </TouchableOpacity>
           )}
 
@@ -721,13 +547,10 @@ export default function App() {
     </Modal>
   );
 
-  // Render contacts list
   const renderContacts = () => (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          Welcome, {user?.firstName}! ({user?.roleName})
-        </Text>
+        <Text style={styles.headerTitle}>Welcome, {user?.firstName}! ({user?.roleName})</Text>
         <View style={styles.headerActions}>
           <Text style={[styles.connectionStatus, { color: signalRConnected ? '#4CAF50' : '#F44336' }]}>
             {signalRConnected ? '🟢 Connected' : '🔴 Disconnected'}
@@ -739,53 +562,26 @@ export default function App() {
       </View>
 
       <View style={styles.contactsHeader}>
-        <Text style={styles.contactsTitle}>
-          {user?.roleId === 2 ? 'Your Patients' : 'Your Doctors'}
-        </Text>
+        <Text style={styles.contactsTitle}>{user?.roleId === 2 ? 'Your Patients' : 'Your Doctors'}</Text>
         <Text style={styles.contactsCount}>({contacts.length})</Text>
       </View>
 
       <ScrollView style={styles.contactsList}>
         {contacts.map((contact) => (
-          <TouchableOpacity
-            key={contact.id}
-            style={styles.contactItem}
-            onPress={() => openChat(contact)}
-          >
+          <TouchableOpacity key={contact.id} style={styles.contactItem} onPress={() => openChat(contact)}>
             <View style={styles.contactInfo}>
-              <Text style={styles.contactName}>
-                {contact.firstName} {contact.lastName}
-              </Text>
-              <Text style={styles.contactRole}>
-                {contact.specialization || contact.roleName || 'User'}
-              </Text>
-              {contact.mobilePhone && (
-                <Text style={styles.contactPhone}>{contact.mobilePhone}</Text>
-              )}
+              <Text style={styles.contactName}>{contact.firstName} {contact.lastName}</Text>
+              <Text style={styles.contactRole}>{contact.specialization || contact.roleName || 'User'}</Text>
+              {contact.mobilePhone && <Text style={styles.contactPhone}>{contact.mobilePhone}</Text>}
             </View>
             <View style={styles.contactActions}>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => {
-                  console.log('🎯 Audio Call Button Pressed - Service initialized:', agoraInitialized);
-                  startCall(contact, 'Audio');
-                }}
-              >
+              <TouchableOpacity style={styles.actionButton} onPress={() => startCall(contact, 'Audio')}>
                 <Text style={styles.actionButtonText}>📞</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => {
-                  console.log('🎯 Video Call Button Pressed - Service initialized:', agoraInitialized);
-                  startCall(contact, 'Video');
-                }}
-              >
+              <TouchableOpacity style={styles.actionButton} onPress={() => startCall(contact, 'Video')}>
                 <Text style={styles.actionButtonText}>📹</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => openChat(contact)}
-              >
+              <TouchableOpacity style={styles.actionButton} onPress={() => openChat(contact)}>
                 <Text style={styles.actionButtonText}>💬</Text>
               </TouchableOpacity>
             </View>
@@ -795,60 +591,33 @@ export default function App() {
     </SafeAreaView>
   );
 
-  // Render chat interface
   const renderChat = () => (
     <SafeAreaView style={styles.container}>
       <View style={styles.chatHeader}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => {
-            setSelectedContact(null);
-            setCurrentView('contacts');
-            setMessages([]);
-          }}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => {
+          setSelectedContact(null);
+          setCurrentView('contacts');
+          setMessages([]);
+        }}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.chatTitle}>
-          {selectedContact?.firstName} {selectedContact?.lastName}
-        </Text>
+        <Text style={styles.chatTitle}>{selectedContact?.firstName} {selectedContact?.lastName}</Text>
         <View style={styles.chatActions}>
-          <TouchableOpacity
-            style={styles.chatActionButton}
-            onPress={() => startCall(selectedContact, 'Audio')}
-          >
+          <TouchableOpacity style={styles.chatActionButton} onPress={() => startCall(selectedContact, 'Audio')}>
             <Text style={styles.chatActionText}>📞</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.chatActionButton}
-            onPress={() => startCall(selectedContact, 'Video')}
-          >
+          <TouchableOpacity style={styles.chatActionButton} onPress={() => startCall(selectedContact, 'Video')}>
             <Text style={styles.chatActionText}>📹</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.chatContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        <ScrollView
-          style={styles.messagesContainer}
-          contentContainerStyle={styles.messagesContent}
-        >
-          {messages.map((message) => (
-            <View
-              key={message.id}
-              style={[
-                styles.messageItem,
-                message.isMe ? styles.myMessage : styles.otherMessage,
-              ]}
-            >
-              <Text style={styles.messageText}>{message.text}</Text>
-              <Text style={styles.messageTime}>
-                {message.timestamp?.toLocaleTimeString() || 'Now'}
-              </Text>
+      <KeyboardAvoidingView style={styles.chatContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+        <ScrollView style={styles.messagesContainer} contentContainerStyle={styles.messagesContent}>
+          {messages.map((m) => (
+            <View key={m.id} style={[styles.messageItem, m.isMe ? styles.myMessage : styles.otherMessage]}>
+              <Text style={styles.messageText}>{m.text}</Text>
+              <Text style={styles.messageTime}>{m.timestamp?.toLocaleTimeString() || 'Now'}</Text>
             </View>
           ))}
         </ScrollView>
@@ -858,7 +627,7 @@ export default function App() {
             style={styles.textInput}
             value={newMessage}
             onChangeText={setNewMessage}
-            placeholder="Type a message..."
+            placeholder="Type a message…"
             multiline
             maxLength={500}
           />
@@ -874,10 +643,7 @@ export default function App() {
     </SafeAreaView>
   );
 
-  // Main render
-  if (!user) {
-    return renderLogin();
-  }
+  if (!user) return renderLogin();
 
   return (
     <View style={styles.container}>

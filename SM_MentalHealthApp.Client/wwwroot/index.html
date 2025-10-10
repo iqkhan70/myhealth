@@ -247,7 +247,6 @@
     <script src="_framework/blazor.webassembly.js"></script>
     
     <!-- Agora SDK for Web -->
-    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
     <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
     <script>navigator.serviceWorker.register('service-worker.js');</script>
     
@@ -313,6 +312,13 @@
                     console.log('📡 Publishing audio track...');
                     await this.client.publish([this.localTracks.audioTrack]);
                     console.log('✅ Audio track published successfully!');
+
+                    this.client.on("user-published", async (user, mediaType) => {
+                    await this.client.subscribe(user, mediaType);
+                    if (mediaType === "audio") {
+                        user.audioTrack.play(); // 🔊 this will be blocked until Fix 2 runs once
+                    }
+                    });
                     
                     return true;
                 } catch (error) {
@@ -367,32 +373,32 @@
             },
             
             // Test audio
-            async testAudio() {
-                try {
-                    console.log('🔊 Testing audio system...');
-                    console.log('AgoraRTC available:', typeof AgoraRTC);
+            // async testAudio() {
+            //     try {
+            //         console.log('🔊 Testing audio system...');
+            //         console.log('AgoraRTC available:', typeof AgoraRTC);
                     
-                    // Create a simple audio context for testing
-                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    const oscillator = audioContext.createOscillator();
-                    const gainNode = audioContext.createGain();
+            //         // Create a simple audio context for testing
+            //         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            //         const oscillator = audioContext.createOscillator();
+            //         const gainNode = audioContext.createGain();
                     
-                    oscillator.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
+            //         oscillator.connect(gainNode);
+            //         gainNode.connect(audioContext.destination);
                     
-                    oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-                    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            //         oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+            //         gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
                     
-                    oscillator.start();
-                    oscillator.stop(audioContext.currentTime + 0.5);
+            //         oscillator.start();
+            //         oscillator.stop(audioContext.currentTime + 0.5);
                     
-                    console.log('✅ Audio test completed - you should hear a beep');
-                    return true;
-                } catch (error) {
-                    console.error('❌ Audio test failed:', error);
-                    return false;
-                }
-            },
+            //         console.log('✅ Audio test completed - you should hear a beep');
+            //         return true;
+            //     } catch (error) {
+            //         console.error('❌ Audio test failed:', error);
+            //         return false;
+            //     }
+            // },
             
             // Test Agora SDK availability
             testAgoraSDK() {
@@ -744,6 +750,14 @@
             console.error('🚨 Unhandled Promise Rejection:', e.reason);
             console.error('🚨 Promise:', e.promise);
         });
+
+        // Allow remote audio to play after first user interaction
+        document.addEventListener('click', () => {
+            if (window.AgoraRTC && typeof AgoraRTC.resumeAudioContext === 'function') {
+            AgoraRTC.resumeAudioContext();
+            console.log('🔊 Resumed AudioContext after user gesture');
+            }
+        }, { once: true });
         
         console.log('✅ Global error handlers installed');
     </script>

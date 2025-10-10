@@ -8,6 +8,7 @@ using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using SM_MentalHealthApp.Server.Utils;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -32,6 +33,68 @@ namespace SM_MentalHealthApp.Server.Controllers
             _context = context;
             _logger = logger;
         }
+
+        // [HttpGet("token")]
+        // public IActionResult GetAgoraToken([FromQuery] string channel, [FromQuery] int uid)
+        // {
+        //     try
+        //     {
+        //         if (string.IsNullOrEmpty(channel) || uid <= 0)
+        //             return BadRequest("Missing channel or uid");
+
+        //         var token = GenerateAgoraToken(channel, uid);
+        //         _logger.LogInformation("Generated Agora token for channel {Channel} and uid {Uid}", channel, uid);
+
+        //         return Ok(new { agoraAppId = "efa11b3a7d05409ca979fb25a5b489ae", token });
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         _logger.LogError(ex, "Error generating Agora token");
+        //         return StatusCode(500, new { message = "Token generation failed", error = ex.Message });
+        //     }
+        // }
+
+        
+
+        // [HttpGet("token")]
+        // public IActionResult GetAgoraToken(string channel, int uid)
+        // {
+        //     var appId = "efa11b3a7d05409ca979fb25a5b489ae";
+        //     var appCertificate = "89ab54068fae46aeaf930ffd493e977b";
+        //     var token = AgoraTokenGenerator.GenerateToken(appId, appCertificate, channel, uid);
+        //     return Ok(new { agoraAppId = appId, token });
+        // }
+
+    [HttpGet("token")]
+public IActionResult GetAgoraToken(string channel, uint uid)
+{
+    var appId = "efa11b3a7d05409ca979fb25a5b489ae";  // ✅ same as in your app
+    var appCertificate = "89ab54068fae46aeaf930ffd493e977b";      // ⚠️ from Agora Console
+
+    if (string.IsNullOrEmpty(channel))
+        return BadRequest("Missing channel name");
+
+    var expireTimeInSeconds = 3600; // 1 hour
+    var currentTimestamp = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    var privilegeExpiredTs = currentTimestamp + expireTimeInSeconds;
+
+            // AgoraDynamicKey uses a slightly different signature 👇
+            // string token = RtcTokenBuilder.BuildTokenWithUid(
+            //     appId,
+            //     appCertificate,
+            //     channel,
+            //     uid,
+            //     (int)Role.RolePublisher,
+            //     privilegeExpiredTs
+            // );
+    
+    var token = RtcTokenBuilder.BuildTokenWithUid(appId, appCertificate, channel, uid, 1, privilegeExpiredTs);
+
+
+    return Ok(new { agoraAppId = appId, token });
+}
+
+
 
         [HttpPost("connect")]
         public async Task<IActionResult> Connect([FromBody] ConnectRequest request)
