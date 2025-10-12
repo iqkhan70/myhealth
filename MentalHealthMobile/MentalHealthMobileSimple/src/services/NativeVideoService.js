@@ -138,7 +138,7 @@ class NativeVideoService {
         return await this.joinChannelNative(channelName, token, uid);
       }
     } catch (error) {
-      console.error('❌ Native Video: Failed to join channel:', error);
+      console.error('❌ Native Video: Failed to join channel:.....other2', error);
       return false;
     }
   }

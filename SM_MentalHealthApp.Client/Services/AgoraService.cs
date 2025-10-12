@@ -93,7 +93,7 @@ namespace SM_MentalHealthApp.Client.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to join channel: {ex.Message}");
+                Console.WriteLine($"Failed to join channel........Iqbal2: {ex.Message}");
                 return false;
             }
         }

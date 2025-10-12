@@ -444,37 +444,83 @@ export const RealtimeProvider = ({ children }) => {
     }
   };
 
-  // Initiate call
-  const initiateCall = async (targetUserId, callType) => {
-    if (!connectionId || !isConnected) {
-      console.error('Not connected to realtime service');
-      return;
-    }
+  // // Initiate call
+  // const initiateCall = async (targetUserId, callType) => {
+  //   if (!connectionId || !isConnected) {
+  //     console.error('Not connected to realtime service');
+  //     return;
+  //   }
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/realtime/initiate-call`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          connectionId: connectionId,
-          targetUserId: targetUserId,
-          callType: callType
-        })
-      });
+  //   try {
+  //     const response = await fetch(`${API_BASE_URL}/realtime/initiate-call`, {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'Authorization': `Bearer ${token}`
+  //       },
+  //       body: JSON.stringify({
+  //         connectionId: connectionId,
+  //         targetUserId: targetUserId,
+  //         callType: callType
+  //       })
+  //     });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Call initiated:', data);
-      } else {
-        console.error('Failed to initiate call:', response.status);
+  //     if (response.ok) {
+  //       const data = await response.json();
+  //       console.log('Call initiated:', data);
+  //     } else {
+  //       console.error('Failed to initiate call:', response.status);
+  //     }
+  //   } catch (error) {
+  //     console.error('Error initiating call:', error);
+  //   }
+  // };
+
+
+  // Initiate Agora call (audio or video)
+const initiateCall = async (targetUserId, callType = 'audio') => {
+  if (!connectionId || !isConnected) {
+    console.error('❌ Not connected to realtime service');
+    return;
+  }
+
+  try {
+    // Generate a unique channel name per call (you can change this logic if needed)
+    const channelName = `call_${connectionId}_${Date.now()}`;
+
+    const response = await fetch(`${API_BASE_URL}/realtime/initiate-call`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        connectionId: connectionId,
+        targetUserId: targetUserId,
+        callType: callType,     // "audio" or "video"
+        channelName: channelName  // ✅ important!
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log('✅ Call initiated successfully:', data);
+
+      // if backend returns delivered=true, start Agora join
+      if (data.delivered) {
+        console.log('🎯 Starting local Agora session on channel:', channelName);
+        await joinAgoraChannel(channelName);
       }
-    } catch (error) {
-      console.error('Error initiating call:', error);
+    } else {
+      console.error('❌ Failed to initiate call:', response.status);
+      const errorText = await response.text();
+      console.error('Server response:', errorText);
     }
-  };
+  } catch (error) {
+    console.error('🔥 Error initiating call:', error);
+  }
+};
+
 
   // Accept call
   const acceptCall = (callId) => {

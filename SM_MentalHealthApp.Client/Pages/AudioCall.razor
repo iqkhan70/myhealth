@@ -261,7 +261,10 @@
             }
 
             // Initialize Agora
-            var initialized = await AgoraService.InitializeAsync("demo-mode");
+            var initialized = await AgoraService.InitializeAsync("efa11b3a7d05409ca979fb25a5b489ae");
+            
+            
+            
             if (!initialized)
             {
                 error = "Failed to initialize audio service";
@@ -285,7 +288,9 @@
             callStatus = "Connecting...";
 
             // Generate channel name
-            var channelName = $"call_{UserId}_{DateTime.UtcNow.Ticks}";
+            //var channelName = $"call_{UserId}_{DateTime.UtcNow.Ticks}";
+
+            var channelName = $"call_3_1";
 
             // Get Agora token
             var token = await AgoraService.GetAgoraTokenAsync(channelName);

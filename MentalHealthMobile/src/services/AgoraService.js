@@ -106,7 +106,7 @@ class AgoraService {
       }
       
     } catch (error) {
-      console.error('Failed to join channel:', error);
+      console.error(':', error);
       throw error;
     }
   }

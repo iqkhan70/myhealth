@@ -174,7 +174,7 @@ class WebRTCService {
       
       if (isWeb && this.client) {
         // Web implementation with Agora
-        await this.client.join("demo-app-id", channelName, token, uid);
+        await this.client.join("efa11b3a7d05409ca979fb25a5b489ae", channelName, token, uid);
 
         // Create and publish tracks
         this.localTracks.audioTrack = await window.AgoraRTC.createMicrophoneAudioTrack({
@@ -217,7 +217,7 @@ class WebRTCService {
       
       return true;
     } catch (error) {
-      console.error('❌ WebRTC: Failed to join channel:', error);
+      console.error('❌ WebRTC: Failed to join channel........Iqbal:', error);
       return false;
     }
   }

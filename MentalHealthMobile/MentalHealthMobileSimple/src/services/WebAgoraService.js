@@ -106,7 +106,7 @@ class WebAgoraService {
       console.log('✅ Mobile Web: Joined channel successfully');
       return true;
     } catch (error) {
-      console.error('❌ Mobile Web: Failed to join channel:', error);
+      console.error('❌ Mobile Web: Failed to join channel:.....other4', error);
       return false;
     }
   }

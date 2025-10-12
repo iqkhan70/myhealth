@@ -109,7 +109,7 @@ class AgoraService {
       }
       
     } catch (error) {
-      console.error('Failed to join channel:', error);
+      console.error('Failed to join channel:other7', error);
       throw error;
     }
   }

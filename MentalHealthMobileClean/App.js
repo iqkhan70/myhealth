@@ -286,38 +286,79 @@ export default function App() {
   //   return null; // If your Agora project allows app certificate off / testing
   // };
 
-  const fetchAgoraToken = async (channelName, uid) => {
+  // const fetchAgoraToken = async (channelName, uid) => {
+  //   try {
+  //     const apiBase = API_BASE_URL; // already resolves to localhost or LAN IP
+  //     const url = `${apiBase}/realtime/token?channel=${encodeURIComponent(channelName)}&uid=${uid}`;
+  //     console.log(`🎯 Fetching Agora token from: ${url}`);
+
+  //     const authToken = await AsyncStorage.getItem('userToken');
+  //     const resp = await fetch(url, {
+  //       method: 'GET',
+  //       headers: {
+  //         'Accept': 'application/json',
+  //         'Authorization': `Bearer ${authToken || ''}`
+  //       },
+  //     });
+
+  //     if (!resp.ok) {
+  //       console.error(`❌ Token request failed with status ${resp.status}`);
+  //       const errText = await resp.text();
+  //       console.error('Response:', errText);
+  //       return null;
+  //     }
+
+  //     const data = await resp.json();
+  //     console.log('✅ Token response:', data);
+
+  //     // Expect backend to return { agoraAppId: "...", token: "..." }
+  //     return data?.token || null;
+  //   } catch (e) {
+  //     console.warn('⚠️ Token fetch failed, will try null token:', e.message);
+  //     return null; // fallback if backend or network unavailable
+  //   }
+  // };
+
+   const fetchAgoraToken = async (channelName, uid) => {
     try {
-      const apiBase = API_BASE_URL; // already resolves to localhost or LAN IP
-      const url = `${apiBase}/realtime/token?channel=${encodeURIComponent(channelName)}&uid=${uid}`;
+      if (!channelName || uid == null) {
+        console.error('❌ Missing channelName or uid');
+        return null;
+      }
+
+      const url = `${API_BASE_URL}/realtime/token?channel=${encodeURIComponent(channelName)}&uid=${uid}`;
       console.log(`🎯 Fetching Agora token from: ${url}`);
 
       const authToken = await AsyncStorage.getItem('userToken');
+
       const resp = await fetch(url, {
         method: 'GET',
         headers: {
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${authToken || ''}`
+          Accept: 'application/json',
+          Authorization: `Bearer ${authToken || ''}`,
         },
       });
 
       if (!resp.ok) {
-        console.error(`❌ Token request failed with status ${resp.status}`);
         const errText = await resp.text();
-        console.error('Response:', errText);
+        console.error(`❌ Token request failed [${resp.status}]: ${errText}`);
         return null;
       }
 
       const data = await resp.json();
-      console.log('✅ Token response:', data);
+      if (!data?.token) {
+        console.error('❌ Invalid token response:', data);
+        return null;
+      }
 
-      // Expect backend to return { agoraAppId: "...", token: "..." }
-      return data?.token || null;
+      console.log(`✅ Received Agora token for channel "${channelName}"`);
+      return data.token;
     } catch (e) {
-      console.warn('⚠️ Token fetch failed, will try null token:', e.message);
-      return null; // fallback if backend or network unavailable
+      console.warn('⚠️ Token fetch failed:', e.message);
+      return null;
     }
   };
+
 
   const initiateCall = async (targetUserId, callType) => {
     try {

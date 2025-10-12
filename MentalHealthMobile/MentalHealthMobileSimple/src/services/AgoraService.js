@@ -88,7 +88,7 @@ class AgoraService {
       
       return true;
     } catch (error) {
-      console.error('❌ Mobile: Failed to join channel:', error);
+      console.error('❌ Mobile: Failed to join channel:....other1', error);
       return false;
     }
   }

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -5,61 +8,57 @@ namespace SM_MentalHealthApp.Server.Services
 {
     public class AgoraTokenService
     {
-        private readonly string _appId;
-        private readonly string _appCertificate;
-        private readonly ILogger<AgoraTokenService> _logger;
-
-        public AgoraTokenService(IConfiguration configuration, ILogger<AgoraTokenService> logger)
-        {
-            _appId = configuration["Agora:AppId"] ?? throw new ArgumentNullException("Agora:AppId not configured");
-            _appCertificate = configuration["Agora:AppCertificate"] ?? throw new ArgumentNullException("Agora:AppCertificate not configured");
-            _logger = logger;
-        }
+        private readonly string _appId = "efa11b3a7d05409ca979fb25a5b489ae";
+        private readonly string _appCertificate = "89ab54068fae46aeaf930ffd493e977b";
 
         public string GenerateToken(string channelName, uint uid, uint expirationTimeInSeconds = 3600)
         {
-            try
-            {
-                var currentTimestamp = (uint)(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-                var privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+            var currentTs = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var privilegeExpireTs = currentTs + expirationTimeInSeconds;
 
-                // Create privilege object
-                var privilege = new Dictionary<string, uint>
-                {
-                    { "join_channel", privilegeExpiredTs },
-                    { "publish_audio_stream", privilegeExpiredTs },
-                    { "publish_video_stream", privilegeExpiredTs },
-                    { "publish_data_stream", privilegeExpiredTs }
-                };
-
-                // Generate token
-                var token = GenerateTokenInternal(_appId, _appCertificate, channelName, uid, privilege);
-
-                _logger.LogInformation($"Generated Agora token for channel: {channelName}, uid: {uid}");
-                return token;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error generating Agora token");
-                throw;
-            }
+            var token = BuildRtcTokenWithUid(_appId, _appCertificate, channelName, uid, privilegeExpireTs);
+            return token;
         }
 
-        private string GenerateTokenInternal(string appId, string appCertificate, string channelName, uint uid, Dictionary<string, uint> privilege)
+        private static string BuildRtcTokenWithUid(string appId, string appCertificate, string channelName, uint uid, uint expireTs)
         {
-            // This is a simplified token generation
-            // In production, you should use the official Agora token generation library
-            var message = $"{appId}:{channelName}:{uid}:{privilege["join_channel"]}";
-            var signature = ComputeHMACSHA256(message, appCertificate);
+            const string VERSION = "006";
+            var issueTs = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var salt = RandomNumberGenerator.GetInt32(int.MaxValue);
 
-            return Convert.ToBase64String(Encoding.UTF8.GetBytes($"{appId}:{channelName}:{uid}:{privilege["join_channel"]}:{signature}"));
+            // Create signing message according to Agora spec
+            var message = $"{appId}{channelName}{uid}{issueTs}{expireTs}{salt}";
+            var signature = GenerateHmacSha256(appCertificate, message);
+
+            // Serialize token body
+            using var ms = new MemoryStream();
+            using var bw = new BinaryWriter(ms);
+
+            WriteString(bw, BitConverter.ToString(signature).Replace("-", "").ToLower());
+            bw.Write(issueTs);
+            bw.Write(salt);
+
+            // Privileges
+            bw.Write((short)1); // 1 privilege (JoinChannel)
+            bw.Write((short)1); // Privilege type: JoinChannel
+            bw.Write(expireTs);
+
+            var body = ms.ToArray();
+            var encodedBody = Convert.ToBase64String(body);
+            return $"{VERSION}{appId}{encodedBody}";
         }
 
-        private string ComputeHMACSHA256(string message, string key)
+        private static byte[] GenerateHmacSha256(string key, string message)
         {
             using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(key));
-            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(message));
-            return Convert.ToBase64String(hash);
+            return hmac.ComputeHash(Encoding.UTF8.GetBytes(message));
+        }
+
+        private static void WriteString(BinaryWriter bw, string value)
+        {
+            var bytes = Encoding.UTF8.GetBytes(value);
+            bw.Write((short)bytes.Length);
+            bw.Write(bytes);
         }
     }
 }

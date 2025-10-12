@@ -115,7 +115,7 @@ export const AgoraProvider = ({ children }) => {
       console.log('✅ Connection state set to: connected');
       
     } catch (error) {
-      console.error('Failed to join channel:', error);
+      console.error('Failed to join channel:other6', error);
       setError(error.message);
       throw error;
     }

@@ -397,7 +397,7 @@ class RealWebRTCService {
       console.log('✅ Real WebRTC Native: Joined channel successfully');
       return true;
     } catch (error) {
-      console.error('❌ Real WebRTC Native: Failed to join channel:', error);
+      console.error('❌ Real WebRTC Native: Failed to join channel:.....other3', error);
       return false;
     }
   }
