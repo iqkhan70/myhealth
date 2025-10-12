@@ -1,1 +1,0 @@
-import 'expo/build/launch/AppEntry';
