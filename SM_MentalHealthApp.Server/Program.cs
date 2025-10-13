@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Server.Services;
 using System.Text;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,7 +44,7 @@ builder.Services.AddSingleton<IAmazonS3>(provider =>
     return new AmazonS3Client(accessKey, secretKey, s3Config);
 });
 
-// Register services
+// Register application services
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<JournalService>();
 builder.Services.AddScoped<ChatService>();
@@ -63,15 +64,32 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ISmsService, VonageSmsService>();
 builder.Services.AddScoped<AgoraTokenService>();
 
+// ✅ Add Redis (ConnectionMultiplexer + Cache Service)
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+{
+    var configuration = ConfigurationOptions.Parse("localhost:6379,password=StrongPassword123!");
+    configuration.AbortOnConnectFail = false;
+    return ConnectionMultiplexer.Connect(configuration);
+});
+
+builder.Services.AddScoped<IRedisCacheService, RedisCacheService>();
+
+// Add controllers and JSON options
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
         options.JsonSerializerOptions.WriteIndented = true;
     });
+
 builder.Services.AddRazorPages();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// ✅ FIX: Avoid Swagger schema name collisions
+builder.Services.AddSwaggerGen(options =>
+{
+    options.CustomSchemaIds(type => type.FullName);
+});
 
 // Add SignalR for real-time communication
 builder.Services.AddSignalR();
@@ -90,7 +108,12 @@ builder.Services.AddCors(options =>
         }
         else
         {
-            policy.WithOrigins("http://localhost:5262", "http://localhost:5282", "http://192.168.86.113:5262", "http://localhost:8080", "http://localhost:8081")
+            policy.WithOrigins(
+                    "http://localhost:5262",
+                    "http://localhost:5282",
+                    "http://192.168.86.113:5262",
+                    "http://localhost:8080",
+                    "http://localhost:8081")
                   .AllowAnyHeader()
                   .AllowAnyMethod()
                   .AllowCredentials(); // Required for SignalR
@@ -105,7 +128,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"] ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong!")),
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.ASCII.GetBytes(
+                    builder.Configuration["Jwt:Key"] 
+                    ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong!"
+                )),
             ValidateIssuer = false,
             ValidateAudience = false,
             ValidateLifetime = true,
@@ -141,13 +168,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Enable static files (but not Blazor WebAssembly support - handled by separate HTTPS server)
+// Enable static files (not Blazor WebAssembly)
 app.UseStaticFiles();
 
 app.UseCors("AllowBlazorClient");
 app.UseAuthentication();
 app.UseAuthorization();
-
 
 // Map API controllers
 app.MapControllers();
@@ -156,6 +182,12 @@ app.MapRazorPages();
 // Map SignalR hub
 app.MapHub<SM_MentalHealthApp.Server.Hubs.MobileHub>("/mobilehub");
 
-// TODO: Add database seeding later
+// Optional: Redis health check log
+var redis = app.Services.GetRequiredService<IConnectionMultiplexer>();
+if (redis.IsConnected)
+    Console.WriteLine("✅ Redis connected successfully");
+else
+    Console.WriteLine("❌ Redis connection failed");
 
+// TODO: Add database seeding later
 app.Run();

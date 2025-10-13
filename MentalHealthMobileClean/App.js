@@ -15,7 +15,7 @@ import { RtcLocalView, RtcRemoteView } from 'react-native-agora';
 const getApiBaseUrl = () => {
   const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
   if (isWeb) return 'http://localhost:5262/api';
-  return 'http://192.168.86.28:5262/api';
+  return 'http://192.168.86.27:5262/api';
 };
 const API_BASE_URL = getApiBaseUrl();
 const SIGNALR_HUB_URL = API_BASE_URL.replace('/api', '/mobilehub');
