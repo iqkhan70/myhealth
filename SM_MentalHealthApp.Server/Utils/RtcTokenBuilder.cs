@@ -1,6 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -10,122 +10,91 @@ namespace SM_MentalHealthApp.Server.Utils
     {
         private const string VERSION = "006";
 
+        // Privilege constants (Agora defined)
+        private const short PrivilegeJoinChannel = 1;
+        private const short PrivilegePublishAudioStream = 2;
+        private const short PrivilegePublishVideoStream = 3;
+        private const short PrivilegePublishDataStream = 4;
+
         /// <summary>
-        /// Builds an Agora RTC token using a numeric UID.
+        /// Builds a proper Agora RTC token (fully compatible with Web/iOS/Android SDKs)
         /// </summary>
-        public static string BuildTokenWithUid(string appId, string appCertificate, string channelName, uint uid, int role, int privilegeExpireTs)
+        public static string BuildRtcTokenWithUid(
+            string appId,
+            string appCertificate,
+            string channelName,
+            uint uid,
+            uint expireSeconds,
+            bool isPublisher = true)
         {
-            if (string.IsNullOrEmpty(appId) || string.IsNullOrEmpty(appCertificate))
-                throw new ArgumentException("App ID and App Certificate must not be empty");
+            if (string.IsNullOrEmpty(appId) || string.IsNullOrEmpty(channelName))
+                throw new ArgumentException("App ID and channel name must not be empty.");
 
-            var uidStr = uid == 0 ? "" : uid.ToString();
-            var token = new AccessToken(appId, appCertificate, channelName, uidStr);
-            token.AddPrivilege(Privileges.JoinChannel, privilegeExpireTs);
+            var issueTs = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var salt = (uint)RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+            var expireTs = issueTs + expireSeconds;
 
-            return token.Build();
+            // Build signature message (Agora spec)
+            var message = $"{appCertificate}{appId}{channelName}{uid}{issueTs}{expireTs}{salt}";
+            var signature = GenerateHmacSha256(appCertificate, message);
+            var signatureHex = BitConverter.ToString(signature).Replace("-", "").ToLower();
+
+            // Serialize body according to Agora 006 token format
+            using var ms = new MemoryStream();
+            using var bw = new BinaryWriter(ms);
+
+            WriteString(bw, signatureHex);
+            WriteUint(bw, issueTs);
+            WriteUint(bw, expireTs);
+            WriteUint(bw, salt);
+
+            // Privilege count (JoinChannel + optional publish privileges)
+            var privilegeCount = (short)(isPublisher ? 4 : 1);
+            WriteShort(bw, privilegeCount);
+
+            // Privilege: JoinChannel
+            WriteShort(bw, PrivilegeJoinChannel);
+            WriteUint(bw, expireTs);
+
+            if (isPublisher)
+            {
+                WriteShort(bw, PrivilegePublishAudioStream);
+                WriteUint(bw, expireTs);
+
+                WriteShort(bw, PrivilegePublishVideoStream);
+                WriteUint(bw, expireTs);
+
+                WriteShort(bw, PrivilegePublishDataStream);
+                WriteUint(bw, expireTs);
+            }
+
+            var encodedBody = Convert.ToBase64String(ms.ToArray());
+            return $"{VERSION}{appId}{encodedBody}";
         }
 
-        // -------------------------------------------------------------
-        // Inner AccessToken class
-        // -------------------------------------------------------------
-        private class AccessToken
+        private static byte[] GenerateHmacSha256(string key, string message)
         {
-            private readonly string _appId;
-            private readonly string _appCertificate;
-            private readonly string _channelName;
-            private readonly string _uid;
-            private readonly int _issueTs;
-            private readonly int _salt;
-            private readonly Dictionary<Privileges, int> _privileges = new();
-
-            public AccessToken(string appId, string appCertificate, string channelName, string uid)
-            {
-                _appId = appId;
-                _appCertificate = appCertificate;
-                _channelName = channelName;
-                _uid = uid;
-                _issueTs = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                _salt = RandomNumberGenerator.GetInt32(int.MaxValue); // cryptographically secure salt
-            }
-
-            public void AddPrivilege(Privileges privilege, int expireTs)
-            {
-                _privileges[privilege] = expireTs;
-            }
-
-            public string Build()
-            {
-                // --- Step 1: Build message for signature ---
-                // According to Agora spec: sign(appCertificate, appId + channelName + uid + issueTs + expireTs + salt)
-                var expireTs = GetMaxExpire();
-                var message = Encoding.UTF8.GetBytes($"{_appId}{_channelName}{_uid}{_issueTs}{expireTs}{_salt}");
-                var signature = GenerateHmacSha256(_appCertificate, message);
-
-                // --- Step 2: Serialize body ---
-                var body = PackContent(signature, _issueTs, _salt, _privileges);
-
-                // --- Step 3: Encode as base64 ---
-                var encodedBody = Convert.ToBase64String(body);
-
-                // --- Step 4: Final token format ---
-                return $"{VERSION}{_appId}{encodedBody}";
-            }
-
-            private int GetMaxExpire()
-            {
-                // Return the max privilege expiration timestamp
-                int max = 0;
-                foreach (var kvp in _privileges)
-                    if (kvp.Value > max)
-                        max = kvp.Value;
-                return max;
-            }
-
-            private static byte[] PackContent(byte[] signature, int issueTs, int salt, Dictionary<Privileges, int> privileges)
-            {
-                using var ms = new MemoryStream();
-                using var bw = new BinaryWriter(ms);
-
-                // Signature
-                WriteString(bw, BitConverter.ToString(signature).Replace("-", "").ToLower());
-
-                // Issue timestamp
-                bw.Write(issueTs);
-
-                // Salt
-                bw.Write(salt);
-
-                // Privileges
-                bw.Write((short)privileges.Count);
-                foreach (var kv in privileges)
-                {
-                    bw.Write((short)kv.Key);
-                    bw.Write(kv.Value);
-                }
-
-                return ms.ToArray();
-            }
-
-            private static void WriteString(BinaryWriter bw, string value)
-            {
-                var bytes = Encoding.UTF8.GetBytes(value);
-                bw.Write((short)bytes.Length);
-                bw.Write(bytes);
-            }
-
-            private static byte[] GenerateHmacSha256(string key, byte[] message)
-            {
-                using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(key));
-                return hmac.ComputeHash(message);
-            }
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(key));
+            return hmac.ComputeHash(Encoding.UTF8.GetBytes(message));
         }
 
-        // -------------------------------------------------------------
-        // Privileges Enum
-        // -------------------------------------------------------------
-        private enum Privileges : short
+        private static void WriteString(BinaryWriter bw, string value)
         {
-            JoinChannel = 1
+            var bytes = Encoding.UTF8.GetBytes(value);
+            WriteShort(bw, (short)bytes.Length);
+            bw.Write(bytes);
+        }
+
+        private static void WriteShort(BinaryWriter bw, short value)
+        {
+            var bytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder(value));
+            bw.Write(bytes);
+        }
+
+        private static void WriteUint(BinaryWriter bw, uint value)
+        {
+            var bytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder((int)value));
+            bw.Write(bytes);
         }
     }
 }

@@ -23,16 +23,21 @@ namespace SM_MentalHealthApp.Server.Controllers
         private static readonly Dictionary<int, string> _userConnections = new();
         private static Timer? _cleanupTimer;
 
+        private readonly IRedisCacheService _cache;
+
         static RealtimeController()
         {
             // Start cleanup timer to remove stale connections every 2 minutes
             _cleanupTimer = new Timer(CleanupStaleConnections, null, TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
         }
 
-        public RealtimeController(JournalDbContext context, ILogger<RealtimeController> logger)
+        public RealtimeController(JournalDbContext context,
+        ILogger<RealtimeController> logger,
+        IRedisCacheService cache)
         {
             _context = context;
             _logger = logger;
+            _cache = cache;
         }
 
         // [HttpGet("token")]
@@ -129,13 +134,46 @@ namespace SM_MentalHealthApp.Server.Controllers
         // }
 
         [HttpGet("token")]
-        public IActionResult GetAgoraToken(string channel, uint uid)
+        public async Task<IActionResult> GetAgoraToken(string channel, uint uid)
         {
+            if (string.IsNullOrEmpty(channel) || uid == 0)
+                return BadRequest("Missing channel or uid");
+
+            //string cacheKey = $"agora_token:{channel}:{uid}";
+            string cacheKey = $"agora_token:{channel}";
+            _logger.LogInformation("🔍 Checking Redis for key {Key}", cacheKey);
+
+            // ✅ Try Redis cache first (awaited)
+            var cachedToken = await _cache.GetAsync(cacheKey);
+            if (!string.IsNullOrEmpty(cachedToken))
+            {
+                _logger.LogInformation("✅ Returning cached token for {Channel}", channel);
+                return Ok(new
+                {
+                    agoraAppId = "efa11b3a7d05409ca979fb25a5b489ae",
+                    token = cachedToken,
+                    cached = true
+                });
+            }
+
+            // ✅ Only generate if not found in Redis
             var tokenService = new AgoraTokenService();
             var token = tokenService.GenerateToken(channel, uid);
 
-            return Ok(new { agoraAppId = "efa11b3a7d05409ca979fb25a5b489ae", token });
+            _logger.LogInformation("🆕 Generated new token for {Channel}", channel);
+
+            // ✅ Save token in Redis (set expiry for safety)
+            await _cache.SetAsync(cacheKey, token, TimeSpan.FromHours(1));
+            _logger.LogInformation("💾 Cached new token with key {Key}", cacheKey);
+
+            return Ok(new
+            {
+                agoraAppId = "efa11b3a7d05409ca979fb25a5b489ae",
+                token,
+                cached = false
+            });
         }
+
 
 
         [HttpPost("connect")]

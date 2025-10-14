@@ -26,7 +26,9 @@
                 <p>Click "Start Call" to begin the audio call</p>
             </div>
             <div class="call-actions">
-                <button class="btn btn-primary btn-lg" @onclick="StartCall" disabled="@isConnecting">
+                    <button class="btn btn-primary btn-lg"
+                        @onclick="() => StartCall(UserId)"
+                        disabled="@isConnecting">
                     @if (isConnecting)
                     {
                         <span class="spinner-border spinner-border-sm me-2"></span>
@@ -280,7 +282,7 @@
         }
     }
 
-    private async Task StartCall()
+    @* private async Task StartCall()
     {
         try
         {
@@ -323,7 +325,52 @@
         {
             isConnecting = false;
         }
+    } *@
+
+
+    private async Task StartCall(int targetUserId)
+    {
+        try
+        {
+            isConnecting = true;
+            callStatus = "Connecting...";
+
+            // ✅ Generate consistent channel name between caller/callee
+            var callerId = AuthService.CurrentUser?.Id ?? 0;
+            if (callerId == 0)
+                throw new Exception("Invalid caller ID");
+
+            var smallerId = Math.Min(callerId, targetUserId);
+            var largerId = Math.Max(callerId, targetUserId);
+            var channelName = $"call_{smallerId}_{largerId}";
+
+            // ✅ Fetch token from server (server handles Redis)
+            var token = await AgoraService.GetAgoraTokenAsync(channelName);
+            if (string.IsNullOrEmpty(token))
+                throw new Exception("Failed to get call token");
+
+            // ✅ Join the Agora channel
+            var uid = (uint)callerId;
+            var success = await AgoraService.JoinChannelAsync(channelName, token, uid, false);
+            if (!success)
+                throw new Exception("Failed to join call");
+
+            isInCall = true;
+            currentChannel = channelName;
+            callStatus = "Connected";
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to start call: {ex.Message}";
+            callStatus = "Call failed";
+        }
+        finally
+        {
+            isConnecting = false;
+        }
     }
+
+
 
     private async Task EndCall()
     {

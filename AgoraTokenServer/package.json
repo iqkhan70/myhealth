@@ -1,0 +1,14 @@
+{
+  "name": "agora-token-service",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "agora-access-token": "^2.0.4",
+    "express": "^4.21.2",
+    "ioredis": "^5.8.1"
+  }
+}

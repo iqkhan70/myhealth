@@ -64,7 +64,12 @@ namespace SM_MentalHealthApp.Server.Controllers
         [HttpPost("token")]
         public async Task<IActionResult> GetToken([FromBody] AgoraRequest request)
         {
-            string cacheKey = $"agora_token:{request.ChannelName}:{request.Uid}";
+
+            //string cacheKey = $"agora_token:{request.ChannelName}:{request.Uid}";
+
+            string cacheKey = $"agora_token:{request.ChannelName}";
+
+            Console.WriteLine("Cached Key: " + cacheKey);    
 
             // 🔍 Try Redis cache first
             var cachedToken = await _cache.GetAsync(cacheKey);

@@ -324,63 +324,117 @@ export default function App() {
     }
   };
 
-  const startCall = async (targetUser, callType) => {
-      try {
-        setCallModal({ visible: true, targetUser, callType, channelName: null });
-        setRemoteUsers([]);
-        setIsAudioMuted(false);
-        setIsVideoMuted(false);
+  // const startCall = async (targetUser, callType) => {
+  //     try {
+  //       setCallModal({ visible: true, targetUser, callType, channelName: null });
+  //       setRemoteUsers([]);
+  //       setIsAudioMuted(false);
+  //       setIsVideoMuted(false);
 
-        // Notify server (optional)
-        try {
-          await initiateCall(targetUser.id, callType);
-        } catch (e) {
-          console.warn('Server call notify failed (continuing):', e?.message);
-        }
+  //       // Notify server (optional)
+  //       try {
+  //         await initiateCall(targetUser.id, callType);
+  //       } catch (e) {
+  //         console.warn('Server call notify failed (continuing):', e?.message);
+  //       }
 
-        if (!agoraInitialized) {
-          Alert.alert('Error', 'Agora not initialized');
-          setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
-          return;
-        }
+  //       if (!agoraInitialized) {
+  //         Alert.alert('Error', 'Agora not initialized');
+  //         setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+  //         return;
+  //       }
 
-        // 🟢 define your channel & uid
-        const channelName = `call_${targetUser.id}_${user?.id}`;
-        const uid = user?.id || Math.floor(Math.random() * 100000);
-        const withVideo = callType === 'Video';
+  //       // 🟢 define your channel & uid
+  //       const channelName = `call_${targetUser.id}_${user?.id}`;
+  //       const uid = user?.id || Math.floor(Math.random() * 100000);
+  //       const withVideo = callType === 'Video';
 
-        // 🟢 get token dynamically from backend (port 5262)
-        const rtcToken = await fetchAgoraToken(channelName, uid);
-        console.log('🎫 Agora Token:', rtcToken);
+  //       // 🟢 get token dynamically from backend (port 5262)
+  //         const rtcToken = await fetchAgoraToken(channelName, targetUser.id || 0);
+  //       console.log('Target User id:', targetUser.id);
+  //       console.log('🎫 Agora Token:', rtcToken);
 
-        if (!rtcToken) {
-          Alert.alert('Error', 'Failed to fetch Agora token.');
-          setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
-          return;
-        }
+  //       if (!rtcToken) {
+  //         Alert.alert('Error', 'Failed to fetch Agora token.');
+  //         setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+  //         return;
+  //       }
 
-        console.log("📞 Joining Agora:", { channelName, uid, token: rtcToken });
+  //       console.log("📞 Joining Agora:", { channelName, uid: targetUser.id, token: rtcToken });
         
-        // 🟢 now join the channel
-        const ok = await AgoraService.joinChannel({
-          token: rtcToken,
-          channelName,
-          uid,
-          withVideo,
-        });
+  //       // 🟢 now join the channel
+  //       const ok = await AgoraService.joinChannel({
+  //         token: rtcToken,
+  //         channelName,
+  //         uid:targetUser.id || 0,
+  //         withVideo,
+  //       });
 
-        //const ok = await AgoraService.joinChannel({ token: "DEV_702387eed4a52fcad5b0e9b041fff1ea79e1b7852bb769c1d9e4b1985654103", channelName: "test", uid: 0, withVideo });
+  //       //const ok = await AgoraService.joinChannel({ token: "DEV_702387eed4a52fcad5b0e9b041fff1ea79e1b7852bb769c1d9e4b1985654103", channelName: "test", uid: 0, withVideo });
 
 
-        if (!ok) throw new Error('Join channel failed');
+  //       if (!ok) throw new Error('Join channel failed');
 
-        setCallModal((prev) => ({ ...prev, channelName }));
-      } catch (e) {
-        console.error('startCall error:', e);
-        Alert.alert('Error', e.message || 'Failed to start call.');
-        setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
-      }
-    };
+  //       setCallModal((prev) => ({ ...prev, channelName }));
+  //     } catch (e) {
+  //       console.error('startCall error:', e);
+  //       Alert.alert('Error', e.message || 'Failed to start call.');
+  //       setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+  //     }
+  //   };
+
+  const startCall = async (targetUser, callType) => {
+  try {
+    setCallModal({ visible: true, targetUser, callType, channelName: null });
+    setRemoteUsers([]);
+    setIsAudioMuted(false);
+    setIsVideoMuted(false);
+
+    try {
+      await initiateCall(targetUser.id, callType);
+    } catch (e) {
+      console.warn('Server call notify failed (continuing):', e?.message);
+    }
+
+    if (!agoraInitialized) {
+      Alert.alert('Error', 'Agora not initialized');
+      setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+      return;
+    }
+
+    // consistent channel name (both sides compute same string)
+    const channelName = `call_${[user.id, targetUser.id].sort().join('_')}`;
+    const uid = user?.id;
+    const withVideo = callType === 'Video';
+
+    // get token for yourself (NOT the target)
+    const rtcToken = await fetchAgoraToken(channelName, uid);
+    console.log('🎫 Agora Token fetched for UID:', uid);
+    console.log('📞 Joining Agora:', { channelName, uid, token: rtcToken });
+
+    if (!rtcToken) {
+      Alert.alert('Error', 'Failed to fetch Agora token.');
+      setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+      return;
+    }
+
+    const ok = await AgoraService.joinChannel({
+      token: rtcToken,
+      channelName,
+      uid,
+      withVideo,
+    });
+
+    if (!ok) throw new Error('Join channel failed');
+
+    setCallModal((prev) => ({ ...prev, channelName }));
+  } catch (e) {
+    console.error('startCall error:', e);
+    Alert.alert('Error', e.message || 'Failed to start call.');
+    setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+  }
+};
+
 
   const endCall = async () => {
     try {
