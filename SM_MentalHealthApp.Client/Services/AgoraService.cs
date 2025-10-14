@@ -25,7 +25,8 @@ namespace SM_MentalHealthApp.Client.Services
         event Action<uint> OnUserLeft;
         event Action<string> OnConnectionStateChanged;
         event Action<string> OnError;
-        Task<string> GetAgoraTokenAsync(string channelName);
+        //Task<string> GetAgoraTokenAsync(string channelName);
+        Task<string> GetAgoraTokenAsync(string channelName, uint uid = 0);
     }
 
     public class AgoraService : IAgoraService, IAsyncDisposable
@@ -193,47 +194,97 @@ namespace SM_MentalHealthApp.Client.Services
             }
         }
 
-        public async Task<string> GetAgoraTokenAsync(string channelName)
+        // public async Task<string> GetAgoraTokenAsync(string channelName)
+        // {
+        //     try
+        //     {
+        //         Console.WriteLine($"🎯 Getting Agora token for channel: {channelName}");
+
+        //         // Get token from storage directly
+        //         var token = await _jsRuntime.InvokeAsync<string?>("getToken");
+        //         if (string.IsNullOrEmpty(token))
+        //         {
+        //             Console.WriteLine("❌ User not authenticated - no token in storage");
+        //             throw new Exception("User not authenticated");
+        //         }
+
+        //         Console.WriteLine($"✅ Auth token found: {token.Substring(0, Math.Min(20, token.Length))}...");
+
+        //         var request = new { channelName = channelName, expirationTimeInSeconds = 3600 };
+
+        //         // Set authorization header
+        //         _httpClient.DefaultRequestHeaders.Authorization =
+        //             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        //         Console.WriteLine($"🌐 Calling API: {_httpClient.BaseAddress}api/agora/token");
+        //         var response = await _httpClient.PostAsJsonAsync("/api/agora/token", request);
+
+        //         Console.WriteLine($"📡 API Response Status: {response.StatusCode}");
+
+        //         if (!response.IsSuccessStatusCode)
+        //         {
+        //             var errorContent = await response.Content.ReadAsStringAsync();
+        //             Console.WriteLine($"❌ API Error: {errorContent}");
+        //             throw new Exception($"API call failed: {response.StatusCode} - {errorContent}");
+        //         }
+
+        //         var responseContent = await response.Content.ReadAsStringAsync();
+        //         Console.WriteLine($"📄 API Response: {responseContent}");
+
+        //         var result = await response.Content.ReadFromJsonAsync<AgoraTokenResponse>();
+        //         Console.WriteLine($"✅ Parsed token: {(result?.Token != null ? result.Token.Substring(0, Math.Min(20, result.Token.Length)) : "null")}...");
+
+        //         return result?.Token ?? string.Empty;
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         Console.WriteLine($"❌ Failed to get Agora token: {ex.Message}");
+        //         Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
+        //         return string.Empty;
+        //     }
+        // }
+
+        public async Task<string> GetAgoraTokenAsync(string channelName, uint uid = 0)
         {
             try
             {
                 Console.WriteLine($"🎯 Getting Agora token for channel: {channelName}");
 
-                // Get token from storage directly
-                var token = await _jsRuntime.InvokeAsync<string?>("getToken");
-                if (string.IsNullOrEmpty(token))
+                // ✅ 1. Get user JWT token from browser storage
+                var authToken = await _jsRuntime.InvokeAsync<string?>("getToken");
+                if (string.IsNullOrEmpty(authToken))
                 {
                     Console.WriteLine("❌ User not authenticated - no token in storage");
                     throw new Exception("User not authenticated");
                 }
 
-                Console.WriteLine($"✅ Auth token found: {token.Substring(0, Math.Min(20, token.Length))}...");
+                Console.WriteLine($"✅ Auth token found: {authToken.Substring(0, Math.Min(20, authToken.Length))}...");
 
-                var request = new { channelName = channelName, expirationTimeInSeconds = 3600 };
+                // ✅ 2. Prepare the request URL (GET)
+                var url = $"api/realtime/token?channel={Uri.EscapeDataString(channelName)}&uid={uid}";
+                Console.WriteLine($"🌐 Calling API: {_httpClient.BaseAddress}{url}");
 
-                // Set authorization header
+                // ✅ 3. Attach Authorization header
                 _httpClient.DefaultRequestHeaders.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
 
-                Console.WriteLine($"🌐 Calling API: {_httpClient.BaseAddress}api/agora/token");
-                var response = await _httpClient.PostAsJsonAsync("/api/agora/token", request);
+                // ✅ 4. Make the GET request and parse JSON directly
+                var result = await _httpClient.GetFromJsonAsync<AgoraTokenResponse>(url);
 
-                Console.WriteLine($"📡 API Response Status: {response.StatusCode}");
-
-                if (!response.IsSuccessStatusCode)
+                // ✅ 5. Validate and return token
+                if (result == null || string.IsNullOrEmpty(result.Token))
                 {
-                    var errorContent = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"❌ API Error: {errorContent}");
-                    throw new Exception($"API call failed: {response.StatusCode} - {errorContent}");
+                    Console.WriteLine("❌ Invalid or empty Agora token received from API");
+                    return string.Empty;
                 }
 
-                var responseContent = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"📄 API Response: {responseContent}");
-
-                var result = await response.Content.ReadFromJsonAsync<AgoraTokenResponse>();
-                Console.WriteLine($"✅ Parsed token: {(result?.Token != null ? result.Token.Substring(0, Math.Min(20, result.Token.Length)) : "null")}...");
-
-                return result?.Token ?? string.Empty;
+                Console.WriteLine($"✅ Agora token received (cached={result.Cached}): {result.Token.Substring(0, Math.Min(20, result.Token.Length))}...");
+                return result.Token;
+            }
+            catch (HttpRequestException httpEx)
+            {
+                Console.WriteLine($"❌ Network error fetching Agora token: {httpEx.Message}");
+                return string.Empty;
             }
             catch (Exception ex)
             {
@@ -242,6 +293,7 @@ namespace SM_MentalHealthApp.Client.Services
                 return string.Empty;
             }
         }
+
 
         // JavaScript interop callbacks
         [JSInvokable]
@@ -276,11 +328,14 @@ namespace SM_MentalHealthApp.Client.Services
 
     public class AgoraTokenResponse
     {
+        [JsonPropertyName("agoraAppId")]
+        public string AgoraAppId { get; set; } = string.Empty;
+
         [JsonPropertyName("token")]
         public string Token { get; set; } = string.Empty;
 
-        [JsonPropertyName("appId")]
-        public string AppId { get; set; } = string.Empty;
+        [JsonPropertyName("cached")]
+        public bool Cached { get; set; }
 
         [JsonPropertyName("channelName")]
         public string ChannelName { get; set; } = string.Empty;
@@ -289,6 +344,6 @@ namespace SM_MentalHealthApp.Client.Services
         public uint Uid { get; set; }
 
         [JsonPropertyName("expirationTime")]
-        public DateTime ExpirationTime { get; set; }
+        public DateTime? ExpirationTime { get; set; }
     }
 }

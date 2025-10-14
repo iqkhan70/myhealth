@@ -19,161 +19,91 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         private readonly JournalDbContext _context;
         private readonly ILogger<RealtimeController> _logger;
+        private readonly IRedisCacheService _cache;
+        private readonly AgoraTokenService _agoraTokenService;
+
+        private const string _appId = "efa11b3a7d05409ca979fb25a5b489ae";
+
         private static readonly Dictionary<string, RealtimeConnection> _connections = new();
         private static readonly Dictionary<int, string> _userConnections = new();
         private static Timer? _cleanupTimer;
 
-        private readonly IRedisCacheService _cache;
-
         static RealtimeController()
         {
-            // Start cleanup timer to remove stale connections every 2 minutes
             _cleanupTimer = new Timer(CleanupStaleConnections, null, TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
         }
 
-        public RealtimeController(JournalDbContext context,
-        ILogger<RealtimeController> logger,
-        IRedisCacheService cache)
+        public RealtimeController(
+            JournalDbContext context,
+            ILogger<RealtimeController> logger,
+            IRedisCacheService cache,
+            AgoraTokenService agoraTokenService)
         {
             _context = context;
             _logger = logger;
             _cache = cache;
+            _agoraTokenService = agoraTokenService;
         }
 
-        // [HttpGet("token")]
-        // public IActionResult GetAgoraToken([FromQuery] string channel, [FromQuery] int uid)
-        // {
-        //     try
-        //     {
-        //         if (string.IsNullOrEmpty(channel) || uid <= 0)
-        //             return BadRequest("Missing channel or uid");
+        // ✅ AGORA TOKEN ENDPOINTS ============================================
 
-        //         var token = GenerateAgoraToken(channel, uid);
-        //         _logger.LogInformation("Generated Agora token for channel {Channel} and uid {Uid}", channel, uid);
-
-        //         return Ok(new { agoraAppId = "efa11b3a7d05409ca979fb25a5b489ae", token });
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         _logger.LogError(ex, "Error generating Agora token");
-        //         return StatusCode(500, new { message = "Token generation failed", error = ex.Message });
-        //     }
-        // }
-
-
-
-        // [HttpGet("token")]
-        // public IActionResult GetAgoraToken(string channel, int uid)
-        // {
-        //     var appId = "efa11b3a7d05409ca979fb25a5b489ae";
-        //     var appCertificate = "89ab54068fae46aeaf930ffd493e977b";
-        //     var token = AgoraTokenGenerator.GenerateToken(appId, appCertificate, channel, uid);
-        //     return Ok(new { agoraAppId = appId, token });
-        // }
-
-        //     [HttpGet("token")]
-        // public IActionResult GetAgoraToken(string channel, uint uid)
-        // {
-        //     var appId = "efa11b3a7d05409ca979fb25a5b489ae";  // ✅ same as in your app
-        //     var appCertificate = "89ab54068fae46aeaf930ffd493e977b";      // ⚠️ from Agora Console
-
-        //     if (string.IsNullOrEmpty(channel))
-        //         return BadRequest("Missing channel name");
-
-        //     var expireTimeInSeconds = 3600; // 1 hour
-        //     var currentTimestamp = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        //     var privilegeExpiredTs = currentTimestamp + expireTimeInSeconds;
-
-        //             // AgoraDynamicKey uses a slightly different signature 👇
-        //             // string token = RtcTokenBuilder.BuildTokenWithUid(
-        //             //     appId,
-        //             //     appCertificate,
-        //             //     channel,
-        //             //     uid,
-        //             //     (int)Role.RolePublisher,
-        //             //     privilegeExpiredTs
-        //             // );
-
-        //     var token = RtcTokenBuilder.BuildTokenWithUid(appId, appCertificate, channel, uid, 1, privilegeExpiredTs);
-
-
-        //     return Ok(new { agoraAppId = appId, token });
-        // }
-
-        public enum RtcRole
-{
-    RolePublisher = 1,
-    RoleSubscriber = 2
-}
-
-    //[HttpGet("token")]
-        // public IActionResult GetAgoraToken(string channel, uint uid)
-        // {
-        //     const string appId = "efa11b3a7d05409ca979fb25a5b489ae";
-        //     const string appCertificate = "89ab54068fae46aeaf930ffd493e977b";
-
-        //     if (string.IsNullOrEmpty(channel))
-        //         return BadRequest("Missing channel name");
-
-        //     var expireTimeInSeconds = 3600;
-        //     var currentTimestamp = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        //     var privilegeExpiredTs = currentTimestamp + expireTimeInSeconds;
-
-        //     var token = RtcTokenBuilder.BuildTokenWithUid(
-        //         appId,
-        //         appCertificate,
-        //         channel,
-        //         uid,
-        //         1,   // 👈 safer, more readable
-        //         privilegeExpiredTs
-        //     );
-
-        //     Console.WriteLine($"Generated Agora token for channel '{channel}' and uid '{uid}': {token}");
-
-        //         return Ok(new { agoraAppId = appId, token });
-        // }
-
+        // Blazor & Web: GET
         [HttpGet("token")]
-        public async Task<IActionResult> GetAgoraToken(string channel, uint uid)
+        public async Task<IActionResult> GetAgoraToken([FromQuery] string channel, [FromQuery] uint uid)
         {
+
+            Console.WriteLine("Using uid1: " + uid);
+            Console.WriteLine("Using channel1: " + channel);
+
             if (string.IsNullOrEmpty(channel) || uid == 0)
                 return BadRequest("Missing channel or uid");
 
-            //string cacheKey = $"agora_token:{channel}:{uid}";
-            string cacheKey = $"agora_token:{channel}";
-            _logger.LogInformation("🔍 Checking Redis for key {Key}", cacheKey);
-
-            // ✅ Try Redis cache first (awaited)
-            var cachedToken = await _cache.GetAsync(cacheKey);
-            if (!string.IsNullOrEmpty(cachedToken))
-            {
-                _logger.LogInformation("✅ Returning cached token for {Channel}", channel);
-                return Ok(new
-                {
-                    agoraAppId = "efa11b3a7d05409ca979fb25a5b489ae",
-                    token = cachedToken,
-                    cached = true
-                });
-            }
-
-            // ✅ Only generate if not found in Redis
-            var tokenService = new AgoraTokenService();
-            var token = tokenService.GenerateToken(channel, uid);
-
-            _logger.LogInformation("🆕 Generated new token for {Channel}", channel);
-
-            // ✅ Save token in Redis (set expiry for safety)
-            await _cache.SetAsync(cacheKey, token, TimeSpan.FromHours(1));
-            _logger.LogInformation("💾 Cached new token with key {Key}", cacheKey);
-
-            return Ok(new
-            {
-                agoraAppId = "efa11b3a7d05409ca979fb25a5b489ae",
-                token,
-                cached = false
-            });
+            return await GenerateAndCacheTokenAsync(channel, uid, 3600);
         }
 
+        // Mobile: POST
+        [HttpPost("token")]
+        public async Task<IActionResult> PostAgoraToken([FromBody] AgoraRequest request)
+        {
+
+            Console.WriteLine("Using uid2: " + request.Uid);
+            Console.WriteLine("Using channel2: " + request.ChannelName);
+
+            if (string.IsNullOrEmpty(request.ChannelName) || request.Uid == 0)
+                return BadRequest("Missing channel or uid");
+
+            var expireSeconds = request.ExpirationTimeInSeconds ?? 3600;
+            return await GenerateAndCacheTokenAsync(request.ChannelName, request.Uid, expireSeconds);
+        }
+
+        private async Task<IActionResult> GenerateAndCacheTokenAsync(string channel, uint uid, uint expireSeconds)
+        {
+            try
+            {
+                string cacheKey = $"agora_token:{channel}";
+                _logger.LogInformation("🔍 Checking Redis for key {Key}", cacheKey);
+
+                var cachedToken = await _cache.GetAsync(cacheKey);
+                if (!string.IsNullOrEmpty(cachedToken))
+                {
+                    _logger.LogInformation("✅ Returning cached token for {Channel}", channel);
+                    return Ok(new { agoraAppId = _appId, token = cachedToken, cached = true });
+                }
+
+                var token = _agoraTokenService.GenerateToken(channel, uid, expireSeconds);
+                await _cache.SetAsync(cacheKey, token, TimeSpan.FromSeconds(expireSeconds));
+
+                _logger.LogInformation("🆕 Generated and cached new token for {Channel}", channel);
+                return Ok(new { agoraAppId = _appId, token, cached = false, uid });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error generating Agora token");
+                return StatusCode(500, new { message = "Token generation failed", error = ex.Message });
+            }
+        }
+
+        // =====================================================================
 
 
         [HttpPost("connect")]
@@ -181,23 +111,18 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                // Validate JWT token and get user ID
                 var userId = await AuthenticateToken();
                 if (!userId.HasValue)
-                {
                     return Unauthorized(new { message = "Invalid or missing token" });
-                }
 
                 var connectionId = Guid.NewGuid().ToString();
-                // Remove any existing connection for this user
-                if (_userConnections.TryGetValue(userId.Value, out var existingConnectionId) && !string.IsNullOrEmpty(existingConnectionId))
+
+                if (_userConnections.TryGetValue(userId.Value, out var existingConnectionId))
                 {
                     _connections.Remove(existingConnectionId);
                     _userConnections.Remove(userId.Value);
-                    _logger.LogInformation("Removed existing connection {ExistingConnectionId} for user {UserId}", existingConnectionId, userId.Value);
                 }
 
-                // Create new connection
                 var connection = new RealtimeConnection
                 {
                     ConnectionId = connectionId,
@@ -209,7 +134,6 @@ namespace SM_MentalHealthApp.Server.Controllers
                 _userConnections[userId.Value] = connectionId;
 
                 _logger.LogInformation("Realtime connection established: {ConnectionId} for user {UserId}", connectionId, userId.Value);
-
                 return Ok(new { connectionId, message = "Connected successfully" });
             }
             catch (Exception ex)
@@ -240,28 +164,18 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-
         [HttpPost("send-message")]
         public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest request)
         {
             try
             {
-                // Verify connection exists
                 if (!_connections.TryGetValue(request.ConnectionId, out var senderConnection))
-                {
                     return BadRequest("Invalid connection");
-                }
 
-                // Get sender information from database
-                var sender = await _context.Users
-                    .FirstOrDefaultAsync(u => u.Id == senderConnection.UserId);
-
+                var sender = await _context.Users.FirstOrDefaultAsync(u => u.Id == senderConnection.UserId);
                 if (sender == null)
-                {
                     return BadRequest("Sender not found");
-                }
 
-                // Save message to database
                 var smsMessage = new SmsMessage
                 {
                     SenderId = senderConnection.UserId,
@@ -274,11 +188,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                 _context.SmsMessages.Add(smsMessage);
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("Saved message: '{Message}' from {SenderId} to {ReceiverId} at {Timestamp}",
-                    request.Message, senderConnection.UserId, request.TargetUserId, smsMessage.SentAt);
-
-                // Check if target user is connected and queue for immediate delivery
-                if (_userConnections.TryGetValue(request.TargetUserId, out var targetConnectionId))
+                if (_userConnections.TryGetValue(request.TargetUserId, out var targetConnectionId) &&
+                    _connections.TryGetValue(targetConnectionId, out var targetConnection))
                 {
                     var messageData = new
                     {
@@ -290,17 +201,10 @@ namespace SM_MentalHealthApp.Server.Controllers
                         senderName = $"{sender.FirstName} {sender.LastName}",
                         timestamp = smsMessage.SentAt.ToString("O")
                     };
-
-                    // Store the message for the target user to poll
-                    if (_connections.TryGetValue(targetConnectionId, out var targetConnection))
-                    {
-                        targetConnection.PendingMessages.Add(messageData);
-                    }
+                    targetConnection.PendingMessages.Add(messageData);
                 }
 
-                _logger.LogInformation("SMS message saved and sent from {SenderId} to {TargetUserId}: {Message}",
-                    senderConnection.UserId, request.TargetUserId, request.Message);
-
+                _logger.LogInformation("Message sent from {SenderId} to {ReceiverId}", senderConnection.UserId, request.TargetUserId);
                 return Ok(new { message = "Message sent successfully", delivered = true, messageId = smsMessage.Id });
             }
             catch (Exception ex)
@@ -315,26 +219,19 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                // For mobile connections, we don't need to verify the connection exists
-                // as mobile apps use a fixed connection ID
                 RealtimeConnection? callerConnection = null;
+
                 if (request.ConnectionId != "mobile-connection")
                 {
                     if (!_connections.TryGetValue(request.ConnectionId, out callerConnection))
-                    {
                         return BadRequest("Invalid connection");
-                    }
                 }
                 else
                 {
-                    // For mobile, get the caller ID from the JWT token
                     var userId = await AuthenticateToken();
                     if (userId == null)
-                    {
                         return Unauthorized("Invalid or missing token");
-                    }
 
-                    // Create a temporary connection object for mobile
                     callerConnection = new RealtimeConnection
                     {
                         ConnectionId = request.ConnectionId,
@@ -343,33 +240,28 @@ namespace SM_MentalHealthApp.Server.Controllers
                     };
                 }
 
-                // Check if target user is connected
                 if (!_userConnections.TryGetValue(request.TargetUserId, out var targetConnectionId))
-                {
                     return Ok(new { message = "Target user is not online", delivered = false });
-                }
+
+                var agoraTokenResult = await GenerateAndCacheTokenAsync(request.ChannelName, (uint)callerConnection.UserId, 3600) as OkObjectResult;
+                var tokenData = agoraTokenResult?.Value as dynamic;
 
                 var callData = new
                 {
                     type = "incoming_call",
                     callerId = callerConnection.UserId,
-                    callerName = "Mobile User", // TODO: Get actual user name from database
+                    callerName = "Mobile User",
                     callType = request.CallType,
                     channelName = request.ChannelName,
                     timestamp = DateTime.UtcNow,
-                    agoraAppId = "efa11b3a7d05409ca979fb25a5b489ae", // Replace with your actual Agora App ID
-                    agoraToken = GenerateAgoraToken(request.ChannelName, callerConnection.UserId)
+                    agoraAppId = tokenData?.agoraAppId,
+                    agoraToken = tokenData?.token
                 };
 
-                // Store the call for the target user to poll
                 if (_connections.TryGetValue(targetConnectionId, out var targetConnection))
-                {
                     targetConnection.PendingCalls.Add(callData);
-                }
 
-                _logger.LogInformation("Call initiated from {CallerId} to {TargetUserId}: {CallType}",
-                    callerConnection.UserId, request.TargetUserId, request.CallType);
-
+                _logger.LogInformation("Call initiated from {CallerId} to {TargetUserId}", callerConnection.UserId, request.TargetUserId);
                 return Ok(new { message = "Call initiated successfully", delivered = true });
             }
             catch (Exception ex)
@@ -384,21 +276,10 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                _logger.LogInformation("Poll request from connection: {ConnectionId}", request.ConnectionId);
-
                 if (!_connections.TryGetValue(request.ConnectionId, out var connection))
-                {
-                    _logger.LogWarning("Invalid connection ID: {ConnectionId}", request.ConnectionId);
                     return BadRequest("Invalid connection");
-                }
 
-                // Update last ping
                 connection.LastPing = DateTime.UtcNow;
-
-                var messageCount = connection.PendingMessages.Count;
-                var callCount = connection.PendingCalls.Count;
-
-                _logger.LogInformation("Poll response - Messages: {MessageCount}, Calls: {CallCount}", messageCount, callCount);
 
                 var response = new
                 {
@@ -407,7 +288,6 @@ namespace SM_MentalHealthApp.Server.Controllers
                     connectionStatus = "connected"
                 };
 
-                // Clear pending messages and calls
                 connection.PendingMessages.Clear();
                 connection.PendingCalls.Clear();
 
@@ -425,19 +305,15 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                // Verify connection exists
                 if (!_connections.TryGetValue(request.ConnectionId, out var connection))
-                {
                     return BadRequest("Invalid connection");
-                }
 
                 var userId = connection.UserId;
                 var otherUserId = request.OtherUserId;
 
-                // Get message history between the two users
                 var messages = await _context.SmsMessages
                     .Where(m => (m.SenderId == userId && m.ReceiverId == otherUserId) ||
-                               (m.SenderId == otherUserId && m.ReceiverId == userId))
+                                (m.SenderId == otherUserId && m.ReceiverId == userId))
                     .OrderBy(m => m.SentAt)
                     .Select(m => new
                     {
@@ -451,18 +327,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     })
                     .ToListAsync();
 
-                _logger.LogInformation("Retrieved {Count} messages for users {UserId} and {OtherUserId}",
-                    messages.Count, userId, otherUserId);
-
-                if (messages.Count > 0)
-                {
-                    _logger.LogInformation("First message: {Message} at {Timestamp}",
-                        messages.First().message, messages.First().timestamp);
-                    _logger.LogInformation("Last message: {Message} at {Timestamp}",
-                        messages.Last().message, messages.Last().timestamp);
-                }
-
-                return Ok(new { messages = messages });
+                return Ok(new { messages });
             }
             catch (Exception ex)
             {
@@ -471,7 +336,6 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-        // Cleanup old connections periodically
         [HttpPost("cleanup")]
         public IActionResult Cleanup()
         {
@@ -484,7 +348,6 @@ namespace SM_MentalHealthApp.Server.Controllers
                 {
                     _connections.Remove(oldConnection.Key);
                     _userConnections.Remove(oldConnection.Value.UserId);
-                    _logger.LogInformation("Cleaned up old connection: {ConnectionId}", oldConnection.Key);
                 }
 
                 return Ok(new { cleaned = oldConnections.Count });
@@ -496,13 +359,9 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-        private string GenerateAgoraToken(string channelName, int userId)
-        {
-            // For now, return a placeholder token
-            // In a real implementation, you would generate a proper Agora token
-            // using Agora's token generation service
-            return $"agora_token_{channelName}_{userId}_{DateTime.UtcNow.Ticks}";
-        }
+        // ==============================================================
+        // 🔒 Token authentication helper
+        // ==============================================================
 
         private async Task<int?> AuthenticateToken()
         {
@@ -510,17 +369,12 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 var authHeader = Request.Headers["Authorization"].FirstOrDefault();
                 if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
-                {
                     return null;
-                }
 
                 var token = authHeader.Substring("Bearer ".Length).Trim();
                 if (string.IsNullOrEmpty(token))
-                {
                     return null;
-                }
 
-                // Validate JWT token and extract user ID
                 var tokenHandler = new JwtSecurityTokenHandler();
                 var validationParameters = new TokenValidationParameters
                 {
@@ -531,29 +385,17 @@ namespace SM_MentalHealthApp.Server.Controllers
                     ClockSkew = TimeSpan.Zero
                 };
 
-                ClaimsPrincipal principal;
-                try
-                {
-                    principal = tokenHandler.ValidateToken(token, validationParameters, out SecurityToken validatedToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Token validation failed");
-                    return null;
-                }
-
+                var principal = tokenHandler.ValidateToken(token, validationParameters, out _);
                 var userIdClaim = principal.FindFirst("userId")?.Value;
+
                 if (!int.TryParse(userIdClaim, out int userId))
-                {
-                    _logger.LogWarning("User ID not found in token");
                     return null;
-                }
 
                 return userId;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during token authentication");
+                _logger.LogError(ex, "Token validation failed");
                 return null;
             }
         }
@@ -562,10 +404,8 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                var cutoffTime = DateTime.UtcNow.AddMinutes(-5); // Remove connections older than 5 minutes
-                var staleConnections = _connections.Values
-                    .Where(c => c.LastPing < cutoffTime)
-                    .ToList();
+                var cutoffTime = DateTime.UtcNow.AddMinutes(-5);
+                var staleConnections = _connections.Values.Where(c => c.LastPing < cutoffTime).ToList();
 
                 foreach (var connection in staleConnections)
                 {
@@ -574,15 +414,24 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 if (staleConnections.Count > 0)
-                {
                     Console.WriteLine($"Cleaned up {staleConnections.Count} stale connections");
-                }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error during connection cleanup: {ex.Message}");
             }
         }
+    }
+
+    // ============================================================
+    // 💬 Data Models
+    // ============================================================
+
+    public class AgoraRequest
+    {
+        public string ChannelName { get; set; } = string.Empty;
+        public uint Uid { get; set; }
+        public uint? ExpirationTimeInSeconds { get; set; }
     }
 
     public class RealtimeConnection
@@ -604,7 +453,6 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string ConnectionId { get; set; } = string.Empty;
     }
 
-
     public class PollRequest
     {
         public string ConnectionId { get; set; } = string.Empty;
@@ -620,7 +468,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         public string ConnectionId { get; set; } = string.Empty;
         public int TargetUserId { get; set; }
-        public string CallType { get; set; } = string.Empty; // "video" or "audio"
+        public string CallType { get; set; } = string.Empty;
         public string ChannelName { get; set; } = string.Empty;
     }
 

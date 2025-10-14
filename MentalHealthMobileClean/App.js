@@ -280,6 +280,8 @@ export default function App() {
 
       const authToken = await AsyncStorage.getItem('userToken');
 
+      console.log('Using uid for token fetch:', authToken);
+
       const resp = await fetch(url, {
         method: 'GET',
         headers: {
