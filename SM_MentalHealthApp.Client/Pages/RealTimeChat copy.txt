@@ -2,7 +2,6 @@
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Shared
 @using System.Text.Json
-@using ChatMsg = SM_MentalHealthApp.Client.Services.ChatMessage
 @inject IAuthService AuthService
 @inject IRealtimeService RealtimeService
 @inject HttpClient Http
@@ -39,15 +38,17 @@
                         <i class="fas fa-refresh"></i>
                     </button>
                 }
-                <button class="test-call-btn" @onclick="TestIncomingCall" title="Test Incoming Call">
-                    <i class="fas fa-phone"></i>
-                </button>
-                <button class="test-audio-btn" @onclick="TestAudio" title="Test Audio System">
-                    <i class="fas fa-volume-up"></i>
-                </button>
-                <button class="test-agora-btn" @onclick="TestAgoraSDK" title="Test Agora SDK">
-                    <i class="fas fa-cog"></i>
-                </button>
+    <button class="test-call-btn" @onclick="TestIncomingCall" title="Test Incoming Call">
+        <i class="fas fa-phone"></i>
+    </button>
+    
+    <button class="test-audio-btn" @onclick="TestAudio" title="Test Audio System">
+        <i class="fas fa-volume-up"></i>
+    </button>
+    
+    <button class="test-agora-btn" @onclick="TestAgoraSDK" title="Test Agora SDK">
+        <i class="fas fa-cog"></i>
+    </button>
             </div>
         </div>
     </div>
@@ -110,7 +111,7 @@
                     @foreach (var user in users)
                     {
                         <div class="user-item @(selectedUser?.Id == user.Id ? "selected" : "")"
-                             @onclick="async () => await SelectUser(user)">
+                            @onclick="async () => await SelectUser(user)">
                             <div class="user-avatar">
                                 @user.FirstName?.Substring(0, 1).ToUpper()
                             </div>
@@ -129,11 +130,11 @@
                             </div>
                             <div class="user-actions">
                                 <button class="action-btn video-btn" @onclick:stopPropagation="true"
-                                        @onclick="() => InitiateVideoCall(user)" title="Video Call">
+                                    @onclick="() => InitiateVideoCall(user)" title="Video Call">
                                     <i class="fas fa-video"></i>
                                 </button>
                                 <button class="action-btn audio-btn" @onclick:stopPropagation="true"
-                                        @onclick="() => InitiateAudioCall(user)" title="Audio Call">
+                                    @onclick="() => InitiateAudioCall(user)" title="Audio Call">
                                     <i class="fas fa-phone"></i>
                                 </button>
                             </div>
@@ -182,14 +183,10 @@
                             </div>
                         </div>
                         <div class="call-buttons">
-                            <button class="btn btn-outline-primary btn-sm"
-                                    @onclick="() => StartVideoCall(selectedUser.Id)"
-                                    title="Start Video Call">
+                            <button class="btn btn-outline-primary btn-sm" @onclick="() => StartVideoCall(selectedUser.Id)" title="Start Video Call">
                                 <i class="fas fa-video"></i>
                             </button>
-                            <button class="btn btn-outline-success btn-sm"
-                                    @onclick="() => StartAudioCall(selectedUser.Id)"
-                                    title="Start Audio Call">
+                            <button class="btn btn-outline-success btn-sm" @onclick="() => StartAudioCall(selectedUser.Id)" title="Start Audio Call">
                                 <i class="fas fa-phone"></i>
                             </button>
                         </div>
@@ -227,12 +224,10 @@
 
                 <div class="message-input-area">
                     <div class="input-container">
-                        <input type="text" @bind="newMessage" @bind:event="oninput"
-                               @onkeydown="HandleKeyDown"
-                               placeholder="Type a message... (Press Enter to send)"
-                               class="message-input" disabled="@(!RealtimeService.IsConnected)" />
+                        <input type="text" @bind="newMessage" @bind:event="oninput" @onkeydown="HandleKeyDown" placeholder="Type a message... (Press Enter to send)"
+                            class="message-input" disabled="@(!RealtimeService.IsConnected)" />
                         <button class="send-btn" @onclick="SendMessage"
-                                disabled="@(string.IsNullOrWhiteSpace(newMessage) || !RealtimeService.IsConnected)">
+                            disabled="@(string.IsNullOrWhiteSpace(newMessage) || !RealtimeService.IsConnected)">
                             <i class="fas fa-paper-plane"></i>
                         </button>
                     </div>
@@ -258,7 +253,6 @@
         </div>
     </div>
 </div>
-
 
 <style>
     .chat-container {
@@ -388,6 +382,7 @@
         from {
             transform: rotate(0deg);
         }
+
         to {
             transform: rotate(360deg);
         }
@@ -603,6 +598,7 @@
         justify-content: center;
         border-radius: 50%;
     }
+
     .selected-user-avatar {
         width: 50px;
         height: 50px;
@@ -701,7 +697,7 @@
         outline: none;
         box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
     }
-
+    
     .message-input:disabled {
         background-color: #f5f5f5;
         cursor: not-allowed;
@@ -858,12 +854,14 @@
         transform: translateY(-2px);
         box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
     }
+
 </style>
 
 <script>
     window.setupPageVisibilityListener = (dotNetRef) => {
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
+                // Page became visible, notify the component
                 dotNetRef.invokeMethodAsync('OnPageVisible');
             }
         });
@@ -879,7 +877,7 @@
 @code {
     private List<User> users = new();
     private User? selectedUser;
-    private List<ChatMsg> messages = new();
+    private List<SM_MentalHealthApp.Client.Services.ChatMessage> messages = new();
     private string newMessage = string.Empty;
     private bool isLoadingUsers = false;
     private bool isLoadingHistory = false;
@@ -887,41 +885,61 @@
     private ElementReference messagesContainer;
     private Timer? autoRefreshTimer;
     private bool isAutoRefreshing = false;
-
+    
+    // Incoming call handling
     private IncomingCall? incomingCall = null;
     private int lastMessageCount = 0;
     private DateTime lastScrollTime = DateTime.MinValue;
 
     protected override async Task OnInitializedAsync()
     {
+        // Set up realtime event handlers
         RealtimeService.OnNewMessage += HandleNewMessage;
         RealtimeService.OnIncomingCall += HandleIncomingCall;
 
+        // Load users when component initializes
         await LoadUsers();
-
+        
+        // Load chat history if a user is already selected (when coming back to the page)
         if (selectedUser != null && RealtimeService.IsConnected)
+        {
+            Console.WriteLine("Loading chat history on initialization for selected user:", selectedUser.Id);
             await LoadChatHistory();
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
+            // Start SignalR connection if not already connected
             if (!RealtimeService.IsConnected)
+            {
+                Console.WriteLine("Starting realtime connection...");
                 await RealtimeService.StartAsync();
-
+                Console.WriteLine($"Realtime connection status: {RealtimeService.IsConnected}");
+            }
+            
+            // Set up page visibility change listener
             await JS.InvokeVoidAsync("setupPageVisibilityListener", DotNetObjectReference.Create(this));
+            
+            // Start auto-refresh timer (every 5 seconds)
             StartAutoRefresh();
         }
 
+        // Only scroll to bottom if there are new messages AND it's not an auto-refresh
+        // AND we haven't scrolled recently (debounce)
         if (messages.Count > lastMessageCount && !isAutoRefreshing &&
             (DateTime.Now - lastScrollTime).TotalMilliseconds > 500)
         {
             lastMessageCount = messages.Count;
             lastScrollTime = DateTime.Now;
+            // Add a small delay to ensure the message is fully rendered
             await Task.Delay(100);
             await ScrollToBottom();
         }
+        
+        // Reset the new message processing flag
     }
 
     private async Task LoadUsers()
@@ -931,13 +949,34 @@
 
         try
         {
+            var token = AuthService.Token;
+            if (string.IsNullOrEmpty(token))
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Authentication token not found");
+                return;
+            }
+
             string endpoint = AuthService.CurrentUser?.RoleId == 2
-                ? "/api/mobile/doctor/patients"
-                : "/api/mobile/patient/doctors";
+            ? "/api/mobile/doctor/patients"
+            : "/api/mobile/patient/doctors";
 
             var response = await Http.GetAsync(endpoint);
+
             if (response.IsSuccessStatusCode)
-                users = await response.Content.ReadFromJsonAsync<List<User>>() ?? new();
+            {
+                var result = await response.Content.ReadFromJsonAsync<List<User>>();
+                users = result ?? new List<User>();
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error",
+                $"Failed to load users: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error",
+            $"Failed to load users: {ex.Message}");
         }
         finally
         {
@@ -949,13 +988,18 @@
     private async Task LoadChatHistory()
     {
         if (selectedUser == null || !RealtimeService.IsConnected || isLoadingHistory || isHistoryLoaded)
+        {
+            Console.WriteLine($"Cannot load chat history - selectedUser: {selectedUser != null}, IsConnected: {RealtimeService.IsConnected}, isLoading: {isLoadingHistory}, isLoaded: {isHistoryLoaded}");
             return;
+        }
 
         isLoadingHistory = true;
         StateHasChanged();
 
         try
         {
+            Console.WriteLine($"Loading chat history for user: {selectedUser.Id}, ConnectionId: {RealtimeService.ConnectionId}");
+            
             var request = new
             {
                 connectionId = RealtimeService.ConnectionId,
@@ -963,27 +1007,77 @@
             };
 
             var response = await Http.PostAsJsonAsync("http://localhost:5262/api/realtime/get-message-history", request);
+
+            Console.WriteLine($"Chat history response status: {response.StatusCode}");
+
             if (response.IsSuccessStatusCode)
             {
-                var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-                if (json.TryGetProperty("messages", out var msgs))
+                var responseContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Chat history response content: {responseContent}");
+                
+                var result = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                
+                if (result.TryGetProperty("messages", out var messagesElement) && messagesElement.ValueKind == JsonValueKind.Array)
                 {
-                    messages = msgs.EnumerateArray().Select(m => new ChatMsg
+                    var historyMessages = new List<SM_MentalHealthApp.Client.Services.ChatMessage>();
+                    
+                    foreach (var msgElement in messagesElement.EnumerateArray())
                     {
-                        Id = m.GetProperty("id").GetInt32().ToString(),
-                        SenderId = m.GetProperty("senderId").GetInt32(),
-                        TargetUserId = m.GetProperty("receiverId").GetInt32(),
-                        Message = m.GetProperty("message").GetString() ?? "",
-                        SenderName = m.GetProperty("senderName").GetString() ?? "",
-                        Timestamp = DateTime.TryParse(m.GetProperty("timestamp").GetString(), out var t)
-                            ? t : DateTime.UtcNow
-                    }).OrderBy(x => x.Timestamp).ToList();
+                        if (msgElement.TryGetProperty("id", out var idElement) &&
+                            msgElement.TryGetProperty("senderId", out var senderIdElement) &&
+                            msgElement.TryGetProperty("receiverId", out var receiverIdElement) &&
+                            msgElement.TryGetProperty("message", out var messageElement) &&
+                            msgElement.TryGetProperty("senderName", out var senderNameElement) &&
+                            msgElement.TryGetProperty("timestamp", out var timestampElement))
+                        {
+                            var message = new SM_MentalHealthApp.Client.Services.ChatMessage
+                            {
+                                Id = idElement.GetInt32().ToString(),
+                                SenderId = senderIdElement.GetInt32(),
+                                TargetUserId = receiverIdElement.GetInt32(),
+                                Message = messageElement.GetString() ?? "",
+                                SenderName = senderNameElement.GetString() ?? "Unknown"
+                            };
+
+                            // Parse timestamp
+                            if (DateTime.TryParse(timestampElement.GetString(), out DateTime timestamp))
+                            {
+                                message.Timestamp = timestamp;
+                            }
+                            else
+                            {
+                                message.Timestamp = DateTime.UtcNow;
+                            }
+
+                            historyMessages.Add(message);
+                        }
+                    }
+
+                    // Sort by timestamp and add to messages
+                    messages = historyMessages.OrderBy(m => m.Timestamp).ToList();
+                    Console.WriteLine($"Loaded {messages.Count} chat history messages");
+                    
+                    // Log the first and last few messages to verify ordering
+                    if (messages.Count > 0)
+                    {
+                        Console.WriteLine($"First message: {messages.First().Message} at {messages.First().Timestamp:HH:mm:ss}");
+                        Console.WriteLine($"Last message: {messages.Last().Message} at {messages.Last().Timestamp:HH:mm:ss}");
+                    }
                 }
+                else
+                {
+                    Console.WriteLine("No messages found in history or invalid response format");
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Failed to load chat history: {response.StatusCode} - {errorContent}");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading history: {ex.Message}");
+            Console.WriteLine($"Error loading chat history: {ex.Message}");
         }
         finally
         {
@@ -995,16 +1089,27 @@
 
     private async Task SelectUser(User user)
     {
+        // Always load chat history, even if it's the same user (in case user navigated away and came back)
         selectedUser = user;
-        messages.Clear();
-        isHistoryLoaded = false;
-        lastMessageCount = 0;
-
+        messages.Clear(); // Clear previous messages
+        isHistoryLoaded = false; // Reset flag for new user
+        lastMessageCount = 0; // Reset message count for new user
+        
+        // Wait for connection to be established before loading chat history
         if (!RealtimeService.IsConnected)
+        {
+            Console.WriteLine("Waiting for connection before loading chat history...");
+            // Wait a bit for connection to be established
             await Task.Delay(1000);
-
+        }
+        
+        // Load chat history for the selected user
+        Console.WriteLine($"Selecting user {user.Id} - loading chat history");
         await LoadChatHistory();
+        
+        // Restart auto-refresh for the new user
         StartAutoRefresh();
+        
         StateHasChanged();
     }
 
@@ -1013,100 +1118,231 @@
         if (string.IsNullOrWhiteSpace(newMessage) || selectedUser == null || !RealtimeService.IsConnected)
             return;
 
-        await RealtimeService.SendMessageAsync(selectedUser.Id, newMessage);
-
-        messages.Add(new ChatMsg
+        try
         {
-            Id = $"local_{Guid.NewGuid()}",
-            SenderId = AuthService.CurrentUser?.Id ?? 0,
-            TargetUserId = selectedUser.Id,
-            Message = newMessage,
-            SenderName = $"{AuthService.CurrentUser?.FirstName} {AuthService.CurrentUser?.LastName}",
-            Timestamp = DateTime.UtcNow
-        });
+            await RealtimeService.SendMessageAsync(selectedUser.Id, newMessage);
 
-        messages = messages.OrderBy(m => m.Timestamp).ToList();
-        newMessage = string.Empty;
-        lastMessageCount = messages.Count;
-        StateHasChanged();
-        await Task.Delay(100);
-        await ScrollToBottom();
+            // Add message locally immediately for better UX
+            var localMessage = new SM_MentalHealthApp.Client.Services.ChatMessage
+            {
+                Id = $"local_{Guid.NewGuid()}",
+                SenderId = AuthService.CurrentUser?.Id ?? 0,
+                TargetUserId = selectedUser.Id,
+                Message = newMessage,
+                SenderName = $"{AuthService.CurrentUser?.FirstName} {AuthService.CurrentUser?.LastName}",
+                Timestamp = DateTime.UtcNow
+            };
+
+            messages.Add(localMessage);
+            messages = messages.OrderBy(m => m.Timestamp).ToList();
+            newMessage = string.Empty;
+            
+            // Mark that we just sent a message to trigger scroll in OnAfterRenderAsync
+            lastMessageCount = messages.Count;
+            
+            Console.WriteLine($"Sent message locally: {localMessage.Message} at {localMessage.Timestamp:HH:mm:ss} - Total messages: {messages.Count}");
+            
+            StateHasChanged();
+            
+            // Scroll to bottom immediately after sending message
+            await Task.Delay(100); // Small delay to ensure message is rendered
+            await ScrollToBottom();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error",
+            $"Failed to send message: {ex.Message}");
+        }
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if ((e.Key == "Enter" || e.Key == "NumpadEnter") &&
-            !string.IsNullOrWhiteSpace(newMessage) && RealtimeService.IsConnected)
+        Console.WriteLine($"Key pressed: {e.Key}");
+        if (e.Key == "Enter" || e.Key == "NumpadEnter")
         {
-            await SendMessage();
+            Console.WriteLine($"Enter key detected. Message: '{newMessage}', Connected: {RealtimeService.IsConnected}");
+            // Only send if we have a message and are connected
+            if (!string.IsNullOrWhiteSpace(newMessage) && RealtimeService.IsConnected)
+            {
+                Console.WriteLine("Sending message via Enter key");
+                await SendMessage();
+            }
         }
     }
 
-    private async void HandleNewMessage(ChatMsg message)
+    private async void HandleNewMessage(SM_MentalHealthApp.Client.Services.ChatMessage message)
     {
-        if (selectedUser == null) return;
-
-        if ((message.SenderId == selectedUser.Id && message.TargetUserId == AuthService.CurrentUser?.Id) ||
-            (message.SenderId == AuthService.CurrentUser?.Id && message.TargetUserId == selectedUser.Id))
+        // Only add message if it's for the currently selected conversation
+        if (selectedUser != null &&
+        ((message.SenderId == selectedUser.Id && message.TargetUserId == AuthService.CurrentUser?.Id) ||
+        (message.SenderId == AuthService.CurrentUser?.Id && message.TargetUserId == selectedUser.Id)))
         {
-            if (!messages.Any(m => m.Id == message.Id))
+            // Check if this is a replacement for a local message we sent
+            var localMessage = messages.FirstOrDefault(m => 
+                m.Id.StartsWith("local_") &&
+                m.Message == message.Message &&
+                m.SenderId == message.SenderId &&
+                m.TargetUserId == message.TargetUserId &&
+                Math.Abs((m.Timestamp - message.Timestamp).TotalSeconds) < 5
+            );
+            
+            if (localMessage != null)
+            {
+                // Replace local message with server message
+                var index = messages.IndexOf(localMessage);
+                messages[index] = message;
+                messages = messages.OrderBy(m => m.Timestamp).ToList();
+                
+                Console.WriteLine($"Replaced local message with server message: {message.Message} (ID: {message.Id})");
+            }
+            else if (!messages.Any(m => m.Id == message.Id))
+            {
+                // Only mark as processing if it's a message from someone else (not our own)
+                if (message.SenderId != AuthService.CurrentUser?.Id)
+                {
+                    // Message from someone else - will trigger scroll
+                }
+                
+                // Add message and sort immediately
                 messages.Add(message);
-
-            messages = messages.OrderBy(m => m.Timestamp).ToList();
+                //messages = messages.OrderBy(m => m.Timestamp).ToList();
+                
+                Console.WriteLine($"Added new message: {message.Message} at {message.Timestamp:HH:mm:ss} - Total messages: {messages.Count}");
+            }
+            else
+            {
+                Console.WriteLine($"Skipping duplicate message: {message.Message} (ID: {message.Id})");
+            }
+            
             await InvokeAsync(StateHasChanged);
+            // Don't scroll here - let OnAfterRenderAsync handle it naturally
         }
     }
 
     private async Task RetryConnection()
     {
-        await RealtimeService.StopAsync();
-        await Task.Delay(1000);
-        await RealtimeService.StartAsync();
+        try
+        {
+            await RealtimeService.StopAsync();
+            await Task.Delay(1000);
+            await RealtimeService.StartAsync();
+            NotificationService.Notify(NotificationSeverity.Info, "Connection", "Retrying connection...");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Connection Failed", ex.Message);
+        }
     }
 
     private async Task InitiateVideoCall(User user)
     {
-        await RealtimeService.InitiateCallAsync(user.Id, "video");
-        NotificationService.Notify(NotificationSeverity.Info, "Video Call", $"Request sent to {user.FirstName}");
+        if (!RealtimeService.IsConnected)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Not connected to server");
+            return;
+        }
+
+        try
+        {
+            await RealtimeService.InitiateCallAsync(user.Id, "video");
+            NotificationService.Notify(NotificationSeverity.Info, "Call Initiated",
+            $"Video call request sent to {user.FirstName} {user.LastName}");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error",
+            $"Failed to initiate call: {ex.Message}");
+        }
     }
 
     private async Task InitiateAudioCall(User user)
     {
-        await RealtimeService.InitiateCallAsync(user.Id, "audio");
-        NotificationService.Notify(NotificationSeverity.Info, "Audio Call", $"Request sent to {user.FirstName}");
+        if (!RealtimeService.IsConnected)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Not connected to server");
+            return;
+        }
+
+        try
+        {
+            await RealtimeService.InitiateCallAsync(user.Id, "audio");
+            NotificationService.Notify(NotificationSeverity.Info, "Call Initiated",
+            $"Audio call request sent to {user.FirstName} {user.LastName}");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error",
+            $"Failed to initiate call: {ex.Message}");
+        }
     }
 
     private async Task ScrollToBottom()
     {
-        try { await JS.InvokeVoidAsync("scrollToBottom", messagesContainer); } catch { }
+        try
+        {
+            await JS.InvokeVoidAsync("scrollToBottom", messagesContainer);
+        }
+        catch
+        {
+            // Ignore JS errors
+        }
     }
 
     [JSInvokable]
     public async Task OnPageVisible()
     {
+        Console.WriteLine("Page became visible - checking if we need to load chat history");
+        
+        // Load chat history if a user is selected and we're connected
         if (selectedUser != null && RealtimeService.IsConnected)
         {
+            Console.WriteLine("Page visible - loading chat history for selected user:", selectedUser.Id);
             await LoadChatHistory();
             StateHasChanged();
         }
     }
 
-    private void HandleIncomingCall(CallInvitation call)
+
+
+    private async void HandleIncomingCall(CallInvitation call)
     {
-        incomingCall = new IncomingCall
+        try
         {
-            CallerName = call.CallerName,
-            CallType = call.CallType,
-            CallerId = call.CallerId,
-            CallId = call.CallId,
-            CallTime = call.Timestamp
-        };
-        StateHasChanged();
+            // Convert CallInvitation to IncomingCall for the modal
+            var incomingCallData = new IncomingCall
+            {
+                CallerName = call.CallerName,
+                CallType = call.CallType,
+                CallerId = call.CallerId,
+                CallTime = call.Timestamp
+            };
+
+            incomingCall = incomingCallData;
+            StateHasChanged();
+            
+            // Auto-dismiss after 30 seconds if not answered
+            Task.Delay(30000).ContinueWith(_ => {
+                if (incomingCall != null)
+                {
+                    incomingCall = null;
+                    InvokeAsync(StateHasChanged);
+                }
+            });
+
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error",
+            $"Failed to handle incoming call: {ex.Message}");
+        }
     }
 
     private void StartAutoRefresh()
     {
+        // Stop existing timer if any
         autoRefreshTimer?.Dispose();
+        
+        // Start new timer for auto-refresh every 5 seconds
         autoRefreshTimer = new Timer(async _ => await AutoRefreshMessages(), null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
     }
 
@@ -1118,7 +1354,17 @@
         try
         {
             isAutoRefreshing = true;
+            
+            // Load fresh chat history to ensure we have the latest messages
             await LoadChatHistory();
+            
+            // Only scroll to bottom if there are new messages (not on every refresh)
+            // This prevents constant jumping when user is reading
+            // The scroll will happen naturally when new messages arrive
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Auto-refresh error: {ex.Message}");
         }
         finally
         {
@@ -1126,46 +1372,81 @@
         }
     }
 
+
     private void StartVideoCall(int userId)
     {
-        NotificationService.Notify(NotificationSeverity.Info, "Video Call",
-            $"Starting video call with user {userId}");
+        // For now, just show a notification
+        NotificationService.Notify(NotificationSeverity.Info, "Video Call", 
+            $"Starting video call with user {userId}. This will open a new window.");
+        
+        // In a real implementation, you would:
+        // 1. Generate a call token
+        // 2. Open a new window with the video call interface
+        // 3. Use Agora SDK for web
+        Console.WriteLine($"Starting video call with user {userId}");
     }
 
     private void StartAudioCall(int userId)
     {
-        NotificationService.Notify(NotificationSeverity.Info, "Audio Call",
-            $"Starting audio call with user {userId}");
+        // For now, just show a notification
+        NotificationService.Notify(NotificationSeverity.Info, "Audio Call", 
+            $"Starting audio call with user {userId}. This will open a new window.");
+        
+        // In a real implementation, you would:
+        // 1. Generate a call token
+        // 2. Open a new window with the audio call interface
+        // 3. Use Agora SDK for web
+        Console.WriteLine($"Starting audio call with user {userId}");
     }
 
     private async void AcceptCall()
     {
-        if (incomingCall == null) return;
-
-        try
+        if (incomingCall != null)
         {
-            NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
-                $"Accepting {incomingCall.CallType} call from {incomingCall.CallerName}");
-
-            var url = $"https://localhost:5443/shared-room?mobile_call=true&caller={incomingCall.CallerName}&channel={incomingCall.CallId}";
-            await JS.InvokeVoidAsync("open", url, "_blank");
-            incomingCall = null;
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+            try
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Call Accepted", 
+                    $"Accepting {incomingCall.CallType} call from {incomingCall.CallerName}");
+                
+                // Use the channel name from the incoming call
+                var channelName = incomingCall.CallId;
+                
+                // Open the shared room for WebRTC connection
+                var sharedRoomUrl = $"https://localhost:5443/shared-room?mobile_call=true&caller={incomingCall.CallerName}&channel={channelName}";
+                
+                // Open the shared room in a new window
+                await JS.InvokeVoidAsync("open", sharedRoomUrl, "_blank");
+                
+                NotificationService.Notify(NotificationSeverity.Success, "Call Connected", 
+                    $"Opening shared room for {incomingCall.CallType} call! You should now be able to talk.");
+                
+                incomingCall = null;
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Call Error", 
+                    $"Failed to accept call: {ex.Message}");
+            }
         }
     }
 
     private void RejectCall()
     {
-        if (incomingCall == null) return;
-        NotificationService.Notify(NotificationSeverity.Warning, "Call Declined",
-            $"Declined {incomingCall.CallType} call from {incomingCall.CallerName}");
-        incomingCall = null;
-        StateHasChanged();
+        if (incomingCall != null)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Call Declined", 
+                $"Declined {incomingCall.CallType} call from {incomingCall.CallerName}");
+            
+            // In a real implementation, you would:
+            // 1. Send rejection signal to caller
+            // 2. Close the call interface
+            
+            incomingCall = null;
+            StateHasChanged();
+        }
     }
+
 
     private void TestIncomingCall()
     {
@@ -1183,14 +1464,26 @@
     {
         try
         {
-            NotificationService.Notify(NotificationSeverity.Info, "Testing Audio", "Testing audio system...");
+            NotificationService.Notify(NotificationSeverity.Info, "Testing Audio", 
+                "Testing audio system...");
+            
             var result = await JS.InvokeAsync<bool>("agoraService.testAudio");
-            NotificationService.Notify(result ? NotificationSeverity.Success : NotificationSeverity.Warning,
-                "Audio Test", result ? "Audio system works!" : "Audio configured but silent.");
+            
+            if (result)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Audio Test", 
+                    "Audio system is working! You should have heard a beep sound.");
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Warning, "Audio Test", 
+                    "Audio test completed, but no sound was played. Audio system is configured.");
+            }
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Audio Test Failed", ex.Message);
+            NotificationService.Notify(NotificationSeverity.Error, "Audio Test Failed", 
+                $"Audio test failed: {ex.Message}");
         }
     }
 
@@ -1198,32 +1491,57 @@
     {
         try
         {
-            NotificationService.Notify(NotificationSeverity.Info, "Testing Agora SDK", "Checking SDK...");
+            NotificationService.Notify(NotificationSeverity.Info, "Testing Agora SDK", 
+                "Checking if Agora SDK is loaded...");
+            
             var result = await JS.InvokeAsync<bool>("agoraService.testAgoraSDK");
-            NotificationService.Notify(result ? NotificationSeverity.Success : NotificationSeverity.Error,
-                "Agora SDK", result ? "SDK loaded and ready!" : "SDK not loaded!");
+            
+            if (result)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Agora SDK Test", 
+                    "Agora SDK is loaded and ready! Check console for details.");
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Agora SDK Test", 
+                    "Agora SDK is not loaded! Check console for details.");
+            }
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Agora SDK Test Failed", ex.Message);
+            NotificationService.Notify(NotificationSeverity.Error, "Agora SDK Test Failed", 
+                $"Agora SDK test failed: {ex.Message}");
         }
     }
 
+    // Agora callback methods
     [JSInvokable]
-    public void OnUserJoinedCallback(int uid) =>
-        NotificationService.Notify(NotificationSeverity.Info, "User Joined", $"User {uid} joined");
+    public void OnUserJoinedCallback(int uid)
+    {
+        NotificationService.Notify(NotificationSeverity.Info, "User Joined", 
+            $"User {uid} joined the call");
+    }
 
     [JSInvokable]
-    public void OnUserLeftCallback(int uid) =>
-        NotificationService.Notify(NotificationSeverity.Info, "User Left", $"User {uid} left");
+    public void OnUserLeftCallback(int uid)
+    {
+        NotificationService.Notify(NotificationSeverity.Info, "User Left", 
+            $"User {uid} left the call");
+    }
 
     [JSInvokable]
-    public void OnConnectionStateChangedCallback(string state) =>
-        NotificationService.Notify(NotificationSeverity.Info, "Connection State", $"State: {state}");
+    public void OnConnectionStateChangedCallback(string state)
+    {
+        NotificationService.Notify(NotificationSeverity.Info, "Connection State", 
+            $"Connection state: {state}");
+    }
 
     [JSInvokable]
-    public void OnErrorCallback(string error) =>
-        NotificationService.Notify(NotificationSeverity.Error, "Agora Error", error);
+    public void OnErrorCallback(string error)
+    {
+        NotificationService.Notify(NotificationSeverity.Error, "Agora Error", 
+            $"Agora error: {error}");
+    }
 
     public void Dispose()
     {
@@ -1232,13 +1550,13 @@
         autoRefreshTimer?.Dispose();
     }
 
+    // Incoming call model
     public class IncomingCall
     {
         public string CallerName { get; set; } = string.Empty;
-        public string CallType { get; set; } = string.Empty;
+        public string CallType { get; set; } = string.Empty; // "video" or "audio"
         public int CallerId { get; set; }
-        public string CallId { get; set; } = string.Empty;
+        public string CallId { get; set; } = string.Empty; // Channel name
         public DateTime CallTime { get; set; } = DateTime.UtcNow;
     }
 }
-

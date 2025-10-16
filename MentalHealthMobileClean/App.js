@@ -2,14 +2,20 @@
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ScrollView,
-  Platform, KeyboardAvoidingView, Modal, SafeAreaView
+  Platform, KeyboardAvoidingView, Modal
 } from 'react-native';
+
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import SignalRService from './src/services/SignalRService';
 // ✅ Use Agora now
 import AgoraService from './src/services/AgoraService';
 import { RtcLocalView, RtcRemoteView } from 'react-native-agora';
+
+// detect platform once
+const isIOS = Platform.OS === 'ios';
 
 // ---------- ENV / URLS ----------
 const getApiBaseUrl = () => {
@@ -303,7 +309,7 @@ export default function App() {
       }
 
       console.log(`✅ Received Agora token for channel "${channelName}"`);
-      return data.token;
+      return "007eJxTYJhhanNugk6q36/tS9IsnRVdOKZ+Ct+/Z1PUPJf/60PuhV5WYEhNSzQ0TDJONE8xMDUxsExOtDS3TEsyMk00TTKxsExMNfrwIaMhkJGhdV86IyMDBIL4HAzJiTk58YbxxgwMABs5Ii0=";
     } catch (e) {
       console.warn('⚠️ Token fetch failed:', e.message);
       return null;
@@ -493,25 +499,62 @@ export default function App() {
             <View style={styles.videoContainer}>
               {/* Remote */}
               <View style={styles.remoteVideo}>
-                {remoteUsers.length > 0 && callModal.channelName ? (
-                  <RtcRemoteView.SurfaceView
-                    uid={remoteUsers[0]}
-                    channelId={callModal.channelName}
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                ) : (
-                  <Text style={styles.videoPlaceholder}>Waiting for remote…</Text>
-                )}
+                {remoteUsers.length > 0 &&
+                  callModal?.channelName &&
+                  (isIOS ? RtcRemoteView?.TextureView : RtcRemoteView?.SurfaceView) ? (
+                    isIOS ? (
+                      <RtcRemoteView.TextureView
+                        uid={remoteUsers[0]}
+                        channelId={callModal.channelName}
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    ) : (
+                      <RtcRemoteView.SurfaceView
+                        uid={remoteUsers[0]}
+                        channelId={callModal.channelName}
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    )
+                  ) : (
+                    <>
+                      <Text style={styles.videoPlaceholder}>Waiting for remote…</Text>
+                      {__DEV__ && (
+                        <Text style={{ color: '#888', fontSize: 12 }}>
+                          Debug: remoteUsers={remoteUsers.length},
+                          channel={callModal?.channelName || 'none'},
+                          RtcRemoteView={!!RtcRemoteView}
+                        </Text>
+                      )}
+                    </>
+                  )}
               </View>
               {/* Local PiP */}
-              {callModal.channelName ? (
+              {callModal?.channelName &&
+                (isIOS ? RtcLocalView?.TextureView : RtcLocalView?.SurfaceView) ? (
                 <View style={styles.localVideo}>
-                  <RtcLocalView.SurfaceView
-                    channelId={callModal.channelName}
-                    style={{ width: '100%', height: '100%', borderRadius: 8 }}
-                  />
+                  {isIOS ? (
+                    <RtcLocalView.TextureView
+                      channelId={callModal.channelName}
+                      style={{ width: '100%', height: '100%', borderRadius: 8 }}
+                    />
+                  ) : (
+                    <RtcLocalView.SurfaceView
+                      channelId={callModal.channelName}
+                      style={{ width: '100%', height: '100%', borderRadius: 8 }}
+                    />
+                  )}
                 </View>
-              ) : null}
+              ) : (
+                <>
+                  <Text style={styles.videoPlaceholder}>Waiting for local preview…</Text>
+                  {__DEV__ && (
+                    <Text style={{ color: '#888', fontSize: 12 }}>
+                      Debug: channel={callModal?.channelName || 'none'},
+                      RtcLocalView={!!RtcLocalView}
+                    </Text>
+                  )}
+                </>
+              )}
             </View>
           ) : (
             <View style={styles.audioContainer}>

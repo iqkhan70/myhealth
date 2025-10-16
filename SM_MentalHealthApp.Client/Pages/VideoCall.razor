@@ -26,7 +26,13 @@
                 <p>Click "Start Call" to begin the video call</p>
             </div>
             <div class="call-actions">
-                <button class="btn btn-primary btn-lg" @onclick="StartCall" disabled="@isConnecting">
+                
+
+                <button class="btn btn-primary btn-lg"
+                        @onclick="() => StartVideoCall(UserId)"
+                        disabled="@isConnecting">
+
+
                     @if (isConnecting)
                     {
                         <span class="spinner-border spinner-border-sm me-2"></span>
@@ -367,7 +373,7 @@
         }
     }
 
-    private async Task StartCall()
+    @* private async Task StartCall()
     {
         try
         {
@@ -389,7 +395,7 @@
             if (uid == 0) uid = (uint)new Random().Next(100000, 999999);
 
             // Join channel (this is always a video call since it's the VideoCall page)
-            var success = await AgoraService.JoinChannelAsync(channelName, token, uid);
+            var success = await AgoraService.JoinChannelAsync(channelName, "007eJxTYJhhanNugk6q36/tS9IsnRVdOKZ+Ct+/Z1PUPJf/60PuhV5WYEhNSzQ0TDJONE8xMDUxsExOtDS3TEsyMk00TTKxsExMNfrwIaMhkJGhdV86IyMDBIL4HAzJiTk58YbxxgwMABs5Ii0=", uid);
             if (!success)
             {
                 throw new Exception("Failed to join call");
@@ -408,7 +414,60 @@
         {
             isConnecting = false;
         }
+    } *@
+
+    private async Task StartVideoCall(int targetUserId)
+    {
+        try
+        {
+            isConnecting = true;
+            callStatus = "Connecting...";
+
+
+            Console.WriteLine("targetUserId.........: " + targetUserId);
+
+
+            // ✅ Generate consistent channel name between caller/callee
+            var callerId = AuthService.CurrentUser?.Id ?? 0;
+            if (callerId == 0)
+                throw new Exception("Invalid caller ID");
+
+            var smallerId = Math.Min(callerId, targetUserId);
+            var largerId = Math.Max(callerId, targetUserId);
+            var channelName = $"call_{smallerId}_{largerId}";
+
+            // ✅ Get Agora token (pass both channel + caller UID)
+            var token = await AgoraService.GetAgoraTokenAsync(channelName, (uint)callerId);
+            if (string.IsNullOrEmpty(token))
+                throw new Exception("Failed to get call token");
+
+            // ✅ Join the Agora channel (video enabled)
+            var uid = (uint)callerId;
+            var success = await AgoraService.JoinChannelAsync(
+                channelName,
+                token,   // use fetched token, not hardcoded one
+                uid,
+                true     // true = video call
+            );
+
+            if (!success)
+                throw new Exception("Failed to join call");
+
+            isInCall = true;
+            currentChannel = channelName;
+            callStatus = "Connected";
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to start video call: {ex.Message}";
+            callStatus = "Call failed";
+        }
+        finally
+        {
+            isConnecting = false;
+        }
     }
+
 
     private async Task EndCall()
     {

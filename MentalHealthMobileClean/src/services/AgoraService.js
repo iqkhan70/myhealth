@@ -72,28 +72,68 @@ class AgoraService {
   //   });
   // }
 
+  // async joinChannel({ token, channelName, uid, withVideo }) {
+  //   if (!this.engine) return false;
+  //   try {
+  //     await this.engine.enableAudio();
+  //     if (withVideo) await this.engine.enableVideo();
+
+  //     console.log("📞 Joining Agora:", { channelName, uid, token });
+  //     const result = await this.engine.joinChannel(token, channelName, uid);
+
+  //     await this.engine.muteLocalAudioStream(false);
+  //     await this.engine.enableLocalAudio(true);
+
+  //     await this.engine.setEnableSpeakerphone(true);
+
+
+  //     console.log("✅ Joined channel successfully:", result);
+  //     return true;
+  //   } catch (e) {
+  //     console.error("startCall error:", e);
+  //     return false;
+  //   }
+  // }
+
   async joinChannel({ token, channelName, uid, withVideo }) {
-    if (!this.engine) return false;
+    if (!this.engine) {
+      console.warn("⚠️ Engine not initialized");
+      return false;
+    }
+
     try {
-      await this.engine.enableAudio();
-      if (withVideo) await this.engine.enableVideo();
-
       console.log("📞 Joining Agora:", { channelName, uid, token });
-      const result = await this.engine.joinChannel(token, channelName, uid);
 
+      // ensure correct role + profile
+      await this.engine.setChannelProfile(1); // 1 = communication
+      await this.engine.setClientRole(1);     // 1 = broadcaster
+
+      await this.engine.enableAudio();
+      if (withVideo) {
+        await this.engine.enableVideo();
+        await this.engine.startPreview(); // 👈 critical for iOS local camera
+      }
+
+      // join the channel
+      const result = await this.engine.joinChannel(token, channelName, uid, {
+        clientRoleType: 1, // broadcaster
+        channelProfile: 1, // communication
+      });
+
+      // ensure audio is routed properly
       await this.engine.muteLocalAudioStream(false);
       await this.engine.enableLocalAudio(true);
-
       await this.engine.setEnableSpeakerphone(true);
-
 
       console.log("✅ Joined channel successfully:", result);
       return true;
     } catch (e) {
-      console.error("startCall error:", e);
+      console.error("❌ joinChannel error:", e);
       return false;
     }
   }
+
+
 
   async leaveChannel() {
     if (!this.engine) return;
