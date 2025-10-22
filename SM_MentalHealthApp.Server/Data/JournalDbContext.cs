@@ -16,6 +16,7 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<ChatMessage> ChatMessages { get; set; }
             public DbSet<SmsMessage> SmsMessages { get; set; }
             public DbSet<ContentItem> Contents { get; set; }
+            public DbSet<ContentTypeModel> ContentTypes { get; set; }
             public DbSet<ContentAnalysis> ContentAnalyses { get; set; }
             public DbSet<ContentAlert> ContentAlerts { get; set; }
 
@@ -175,6 +176,23 @@ namespace SM_MentalHealthApp.Server.Data
                         // Add unique constraint to prevent duplicate analyses for the same content
                         entity.HasIndex(e => e.ContentId)
                         .IsUnique();
+                  });
+
+                  // Configure ContentTypeModel entity
+                  modelBuilder.Entity<ContentTypeModel>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Name).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.Description).HasMaxLength(200);
+                        entity.Property(e => e.Icon).HasMaxLength(20);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.SortOrder).HasDefaultValue(0);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Index for performance
+                        entity.HasIndex(e => e.Name).IsUnique();
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.SortOrder);
                   });
 
                   // Configure ContentAlert entity

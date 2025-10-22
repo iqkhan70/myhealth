@@ -45,6 +45,7 @@ namespace SM_MentalHealthApp.Shared
     {
         None,        // No chat history stored
         Summary,     // Only AI-generated summaries
-        Full        // Recent messages + summaries
+        Full,        // Recent messages + summaries
+        Private      // Private chat sessions
     }
 }

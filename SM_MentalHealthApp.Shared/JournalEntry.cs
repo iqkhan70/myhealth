@@ -179,7 +179,7 @@ namespace SM_MentalHealthApp.Shared
         public string S3Bucket { get; set; } = string.Empty;
         public string S3Key { get; set; } = string.Empty; // S3 object key
         // public string S3Url { get; set; } = string.Empty; // Removed - URLs generated on-demand for security
-        public ContentType Type { get; set; }
+        public int ContentTypeModelId { get; set; } // Foreign key to ContentTypeModel
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastAccessedAt { get; set; }
         public bool IsActive { get; set; } = true;
@@ -187,6 +187,7 @@ namespace SM_MentalHealthApp.Shared
         // Navigation properties
         public User Patient { get; set; } = null!;
         public User? AddedByUser { get; set; }
+        public ContentTypeModel ContentTypeModel { get; set; } = null!;
     }
 
     public enum ContentType

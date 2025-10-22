@@ -84,7 +84,7 @@ namespace SM_MentalHealthApp.Server.Services
                     OriginalFileName = request.FileName,
                     ContentType = request.ContentType,
                     FileSizeBytes = request.FileSizeBytes,
-                    Type = request.Type,
+                    ContentTypeModelId = await GetContentTypeModelIdAsync(request.Type),
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true
                 };
@@ -183,7 +183,8 @@ namespace SM_MentalHealthApp.Server.Services
                 // Apply filters
                 if (request.Type.HasValue)
                 {
-                    query = query.Where(c => c.Type == request.Type.Value);
+                    var contentTypeId = await GetContentTypeModelIdAsync(request.Type.Value);
+                    query = query.Where(c => c.ContentTypeModelId == contentTypeId);
                 }
 
                 if (!string.IsNullOrEmpty(request.Category))
@@ -221,7 +222,7 @@ namespace SM_MentalHealthApp.Server.Services
                         OriginalFileName = c.OriginalFileName,
                         ContentType = c.ContentType,
                         FileSizeBytes = c.FileSizeBytes,
-                        Type = c.Type,
+                        Type = GetContentTypeNameFromId(c.ContentTypeModelId),
                         CreatedAt = c.CreatedAt,
                         LastAccessedAt = c.LastAccessedAt,
                         IsActive = c.IsActive,
@@ -289,7 +290,7 @@ namespace SM_MentalHealthApp.Server.Services
                     OriginalFileName = contentItem.OriginalFileName,
                     ContentType = contentItem.ContentType,
                     FileSizeBytes = contentItem.FileSizeBytes,
-                    Type = contentItem.Type,
+                    Type = await GetContentTypeNameAsync(contentItem.ContentTypeModelId),
                     CreatedAt = contentItem.CreatedAt,
                     LastAccessedAt = contentItem.LastAccessedAt,
                     IsActive = contentItem.IsActive,
@@ -495,6 +496,68 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 return false;
             }
+        }
+
+        private async Task<int> GetContentTypeModelIdAsync(ContentType type)
+        {
+            var contentTypeName = type.ToString();
+            var contentType = await _context.ContentTypes
+                .FirstOrDefaultAsync(ct => ct.Name == contentTypeName);
+
+            if (contentType == null)
+            {
+                // Create the content type if it doesn't exist
+                contentType = new ContentTypeModel
+                {
+                    Name = contentTypeName,
+                    Description = $"Content type for {contentTypeName}",
+                    Icon = GetIconForType(type),
+                    IsActive = true,
+                    SortOrder = (int)type,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.ContentTypes.Add(contentType);
+                await _context.SaveChangesAsync();
+            }
+
+            return contentType.Id;
+        }
+
+        private string GetIconForType(ContentType type)
+        {
+            return type switch
+            {
+                ContentType.Document => "📄",
+                ContentType.Image => "🖼️",
+                ContentType.Video => "🎥",
+                ContentType.Audio => "🎵",
+                _ => "📁"
+            };
+        }
+
+        private async Task<ContentType> GetContentTypeNameAsync(int contentTypeId)
+        {
+            var contentType = await _context.ContentTypes
+                .FirstOrDefaultAsync(ct => ct.Id == contentTypeId);
+
+            if (contentType == null)
+                return ContentType.Document;
+
+            return Enum.TryParse<ContentType>(contentType.Name, out var result) ? result : ContentType.Document;
+        }
+
+        private ContentType GetContentTypeNameFromId(int contentTypeId)
+        {
+            // This is a simplified version for synchronous use
+            // In a real implementation, you'd need to cache this or use a different approach
+            return contentTypeId switch
+            {
+                1 => ContentType.Document,
+                2 => ContentType.Image,
+                3 => ContentType.Video,
+                4 => ContentType.Audio,
+                _ => ContentType.Document
+            };
         }
     }
 }

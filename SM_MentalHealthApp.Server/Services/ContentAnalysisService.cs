@@ -44,7 +44,7 @@ namespace SM_MentalHealthApp.Server.Services
             try
             {
                 _logger.LogInformation("Extracting text from content {ContentId}, S3Key: {S3Key}, Type: {Type}",
-                    content.Id, content.S3Key, content.Type);
+                    content.Id, content.S3Key, content.ContentTypeModel?.Name ?? "Unknown");
 
                 // Get file from S3
                 var fileStream = await _s3Service.GetFileStreamAsync(content.S3Key);
@@ -58,12 +58,13 @@ namespace SM_MentalHealthApp.Server.Services
                     content.Id, fileStream.Length);
 
                 // Extract text based on content type
-                var extractedText = content.Type switch
+                var contentTypeName = content.ContentTypeModel?.Name ?? "Document";
+                var extractedText = contentTypeName switch
                 {
-                    ContentType.Document => await ExtractTextFromDocumentAsync(fileStream, content.OriginalFileName),
-                    ContentType.Image => await ExtractTextFromImageAsync(fileStream, content.OriginalFileName),
-                    ContentType.Video => await ExtractTextFromVideoAsync(fileStream, content.OriginalFileName),
-                    ContentType.Audio => await ExtractTextFromAudioAsync(fileStream, content.OriginalFileName),
+                    "Document" => await ExtractTextFromDocumentAsync(fileStream, content.OriginalFileName),
+                    "Image" => await ExtractTextFromImageAsync(fileStream, content.OriginalFileName),
+                    "Video" => await ExtractTextFromVideoAsync(fileStream, content.OriginalFileName),
+                    "Audio" => await ExtractTextFromAudioAsync(fileStream, content.OriginalFileName),
                     _ => await ExtractTextFromGenericFileAsync(fileStream, content.OriginalFileName)
                 };
 
@@ -83,7 +84,7 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                _logger.LogInformation("Starting content analysis for content {ContentId} of type {ContentType}", content.Id, content.Type);
+                _logger.LogInformation("Starting content analysis for content {ContentId} of type {ContentType}", content.Id, content.ContentTypeModel?.Name ?? "Unknown");
 
                 // Check if analysis already exists to prevent duplicates
                 var existingAnalysis = await _context.ContentAnalyses
@@ -102,7 +103,7 @@ namespace SM_MentalHealthApp.Server.Services
                     var emptyAnalysis = new SM_MentalHealthApp.Shared.ContentAnalysis
                     {
                         ContentId = content.Id,
-                        ContentType = content.Type.ToString(),
+                        ContentType = content.ContentTypeModel?.Name ?? "Unknown",
                         ExtractedText = string.Empty,
                         AnalysisResults = new Dictionary<string, object>(),
                         Alerts = new List<string>(),
@@ -119,7 +120,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var analysis = new SM_MentalHealthApp.Shared.ContentAnalysis
                 {
                     ContentId = content.Id,
-                    ContentType = content.Type.ToString(),
+                    ContentType = content.ContentTypeModel?.Name ?? "Unknown",
                     ExtractedText = extractedText,
                     AnalysisResults = new Dictionary<string, object>(),
                     Alerts = new List<string>(),
@@ -164,7 +165,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var errorAnalysis = new SM_MentalHealthApp.Shared.ContentAnalysis
                 {
                     ContentId = content.Id,
-                    ContentType = content.Type.ToString(),
+                    ContentType = content.ContentTypeModel?.Name ?? "Unknown",
                     ExtractedText = string.Empty,
                     AnalysisResults = new Dictionary<string, object>(),
                     Alerts = new List<string> { $"Analysis failed: {ex.Message}" },
@@ -195,7 +196,7 @@ namespace SM_MentalHealthApp.Server.Services
             foreach (var content in patientContents)
             {
                 _logger.LogInformation("Content {ContentId}: {Title} - {ContentType} - Created: {CreatedAt}",
-                    content.Id, content.Title, content.Type, content.CreatedAt);
+                    content.Id, content.Title, content.ContentTypeModel?.Name ?? "Unknown", content.CreatedAt);
             }
 
             // Get already processed content analyses from database

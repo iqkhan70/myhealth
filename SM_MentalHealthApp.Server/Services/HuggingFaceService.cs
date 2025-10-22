@@ -439,7 +439,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var acknowledgedDetails = new List<string>();
 
                 // Parse emergency incidents with acknowledgment status - use multiline regex
-                var emergencyMatches = System.Text.RegularExpressions.Regex.Matches(text, @"\[([^\]]+)\] (Fall|Cardiac|Panic Attack|Seizure|Overdose|Self Harm) - (Critical|High|Medium|Low).*?Status: (Acknowledged|Pending)", System.Text.RegularExpressions.RegexOptions.Singleline);
+                var emergencyMatches = System.Text.RegularExpressions.Regex.Matches(text, @"\[([^\]]+)\] (Fall|Cardiac|PanicAttack|Seizure|Overdose|SelfHarm) - (Critical|High|Medium|Low).*?Status: (Acknowledged|Pending)", System.Text.RegularExpressions.RegexOptions.Singleline);
 
                 _logger.LogInformation("Found {Count} emergency matches in text", emergencyMatches.Count);
 

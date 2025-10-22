@@ -82,7 +82,7 @@
                             Filterable="true">
                             <Template Context="content">
                                 <div>
-                                    <i class="@GetFileIcon(content.Type)"></i>
+                                    <i class="@GetFileIcon(content.ContentTypeModel?.Name ?? "Other")"></i>
                                     @content.OriginalFileName
                                     <br />
                                     <small class="text-muted">@FormatFileSize(content.FileSizeBytes)</small>
@@ -90,10 +90,10 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="ContentItem" Property="Type" Title="Type" Width="100px" Filterable="true">
+                        <RadzenDataGridColumn TItem="ContentItem" Property="ContentTypeModel.Name" Title="Type" Width="100px" Filterable="true">
                             <Template Context="content">
-                                <span class="content-type-badge @GetTypeClass(content.Type)">
-                                    @content.Type.ToString()
+                                <span class="content-type-badge @GetTypeClass(content.ContentTypeModel?.Name ?? "Other")">
+                                    @(content.ContentTypeModel?.Name ?? "Other")
                                 </span>
                             </Template>
                         </RadzenDataGridColumn>
@@ -602,26 +602,26 @@
         selectedFile = null;
     }
 
-    private string GetFileIcon(ContentType type)
+    private string GetFileIcon(string typeName)
     {
-        return type switch
+        return typeName switch
         {
-            ContentType.Image => "fas fa-image",
-            ContentType.Video => "fas fa-video",
-            ContentType.Audio => "fas fa-music",
-            ContentType.Document => "fas fa-file-alt",
+            "Image" => "fas fa-image",
+            "Video" => "fas fa-video",
+            "Audio" => "fas fa-music",
+            "Document" => "fas fa-file-alt",
             _ => "fas fa-file"
         };
     }
 
-    private string GetTypeClass(ContentType type)
+    private string GetTypeClass(string typeName)
     {
-        return type switch
+        return typeName switch
         {
-            ContentType.Image => "image",
-            ContentType.Video => "video",
-            ContentType.Audio => "audio",
-            ContentType.Document => "document",
+            "Image" => "image",
+            "Video" => "video",
+            "Audio" => "audio",
+            "Document" => "document",
             _ => "other"
         };
     }

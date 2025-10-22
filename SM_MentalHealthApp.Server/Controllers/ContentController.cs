@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using Amazon.S3;
+using Microsoft.EntityFrameworkCore;
+using SM_MentalHealthApp.Server.Data;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -13,13 +15,15 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly ILogger<ContentController> _logger;
         private readonly IAmazonS3 _s3Client;
         private readonly IContentAnalysisService _contentAnalysisService;
+        private readonly JournalDbContext _context;
 
-        public ContentController(ContentService contentService, ILogger<ContentController> logger, IAmazonS3 s3Client, IContentAnalysisService contentAnalysisService)
+        public ContentController(ContentService contentService, ILogger<ContentController> logger, IAmazonS3 s3Client, IContentAnalysisService contentAnalysisService, JournalDbContext context)
         {
             _contentService = contentService;
             _logger = logger;
             _s3Client = s3Client;
             _contentAnalysisService = contentAnalysisService;
+            _context = context;
         }
 
         [HttpGet("patient/{patientId}")]
@@ -150,7 +154,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     OriginalFileName = request.File.FileName,
                     ContentType = request.File.ContentType,
                     FileSizeBytes = request.File.Length,
-                    Type = contentType
+                    ContentTypeModelId = await GetContentTypeModelIdAsync(contentType)
                 };
 
                 using var stream = request.File.OpenReadStream();
@@ -317,6 +321,43 @@ namespace SM_MentalHealthApp.Server.Controllers
                 _ => ContentType.Other
             };
         }
+
+        private async Task<int> GetContentTypeModelIdAsync(ContentType type)
+        {
+            var contentTypeName = type.ToString();
+            var contentType = await _context.ContentTypes
+                .FirstOrDefaultAsync(ct => ct.Name == contentTypeName);
+
+            if (contentType == null)
+            {
+                // Create the content type if it doesn't exist
+                contentType = new ContentTypeModel
+                {
+                    Name = contentTypeName,
+                    Description = $"Content type for {contentTypeName}",
+                    Icon = GetIconForType(type),
+                    IsActive = true,
+                    SortOrder = (int)type,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.ContentTypes.Add(contentType);
+                await _context.SaveChangesAsync();
+            }
+
+            return contentType.Id;
+        }
+
+        private string GetIconForType(ContentType type)
+        {
+            return type switch
+            {
+                ContentType.Document => "📄",
+                ContentType.Image => "🖼️",
+                ContentType.Video => "🎥",
+                ContentType.Audio => "🎵",
+                _ => "📁"
+            };
+        }
     }
 
     public class ContentUploadRequest
@@ -334,4 +375,5 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string Description { get; set; } = string.Empty;
         public int? AddedByUserId { get; set; }
     }
+
 }

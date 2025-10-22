@@ -49,7 +49,7 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                _logger.LogInformation("Processing content {ContentId} of type {ContentType}", content.Id, content.Type);
+                _logger.LogInformation("Processing content {ContentId} of type {ContentType}", content.Id, content.ContentTypeModel?.Name ?? "Unknown");
 
                 // Extract text from the content
                 var extractedText = await _contentAnalysisService.ExtractTextFromContentAsync(content);
@@ -57,7 +57,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var analysis = new SM_MentalHealthApp.Shared.ContentAnalysis
                 {
                     ContentId = content.Id,
-                    ContentType = content.Type.ToString(),
+                    ContentType = content.ContentTypeModel?.Name ?? "Unknown",
                     ExtractedText = extractedText,
                     AnalysisResults = new Dictionary<string, object>(),
                     Alerts = new List<string>(),
@@ -66,21 +66,22 @@ namespace SM_MentalHealthApp.Server.Services
                 };
 
                 // Analyze based on content type
-                switch (content.Type)
+                var contentTypeName = content.ContentTypeModel?.Name ?? "Document";
+                switch (contentTypeName)
                 {
-                    case ContentType.Document:
+                    case "Document":
                         var medicalAnalysis = await AnalyzeMedicalDocumentAsync(extractedText, content.OriginalFileName);
                         analysis.AnalysisResults["MedicalAnalysis"] = medicalAnalysis;
                         break;
-                    case ContentType.Video:
+                    case "Video":
                         var videoAnalysis = await AnalyzeVideoAsync(extractedText, content.OriginalFileName);
                         analysis.AnalysisResults["VideoAnalysis"] = videoAnalysis;
                         break;
-                    case ContentType.Audio:
+                    case "Audio":
                         var audioAnalysis = await AnalyzeAudioAsync(extractedText, content.OriginalFileName);
                         analysis.AnalysisResults["AudioAnalysis"] = audioAnalysis;
                         break;
-                    case ContentType.Image:
+                    case "Image":
                         var imageAnalysis = await AnalyzeImageAsync(extractedText, content.OriginalFileName);
                         analysis.AnalysisResults["ImageAnalysis"] = imageAnalysis;
                         break;
@@ -103,7 +104,7 @@ namespace SM_MentalHealthApp.Server.Services
                 return new SM_MentalHealthApp.Shared.ContentAnalysis
                 {
                     ContentId = content.Id,
-                    ContentType = content.Type.ToString(),
+                    ContentType = content.ContentTypeModel?.Name ?? "Unknown",
                     ExtractedText = string.Empty,
                     AnalysisResults = new Dictionary<string, object>(),
                     Alerts = new List<string>(),
