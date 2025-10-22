@@ -1,0 +1,470 @@
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Shared
+@inject IDocumentUploadService DocumentUploadService
+@inject IJSRuntime JSRuntime
+@inject ILogger<DocumentUpload> Logger
+
+<div class="document-upload-container">
+    <div class="upload-section">
+        <h4>Upload Medical Document</h4>
+
+        <div class="upload-form">
+            <div class="form-group">
+                <label for="patientSelect">Patient:</label>
+                <select id="patientSelect" @bind="SelectedPatientId" class="form-control">
+                    <option value="">Select Patient</option>
+                    @foreach (var patient in AvailablePatients)
+                    {
+                        <option value="@patient.Id">@patient.FullName</option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="titleInput">Title:</label>
+                <input id="titleInput" @bind="UploadRequest.Title" class="form-control"
+                    placeholder="Enter document title" />
+            </div>
+
+            <div class="form-group">
+                <label for="descriptionInput">Description:</label>
+                <textarea id="descriptionInput" @bind="UploadRequest.Description" class="form-control" rows="3"
+                    placeholder="Enter document description (optional)"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="categorySelect">Category:</label>
+                <select id="categorySelect" @bind="UploadRequest.Category" class="form-control">
+                    <option value="">Select Category</option>
+                    @foreach (var category in AvailableCategories)
+                    {
+                        <option value="@category">@category</option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="fileInput">Select File:</label>
+                <input id="fileInput" type="file" @onchange="OnFileSelected" class="form-control"
+                    accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.mp4,.avi,.mov,.mp3,.wav" />
+                @if (SelectedFile != null)
+                {
+                    <div class="file-info">
+                        <small class="text-muted">
+                            Selected: @SelectedFile.Name (@FormatFileSize(SelectedFile.Size))
+                        </small>
+                    </div>
+                }
+            </div>
+
+            <div class="form-group">
+                <button type="button" @onclick="UploadFile" class="btn btn-primary"
+                    disabled="@(SelectedFile == null || SelectedPatientId == 0 || IsUploading)">
+                    @if (IsUploading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        <text>Uploading...</text>
+                    }
+                    else
+                    {
+                        <text>Upload Document</text>
+                    }
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(UploadMessage))
+        {
+            <div class="alert @(IsUploadSuccess ? "alert-success" : "alert-danger") mt-3">
+                @UploadMessage
+            </div>
+        }
+    </div>
+
+    <div class="documents-section mt-4">
+        <h4>Patient Documents</h4>
+
+        @if (SelectedPatientId > 0)
+        {
+            <div class="document-filters mb-3">
+                <div class="row">
+                    <div class="col-md-3">
+                        <select @bind="FilterType" @bind:after="LoadDocuments" class="form-control">
+                            <option value="">All Types</option>
+                            <option value="1">Documents</option>
+                            <option value="2">Images</option>
+                            <option value="3">Videos</option>
+                            <option value="4">Audio</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select @bind="FilterCategory" @bind:after="LoadDocuments" class="form-control">
+                            <option value="">All Categories</option>
+                            @foreach (var category in AvailableCategories)
+                            {
+                                <option value="@category">@category</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="date" @bind="FilterFromDate" @bind:after="LoadDocuments" class="form-control"
+                            placeholder="From Date" />
+                    </div>
+                    <div class="col-md-3">
+                        <input type="date" @bind="FilterToDate" @bind:after="LoadDocuments" class="form-control"
+                            placeholder="To Date" />
+                    </div>
+                </div>
+            </div>
+
+            @if (IsLoadingDocuments)
+            {
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (Documents.Any())
+            {
+                <div class="documents-grid">
+                    @foreach (var doc in Documents)
+                    {
+                        <div class="document-card">
+                            <div class="document-header">
+                                <h6>@doc.Title</h6>
+                                <div class="document-actions">
+                                    <button @onclick="() => DownloadDocument(doc.Id)" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                    <button @onclick="() => DeleteDocument(doc.Id)" class="btn btn-sm btn-outline-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="document-body">
+                                @if (!string.IsNullOrEmpty(doc.Description))
+                                {
+                                    <p class="document-description">@doc.Description</p>
+                                }
+
+                                <div class="document-meta">
+                                    <small class="text-muted">
+                                        <i class="fas fa-file"></i> @doc.OriginalFileName
+                                        <br />
+                                        <i class="fas fa-calendar"></i> @doc.CreatedAt.ToString("MMM dd, yyyy")
+                                        <br />
+                                        <i class="fas fa-user"></i> Added by @doc.AddedByUserName
+                                        <br />
+                                        <i class="fas fa-weight"></i> @FormatFileSize(doc.FileSizeBytes)
+                                    </small>
+                                </div>
+
+                                @if (doc.Type == ContentType.Image && !string.IsNullOrEmpty(doc.ThumbnailUrl))
+                                {
+                                    <div class="document-thumbnail">
+                                        <img src="@doc.ThumbnailUrl" alt="@doc.Title" class="img-thumbnail"
+                                            style="max-width: 100px; max-height: 100px;" />
+                                    </div>
+                                }
+
+                                @if (doc.HasAnalysis)
+                                {
+                                    <div class="analysis-badge">
+                                        <span class="badge bg-info">@doc.AnalysisStatus</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @if (TotalPages > 1)
+                {
+                    <nav aria-label="Document pagination">
+                        <ul class="pagination justify-content-center">
+                            <li class="page-item @(CurrentPage == 1 ? "disabled" : "")">
+                                <button class="page-link" @onclick="() => ChangePage(CurrentPage - 1)"
+                                    disabled="@(CurrentPage == 1)">Previous</button>
+                            </li>
+                            @for (int i = 1; i <= TotalPages; i++)
+                            {
+                                <li class="page-item @(i == CurrentPage ? "active" : "")">
+                                    <button class="page-link" @onclick="() => ChangePage(i)">@i</button>
+                                </li>
+                            }
+                            <li class="page-item @(CurrentPage == TotalPages ? "disabled" : "")">
+                                <button class="page-link" @onclick="() => ChangePage(CurrentPage + 1)"
+                                    disabled="@(CurrentPage == TotalPages)">Next</button>
+                            </li>
+                        </ul>
+                    </nav>
+                }
+            }
+            else
+            {
+                <div class="text-center text-muted">
+                    <i class="fas fa-folder-open fa-3x mb-3"></i>
+                    <p>No documents found for this patient.</p>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="text-center text-muted">
+                <p>Please select a patient to view their documents.</p>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<User> AvailablePatients { get; set; } = new();
+    [Parameter] public EventCallback OnDocumentUploaded { get; set; }
+
+    private DocumentUploadRequest UploadRequest = new();
+    private IBrowserFile? SelectedFile;
+    private bool IsUploading = false;
+    private string UploadMessage = "";
+    private bool IsUploadSuccess = false;
+
+    private List<DocumentInfo> Documents = new();
+    private bool IsLoadingDocuments = false;
+    private int CurrentPage = 1;
+    private int TotalPages = 0;
+    private int SelectedPatientId = 0;
+    private string FilterType = "";
+    private string FilterCategory = "";
+    private DateTime? FilterFromDate;
+    private DateTime? FilterToDate;
+    private List<string> AvailableCategories = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+    }
+
+    private async Task LoadCategories()
+    {
+        try
+        {
+            AvailableCategories = (await DocumentUploadService.GetCategoriesAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading categories");
+        }
+    }
+
+    private void OnFileSelected(ChangeEventArgs e)
+    {
+        var files = (IBrowserFile[])e.Value!;
+        if (files.Length > 0)
+        {
+            SelectedFile = files[0];
+
+            // Auto-fill title if empty
+            if (string.IsNullOrEmpty(UploadRequest.Title))
+            {
+                UploadRequest.Title = Path.GetFileNameWithoutExtension(SelectedFile.Name);
+            }
+
+            // Auto-detect content type
+            UploadRequest.Type = GetContentTypeFromFile(SelectedFile);
+            UploadRequest.ContentType = SelectedFile.ContentType;
+            UploadRequest.FileSizeBytes = (long)SelectedFile.Size;
+            UploadRequest.FileName = SelectedFile.Name;
+        }
+    }
+
+    private ContentType GetContentTypeFromFile(IBrowserFile file)
+    {
+        var contentType = file.ContentType.ToLower();
+
+        if (contentType.StartsWith("image/"))
+            return ContentType.Image;
+        else if (contentType.StartsWith("video/"))
+            return ContentType.Video;
+        else if (contentType.StartsWith("audio/"))
+            return ContentType.Audio;
+        else
+            return ContentType.Document;
+    }
+
+    private async Task UploadFile()
+    {
+        if (SelectedFile == null || SelectedPatientId == 0)
+            return;
+
+        IsUploading = true;
+        UploadMessage = "";
+
+        try
+        {
+            // Set patient ID
+            UploadRequest.PatientId = SelectedPatientId;
+
+            // Initiate upload
+            var response = await DocumentUploadService.InitiateUploadAsync(UploadRequest);
+
+            if (response.Success && !string.IsNullOrEmpty(response.UploadUrl))
+            {
+                // Upload file to S3
+                await UploadToS3(response.UploadUrl, SelectedFile);
+
+                // Complete upload
+                var completeResponse = await DocumentUploadService.CompleteUploadAsync(response.ContentId!.Value,
+                $"documents/{SelectedPatientId}/{UploadRequest.FileName}");
+
+                if (completeResponse.Success)
+                {
+                    UploadMessage = "Document uploaded successfully!";
+                    IsUploadSuccess = true;
+
+                    // Reset form
+                    UploadRequest = new DocumentUploadRequest();
+                    SelectedFile = null;
+
+                    // Reload documents
+                    await LoadDocuments();
+
+                    // Notify parent component
+                    await OnDocumentUploaded.InvokeAsync();
+                }
+                else
+                {
+                    UploadMessage = completeResponse.Message;
+                    IsUploadSuccess = false;
+                }
+            }
+            else
+            {
+                UploadMessage = response.Message;
+                IsUploadSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error uploading file");
+            UploadMessage = "An error occurred while uploading the file.";
+            IsUploadSuccess = false;
+        }
+        finally
+        {
+            IsUploading = false;
+        }
+    }
+
+    private async Task UploadToS3(string uploadUrl, IBrowserFile file)
+    {
+        using var content = new StreamContent(file.OpenReadStream());
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
+
+        using var httpClient = new HttpClient();
+        var response = await httpClient.PutAsync(uploadUrl, content);
+        response.EnsureSuccessStatusCode();
+    }
+
+    private async Task LoadDocuments()
+    {
+        if (SelectedPatientId == 0)
+            return;
+
+        IsLoadingDocuments = true;
+
+        try
+        {
+            var request = new DocumentListRequest
+            {
+                PatientId = SelectedPatientId,
+                Page = CurrentPage,
+                PageSize = 10,
+                Type = !string.IsNullOrEmpty(FilterType) ? (ContentType?)int.Parse(FilterType) : null,
+                Category = !string.IsNullOrEmpty(FilterCategory) ? FilterCategory : null,
+                FromDate = FilterFromDate,
+                ToDate = FilterToDate
+            };
+
+            var response = await DocumentUploadService.GetDocumentsAsync(request);
+            Documents = response.Documents.ToList();
+            TotalPages = response.TotalPages;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading documents");
+            Documents = new List<DocumentInfo>();
+        }
+        finally
+        {
+            IsLoadingDocuments = false;
+        }
+    }
+
+    private async Task ChangePage(int page)
+    {
+        if (page >= 1 && page <= TotalPages)
+        {
+            CurrentPage = page;
+            await LoadDocuments();
+        }
+    }
+
+    private async Task DownloadDocument(int contentId)
+    {
+        try
+        {
+            var downloadUrl = await DocumentUploadService.GetDownloadUrlAsync(contentId);
+            if (!string.IsNullOrEmpty(downloadUrl))
+            {
+                await JSRuntime.InvokeVoidAsync("open", downloadUrl, "_blank");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error downloading document {ContentId}", contentId);
+        }
+    }
+
+    private async Task DeleteDocument(int contentId)
+    {
+        try
+        {
+            if (await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this document?"))
+            {
+                var response = await DocumentUploadService.DeleteDocumentAsync(contentId);
+                if (response.Success)
+                {
+                    await LoadDocuments();
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", response.Message);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting document {ContentId}", contentId);
+        }
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    // Public method to refresh documents when patient changes
+    public async Task RefreshDocuments()
+    {
+        await LoadDocuments();
+    }
+}

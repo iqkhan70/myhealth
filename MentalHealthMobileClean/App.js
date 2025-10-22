@@ -13,6 +13,7 @@ import SignalRService from './src/services/SignalRService';
 // ✅ Use Agora now
 import AgoraService from './src/services/AgoraService';
 import { RtcLocalView, RtcRemoteView } from 'react-native-agora';
+import DocumentUpload from './src/components/DocumentUpload';
 
 // detect platform once
 const isIOS = Platform.OS === 'ios';
@@ -49,6 +50,11 @@ export default function App() {
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [agoraInitialized, setAgoraInitialized] = useState(false);
+
+  // 📄 Document upload state
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail'
+  const [availablePatients, setAvailablePatients] = useState([]);
+  const [selectedContactDetail, setSelectedContactDetail] = useState(null);
 
   // ---------- INIT ----------
   useEffect(() => {
@@ -109,8 +115,10 @@ export default function App() {
         setUser(data.user);
 
         await loadContactsForUser(data.user, data.token);
+        await loadAvailablePatients(data.user, data.token);
         await initializeSignalR(data.token);
 
+        setCurrentView('main');
         Alert.alert('Success', 'Login successful!');
       } else {
         Alert.alert('Error', data.message || 'Login failed');
@@ -120,6 +128,25 @@ export default function App() {
       Alert.alert('Connection Error', `Cannot reach ${API_BASE_URL}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAvailablePatients = async (currentUser, token) => {
+    try {
+      // For doctors, load their assigned patients
+      if (currentUser.roleId === 2) { // Assuming 2 is Doctor role
+        // TODO: Implement API call to get assigned patients
+        // For now, use mock data
+        setAvailablePatients([
+          { id: 1, firstName: 'John', lastName: 'Doe', email: 'john.doe@example.com' },
+          { id: 2, firstName: 'Jane', lastName: 'Smith', email: 'jane.smith@example.com' }
+        ]);
+      } else if (currentUser.roleId === 1) { // Patient role
+        // For patients, they can only upload for themselves
+        setAvailablePatients([currentUser]);
+      }
+    } catch (error) {
+      console.error('Error loading available patients:', error);
     }
   };
 
@@ -137,6 +164,8 @@ export default function App() {
       setMessages([]);
       setSelectedContact(null);
       setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+      setCurrentView('login');
+      setAvailablePatients([]);
       setRemoteUsers([]);
     } catch (e) {
       console.error('Logout error:', e);
@@ -212,7 +241,11 @@ export default function App() {
     loadChatHistory(contact.id);
   };
 
-  const [currentView, setCurrentView] = useState('contacts');
+  // ---------- CONTACT DETAIL ----------
+  const openContactDetail = (contact) => {
+    setSelectedContactDetail(contact);
+    setCurrentView('contact-detail');
+  };
 
   const loadChatHistory = async (targetUserId) => {
     try {
@@ -309,7 +342,7 @@ export default function App() {
       }
 
       console.log(`✅ Received Agora token for channel "${channelName}"`);
-      return "007eJxTYJhhanNugk6q36/tS9IsnRVdOKZ+Ct+/Z1PUPJf/60PuhV5WYEhNSzQ0TDJONE8xMDUxsExOtDS3TEsyMk00TTKxsExMNfrwIaMhkJGhdV86IyMDBIL4HAzJiTk58YbxxgwMABs5Ii0=";
+      return "007eJxTYGipULqfWp0RX5/8ovnzxa0uTnaO2VMeVwnsPGMueMJ6zgcFhtS0REPDJONE8xQDUxMDy+RES3PLtCQj00TTJBMLy8TUj1nfMhoCGRmU/m1mZWSAQBCfgyE5MScn3jDemIEBADjYIpc=";
     } catch (e) {
       console.warn('⚠️ Token fetch failed:', e.message);
       return null;
@@ -610,26 +643,93 @@ export default function App() {
 
       <ScrollView style={styles.contactsList}>
         {contacts.map((contact) => (
-          <TouchableOpacity key={contact.id} style={styles.contactItem} onPress={() => openChat(contact)}>
+          <TouchableOpacity key={contact.id} style={styles.contactItem} onPress={() => openContactDetail(contact)}>
             <View style={styles.contactInfo}>
               <Text style={styles.contactName}>{contact.firstName} {contact.lastName}</Text>
               <Text style={styles.contactRole}>{contact.specialization || contact.roleName || 'User'}</Text>
               {contact.mobilePhone && <Text style={styles.contactPhone}>{contact.mobilePhone}</Text>}
             </View>
-            <View style={styles.contactActions}>
-              <TouchableOpacity style={styles.actionButton} onPress={() => startCall(contact, 'Audio')}>
-                <Text style={styles.actionButtonText}>📞</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton} onPress={() => startCall(contact, 'Video')}>
-                <Text style={styles.actionButtonText}>📹</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton} onPress={() => openChat(contact)}>
-                <Text style={styles.actionButtonText}>💬</Text>
-              </TouchableOpacity>
+            <View style={styles.contactArrow}>
+              <Text style={styles.contactArrowText}>›</Text>
             </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
+    </SafeAreaView>
+  );
+
+  const renderContactDetail = () => (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.chatHeader}>
+        <TouchableOpacity onPress={() => setCurrentView('main')} style={styles.backButton}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.chatTitle}>Contact Details</Text>
+        <View style={styles.chatActions}>
+          {/* Empty actions to maintain layout */}
+        </View>
+      </View>
+
+      {selectedContactDetail && (
+        <View style={styles.contactDetailContainer}>
+          <View style={styles.contactDetailInfo}>
+            <Text style={styles.contactDetailName}>
+              {selectedContactDetail.firstName} {selectedContactDetail.lastName}
+            </Text>
+            <Text style={styles.contactDetailRole}>
+              {selectedContactDetail.specialization || selectedContactDetail.roleName || 'User'}
+            </Text>
+            {selectedContactDetail.mobilePhone && (
+              <Text style={styles.contactDetailPhone}>📞 {selectedContactDetail.mobilePhone}</Text>
+            )}
+            {selectedContactDetail.email && (
+              <Text style={styles.contactDetailEmail}>✉️ {selectedContactDetail.email}</Text>
+            )}
+          </View>
+
+          <View style={styles.contactDetailActions}>
+            <TouchableOpacity 
+              style={styles.contactDetailButton} 
+              onPress={() => openChat(selectedContactDetail)}
+            >
+              <Text style={styles.contactDetailButtonIcon}>💬</Text>
+              <Text style={styles.contactDetailButtonText}>Chat</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.contactDetailButton} 
+              onPress={() => startCall(selectedContactDetail, 'Audio')}
+            >
+              <Text style={styles.contactDetailButtonIcon}>📞</Text>
+              <Text style={styles.contactDetailButtonText}>Audio Call</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.contactDetailButton} 
+              onPress={() => startCall(selectedContactDetail, 'Video')}
+            >
+              <Text style={styles.contactDetailButtonIcon}>📹</Text>
+              <Text style={styles.contactDetailButtonText}>Video Call</Text>
+            </TouchableOpacity>
+
+            {(user?.roleId === 1 || user?.roleId === 2) && (
+              <TouchableOpacity 
+                style={styles.contactDetailButton} 
+                onPress={() => {
+                  setCurrentView('documents');
+                  // Set the selected patient for document upload
+                  if (user?.roleId === 2) { // Doctor uploading for patient
+                    setAvailablePatients([selectedContactDetail]);
+                  }
+                }}
+              >
+                <Text style={styles.contactDetailButtonIcon}>📄</Text>
+                <Text style={styles.contactDetailButtonText}>Documents</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 
@@ -638,7 +738,7 @@ export default function App() {
       <View style={styles.chatHeader}>
         <TouchableOpacity style={styles.backButton} onPress={() => {
           setSelectedContact(null);
-          setCurrentView('contacts');
+          setCurrentView('contact-detail');
           setMessages([]);
         }}>
           <Text style={styles.backButtonText}>← Back</Text>
@@ -687,10 +787,55 @@ export default function App() {
 
   if (!user) return renderLogin();
 
+  // Render different views based on currentView
+  if (currentView === 'documents') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="auto" />
+        <View style={styles.chatHeader}>
+          <TouchableOpacity onPress={() => setCurrentView('contact-detail')} style={styles.backButton}>
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.chatTitle}>Document Management</Text>
+          <View style={styles.chatActions}>
+            {/* Empty actions to maintain layout */}
+          </View>
+        </View>
+        <DocumentUpload 
+          patientId={user.id}
+          availablePatients={availablePatients}
+          showPatientSelector={user.roleId === 2}
+          onPatientSelect={(patient) => console.log('Selected patient:', patient)}
+          onDocumentUploaded={() => console.log('Document uploaded')}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (currentView === 'contact-detail') {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="auto" />
+        {renderContactDetail()}
+        {renderCallModal()}
+      </View>
+    );
+  }
+
+  if (currentView === 'chat') {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="auto" />
+        {renderChat()}
+        {renderCallModal()}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar style="auto" />
-      {selectedContact ? renderChat() : renderContacts()}
+      {renderContacts()}
       {renderCallModal()}
     </View>
   );
@@ -744,6 +889,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
   },
   headerTitle: {
     fontSize: 18,
@@ -977,6 +1127,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
+  documentsButton: {
+    backgroundColor: '#28a745',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 5,
+    marginRight: 8,
+  },
+  documentsButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  backButton: {
+    marginRight: 16,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: '#007bff',
+    fontWeight: '600',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+  },
   contactsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1121,5 +1304,76 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // Contact Detail styles
+  contactDetailContainer: {
+    flex: 1,
+    padding: 20,
+  },
+  contactDetailInfo: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  contactDetailName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  contactDetailRole: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 12,
+  },
+  contactDetailPhone: {
+    fontSize: 16,
+    color: '#007bff',
+    marginBottom: 8,
+  },
+  contactDetailEmail: {
+    fontSize: 16,
+    color: '#007bff',
+  },
+  contactDetailActions: {
+    flex: 1,
+    gap: 15,
+  },
+  contactDetailButton: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  contactDetailButtonIcon: {
+    fontSize: 24,
+    marginRight: 15,
+  },
+  contactDetailButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  contactArrow: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 30,
+  },
+  contactArrowText: {
+    fontSize: 20,
+    color: '#ccc',
   },
 });

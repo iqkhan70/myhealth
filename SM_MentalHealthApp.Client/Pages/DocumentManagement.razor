@@ -1,0 +1,106 @@
+@page "/documents"
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
+@using SM_MentalHealthApp.Shared
+@inject IAuthService AuthService
+@inject IDocumentUploadService DocumentUploadService
+@inject ILogger<DocumentManagement> Logger
+
+<PageTitle>Document Management</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="page-header">
+                <h2>Document Management</h2>
+                <p class="text-muted">Upload and manage medical documents for patients</p>
+            </div>
+        </div>
+    </div>
+
+    @if (CurrentUser != null)
+    {
+        <div class="row">
+            <div class="col-12">
+                <DocumentUpload AvailablePatients="@AvailablePatients" OnDocumentUploaded="@OnDocumentUploaded" />
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-warning">
+                    <h4>Authentication Required</h4>
+                    <p>Please log in to access document management features.</p>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private AuthUser? CurrentUser;
+    private List<User> AvailablePatients = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            CurrentUser = await AuthService.GetCurrentUserAsync();
+
+            if (CurrentUser != null)
+            {
+                await LoadAvailablePatients();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing document management page");
+        }
+    }
+
+    private async Task LoadAvailablePatients()
+    {
+        try
+        {
+            // For doctors, load their assigned patients
+            if (CurrentUser?.RoleId == 2) // Assuming 2 is Doctor role
+            {
+                // TODO: Implement GetAssignedPatientsAsync in AuthService or create a separate service
+                // For now, we'll show a placeholder
+                AvailablePatients = new List<User>
+{
+new User { Id = 1, FirstName = "John", LastName = "Doe", Email = "john.doe@example.com" },
+new User { Id = 2, FirstName = "Jane", LastName = "Smith", Email = "jane.smith@example.com" }
+};
+            }
+            else if (CurrentUser?.RoleId == 1) // Patient role
+            {
+                // For patients, they can only upload for themselves
+                AvailablePatients = new List<User>
+{
+new User
+{
+Id = CurrentUser.Id,
+FirstName = CurrentUser.FirstName,
+LastName = CurrentUser.LastName,
+Email = CurrentUser.Email
+}
+};
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading available patients");
+            AvailablePatients = new List<User>();
+        }
+    }
+
+    private async Task OnDocumentUploaded()
+    {
+        // Refresh any data if needed
+        await Task.CompletedTask;
+        StateHasChanged();
+    }
+}

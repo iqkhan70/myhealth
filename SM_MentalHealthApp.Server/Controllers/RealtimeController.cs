@@ -87,14 +87,14 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (!string.IsNullOrEmpty(cachedToken))
                 {
                     _logger.LogInformation("✅ Returning cached token for {Channel}", channel);
-                    return Ok(new { agoraAppId = _appId, token = "007eJxTYJhhanNugk6q36/tS9IsnRVdOKZ+Ct+/Z1PUPJf/60PuhV5WYEhNSzQ0TDJONE8xMDUxsExOtDS3TEsyMk00TTKxsExMNfrwIaMhkJGhdV86IyMDBIL4HAzJiTk58YbxxgwMABs5Ii0=", cached = true });
+                    return Ok(new { agoraAppId = _appId, token = "007eJxTYGipULqfWp0RX5/8ovnzxa0uTnaO2VMeVwnsPGMueMJ6zgcFhtS0REPDJONE8xQDUxMDy+RES3PLtCQj00TTJBMLy8TUj1nfMhoCGRmU/m1mZWSAQBCfgyE5MScn3jDemIEBADjYIpc=", cached = true });
                 }
 
                 var token = _agoraTokenService.GenerateToken(channel, uid, expireSeconds);
                 await _cache.SetAsync(cacheKey, token, TimeSpan.FromSeconds(expireSeconds));
 
                 _logger.LogInformation("🆕 Generated and cached new token for {Channel}", channel);
-                return Ok(new { agoraAppId = _appId, token="007eJxTYJhhanNugk6q36/tS9IsnRVdOKZ+Ct+/Z1PUPJf/60PuhV5WYEhNSzQ0TDJONE8xMDUxsExOtDS3TEsyMk00TTKxsExMNfrwIaMhkJGhdV86IyMDBIL4HAzJiTk58YbxxgwMABs5Ii0=", cached = false, uid });
+                return Ok(new { agoraAppId = _appId, token="007eJxTYGipULqfWp0RX5/8ovnzxa0uTnaO2VMeVwnsPGMueMJ6zgcFhtS0REPDJONE8xQDUxMDy+RES3PLtCQj00TTJBMLy8TUj1nfMhoCGRmU/m1mZWSAQBCfgyE5MScn3jDemIEBADjYIpc=", cached = false, uid });
             }
             catch (Exception ex)
             {
