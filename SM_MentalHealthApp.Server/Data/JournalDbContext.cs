@@ -19,6 +19,7 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<ContentTypeModel> ContentTypes { get; set; }
             public DbSet<ContentAnalysis> ContentAnalyses { get; set; }
             public DbSet<ContentAlert> ContentAlerts { get; set; }
+            public DbSet<ClinicalNote> ClinicalNotes { get; set; }
 
             // Emergency system entities
             public DbSet<RegisteredDevice> RegisteredDevices { get; set; }
@@ -198,6 +199,39 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.Name).IsUnique();
                         entity.HasIndex(e => e.IsActive);
                         entity.HasIndex(e => e.SortOrder);
+                  });
+
+                  // Configure ClinicalNote entity
+                  modelBuilder.Entity<ClinicalNote>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+                        entity.Property(e => e.Content).IsRequired().HasColumnType("TEXT");
+                        entity.Property(e => e.NoteType).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.Priority).IsRequired().HasMaxLength(20);
+                        entity.Property(e => e.Tags).HasMaxLength(500);
+                        entity.Property(e => e.IsConfidential).HasDefaultValue(false);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.Patient)
+                        .WithMany()
+                        .HasForeignKey(e => e.PatientId)
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.Doctor)
+                        .WithMany()
+                        .HasForeignKey(e => e.DoctorId)
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.PatientId);
+                        entity.HasIndex(e => e.DoctorId);
+                        entity.HasIndex(e => e.NoteType);
+                        entity.HasIndex(e => e.Priority);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.CreatedAt);
                   });
 
                   // Configure ContentAlert entity

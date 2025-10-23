@@ -24,6 +24,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<string> BuildEnhancedContextAsync(int patientId, string originalPrompt);
         Task<List<SM_MentalHealthApp.Shared.ContentAlert>> GenerateContentAlertsAsync(int patientId);
         Task ProcessAllUnanalyzedContentAsync();
+        Task<List<ClinicalNoteDto>> SearchClinicalNotesWithAIAsync(string searchTerm, int? patientId = null, int? doctorId = null);
     }
 
     public class ContentAnalysisService : IContentAnalysisService
@@ -1040,6 +1041,151 @@ namespace SM_MentalHealthApp.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing unanalyzed content");
+            }
+        }
+
+        /// <summary>
+        /// Analyze clinical notes for AI insights and search optimization
+        /// </summary>
+        public async Task<List<ClinicalNoteDto>> SearchClinicalNotesWithAIAsync(string searchTerm, int? patientId = null, int? doctorId = null)
+        {
+            try
+            {
+                _logger.LogInformation("Starting AI-powered clinical notes search for term: {SearchTerm}", searchTerm);
+
+                // Get clinical notes from the database
+                var clinicalNotesQuery = _context.ClinicalNotes
+                    .Include(cn => cn.Patient)
+                    .Include(cn => cn.Doctor)
+                    .Where(cn => cn.IsActive);
+
+                if (patientId.HasValue)
+                    clinicalNotesQuery = clinicalNotesQuery.Where(cn => cn.PatientId == patientId.Value);
+
+                if (doctorId.HasValue)
+                    clinicalNotesQuery = clinicalNotesQuery.Where(cn => cn.DoctorId == doctorId.Value);
+
+                var clinicalNotes = await clinicalNotesQuery.ToListAsync();
+
+                // Get content analyses for the same patients
+                var patientIds = clinicalNotes.Select(cn => cn.PatientId).Distinct().ToList();
+                var contentAnalyses = await _context.ContentAnalyses
+                    .Include(ca => ca.Content)
+                    .Where(ca => patientIds.Contains(ca.Content.PatientId))
+                    .ToListAsync();
+
+                // Combine clinical notes and content analyses for AI analysis
+                var combinedData = new List<object>();
+
+                foreach (var note in clinicalNotes)
+                {
+                    combinedData.Add(new
+                    {
+                        Type = "ClinicalNote",
+                        Id = note.Id,
+                        PatientId = note.PatientId,
+                        Title = note.Title,
+                        Content = note.Content,
+                        NoteType = note.NoteType,
+                        Priority = note.Priority,
+                        CreatedAt = note.CreatedAt,
+                        Tags = note.Tags
+                    });
+                }
+
+                foreach (var analysis in contentAnalyses)
+                {
+                    combinedData.Add(new
+                    {
+                        Type = "ContentAnalysis",
+                        Id = analysis.Id,
+                        PatientId = analysis.Content.PatientId,
+                        Title = $"Content Analysis - {analysis.Content.Title}",
+                        Content = analysis.ExtractedText,
+                        NoteType = "Content Analysis",
+                        Priority = "Normal",
+                        CreatedAt = analysis.ProcessedAt,
+                        Tags = analysis.ContentTypeName
+                    });
+                }
+
+                // Use AI to find relevant notes based on semantic similarity
+                var relevantNotes = await FindRelevantNotesWithAIAsync(searchTerm, combinedData);
+
+                _logger.LogInformation("AI search found {Count} relevant notes", relevantNotes.Count);
+                return relevantNotes;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in AI-powered clinical notes search");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Use AI to find semantically relevant clinical notes
+        /// </summary>
+        private async Task<List<ClinicalNoteDto>> FindRelevantNotesWithAIAsync(string searchTerm, List<object> combinedData)
+        {
+            try
+            {
+                // This is a simplified AI search - in a real implementation, you would:
+                // 1. Use embeddings to convert text to vectors
+                // 2. Use vector similarity search
+                // 3. Apply machine learning models for relevance scoring
+
+                var relevantNotes = new List<ClinicalNoteDto>();
+
+                foreach (var item in combinedData)
+                {
+                    var itemType = item.GetType().GetProperty("Type")?.GetValue(item)?.ToString();
+                    var content = item.GetType().GetProperty("Content")?.GetValue(item)?.ToString() ?? "";
+                    var title = item.GetType().GetProperty("Title")?.GetValue(item)?.ToString() ?? "";
+
+                    // Simple keyword matching for now - in production, use proper AI/ML
+                    if (content.ToLower().Contains(searchTerm.ToLower()) ||
+                        title.ToLower().Contains(searchTerm.ToLower()))
+                    {
+                        if (itemType == "ClinicalNote")
+                        {
+                            var itemId = item.GetType().GetProperty("Id")?.GetValue(item);
+                            if (itemId != null)
+                            {
+                                var note = await _context.ClinicalNotes
+                                    .Include(cn => cn.Patient)
+                                    .Include(cn => cn.Doctor)
+                                    .FirstOrDefaultAsync(cn => cn.Id == (int)itemId);
+
+                                if (note != null)
+                                {
+                                    relevantNotes.Add(new ClinicalNoteDto
+                                    {
+                                        Id = note.Id,
+                                        PatientId = note.PatientId,
+                                        DoctorId = note.DoctorId,
+                                        Title = note.Title,
+                                        Content = note.Content,
+                                        NoteType = note.NoteType,
+                                        Priority = note.Priority,
+                                        IsConfidential = note.IsConfidential,
+                                        CreatedAt = note.CreatedAt,
+                                        UpdatedAt = note.UpdatedAt,
+                                        Tags = note.Tags,
+                                        PatientName = note.Patient?.FullName ?? "Unknown",
+                                        DoctorName = note.Doctor?.FullName ?? "Unknown"
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return relevantNotes.OrderByDescending(n => n.CreatedAt).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in AI note relevance search");
+                return new List<ClinicalNoteDto>();
             }
         }
 

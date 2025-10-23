@@ -1,0 +1,590 @@
+@page "/clinical-notes"
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject HttpClient Http
+@inject IAuthService AuthService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Clinical Notes</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fas fa-stethoscope me-2"></i>Clinical Notes</h2>
+                <RadzenButton Icon="add" Text="Add Note" ButtonStyle="ButtonStyle.Success"
+                    Click="@(() => ShowAddNoteDialog())" />
+            </div>
+
+
+            <!-- Clinical Notes Data Grid -->
+            <RadzenDataGrid Data="@clinicalNotes" TItem="ClinicalNoteDto" AllowPaging="true" PageSize="10"
+                AllowSorting="true" FilterMode="FilterMode.Advanced" ShowPagingSummary="true"
+                EmptyText="No clinical notes found" AllowFiltering="true"
+                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" ShowFilterRow="true"
+                ShowFilterRowButtons="true">
+
+                <Columns>
+                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="Title" Title="Title" Width="200px"
+                        Filterable="true">
+                        <Template Context="note">
+                            <div>
+                                <strong>@note.Title</strong>
+                                @if (note.IsConfidential)
+                                {
+                                    <i class="fas fa-lock text-warning ms-1" title="Confidential"></i>
+                                }
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="PatientName" Title="Patient" Width="150px"
+                        Filterable="true">
+                        <Template Context="note">
+                            <div>
+                                <strong>@note.PatientName</strong>
+                                <br />
+                                <small class="text-muted">ID: @note.PatientId</small>
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="Content" Title="Content" Width="300px"
+                        Filterable="true">
+                        <Template Context="note">
+                            <div class="note-content">
+                                @if (note.Content.Length > 100)
+                                {
+                                    @(note.Content.Substring(0, 100) + "...")
+                                }
+                                else
+                                {
+                                    @note.Content
+                                }
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="NoteType" Title="Type" Width="120px"
+                        Filterable="true">
+                        <Template Context="note">
+                            <span class="badge bg-primary">@note.NoteType</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="Priority" Title="Priority" Width="120px"
+                        Filterable="true">
+                        <Template Context="note">
+                            <span class="badge @GetPriorityClass(note.Priority)">@note.Priority</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="CreatedAt" Title="Created" Width="120px"
+                        Filterable="true">
+                        <Template Context="note">
+                            @note.CreatedAt.ToString("MMM dd, yyyy")
+                            <br />
+                            <small class="text-muted">@note.CreatedAt.ToString("HH:mm")</small>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="DoctorName" Title="Doctor" Width="150px"
+                        Filterable="true">
+                        <Template Context="note">
+                            <div>
+                                <strong>@note.DoctorName</strong>
+                                <br />
+                                <small class="text-muted">ID: @note.DoctorId</small>
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="Actions" Title="Actions" Width="150px"
+                        Sortable="false" Filterable="false">
+                        <Template Context="note">
+                            <div class="action-buttons">
+                                <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Info"
+                                    ButtonType="ButtonType.Button" Size="ButtonSize.Small"
+                                    Click="@(() => ViewNote(note))" Title="View" />
+
+                                <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Success"
+                                    ButtonType="ButtonType.Button" Size="ButtonSize.Small"
+                                    Click="@(() => EditNote(note))" Title="Edit" />
+
+                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger"
+                                    ButtonType="ButtonType.Button" Size="ButtonSize.Small"
+                                    Click="@(() => DeleteNote(note))" Title="Delete" />
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Note Dialog -->
+@if (showNoteDialog)
+{
+    <div class="modal-overlay" @onclick="CloseNoteDialog">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(editingNote?.Id == 0 ? "Add Clinical Note" : "Edit Clinical Note")</h3>
+                <button @onclick="CloseNoteDialog" class="close-btn">✕</button>
+            </div>
+
+            <div class="modal-body">
+                <form @onsubmit="@SaveNote" @onsubmit:preventDefault="true">
+                    <div class="form-group">
+                        <label class="form-label">Patient: <span class="required-asterisk">*</span></label>
+                        <RadzenDropDown @bind-Value="noteForm.PatientId" Data="@patients" TextProperty="FullName"
+                            ValueProperty="Id" Placeholder="Select Patient" Style="width: 100%;" />
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Note Type: <span class="required-asterisk">*</span></label>
+                            <RadzenDropDown @bind-Value="noteForm.NoteType" Data="@noteTypes" Placeholder="Note Type"
+                                Style="width: 100%;" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Priority: <span class="required-asterisk">*</span></label>
+                            <RadzenDropDown @bind-Value="noteForm.Priority" Data="@priorities" Placeholder="Priority"
+                                Style="width: 100%;" />
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Title: <span class="required-asterisk">*</span></label>
+                        <RadzenTextBox @bind-Value="noteForm.Title" Placeholder="Note Title" Style="width: 100%;" />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Content: <span class="required-asterisk">*</span></label>
+                        <RadzenTextArea @bind-Value="noteForm.Content" Placeholder="Note Content"
+                            Style="width: 100%; min-height: 200px;" />
+                    </div>
+
+                    <div class="form-group">
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
+                            <RadzenCheckBox @bind-Value="noteForm.IsConfidential" Name="IsConfidential" />
+                            <RadzenText Text="Confidential" />
+                        </RadzenStack>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Tags:</label>
+                        <RadzenTextBox @bind-Value="noteForm.Tags" Placeholder="Tags (comma-separated)"
+                            Style="width: 100%;" />
+                    </div>
+
+                    <div class="form-actions">
+                        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseNoteDialog" />
+                        <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Success" ButtonType="ButtonType.Submit"
+                            Click="@SaveNote" />
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- View Note Dialog -->
+@if (showViewDialog)
+{
+    <div class="modal-overlay" @onclick="CloseViewDialog">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Clinical Note Details</h3>
+                <button @onclick="CloseViewDialog" class="close-btn">✕</button>
+            </div>
+
+            <div class="modal-body">
+                @if (viewingNote != null)
+                {
+                    <div class="note-details">
+                        <h4>@viewingNote.Title</h4>
+                        <div class="note-meta">
+                            <div class="meta-row">
+                                <span class="meta-label">Patient:</span>
+                                <span class="meta-value">@viewingNote.PatientName</span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label">Doctor:</span>
+                                <span class="meta-value">@viewingNote.DoctorName</span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label">Type:</span>
+                                <span class="meta-value">@viewingNote.NoteType</span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label">Priority:</span>
+                                <span class="meta-value">@viewingNote.Priority</span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label">Created:</span>
+                                <span class="meta-value">@viewingNote.CreatedAt.ToString("MMM dd, yyyy HH:mm")</span>
+                            </div>
+                            @if (viewingNote.UpdatedAt.HasValue)
+                            {
+                                <div class="meta-row">
+                                    <span class="meta-label">Updated:</span>
+                                    <span class="meta-value">@viewingNote.UpdatedAt.Value.ToString("MMM dd, yyyy HH:mm")</span>
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(viewingNote.Tags))
+                            {
+                                <div class="meta-row">
+                                    <span class="meta-label">Tags:</span>
+                                    <span class="meta-value">@viewingNote.Tags</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="note-content">
+                            <h5>Content:</h5>
+                            <div class="content-text">@viewingNote.Content</div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+
+@code {
+    private List<ClinicalNoteDto> clinicalNotes = new();
+    private List<User> patients = new();
+    private List<string> noteTypes = new();
+    private List<string> priorities = new();
+
+    private bool showNoteDialog = false;
+    private bool showViewDialog = false;
+    private ClinicalNoteDto? editingNote;
+    private ClinicalNoteDto? viewingNote;
+    private CreateClinicalNoteRequest noteForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        await LoadPatients();
+        await LoadNoteTypes();
+        await LoadPriorities();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<List<ClinicalNoteDto>>("api/clinicalnotes");
+            clinicalNotes = response ?? new();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "Error loading clinical notes:", ex.Message);
+        }
+    }
+
+    private async Task LoadPatients()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
+            patients = response ?? new();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "Error loading patients:", ex.Message);
+        }
+    }
+
+    private async Task LoadNoteTypes()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<List<string>>("api/clinicalnotes/note-types");
+            noteTypes = response ?? new();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "Error loading note types:", ex.Message);
+        }
+    }
+
+    private async Task LoadPriorities()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<List<string>>("api/clinicalnotes/priorities");
+            priorities = response ?? new();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "Error loading priorities:", ex.Message);
+        }
+    }
+
+
+    private void ShowAddNoteDialog()
+    {
+        editingNote = new ClinicalNoteDto { Id = 0 };
+        noteForm = new CreateClinicalNoteRequest();
+        showNoteDialog = true;
+    }
+
+    private void EditNote(ClinicalNoteDto note)
+    {
+        editingNote = note;
+        noteForm = new CreateClinicalNoteRequest
+        {
+            PatientId = note.PatientId,
+            Title = note.Title,
+            Content = note.Content,
+            NoteType = note.NoteType,
+            Priority = note.Priority,
+            IsConfidential = note.IsConfidential,
+            Tags = note.Tags
+        };
+        showNoteDialog = true;
+    }
+
+    private void ViewNote(ClinicalNoteDto note)
+    {
+        viewingNote = note;
+        showViewDialog = true;
+    }
+
+    private async Task SaveNote()
+    {
+        try
+        {
+            if (editingNote?.Id == 0)
+            {
+                // Create new note
+                var response = await Http.PostAsJsonAsync("api/clinicalnotes", noteForm);
+                if (response.IsSuccessStatusCode)
+                {
+                    await LoadData();
+                    showNoteDialog = false;
+                }
+            }
+            else
+            {
+                // Update existing note
+                var updateRequest = new UpdateClinicalNoteRequest
+                {
+                    Title = noteForm.Title,
+                    Content = noteForm.Content,
+                    NoteType = noteForm.NoteType,
+                    Priority = noteForm.Priority,
+                    IsConfidential = noteForm.IsConfidential,
+                    Tags = noteForm.Tags
+                };
+
+                var response = await Http.PutAsJsonAsync($"api/clinicalnotes/{editingNote.Id}", updateRequest);
+                if (response.IsSuccessStatusCode)
+                {
+                    await LoadData();
+                    showNoteDialog = false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "Error saving clinical note:", ex.Message);
+        }
+    }
+
+    private void CloseNoteDialog()
+    {
+        showNoteDialog = false;
+        editingNote = null;
+        noteForm = new CreateClinicalNoteRequest();
+    }
+
+    private void CloseViewDialog()
+    {
+        showViewDialog = false;
+        viewingNote = null;
+    }
+
+    private async Task DeleteNote(ClinicalNoteDto note)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the note '{note.Title}'?"))
+        {
+            try
+            {
+                var response = await Http.DeleteAsync($"api/clinicalnotes/{note.Id}");
+                if (response.IsSuccessStatusCode)
+                {
+                    await LoadData();
+                }
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("console.error", "Error deleting clinical note:", ex.Message);
+            }
+        }
+    }
+
+    private string GetPriorityClass(string priority)
+    {
+        return priority.ToLower() switch
+        {
+            "low" => "bg-secondary",
+            "normal" => "bg-primary",
+            "high" => "bg-warning",
+            "critical" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+}
+
+<style>
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        max-width: 600px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        color: #333;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #666;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .close-btn:hover {
+        color: #333;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 20px;
+    }
+
+    .form-row .form-group {
+        flex: 1;
+    }
+
+    .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #333;
+    }
+
+    .required-asterisk {
+        color: #dc3545;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #e0e0e0;
+    }
+
+    .note-details {
+        max-width: 100%;
+    }
+
+    .note-details h4 {
+        margin-bottom: 20px;
+        color: #333;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 10px;
+    }
+
+    .note-meta {
+        margin-bottom: 20px;
+    }
+
+    .meta-row {
+        display: flex;
+        margin-bottom: 10px;
+    }
+
+    .meta-label {
+        font-weight: 500;
+        color: #666;
+        min-width: 80px;
+    }
+
+    .meta-value {
+        color: #333;
+        margin-left: 10px;
+    }
+
+    .note-content h5 {
+        margin-bottom: 10px;
+        color: #333;
+    }
+
+    .content-text {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 4px;
+        border-left: 4px solid #007bff;
+        white-space: pre-wrap;
+        line-height: 1.6;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .note-content {
+        max-height: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>

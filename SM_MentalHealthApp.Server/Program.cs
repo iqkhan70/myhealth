@@ -57,6 +57,7 @@ builder.Services.AddScoped<LlmClient>();
 builder.Services.AddScoped<S3Service>();
 builder.Services.AddScoped<ContentService>();
 builder.Services.AddScoped<IContentAnalysisService, ContentAnalysisService>();
+builder.Services.AddScoped<IClinicalNotesService, ClinicalNotesService>();
 builder.Services.AddScoped<IMultimediaAnalysisService, MultimediaAnalysisService>();
 builder.Services.AddScoped<IChatHistoryService, ChatHistoryService>();
 builder.Services.AddScoped<IIntelligentContextService, IntelligentContextService>();
