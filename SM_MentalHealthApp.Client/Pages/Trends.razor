@@ -1,17 +1,65 @@
 @page "/trends"
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Shared
+@using Radzen
+@using Radzen.Blazor
 @inject HttpClient Http
 @inject NotificationService NotificationService
 @inject IJSRuntime JS
 @inject IAuthService AuthService
+
+<style>
+    .patient-selection {
+        margin: 20px 0;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+    }
+
+    .required-indicator {
+        color: #dc3545;
+        font-weight: bold;
+    }
+
+    .rz-dropdown-invalid {
+        border-color: #dc3545 !important;
+    }
+</style>
 
 <div class="trends-page">
     <div class="trends-header">
         <h2>Mood Trends</h2>
         <p>Track your emotional journey over time with interactive charts and insights.</p>
     </div>
-    
+
+    @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+    {
+        <div class="patient-selection">
+            <label style="white-space: nowrap; margin-bottom: 8px; display: block;">
+                👤 Select Patient:
+                @if (selectedPatientId == 0)
+                {
+                    <span class="required-indicator">*</span>
+                }
+            </label>
+            <RadzenDropDown @bind-Value="selectedPatientId" Data="@assignedPatients" ValueProperty="Id"
+                TextProperty="FullName" Placeholder="Search patients..." AllowClear="true" AllowFiltering="true"
+                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Change="@OnPatientSelected"
+                Style="width: 100%; min-width: 350px; max-width: 500px;" TValue="int" class="@GetPatientSelectClass()">
+                <Template Context="patient">
+                    <div style="padding: 6px 8px; line-height: 1.2;">
+                        <div style="font-weight: 500; font-size: 14px; margin-bottom: 2px;">@patient.FirstName
+                            @patient.LastName</div>
+                        <div
+                            style="font-size: 12px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            @patient.Email • ID: @patient.Id</div>
+                    </div>
+                </Template>
+            </RadzenDropDown>
+        </div>
+    }
+
     @if (entries.Any())
     {
         <div class="trends-content">
@@ -22,7 +70,7 @@
                     <canvas id="moodChart" width="400" height="200"></canvas>
                 </div>
             </div>
-            
+
             <!-- Stats and Recent Entries -->
             <div class="trends-grid">
                 <!-- Mood Summary -->
@@ -47,7 +95,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Recent Entries -->
                 <div class="recent-entries-card">
                     <h4>Recent Entries</h4>
@@ -59,9 +107,10 @@
                                 <div class="entry-mood">
                                     <span class="mood-badge @GetMoodClass(entry.Mood)">@(entry.Mood ?? "Unknown")</span>
                                 </div>
-                                <div class="entry-text">@(entry.Text.Length > 50 ? entry.Text.Substring(0, 50) + "..." : entry.Text)</div>
-                            </div>
-                        }
+                                <div class="entry-text">@(entry.Text.Length > 50 ? entry.Text.Substring(0, 50) + "..." :
+                                                                entry.Text)</div>
+                    </div>
+                                        }
                     </div>
                 </div>
             </div>
@@ -79,10 +128,19 @@
 
 @code {
     private List<JournalEntry> entries = new();
+    private List<User> assignedPatients = new();
+    private int selectedPatientId = 0;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadEntries();
+        if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+        {
+            await LoadAssignedPatients();
+        }
+        else
+        {
+            await LoadEntries();
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -90,7 +148,7 @@
         if (firstRender)
         {
             await Task.Delay(100); // Small delay to ensure DOM is ready
-            
+
             if (entries.Any())
             {
                 await JS.InvokeVoidAsync("renderMoodChart", entries);
@@ -99,17 +157,49 @@
             {
                 // Create sample data for testing
                 var sampleEntries = new List<object>
-                {
-                    new { createdAt = DateTime.Now.AddDays(-4).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Happy" },
-                    new { createdAt = DateTime.Now.AddDays(-3).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Neutral" },
-                    new { createdAt = DateTime.Now.AddDays(-2).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Sad" },
-                    new { createdAt = DateTime.Now.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Anxious" },
-                    new { createdAt = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Happy" }
-                };
-                
+{
+new { createdAt = DateTime.Now.AddDays(-4).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Happy" },
+new { createdAt = DateTime.Now.AddDays(-3).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Neutral" },
+new { createdAt = DateTime.Now.AddDays(-2).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Sad" },
+new { createdAt = DateTime.Now.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Anxious" },
+new { createdAt = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"), mood = "Happy" }
+};
+
                 Console.WriteLine("Using sample data for chart");
                 await JS.InvokeVoidAsync("renderMoodChart", sampleEntries);
             }
+        }
+    }
+
+    private async Task LoadAssignedPatients()
+    {
+        try
+        {
+            if (AuthService.CurrentUser != null)
+            {
+                // Load assigned patients for the doctor
+                assignedPatients = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients") ??
+                new();
+                Console.WriteLine($"Loaded {assignedPatients.Count} assigned patients for doctor {AuthService.CurrentUser.Id}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error loading assigned patients: " + ex.Message);
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load assigned patients: " + ex.Message);
+        }
+    }
+
+    private async Task OnPatientSelected()
+    {
+        if (selectedPatientId > 0)
+        {
+            await LoadEntriesForPatient(selectedPatientId);
+        }
+        else
+        {
+            entries.Clear();
+            StateHasChanged();
         }
     }
 
@@ -122,7 +212,7 @@
                 // Load entries for the authenticated user
                 entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/user/{AuthService.CurrentUser.Id}") ?? new();
                 Console.WriteLine($"Loaded {entries.Count} journal entries for user {AuthService.CurrentUser.Id}");
-                
+
                 if (entries.Any())
                 {
                     Console.WriteLine("First entry mood: " + entries.First().Mood);
@@ -133,6 +223,35 @@
         {
             Console.WriteLine("Error loading entries: " + ex.Message);
             NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load journal entries: " + ex.Message);
+        }
+    }
+
+    private async Task LoadEntriesForPatient(int patientId)
+    {
+        try
+        {
+            entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/user/{patientId}") ?? new();
+            Console.WriteLine($"Loaded {entries.Count} journal entries for patient {patientId}");
+
+            if (entries.Any())
+            {
+                Console.WriteLine("First entry mood: " + entries.First().Mood);
+            }
+
+            StateHasChanged();
+
+            // Render chart after data is loaded
+            await Task.Delay(100); // Small delay to ensure DOM is updated
+            if (entries.Any())
+            {
+                await JS.InvokeVoidAsync("renderMoodChart", entries);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error loading patient entries: " + ex.Message);
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load patient journal entries: " +
+            ex.Message);
         }
     }
 
@@ -151,5 +270,10 @@
             "Neutral" => "mood-neutral",
             _ => "mood-neutral"
         };
+    }
+
+    private string GetPatientSelectClass()
+    {
+        return selectedPatientId == 0 ? "rz-dropdown-invalid" : "";
     }
 }

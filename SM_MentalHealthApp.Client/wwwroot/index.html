@@ -35,6 +35,9 @@
                 return;
             }
             
+            console.log('Canvas found:', canvas);
+            console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
+            
             const ctx = canvas.getContext('2d');
 
             // Destroy previous chart if exists and has destroy method
@@ -42,11 +45,19 @@
                 window.moodChart.destroy();
             }
 
-            const labels = entries.map(e => new Date(e.createdAt).toLocaleDateString());
-            const moods = entries.map(e => e.mood);
+            const labels = entries.map(e => {
+                try {
+                    return new Date(e.CreatedAt).toLocaleDateString();
+                } catch (error) {
+                    console.error('Error parsing date:', e.CreatedAt, error);
+                    return 'Invalid Date';
+                }
+            });
+            const moods = entries.map(e => e.Mood);
             
             console.log('Labels:', labels);
             console.log('Moods:', moods);
+            console.log('Entries data:', entries);
 
             // Assign numeric values for moods
             const moodMap = { "Happy": 3, "Neutral": 2, "Sad": 1, "Anxious": 0 };
