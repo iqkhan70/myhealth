@@ -16,6 +16,28 @@ namespace SM_MentalHealthApp.Server.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateTable(
+                name: "ContentTypes",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    Name = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    Description = table.Column<string>(type: "varchar(200)", maxLength: 200, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    Icon = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    IsActive = table.Column<bool>(type: "tinyint(1)", nullable: false, defaultValue: true),
+                    SortOrder = table.Column<int>(type: "int", nullable: false, defaultValue: 0),
+                    CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP(6)")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ContentTypes", x => x.Id);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
+
+            migrationBuilder.CreateTable(
                 name: "Roles",
                 columns: table => new
                 {
@@ -50,6 +72,8 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     DateOfBirth = table.Column<DateTime>(type: "datetime(6)", nullable: false),
                     Gender = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    MobilePhone = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     RoleId = table.Column<int>(type: "int", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
@@ -128,14 +152,14 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     OriginalFileName = table.Column<string>(type: "varchar(255)", maxLength: 255, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    ContentType = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: false)
+                    MimeType = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     FileSizeBytes = table.Column<long>(type: "bigint", nullable: false),
                     S3Bucket = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     S3Key = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    Type = table.Column<int>(type: "int", nullable: false),
+                    ContentTypeModelId = table.Column<int>(type: "int", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
                     LastAccessedAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
                     IsActive = table.Column<bool>(type: "tinyint(1)", nullable: false)
@@ -144,6 +168,12 @@ namespace SM_MentalHealthApp.Server.Migrations
                 {
                     table.PrimaryKey("PK_Contents", x => x.Id);
                     table.ForeignKey(
+                        name: "FK_Contents_ContentTypes_ContentTypeModelId",
+                        column: x => x.ContentTypeModelId,
+                        principalTable: "ContentTypes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
                         name: "FK_Contents_Users_AddedByUserId",
                         column: x => x.AddedByUserId,
                         principalTable: "Users",
@@ -151,6 +181,61 @@ namespace SM_MentalHealthApp.Server.Migrations
                         onDelete: ReferentialAction.SetNull);
                     table.ForeignKey(
                         name: "FK_Contents_Users_PatientId",
+                        column: x => x.PatientId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
+
+            migrationBuilder.CreateTable(
+                name: "EmergencyIncidents",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    PatientId = table.Column<int>(type: "int", nullable: false),
+                    DoctorId = table.Column<int>(type: "int", nullable: true),
+                    EmergencyType = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    Severity = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    Message = table.Column<string>(type: "varchar(1000)", maxLength: 1000, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    Timestamp = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    DeviceId = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    DeviceToken = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    IsAcknowledged = table.Column<bool>(type: "tinyint(1)", nullable: false),
+                    AcknowledgedAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
+                    DoctorResponse = table.Column<string>(type: "varchar(1000)", maxLength: 1000, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    ActionTaken = table.Column<string>(type: "varchar(1000)", maxLength: 1000, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    Resolution = table.Column<string>(type: "varchar(1000)", maxLength: 1000, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    ResolvedAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
+                    VitalSignsJson = table.Column<string>(type: "varchar(2000)", maxLength: 2000, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    LocationJson = table.Column<string>(type: "varchar(1000)", maxLength: 1000, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    IpAddress = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    UserAgent = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_EmergencyIncidents", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_EmergencyIncidents_Users_DoctorId",
+                        column: x => x.DoctorId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_EmergencyIncidents_Users_PatientId",
                         column: x => x.PatientId,
                         principalTable: "Users",
                         principalColumn: "Id",
@@ -192,6 +277,78 @@ namespace SM_MentalHealthApp.Server.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateTable(
+                name: "RegisteredDevices",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    PatientId = table.Column<int>(type: "int", nullable: false),
+                    DeviceId = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    DeviceName = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    DeviceType = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    DeviceModel = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    OperatingSystem = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    DeviceToken = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    PublicKey = table.Column<string>(type: "varchar(2000)", maxLength: 2000, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    ExpiresAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    IsActive = table.Column<bool>(type: "tinyint(1)", nullable: false),
+                    LastUsedAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
+                    LastKnownLocation = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_RegisteredDevices", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_RegisteredDevices_Users_PatientId",
+                        column: x => x.PatientId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
+
+            migrationBuilder.CreateTable(
+                name: "SmsMessages",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    SenderId = table.Column<int>(type: "int", nullable: false),
+                    ReceiverId = table.Column<int>(type: "int", nullable: false),
+                    Message = table.Column<string>(type: "varchar(1000)", maxLength: 1000, nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    SentAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    IsRead = table.Column<bool>(type: "tinyint(1)", nullable: false, defaultValue: false),
+                    ReadAt = table.Column<DateTime>(type: "datetime(6)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SmsMessages", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SmsMessages_Users_ReceiverId",
+                        column: x => x.ReceiverId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_SmsMessages_Users_SenderId",
+                        column: x => x.SenderId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
+
+            migrationBuilder.CreateTable(
                 name: "UserAssignments",
                 columns: table => new
                 {
@@ -227,7 +384,7 @@ namespace SM_MentalHealthApp.Server.Migrations
                     SessionId = table.Column<int>(type: "int", nullable: false),
                     Role = table.Column<string>(type: "longtext", nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
-                    Content = table.Column<string>(type: "varchar(4000)", maxLength: 4000, nullable: false)
+                    Content = table.Column<string>(type: "TEXT", maxLength: 4000, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     Timestamp = table.Column<DateTime>(type: "datetime(6)", nullable: false),
                     IsMedicalData = table.Column<bool>(type: "tinyint(1)", nullable: false),
@@ -293,7 +450,7 @@ namespace SM_MentalHealthApp.Server.Migrations
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
                     ContentId = table.Column<int>(type: "int", nullable: false),
-                    ContentType = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: false)
+                    ContentTypeName = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     ExtractedText = table.Column<string>(type: "TEXT", nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
@@ -368,9 +525,50 @@ namespace SM_MentalHealthApp.Server.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_Contents_ContentTypeModelId",
+                table: "Contents",
+                column: "ContentTypeModelId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Contents_PatientId",
                 table: "Contents",
                 column: "PatientId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ContentTypes_IsActive",
+                table: "ContentTypes",
+                column: "IsActive");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ContentTypes_Name",
+                table: "ContentTypes",
+                column: "Name",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ContentTypes_SortOrder",
+                table: "ContentTypes",
+                column: "SortOrder");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EmergencyIncidents_DeviceToken",
+                table: "EmergencyIncidents",
+                column: "DeviceToken");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EmergencyIncidents_DoctorId",
+                table: "EmergencyIncidents",
+                column: "DoctorId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EmergencyIncidents_PatientId",
+                table: "EmergencyIncidents",
+                column: "PatientId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EmergencyIncidents_Timestamp",
+                table: "EmergencyIncidents",
+                column: "Timestamp");
 
             migrationBuilder.CreateIndex(
                 name: "IX_JournalEntries_EnteredByUserId",
@@ -383,10 +581,37 @@ namespace SM_MentalHealthApp.Server.Migrations
                 column: "UserId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_RegisteredDevices_DeviceId",
+                table: "RegisteredDevices",
+                column: "DeviceId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RegisteredDevices_DeviceToken",
+                table: "RegisteredDevices",
+                column: "DeviceToken",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RegisteredDevices_PatientId",
+                table: "RegisteredDevices",
+                column: "PatientId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Roles_Name",
                 table: "Roles",
                 column: "Name",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SmsMessages_ReceiverId_IsRead",
+                table: "SmsMessages",
+                columns: new[] { "ReceiverId", "IsRead" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SmsMessages_SenderId_ReceiverId_SentAt",
+                table: "SmsMessages",
+                columns: new[] { "SenderId", "ReceiverId", "SentAt" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserAssignments_AssigneeId",
@@ -418,7 +643,16 @@ namespace SM_MentalHealthApp.Server.Migrations
                 name: "ContentAnalyses");
 
             migrationBuilder.DropTable(
+                name: "EmergencyIncidents");
+
+            migrationBuilder.DropTable(
                 name: "JournalEntries");
+
+            migrationBuilder.DropTable(
+                name: "RegisteredDevices");
+
+            migrationBuilder.DropTable(
+                name: "SmsMessages");
 
             migrationBuilder.DropTable(
                 name: "UserAssignments");
@@ -428,6 +662,9 @@ namespace SM_MentalHealthApp.Server.Migrations
 
             migrationBuilder.DropTable(
                 name: "Contents");
+
+            migrationBuilder.DropTable(
+                name: "ContentTypes");
 
             migrationBuilder.DropTable(
                 name: "Users");

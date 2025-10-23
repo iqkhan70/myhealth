@@ -25,7 +25,6 @@ namespace SM_MentalHealthApp.Shared
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        // Navigation properties
-        public ICollection<ContentItem> Contents { get; set; } = new List<ContentItem>();
+        // Navigation properties removed to avoid circular reference
     }
 }

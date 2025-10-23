@@ -41,12 +41,42 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-        [HttpGet("all")]
-        public async Task<ActionResult<List<ContentItem>>> GetAllContents()
+        [HttpGet("test")]
+        public async Task<ActionResult> TestDatabase()
         {
             try
             {
-                var contents = await _contentService.GetAllContentsAsync();
+                var count = await _context.Contents.CountAsync();
+                return Ok(new { message = "Database connection successful", count = count });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Database test failed");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("all")]
+        public async Task<ActionResult> GetAllContents()
+        {
+            try
+            {
+                var contents = await _context.Contents
+                    .Where(c => c.IsActive)
+                    .OrderByDescending(c => c.CreatedAt)
+                    .Select(c => new
+                    {
+                        c.Id,
+                        c.Title,
+                        c.Description,
+                        c.OriginalFileName,
+                        c.FileSizeBytes,
+                        c.CreatedAt,
+                        c.ContentTypeModelId,
+                        PatientId = c.PatientId,
+                        AddedByUserId = c.AddedByUserId
+                    })
+                    .ToListAsync();
                 return Ok(contents);
             }
             catch (Exception ex)
@@ -152,9 +182,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                     Description = request.Description ?? string.Empty, // Provide empty string if null
                     FileName = $"{contentGuid}_{request.File.FileName}",
                     OriginalFileName = request.File.FileName,
-                    ContentType = request.File.ContentType,
+                    MimeType = request.File.ContentType,
                     FileSizeBytes = request.File.Length,
-                    ContentTypeModelId = await GetContentTypeModelIdAsync(contentType)
+                    ContentTypeModelId = await GetContentTypeIdAsync(contentType)
                 };
 
                 using var stream = request.File.OpenReadStream();
@@ -194,39 +224,94 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPut("{id}")]
-        public async Task<ActionResult<ContentItem>> UpdateContent(int id, [FromBody] ContentUpdateRequest request)
+        public async Task<ActionResult> UpdateContent(int id, [FromBody] ContentUpdateRequest request)
         {
             try
             {
-                var content = await _contentService.GetContentByIdAsync(id);
+                _logger.LogInformation("Starting update for content {ContentId}", id);
+
+                var content = await _context.Contents
+                    .Where(c => c.Id == id && c.IsActive)
+                    .Select(c => new ContentItem
+                    {
+                        Id = c.Id,
+                        PatientId = c.PatientId,
+                        AddedByUserId = c.AddedByUserId,
+                        Title = c.Title,
+                        Description = c.Description,
+                        FileName = c.FileName,
+                        OriginalFileName = c.OriginalFileName,
+                        MimeType = c.MimeType,
+                        FileSizeBytes = c.FileSizeBytes,
+                        S3Bucket = c.S3Bucket,
+                        S3Key = c.S3Key,
+                        ContentTypeModelId = c.ContentTypeModelId,
+                        CreatedAt = c.CreatedAt,
+                        LastAccessedAt = c.LastAccessedAt,
+                        IsActive = c.IsActive
+                    })
+                    .FirstOrDefaultAsync();
+
                 if (content == null)
+                {
+                    _logger.LogWarning("Content {ContentId} not found or not active", id);
                     return NotFound();
+                }
+
+                _logger.LogInformation("Found content {ContentId}: {Title}", id, content.Title);
 
                 // Validate that the user can modify this content
                 if (request.AddedByUserId.HasValue)
                 {
+                    _logger.LogInformation("Validating user {UserId} for content {ContentId}", request.AddedByUserId.Value, id);
                     var user = await _contentService.GetUserByIdAsync(request.AddedByUserId.Value);
                     if (user == null)
+                    {
+                        _logger.LogWarning("User {UserId} not found", request.AddedByUserId.Value);
                         return BadRequest("User not found");
+                    }
 
                     var canAccess = await _contentService.CanUserAddContentForPatientAsync(request.AddedByUserId.Value, user.RoleId, content.PatientId);
                     if (!canAccess)
+                    {
+                        _logger.LogWarning("User {UserId} does not have permission to modify content {ContentId}", request.AddedByUserId.Value, id);
                         return Forbid("You don't have permission to modify content for this patient");
+                    }
                 }
 
+                _logger.LogInformation("Updating content {ContentId} with title: {Title}", id, request.Title);
                 content.Title = request.Title;
                 content.Description = request.Description ?? string.Empty; // Provide empty string if null
 
                 var updated = await _contentService.UpdateContentAsync(content);
                 if (!updated)
+                {
+                    _logger.LogError("Failed to update content {ContentId}", id);
                     return StatusCode(500, "Failed to update content");
+                }
 
-                return Ok(content);
+                _logger.LogInformation("Successfully updated content {ContentId}", id);
+
+                // Return a simplified response to avoid serialization issues
+                var result = new
+                {
+                    content.Id,
+                    content.Title,
+                    content.Description,
+                    content.OriginalFileName,
+                    content.FileSizeBytes,
+                    content.CreatedAt,
+                    content.ContentTypeModelId,
+                    PatientId = content.PatientId,
+                    AddedByUserId = content.AddedByUserId
+                };
+
+                return Ok(result);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating content {ContentId}", id);
-                return StatusCode(500, "Internal server error");
+                _logger.LogError(ex, "Error updating content {ContentId}: {Message}", id, ex.Message);
+                return StatusCode(500, $"Internal server error: {ex.Message}");
             }
         }
 
@@ -309,20 +394,20 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-        private ContentType DetermineContentType(string fileName)
+        private ContentTypeEnum DetermineContentType(string fileName)
         {
             var extension = Path.GetExtension(fileName).ToLowerInvariant();
             return extension switch
             {
-                ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" or ".webp" => ContentType.Image,
-                ".mp4" or ".avi" or ".mov" or ".wmv" or ".flv" or ".webm" => ContentType.Video,
-                ".mp3" or ".wav" or ".flac" or ".aac" or ".ogg" => ContentType.Audio,
-                ".pdf" or ".doc" or ".docx" or ".txt" or ".rtf" or ".xls" or ".xlsx" or ".ppt" or ".pptx" => ContentType.Document,
-                _ => ContentType.Other
+                ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" or ".webp" => ContentTypeEnum.Image,
+                ".mp4" or ".avi" or ".mov" or ".wmv" or ".flv" or ".webm" => ContentTypeEnum.Video,
+                ".mp3" or ".wav" or ".flac" or ".aac" or ".ogg" => ContentTypeEnum.Audio,
+                ".pdf" or ".doc" or ".docx" or ".txt" or ".rtf" or ".xls" or ".xlsx" or ".ppt" or ".pptx" => ContentTypeEnum.Document,
+                _ => ContentTypeEnum.Other
             };
         }
 
-        private async Task<int> GetContentTypeModelIdAsync(ContentType type)
+        private async Task<int> GetContentTypeIdAsync(ContentTypeEnum type)
         {
             var contentTypeName = type.ToString();
             var contentType = await _context.ContentTypes
@@ -347,14 +432,14 @@ namespace SM_MentalHealthApp.Server.Controllers
             return contentType.Id;
         }
 
-        private string GetIconForType(ContentType type)
+        private string GetIconForType(ContentTypeEnum type)
         {
             return type switch
             {
-                ContentType.Document => "📄",
-                ContentType.Image => "🖼️",
-                ContentType.Video => "🎥",
-                ContentType.Audio => "🎵",
+                ContentTypeEnum.Document => "📄",
+                ContentTypeEnum.Image => "🖼️",
+                ContentTypeEnum.Video => "🎥",
+                ContentTypeEnum.Audio => "🎵",
                 _ => "📁"
             };
         }

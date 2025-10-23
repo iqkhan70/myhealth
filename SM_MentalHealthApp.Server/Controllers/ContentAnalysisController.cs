@@ -106,7 +106,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 return Ok(new Shared.ContentAnalysis
                 {
                     ContentId = contentId,
-                    ContentType = "Unknown",
+                    ContentTypeName = "Unknown",
                     ExtractedText = "Analysis not implemented yet",
                     AnalysisResults = new Dictionary<string, object>(),
                     Alerts = new List<string>(),

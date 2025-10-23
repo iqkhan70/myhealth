@@ -103,7 +103,7 @@ namespace SM_MentalHealthApp.Server.Services
                     var emptyAnalysis = new SM_MentalHealthApp.Shared.ContentAnalysis
                     {
                         ContentId = content.Id,
-                        ContentType = content.ContentTypeModel?.Name ?? "Unknown",
+                        ContentTypeName = content.ContentTypeModel?.Name ?? "Unknown",
                         ExtractedText = string.Empty,
                         AnalysisResults = new Dictionary<string, object>(),
                         Alerts = new List<string>(),
@@ -120,7 +120,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var analysis = new SM_MentalHealthApp.Shared.ContentAnalysis
                 {
                     ContentId = content.Id,
-                    ContentType = content.ContentTypeModel?.Name ?? "Unknown",
+                    ContentTypeName = content.ContentTypeModel?.Name ?? "Unknown",
                     ExtractedText = extractedText,
                     AnalysisResults = new Dictionary<string, object>(),
                     Alerts = new List<string>(),
@@ -165,7 +165,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var errorAnalysis = new SM_MentalHealthApp.Shared.ContentAnalysis
                 {
                     ContentId = content.Id,
-                    ContentType = content.ContentTypeModel?.Name ?? "Unknown",
+                    ContentTypeName = content.ContentTypeModel?.Name ?? "Unknown",
                     ExtractedText = string.Empty,
                     AnalysisResults = new Dictionary<string, object>(),
                     Alerts = new List<string> { $"Analysis failed: {ex.Message}" },
@@ -381,7 +381,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                     context.AppendLine("=== MEDICAL DATA SUMMARY ===");
                     context.AppendLine($"Latest Update: {latestAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}");
-                    context.AppendLine($"Content Type: {latestAnalysis.ContentType}");
+                    context.AppendLine($"Content Type: {latestAnalysis.ContentTypeName}");
 
                     if (!string.IsNullOrEmpty(latestAnalysis.ExtractedText))
                     {
@@ -1042,5 +1042,6 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogError(ex, "Error processing unanalyzed content");
             }
         }
+
     }
 }

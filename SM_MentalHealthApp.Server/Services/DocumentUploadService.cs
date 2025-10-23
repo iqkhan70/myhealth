@@ -54,16 +54,16 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 // Validate file type and size
-                if (!FileValidationRules.IsValidFileType(request.ContentType, request.Type))
+                if (!FileValidationRules.IsValidFileType(request.MimeType, request.Type))
                 {
                     return new DocumentUploadResponse
                     {
                         Success = false,
-                        Message = $"File type {request.ContentType} is not allowed for {request.Type}."
+                        Message = $"File type {request.MimeType} is not allowed for {request.Type}."
                     };
                 }
 
-                if (!FileValidationRules.IsValidFileSize(request.ContentType, request.FileSizeBytes))
+                if (!FileValidationRules.IsValidFileSize(request.MimeType, request.FileSizeBytes))
                 {
                     return new DocumentUploadResponse
                     {
@@ -82,9 +82,9 @@ namespace SM_MentalHealthApp.Server.Services
                     Description = request.Description ?? string.Empty,
                     FileName = request.FileName,
                     OriginalFileName = request.FileName,
-                    ContentType = request.ContentType,
+                    MimeType = request.MimeType,
                     FileSizeBytes = request.FileSizeBytes,
-                    ContentTypeModelId = await GetContentTypeModelIdAsync(request.Type),
+                    ContentTypeModelId = await GetContentTypeIdAsync(request.Type),
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true
                 };
@@ -96,7 +96,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var s3Key = $"documents/{request.PatientId}/{contentItem.ContentGuid}/{request.FileName}";
 
                 // Generate pre-signed URL for upload
-                var uploadUrl = await GeneratePresignedUploadUrlAsync(s3Key, request.ContentType);
+                var uploadUrl = await GeneratePresignedUploadUrlAsync(s3Key, request.MimeType);
 
                 // Update content item with S3 info
                 contentItem.S3Bucket = _s3Config.BucketName;
@@ -183,7 +183,7 @@ namespace SM_MentalHealthApp.Server.Services
                 // Apply filters
                 if (request.Type.HasValue)
                 {
-                    var contentTypeId = await GetContentTypeModelIdAsync(request.Type.Value);
+                    var contentTypeId = await GetContentTypeIdAsync(request.Type.Value);
                     query = query.Where(c => c.ContentTypeModelId == contentTypeId);
                 }
 
@@ -220,7 +220,7 @@ namespace SM_MentalHealthApp.Server.Services
                         Description = c.Description,
                         FileName = c.FileName,
                         OriginalFileName = c.OriginalFileName,
-                        ContentType = c.ContentType,
+                        MimeType = c.MimeType,
                         FileSizeBytes = c.FileSizeBytes,
                         Type = GetContentTypeNameFromId(c.ContentTypeModelId),
                         CreatedAt = c.CreatedAt,
@@ -239,7 +239,7 @@ namespace SM_MentalHealthApp.Server.Services
                 foreach (var doc in documents)
                 {
                     doc.DownloadUrl = await GetDownloadUrlAsync(doc.Id, currentUserId);
-                    if (doc.Type == ContentType.Image || doc.Type == ContentType.Video)
+                    if (doc.Type == ContentTypeEnum.Image || doc.Type == ContentTypeEnum.Video)
                     {
                         doc.ThumbnailUrl = await GetThumbnailUrlAsync(doc.Id, currentUserId);
                     }
@@ -288,7 +288,7 @@ namespace SM_MentalHealthApp.Server.Services
                     Description = contentItem.Description,
                     FileName = contentItem.FileName,
                     OriginalFileName = contentItem.OriginalFileName,
-                    ContentType = contentItem.ContentType,
+                    MimeType = contentItem.MimeType,
                     FileSizeBytes = contentItem.FileSizeBytes,
                     Type = await GetContentTypeNameAsync(contentItem.ContentTypeModelId),
                     CreatedAt = contentItem.CreatedAt,
@@ -304,7 +304,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Generate URLs
                 documentInfo.DownloadUrl = await GetDownloadUrlAsync(contentId, currentUserId);
-                if (documentInfo.Type == ContentType.Image || documentInfo.Type == ContentType.Video)
+                if (documentInfo.Type == ContentTypeEnum.Image || documentInfo.Type == ContentTypeEnum.Video)
                 {
                     documentInfo.ThumbnailUrl = await GetThumbnailUrlAsync(contentId, currentUserId);
                 }
@@ -498,7 +498,7 @@ namespace SM_MentalHealthApp.Server.Services
             }
         }
 
-        private async Task<int> GetContentTypeModelIdAsync(ContentType type)
+        private async Task<int> GetContentTypeIdAsync(ContentTypeEnum type)
         {
             var contentTypeName = type.ToString();
             var contentType = await _context.ContentTypes
@@ -523,40 +523,40 @@ namespace SM_MentalHealthApp.Server.Services
             return contentType.Id;
         }
 
-        private string GetIconForType(ContentType type)
+        private string GetIconForType(ContentTypeEnum type)
         {
             return type switch
             {
-                ContentType.Document => "📄",
-                ContentType.Image => "🖼️",
-                ContentType.Video => "🎥",
-                ContentType.Audio => "🎵",
+                ContentTypeEnum.Document => "📄",
+                ContentTypeEnum.Image => "🖼️",
+                ContentTypeEnum.Video => "🎥",
+                ContentTypeEnum.Audio => "🎵",
                 _ => "📁"
             };
         }
 
-        private async Task<ContentType> GetContentTypeNameAsync(int contentTypeId)
+        private async Task<ContentTypeEnum> GetContentTypeNameAsync(int contentTypeId)
         {
             var contentType = await _context.ContentTypes
                 .FirstOrDefaultAsync(ct => ct.Id == contentTypeId);
 
             if (contentType == null)
-                return ContentType.Document;
+                return ContentTypeEnum.Document;
 
-            return Enum.TryParse<ContentType>(contentType.Name, out var result) ? result : ContentType.Document;
+            return Enum.TryParse<ContentTypeEnum>(contentType.Name, out var result) ? result : ContentTypeEnum.Document;
         }
 
-        private ContentType GetContentTypeNameFromId(int contentTypeId)
+        private ContentTypeEnum GetContentTypeNameFromId(int contentTypeId)
         {
             // This is a simplified version for synchronous use
             // In a real implementation, you'd need to cache this or use a different approach
             return contentTypeId switch
             {
-                1 => ContentType.Document,
-                2 => ContentType.Image,
-                3 => ContentType.Video,
-                4 => ContentType.Audio,
-                _ => ContentType.Document
+                1 => ContentTypeEnum.Document,
+                2 => ContentTypeEnum.Image,
+                3 => ContentTypeEnum.Video,
+                4 => ContentTypeEnum.Audio,
+                _ => ContentTypeEnum.Document
             };
         }
     }

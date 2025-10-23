@@ -17,13 +17,13 @@ namespace SM_MentalHealthApp.Shared
         public string FileName { get; set; } = string.Empty;
 
         [Required]
-        public string ContentType { get; set; } = string.Empty;
+        public string MimeType { get; set; } = string.Empty;
 
         [Required]
         public long FileSizeBytes { get; set; }
 
         [Required]
-        public ContentType Type { get; set; }
+        public ContentTypeEnum Type { get; set; }
 
         public string? Category { get; set; } // "Test Results", "Prescription", "X-Ray", "Lab Report", etc.
 
@@ -44,7 +44,7 @@ namespace SM_MentalHealthApp.Shared
     public class DocumentListRequest
     {
         public int PatientId { get; set; }
-        public ContentType? Type { get; set; }
+        public ContentTypeEnum? Type { get; set; }
         public string? Category { get; set; }
         public DateTime? FromDate { get; set; }
         public DateTime? ToDate { get; set; }
@@ -71,9 +71,9 @@ namespace SM_MentalHealthApp.Shared
         public string Description { get; set; } = string.Empty;
         public string FileName { get; set; } = string.Empty;
         public string OriginalFileName { get; set; } = string.Empty;
-        public string ContentType { get; set; } = string.Empty;
+        public string MimeType { get; set; } = string.Empty;
         public long FileSizeBytes { get; set; }
-        public ContentType Type { get; set; }
+        public ContentTypeEnum Type { get; set; }
         public string? Category { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? LastAccessedAt { get; set; }
@@ -159,14 +159,14 @@ namespace SM_MentalHealthApp.Shared
             "text/plain"
         };
 
-        public static bool IsValidFileType(string contentType, ContentType type)
+        public static bool IsValidFileType(string contentType, ContentTypeEnum type)
         {
             return type switch
             {
-                ContentType.Image => AllowedImageTypes.Contains(contentType),
-                ContentType.Video => AllowedVideoTypes.Contains(contentType),
-                ContentType.Audio => AllowedAudioTypes.Contains(contentType),
-                ContentType.Document => AllowedDocumentTypes.Contains(contentType),
+                ContentTypeEnum.Image => AllowedImageTypes.Contains(contentType),
+                ContentTypeEnum.Video => AllowedVideoTypes.Contains(contentType),
+                ContentTypeEnum.Audio => AllowedAudioTypes.Contains(contentType),
+                ContentTypeEnum.Document => AllowedDocumentTypes.Contains(contentType),
                 _ => false
             };
         }

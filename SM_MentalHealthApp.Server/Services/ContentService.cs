@@ -23,6 +23,7 @@ namespace SM_MentalHealthApp.Server.Services
             return await _context.Contents
                 .Include(c => c.Patient)
                 .Include(c => c.AddedByUser)
+                .Include(c => c.ContentTypeModel)
                 .Where(c => c.PatientId == patientId && c.IsActive)
                 .OrderByDescending(c => c.CreatedAt)
                 .ToListAsync();
@@ -33,6 +34,7 @@ namespace SM_MentalHealthApp.Server.Services
             return await _context.Contents
                 .Include(c => c.Patient)
                 .Include(c => c.AddedByUser)
+                .Include(c => c.ContentTypeModel)
                 .Where(c => c.IsActive)
                 .OrderByDescending(c => c.CreatedAt)
                 .ToListAsync();
@@ -43,6 +45,7 @@ namespace SM_MentalHealthApp.Server.Services
             return await _context.Contents
                 .Include(c => c.Patient)
                 .Include(c => c.AddedByUser)
+                .Include(c => c.ContentTypeModel)
                 .FirstOrDefaultAsync(c => c.Id == id && c.IsActive);
         }
 
@@ -51,6 +54,7 @@ namespace SM_MentalHealthApp.Server.Services
             return await _context.Contents
                 .Include(c => c.Patient)
                 .Include(c => c.AddedByUser)
+                .Include(c => c.ContentTypeModel)
                 .FirstOrDefaultAsync(c => c.ContentGuid == contentGuid && c.IsActive);
         }
 
@@ -62,7 +66,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var s3Key = await _s3Service.UploadFileAsync(
                     fileStream,
                     content.FileName,
-                    content.ContentType,
+                    content.MimeType,
                     content.ContentGuid
                 );
 
@@ -101,7 +105,17 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                _context.Contents.Update(content);
+                var existingContent = await _context.Contents
+                    .Where(c => c.Id == content.Id)
+                    .FirstOrDefaultAsync();
+
+                if (existingContent == null)
+                    return false;
+
+                // Update only the fields that can be changed
+                existingContent.Title = content.Title;
+                existingContent.Description = content.Description;
+
                 await _context.SaveChangesAsync();
                 return true;
             }

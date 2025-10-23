@@ -174,7 +174,7 @@ namespace SM_MentalHealthApp.Shared
         public string Description { get; set; } = string.Empty;
         public string FileName { get; set; } = string.Empty;
         public string OriginalFileName { get; set; } = string.Empty;
-        public string ContentType { get; set; } = string.Empty; // MIME type
+        public string MimeType { get; set; } = string.Empty; // MIME type
         public long FileSizeBytes { get; set; }
         public string S3Bucket { get; set; } = string.Empty;
         public string S3Key { get; set; } = string.Empty; // S3 object key
@@ -190,7 +190,7 @@ namespace SM_MentalHealthApp.Shared
         public ContentTypeModel ContentTypeModel { get; set; } = null!;
     }
 
-    public enum ContentType
+    public enum ContentTypeEnum
     {
         Document = 1,
         Image = 2,
@@ -216,7 +216,7 @@ namespace SM_MentalHealthApp.Shared
     {
         public int Id { get; set; }
         public int ContentId { get; set; }
-        public string ContentType { get; set; } = string.Empty;
+        public string ContentTypeName { get; set; } = string.Empty;
         public string ExtractedText { get; set; } = string.Empty;
         public Dictionary<string, object> AnalysisResults { get; set; } = new();
         public List<string> Alerts { get; set; } = new();

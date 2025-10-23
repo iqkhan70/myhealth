@@ -12,8 +12,8 @@ using SM_MentalHealthApp.Server.Data;
 namespace SM_MentalHealthApp.Server.Migrations
 {
     [DbContext(typeof(JournalDbContext))]
-    [Migration("20251022203336_AddContentTypesTable")]
-    partial class AddContentTypesTable
+    [Migration("20251023210319_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -355,7 +355,7 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Property<int>("ContentId")
                         .HasColumnType("int");
 
-                    b.Property<string>("ContentType")
+                    b.Property<string>("ContentTypeName")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
@@ -398,14 +398,6 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Property<Guid>("ContentGuid")
                         .HasColumnType("char(36)");
 
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<int>("ContentTypeId")
-                        .HasColumnType("int");
-
                     b.Property<int>("ContentTypeModelId")
                         .HasColumnType("int");
 
@@ -430,6 +422,11 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.Property<DateTime?>("LastAccessedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
@@ -815,9 +812,9 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("SM_MentalHealthApp.Shared.ContentTypeModel", "ContentTypeModel")
-                        .WithMany("Contents")
+                        .WithMany()
                         .HasForeignKey("ContentTypeModelId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("SM_MentalHealthApp.Shared.User", "Patient")
@@ -902,11 +899,6 @@ namespace SM_MentalHealthApp.Server.Migrations
             modelBuilder.Entity("SM_MentalHealthApp.Shared.ChatSession", b =>
                 {
                     b.Navigation("Messages");
-                });
-
-            modelBuilder.Entity("SM_MentalHealthApp.Shared.ContentTypeModel", b =>
-                {
-                    b.Navigation("Contents");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.Role", b =>

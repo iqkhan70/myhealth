@@ -51,12 +51,12 @@
             }
             else if (contents.Any())
             {
-                <RadzenDataGrid Data="@contents" TItem="ContentItem" AllowPaging="true" PageSize="10" AllowSorting="true"
+                <RadzenDataGrid Data="@contents" TItem="ContentItemDto" AllowPaging="true" PageSize="10" AllowSorting="true"
                     FilterMode="FilterMode.Advanced" ShowPagingSummary="true" EmptyText="No content found" AllowFiltering="true"
                     FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" ShowFilterRow="true"
                     ShowFilterRowButtons="true">
                     <Columns>
-                        <RadzenDataGridColumn TItem="ContentItem" Property="Title" Title="Title" Width="200px"
+                        <RadzenDataGridColumn TItem="ContentItemDto" Property="Title" Title="Title" Width="200px"
                             Filterable="true">
                             <Template Context="content">
                                 <div>
@@ -67,22 +67,22 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="ContentItem" Property="Patient" Title="Patient" Width="150px"
+                        <RadzenDataGridColumn TItem="ContentItemDto" Property="PatientId" Title="Patient" Width="150px"
                             Filterable="true">
                             <Template Context="content">
                                 <div>
-                                    <strong>@content.Patient.FirstName @content.Patient.LastName</strong>
+                                    <strong>Patient #@content.PatientId</strong>
                                     <br />
-                                    <small class="text-muted">@content.Patient.Email</small>
+                                    <small class="text-muted">ID: @content.PatientId</small>
                                 </div>
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="ContentItem" Property="OriginalFileName" Title="File" Width="150px"
+                        <RadzenDataGridColumn TItem="ContentItemDto" Property="OriginalFileName" Title="File" Width="150px"
                             Filterable="true">
                             <Template Context="content">
                                 <div>
-                                    <i class="@GetFileIcon(content.ContentTypeModel?.Name ?? "Other")"></i>
+                                    <i class="@GetFileIcon(GetContentTypeName(content.ContentTypeModelId))"></i>
                                     @content.OriginalFileName
                                     <br />
                                     <small class="text-muted">@FormatFileSize(content.FileSizeBytes)</small>
@@ -90,15 +90,15 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="ContentItem" Property="ContentTypeModel.Name" Title="Type" Width="100px" Filterable="true">
+                        <RadzenDataGridColumn TItem="ContentItemDto" Property="ContentTypeId" Title="Type" Width="100px" Filterable="true">
                             <Template Context="content">
-                                <span class="content-type-badge @GetTypeClass(content.ContentTypeModel?.Name ?? "Other")">
-                                    @(content.ContentTypeModel?.Name ?? "Other")
-                                </span>
+        <span class="content-type-badge @GetTypeClass(GetContentTypeName(content.ContentTypeModelId))">
+            @GetContentTypeName(content.ContentTypeModelId)
+        </span>
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="ContentItem" Property="CreatedAt" Title="Added" Width="120px"
+                        <RadzenDataGridColumn TItem="ContentItemDto" Property="CreatedAt" Title="Added" Width="120px"
                             Filterable="true">
                             <Template Context="content">
                                 @content.CreatedAt.ToString("MMM dd, yyyy")
@@ -107,15 +107,15 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="ContentItem" Property="AddedByUser" Title="Added By" Width="120px"
+                        <RadzenDataGridColumn TItem="ContentItemDto" Property="AddedByUserId" Title="Added By" Width="120px"
                             Filterable="true">
                             <Template Context="content">
-                                @if (content.AddedByUser != null)
+                                @if (content.AddedByUserId.HasValue)
                                 {
                                     <div>
-                                        <strong>@content.AddedByUser.FirstName @content.AddedByUser.LastName</strong>
+                                        <strong>User #@content.AddedByUserId</strong>
                                         <br />
-                                        <small class="text-muted">@content.AddedByUser.Email</small>
+                                        <small class="text-muted">ID: @content.AddedByUserId</small>
                                     </div>
                                 }
                                 else
@@ -125,7 +125,7 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="ContentItem" Property="Actions" Title="Actions" Width="150px"
+                        <RadzenDataGridColumn TItem="ContentItemDto" Property="Actions" Title="Actions" Width="150px"
                             Sortable="false" Filterable="false">
                             <Template Context="content">
                                 <div class="action-buttons">
@@ -257,7 +257,7 @@
 }
 
 @code {
-    private List<ContentItem> contents = new();
+    private List<ContentItemDto> contents = new();
     private List<User> patients = new();
     private bool isLoading = true;
     private bool showContentForm = false;
@@ -300,19 +300,19 @@
             // Load content based on user role
             if (AuthService.CurrentUser?.RoleId == 1) // Patient
             {
-                var response = await Http.GetFromJsonAsync<List<ContentItem>>($"api/content/patient/{AuthService.CurrentUser.Id}");
+                var response = await Http.GetFromJsonAsync<List<ContentItemDto>>($"api/content/patient/{AuthService.CurrentUser.Id}");
                 contents = response ?? new();
             }
             else if (AuthService.CurrentUser?.RoleId == 2) // Doctor
             {
                 // Load content only for assigned patients
                 var assignedPatientIds = patients.Select(p => p.Id).ToList();
-                var allContentResponse = await Http.GetFromJsonAsync<List<ContentItem>>("api/content/all");
+                var allContentResponse = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
                 contents = allContentResponse?.Where(c => assignedPatientIds.Contains(c.PatientId)).ToList() ?? new();
             }
             else if (AuthService.CurrentUser?.RoleId == 3) // Admin
             {
-                var response = await Http.GetFromJsonAsync<List<ContentItem>>("api/content/all");
+                var response = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
                 contents = response ?? new();
             }
 
@@ -343,9 +343,15 @@
         showContentForm = true;
     }
 
-    private void EditContent(ContentItem content)
+    private void EditContent(ContentItemDto content)
     {
-        editingContent = content;
+        editingContent = new ContentItem
+        {
+            Id = content.Id,
+            PatientId = content.PatientId,
+            Title = content.Title,
+            Description = content.Description
+        };
         contentForm = new ContentForm
         {
             Id = content.Id,
@@ -485,7 +491,7 @@
         }
     }
 
-    private async Task ViewContent(ContentItem content)
+    private async Task ViewContent(ContentItemDto content)
     {
         try
         {
@@ -511,7 +517,7 @@
         }
     }
 
-    private async Task DeleteContent(ContentItem content)
+    private async Task DeleteContent(ContentItemDto content)
     {
         try
         {
@@ -639,6 +645,18 @@
         return $"{len:0.##} {sizes[order]}";
     }
 
+    private string GetContentTypeName(int contentTypeId)
+    {
+        return contentTypeId switch
+        {
+            1 => "Document",
+            2 => "Image", 
+            3 => "Video",
+            4 => "Audio",
+            _ => "Other"
+        };
+    }
+
     public class ContentForm
     {
         public int Id { get; set; }
@@ -653,6 +671,20 @@
         public string Description { get; set; } = string.Empty;
         public int? AddedByUserId { get; set; }
     }
+
+    public class ContentItemDto
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string OriginalFileName { get; set; } = string.Empty;
+        public long FileSizeBytes { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public int ContentTypeModelId { get; set; }
+        public int PatientId { get; set; }
+        public int? AddedByUserId { get; set; }
+    }
+
 }
 
 <style>

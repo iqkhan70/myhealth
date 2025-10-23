@@ -57,7 +57,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var analysis = new SM_MentalHealthApp.Shared.ContentAnalysis
                 {
                     ContentId = content.Id,
-                    ContentType = content.ContentTypeModel?.Name ?? "Unknown",
+                    ContentTypeName = content.ContentTypeModel?.Name ?? "Unknown",
                     ExtractedText = extractedText,
                     AnalysisResults = new Dictionary<string, object>(),
                     Alerts = new List<string>(),
@@ -104,7 +104,7 @@ namespace SM_MentalHealthApp.Server.Services
                 return new SM_MentalHealthApp.Shared.ContentAnalysis
                 {
                     ContentId = content.Id,
-                    ContentType = content.ContentTypeModel?.Name ?? "Unknown",
+                    ContentTypeName = content.ContentTypeModel?.Name ?? "Unknown",
                     ExtractedText = string.Empty,
                     AnalysisResults = new Dictionary<string, object>(),
                     Alerts = new List<string>(),
@@ -415,7 +415,7 @@ Format as JSON:
                     context.AppendLine("📁 **Recent Content Analysis:**");
                     foreach (var analysis in recentAnalyses)
                     {
-                        context.AppendLine($"- Type: {analysis.ContentType}");
+                        context.AppendLine($"- Type: {analysis.ContentTypeName}");
                         context.AppendLine($"  Status: {analysis.ProcessingStatus}");
                         if (!string.IsNullOrEmpty(analysis.ExtractedText))
                         {
@@ -536,5 +536,6 @@ Format as JSON:
 
             return criticalPatterns.Any(pattern => Regex.IsMatch(vitalSign, pattern, RegexOptions.IgnoreCase));
         }
+
     }
 }

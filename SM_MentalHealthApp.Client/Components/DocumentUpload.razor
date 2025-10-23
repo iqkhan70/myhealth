@@ -161,7 +161,7 @@
                                     </small>
                                 </div>
 
-                                @if (doc.Type == ContentType.Image && !string.IsNullOrEmpty(doc.ThumbnailUrl))
+                                @if (doc.Type == ContentTypeEnum.Image && !string.IsNullOrEmpty(doc.ThumbnailUrl))
                                 {
                                     <div class="document-thumbnail">
                                         <img src="@doc.ThumbnailUrl" alt="@doc.Title" class="img-thumbnail"
@@ -272,24 +272,24 @@
 
             // Auto-detect content type
             UploadRequest.Type = GetContentTypeFromFile(SelectedFile);
-            UploadRequest.ContentType = SelectedFile.ContentType;
+            UploadRequest.MimeType = SelectedFile.ContentType;
             UploadRequest.FileSizeBytes = (long)SelectedFile.Size;
             UploadRequest.FileName = SelectedFile.Name;
         }
     }
 
-    private ContentType GetContentTypeFromFile(IBrowserFile file)
+    private ContentTypeEnum GetContentTypeFromFile(IBrowserFile file)
     {
         var contentType = file.ContentType.ToLower();
 
         if (contentType.StartsWith("image/"))
-            return ContentType.Image;
+            return ContentTypeEnum.Image;
         else if (contentType.StartsWith("video/"))
-            return ContentType.Video;
+            return ContentTypeEnum.Video;
         else if (contentType.StartsWith("audio/"))
-            return ContentType.Audio;
+            return ContentTypeEnum.Audio;
         else
-            return ContentType.Document;
+            return ContentTypeEnum.Document;
     }
 
     private async Task UploadFile()
@@ -380,7 +380,7 @@
                 PatientId = SelectedPatientId,
                 Page = CurrentPage,
                 PageSize = 10,
-                Type = !string.IsNullOrEmpty(FilterType) ? (ContentType?)int.Parse(FilterType) : null,
+                Type = !string.IsNullOrEmpty(FilterType) ? (ContentTypeEnum?)int.Parse(FilterType) : null,
                 Category = !string.IsNullOrEmpty(FilterCategory) ? FilterCategory : null,
                 FromDate = FilterFromDate,
                 ToDate = FilterToDate

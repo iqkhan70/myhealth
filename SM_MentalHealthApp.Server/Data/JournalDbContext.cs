@@ -134,7 +134,7 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Description).HasMaxLength(1000);
                         entity.Property(e => e.FileName).IsRequired().HasMaxLength(255);
                         entity.Property(e => e.OriginalFileName).IsRequired().HasMaxLength(255);
-                        entity.Property(e => e.ContentType).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.MimeType).IsRequired().HasMaxLength(100);
                         entity.Property(e => e.S3Bucket).IsRequired().HasMaxLength(100);
                         entity.Property(e => e.S3Key).IsRequired().HasMaxLength(500);
                         // entity.Property(e => e.S3Url).HasMaxLength(1000); // Removed - URLs generated on-demand
@@ -149,13 +149,18 @@ namespace SM_MentalHealthApp.Server.Data
                         .WithMany()
                         .HasForeignKey(e => e.AddedByUserId)
                         .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasOne(e => e.ContentTypeModel)
+                        .WithMany()
+                        .HasForeignKey(e => e.ContentTypeModelId)
+                        .OnDelete(DeleteBehavior.Restrict);
                   });
 
                   // Configure ContentAnalysis entity
                   modelBuilder.Entity<ContentAnalysis>(entity =>
                   {
                         entity.HasKey(e => e.Id);
-                        entity.Property(e => e.ContentType).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.ContentTypeName).IsRequired().HasMaxLength(50);
                         entity.Property(e => e.ExtractedText).HasColumnType("TEXT");
                         entity.Property(e => e.ProcessingStatus).IsRequired().HasMaxLength(50);
                         entity.Property(e => e.ErrorMessage).HasMaxLength(1000);

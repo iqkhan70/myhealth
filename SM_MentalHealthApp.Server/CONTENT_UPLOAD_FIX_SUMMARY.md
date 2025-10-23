@@ -26,12 +26,6 @@ During the database migration recovery, we removed the `ContentTypeId` column fr
   - `ContentTypeId = await GetContentTypeIdAsync(contentType)` → `ContentTypeModelId = await GetContentTypeModelIdAsync(contentType)`
   - Renamed method: `GetContentTypeIdAsync` → `GetContentTypeModelIdAsync`
 
-#### 3. **Service Updates:**
-
-- ✅ Fixed `DocumentUploadService.cs`:
-  - Updated all references from `ContentTypeId` to `ContentTypeModelId`
-  - Fixed query filters: `c.ContentTypeId == contentTypeId` → `c.ContentTypeModelId == contentTypeId`
-  - Updated property mappings in response objects
 
 ### 🎯 **Database Schema Status:**
 

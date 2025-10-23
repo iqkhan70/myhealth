@@ -1,3 +1,0 @@
-cleAdmin	admin@mentalhealth.com	demo123	Create doctors, manage users, system administration
-Doctor	dr.sarah@mentalhealth.com	demo123	Patient care, medical consultations
-Patient	john@doe.com	demo123	Patient self-care, journaling
