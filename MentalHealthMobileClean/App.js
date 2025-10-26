@@ -14,6 +14,7 @@ import SignalRService from './src/services/SignalRService';
 import AgoraService from './src/services/AgoraService';
 import { RtcLocalView, RtcRemoteView } from 'react-native-agora';
 import DocumentUpload from './src/components/DocumentUpload';
+import SmsComponent from './src/components/SmsComponent';
 
 // detect platform once
 const isIOS = Platform.OS === 'ios';
@@ -55,6 +56,9 @@ export default function App() {
   const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail'
   const [availablePatients, setAvailablePatients] = useState([]);
   const [selectedContactDetail, setSelectedContactDetail] = useState(null);
+
+  // 📱 SMS state
+  const [smsModalVisible, setSmsModalVisible] = useState(false);
 
   // ---------- INIT ----------
   useEffect(() => {
@@ -712,6 +716,16 @@ export default function App() {
               <Text style={styles.contactDetailButtonText}>Video Call</Text>
             </TouchableOpacity>
 
+            {user?.roleId === 1 && (
+              <TouchableOpacity 
+                style={styles.contactDetailButton} 
+                onPress={() => setSmsModalVisible(true)}
+              >
+                <Text style={styles.contactDetailButtonIcon}>📱</Text>
+                <Text style={styles.contactDetailButtonText}>SMS</Text>
+              </TouchableOpacity>
+            )}
+
             {(user?.roleId === 1 || user?.roleId === 2) && (
               <TouchableOpacity 
                 style={styles.contactDetailButton} 
@@ -818,6 +832,13 @@ export default function App() {
         <StatusBar style="auto" />
         {renderContactDetail()}
         {renderCallModal()}
+        <SmsComponent
+          visible={smsModalVisible}
+          onClose={() => setSmsModalVisible(false)}
+          user={user}
+          contacts={contacts}
+          apiBaseUrl={API_BASE_URL}
+        />
       </View>
     );
   }

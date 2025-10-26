@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Server.Data;
+using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using System.Security.Claims;
 using Microsoft.Extensions.Logging;
@@ -381,6 +382,110 @@ namespace SM_MentalHealthApp.Server.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting messages");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Send SMS to doctor's phone number
+        /// </summary>
+        [HttpPost("send-sms")]
+        [Authorize]
+        public async Task<ActionResult> SendSmsToDoctor([FromBody] SendMobileMessageRequest request)
+        {
+            try
+            {
+                var userIdClaim = User.FindFirst("userId")?.Value;
+                if (!int.TryParse(userIdClaim, out int senderId))
+                {
+                    return Unauthorized("Invalid user token");
+                }
+
+                _logger.LogInformation("SMS request from {SenderId} to {TargetUserId}: {Message}",
+                    senderId, request.TargetUserId, request.Message);
+
+                // Verify target user exists and is a doctor
+                var targetUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == request.TargetUserId && u.IsActive);
+
+                if (targetUser == null)
+                {
+                    return NotFound("Target user not found");
+                }
+
+                if (targetUser.RoleId != 2) // RoleId 2 = Doctor
+                {
+                    return BadRequest("Target user is not a doctor");
+                }
+
+                if (string.IsNullOrEmpty(targetUser.MobilePhone))
+                {
+                    return BadRequest("Doctor does not have a phone number configured");
+                }
+
+                // Verify relationship exists (doctor-patient)
+                var hasRelationship = await _context.UserAssignments
+                    .AnyAsync(ua =>
+                        (ua.AssignerId == senderId && ua.AssigneeId == request.TargetUserId) ||
+                        (ua.AssignerId == request.TargetUserId && ua.AssigneeId == senderId));
+
+                if (!hasRelationship)
+                {
+                    return Forbid("No relationship exists with target doctor");
+                }
+
+                // Get sender info for SMS message
+                var sender = await _context.Users.FirstOrDefaultAsync(u => u.Id == senderId);
+                if (sender == null)
+                {
+                    return BadRequest("Sender not found");
+                }
+
+                // Format SMS message
+                var smsMessage = $"From {sender.FirstName} {sender.LastName} (Patient): {request.Message}";
+
+                // Send SMS via Vonage service
+                var smsService = HttpContext.RequestServices.GetRequiredService<ISmsService>();
+                var smsSent = await smsService.SendSmsAsync(targetUser.MobilePhone, smsMessage);
+
+                if (smsSent)
+                {
+                    // Save message to database
+                    var smsRecord = new SmsMessage
+                    {
+                        SenderId = senderId,
+                        ReceiverId = request.TargetUserId,
+                        Message = request.Message,
+                        SentAt = DateTime.UtcNow,
+                        IsRead = false
+                    };
+
+                    _context.SmsMessages.Add(smsRecord);
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation("SMS sent successfully to doctor {DoctorId} ({DoctorName}) at {PhoneNumber}",
+                        targetUser.Id, targetUser.FullName, targetUser.MobilePhone);
+
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "SMS sent successfully",
+                        messageId = smsRecord.Id,
+                        doctorName = targetUser.FullName,
+                        phoneNumber = targetUser.MobilePhone
+                    });
+                }
+                else
+                {
+                    _logger.LogError("Failed to send SMS to doctor {DoctorId} ({DoctorName}) at {PhoneNumber}",
+                        targetUser.Id, targetUser.FullName, targetUser.MobilePhone);
+
+                    return StatusCode(500, "Failed to send SMS");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending SMS");
                 return StatusCode(500, "Internal server error");
             }
         }
