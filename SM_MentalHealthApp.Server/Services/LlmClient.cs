@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using System.IO; // Added for File operations
+using System.Linq;
 using SM_MentalHealthApp.Shared;
 
 namespace SM_MentalHealthApp.Server.Services
@@ -43,14 +44,14 @@ namespace SM_MentalHealthApp.Server.Services
         public LlmClient(IConfiguration configuration)
         {
             _httpClient = new HttpClient();
-            _openAiApiKey = configuration["OpenAI:ApiKey"] ?? throw new InvalidOperationException("OpenAI API key not found in configuration");
+            _openAiApiKey = configuration["OpenAI:ApiKey"] ?? "";
             _ollamaBaseUrl = configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
             _customKnowledgePath = configuration["CustomKnowledge:FilePath"] ?? "llm/prompts/WonderWorld.md";
-            _huggingFaceToken = configuration["HuggingFace:Token"] ?? throw new InvalidOperationException("Hugging Face token not found in configuration");
-            
+            _huggingFaceToken = configuration["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("Hugging Face token not found in configuration");
+
             // Load custom knowledge content
             _customKnowledgeContent = LoadCustomKnowledge();
-            
+
             // Set up headers
             _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _openAiApiKey);
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "SM-LLM-Server");
@@ -105,6 +106,11 @@ namespace SM_MentalHealthApp.Server.Services
 
         private async Task<LlmResponse> GenerateWithOpenAI(LlmRequest request)
         {
+            if (string.IsNullOrEmpty(_openAiApiKey))
+            {
+                throw new InvalidOperationException("OpenAI API key is not configured. Please add a valid OpenAI API key to use this provider.");
+            }
+
             var openAiRequest = new
             {
                 model = request.Model ?? "gpt-4o-mini",
@@ -126,7 +132,7 @@ namespace SM_MentalHealthApp.Server.Services
             var responseJson = await response.Content.ReadAsStringAsync();
             var openAiResponse = JsonSerializer.Deserialize<OpenAiApiResponse>(responseJson);
 
-            if (openAiResponse?.Choices?.Length > 0 && 
+            if (openAiResponse?.Choices?.Length > 0 &&
                 !string.IsNullOrEmpty(openAiResponse.Choices[0].Message?.Content))
             {
                 return new LlmResponse
@@ -142,14 +148,11 @@ namespace SM_MentalHealthApp.Server.Services
 
         private async Task<LlmResponse> GenerateWithOllama(LlmRequest request)
         {
+            // Use /api/generate endpoint (works with tinyllama and other models)
             var ollamaRequest = new
             {
-                model = request.Model ?? "llama3.2",
-                messages = new[]
-                {
-                    new { role = "system", content = request.Instructions ?? "You are a helpful AI assistant." },
-                    new { role = "user", content = request.Prompt }
-                },
+                model = request.Model ?? "tinyllama",
+                prompt = $"{request.Instructions ?? "You are a helpful AI assistant."}\n\nUser: {request.Prompt}\nAssistant:",
                 stream = false,
                 options = new
                 {
@@ -161,18 +164,18 @@ namespace SM_MentalHealthApp.Server.Services
             var json = JsonSerializer.Serialize(ollamaRequest);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync($"{_ollamaBaseUrl}/api/chat", content);
+            var response = await _httpClient.PostAsync($"{_ollamaBaseUrl}/api/generate", content);
             response.EnsureSuccessStatusCode();
 
             var responseJson = await response.Content.ReadAsStringAsync();
-            var ollamaResponse = JsonSerializer.Deserialize<OllamaApiResponse>(responseJson);
+            var ollamaResponse = JsonSerializer.Deserialize<OllamaGenerateResponse>(responseJson);
 
-            if (ollamaResponse?.Message?.Content != null)
+            if (ollamaResponse?.Response != null)
             {
                 return new LlmResponse
                 {
                     Id = Guid.NewGuid().ToString(),
-                    Text = ollamaResponse.Message.Content,
+                    Text = ollamaResponse.Response,
                     Provider = "Ollama"
                 };
             }
@@ -202,13 +205,22 @@ namespace SM_MentalHealthApp.Server.Services
             var json = JsonSerializer.Serialize(hfRequest);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            // Use the model specified in the request, or default to a good text generation model
-            var model = request.Model ?? "microsoft/DialoGPT-medium";
+            // Use the model specified in the request, or default to a good text generation model for clinical recommendations
+            var model = request.Model ?? "gpt2";
             var response = await hfClient.PostAsync($"{_huggingFaceBaseUrl}/models/{model}", content);
             response.EnsureSuccessStatusCode();
 
             var responseJson = await response.Content.ReadAsStringAsync();
+
+            // Try to parse as single object
             var hfResponse = JsonSerializer.Deserialize<HuggingFaceApiResponse>(responseJson);
+
+            // If that doesn't work, try as array
+            if (hfResponse?.GeneratedText == null && responseJson.TrimStart().StartsWith("["))
+            {
+                var hfResponses = JsonSerializer.Deserialize<List<HuggingFaceApiResponse>>(responseJson);
+                hfResponse = hfResponses?.FirstOrDefault();
+            }
 
             if (hfResponse?.GeneratedText != null)
             {
@@ -256,19 +268,19 @@ Please provide a helpful answer based on the WonderWorld information above. If t
     {
         [JsonPropertyName("id")]
         public string Id { get; set; }
-        
+
         [JsonPropertyName("object")]
         public string Object { get; set; }
-        
+
         [JsonPropertyName("created")]
         public long Created { get; set; }
-        
+
         [JsonPropertyName("model")]
         public string Model { get; set; }
-        
+
         [JsonPropertyName("choices")]
         public Choice[] Choices { get; set; }
-        
+
         [JsonPropertyName("usage")]
         public Usage Usage { get; set; }
     }
@@ -277,13 +289,13 @@ Please provide a helpful answer based on the WonderWorld information above. If t
     {
         [JsonPropertyName("index")]
         public int Index { get; set; }
-        
+
         [JsonPropertyName("message")]
         public Message Message { get; set; }
-        
+
         [JsonPropertyName("logprobs")]
         public object Logprobs { get; set; }
-        
+
         [JsonPropertyName("finish_reason")]
         public string FinishReason { get; set; }
     }
@@ -292,13 +304,13 @@ Please provide a helpful answer based on the WonderWorld information above. If t
     {
         [JsonPropertyName("role")]
         public string Role { get; set; }
-        
+
         [JsonPropertyName("content")]
         public string Content { get; set; }
-        
+
         [JsonPropertyName("refusal")]
         public object Refusal { get; set; }
-        
+
         [JsonPropertyName("annotations")]
         public object[] Annotations { get; set; }
     }
@@ -307,10 +319,10 @@ Please provide a helpful answer based on the WonderWorld information above. If t
     {
         [JsonPropertyName("prompt_tokens")]
         public int PromptTokens { get; set; }
-        
+
         [JsonPropertyName("completion_tokens")]
         public int CompletionTokens { get; set; }
-        
+
         [JsonPropertyName("total_tokens")]
         public int TotalTokens { get; set; }
     }
@@ -320,31 +332,31 @@ Please provide a helpful answer based on the WonderWorld information above. If t
     {
         [JsonPropertyName("model")]
         public string Model { get; set; }
-        
+
         [JsonPropertyName("created_at")]
         public string CreatedAt { get; set; }
-        
+
         [JsonPropertyName("message")]
         public OllamaMessage Message { get; set; }
-        
+
         [JsonPropertyName("done")]
         public bool Done { get; set; }
-        
+
         [JsonPropertyName("total_duration")]
         public long TotalDuration { get; set; }
-        
+
         [JsonPropertyName("load_duration")]
         public long LoadDuration { get; set; }
-        
+
         [JsonPropertyName("prompt_eval_count")]
         public int PromptEvalCount { get; set; }
-        
+
         [JsonPropertyName("prompt_eval_duration")]
         public long PromptEvalDuration { get; set; }
-        
+
         [JsonPropertyName("eval_count")]
         public int EvalCount { get; set; }
-        
+
         [JsonPropertyName("eval_duration")]
         public long EvalDuration { get; set; }
     }
@@ -353,9 +365,24 @@ Please provide a helpful answer based on the WonderWorld information above. If t
     {
         [JsonPropertyName("role")]
         public string Role { get; set; }
-        
+
         [JsonPropertyName("content")]
         public string Content { get; set; }
+    }
+
+    public class OllamaGenerateResponse
+    {
+        [JsonPropertyName("model")]
+        public string Model { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public string CreatedAt { get; set; }
+
+        [JsonPropertyName("response")]
+        public string Response { get; set; }
+
+        [JsonPropertyName("done")]
+        public bool Done { get; set; }
     }
 
     // Hugging Face API response models

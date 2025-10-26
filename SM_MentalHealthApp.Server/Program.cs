@@ -63,6 +63,7 @@ builder.Services.AddScoped<IChatHistoryService, ChatHistoryService>();
 builder.Services.AddScoped<IIntelligentContextService, IntelligentContextService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ISmsService, VonageSmsService>();
+builder.Services.AddScoped<IClinicalDecisionSupportService, ClinicalDecisionSupportService>();
 builder.Services.AddScoped<AgoraTokenService>();
 builder.Services.AddScoped<IDocumentUploadService, DocumentUploadService>();
 
@@ -171,7 +172,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 // Enable static files (not Blazor WebAssembly)
-app.UseStaticFiles();
+// app.UseStaticFiles(); // Removed - this was serving Blazor client files
 
 app.UseCors("AllowBlazorClient");
 app.UseAuthentication();

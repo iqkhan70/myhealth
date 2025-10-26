@@ -1,0 +1,672 @@
+@using SM_MentalHealthApp.Shared
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+
+<div class="clinical-decision-support">
+    <div class="header">
+        <h3>🤖 AI Clinical Decision Support</h3>
+        <p class="subtitle">Get evidence-based recommendations for your diagnosis</p>
+    </div>
+
+    @if (!showRecommendations)
+    {
+        <div class="diagnosis-input-section">
+            <div class="form-group">
+                <label class="form-label">Patient</label>
+                <RadzenDropDown @bind-Value="selectedPatientId" Data="@Patients" TextProperty="FullName" 
+                    ValueProperty="Id" Placeholder="Select Patient" Style="width: 100%;" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Primary Diagnosis</label>
+                <RadzenTextBox @bind-Value="diagnosis" Placeholder="Enter diagnosis (e.g., Major Depressive Disorder)" 
+                    Style="width: 100%;" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Additional Symptoms/Notes</label>
+                <RadzenTextArea @bind-Value="additionalNotes" Placeholder="Any additional symptoms, severity indicators, or clinical observations..." 
+                    Style="width: 100%; min-height: 100px;" />
+            </div>
+
+            <div class="action-buttons">
+                <RadzenButton Text="Get AI Recommendations" ButtonStyle="ButtonStyle.Success" 
+                    Click="@GetRecommendations" Disabled="@isLoading" />
+                <RadzenButton Text="Quick Diagnosis Suggestions" ButtonStyle="ButtonStyle.Light" 
+                    Click="@GetDiagnosisSuggestions" Disabled="@isLoading" />
+            </div>
+        </div>
+
+        @if (diagnosisSuggestions.Any())
+        {
+            <div class="diagnosis-suggestions">
+                <h4>💡 AI Diagnosis Suggestions</h4>
+                <div class="suggestions-grid">
+                    @foreach (var suggestion in diagnosisSuggestions)
+                    {
+                        <div class="suggestion-card" @onclick="@(() => SelectSuggestion(suggestion))">
+                            <div class="suggestion-header">
+                                <span class="diagnosis-name">@suggestion.Diagnosis</span>
+                                <span class="confidence-badge confidence-@(GetConfidenceLevel(suggestion.Confidence))">
+                                    @(suggestion.Confidence.ToString("P0"))
+                                </span>
+                            </div>
+                            <div class="severity-badge severity-@(suggestion.Severity.ToLower())">
+                                @suggestion.Severity
+                            </div>
+                            <p class="reasoning">@suggestion.Reasoning</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <div class="recommendations-section">
+            <div class="recommendations-header">
+                <h4>📋 Clinical Recommendations for @recommendations.Diagnosis</h4>
+                <div class="severity-indicator severity-@(recommendations.Severity.ToLower())">
+                    Severity: @recommendations.Severity
+                </div>
+                <RadzenButton Text="← Back to Input" ButtonStyle="ButtonStyle.Light" Click="@(() => showRecommendations = false)" />
+            </div>
+
+            <div class="recommendations-content">
+                <!-- Immediate Actions -->
+                @if (recommendations.ImmediateActions.Any())
+                {
+                    <div class="recommendation-section">
+                        <h5>🚨 Immediate Actions Required</h5>
+                        <ul class="action-list">
+                            @foreach (var action in recommendations.ImmediateActions)
+                            {
+                                <li>@action</li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                <!-- Follow-up Steps -->
+                @if (recommendations.FollowUpSteps.Any())
+                {
+                    <div class="recommendation-section">
+                        <h5>📅 Follow-up Steps</h5>
+                        <div class="follow-up-grid">
+                            @foreach (var step in recommendations.FollowUpSteps)
+                            {
+                                <div class="follow-up-card priority-@(step.Priority.ToLower())">
+                                    <div class="step-header">
+                                        <span class="step-text">@step.Step</span>
+                                        <span class="priority-badge">@step.Priority</span>
+                                    </div>
+                                    <div class="step-details">
+                                        <p><strong>Timeline:</strong> @step.Timeline</p>
+                                        <p><strong>Responsible:</strong> @step.ResponsibleParty</p>
+                                        <p><strong>Documentation:</strong> @step.DocumentationRequired</p>
+                                        @if (!string.IsNullOrEmpty(step.InsuranceConsiderations))
+                                        {
+                                            <p><strong>Insurance:</strong> @step.InsuranceConsiderations</p>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Clinical Protocol -->
+                @if (recommendations.ClinicalProtocol != null)
+                {
+                    <div class="recommendation-section">
+                        <h5>📖 Clinical Protocol</h5>
+                        <div class="protocol-sections">
+                            @if (recommendations.ClinicalProtocol.DiagnosticCriteria.Any())
+                            {
+                                <div class="protocol-subsection">
+                                    <h6>Diagnostic Criteria</h6>
+                                    <ul>@foreach (var criteria in recommendations.ClinicalProtocol.DiagnosticCriteria) { <li>@criteria</li> }</ul>
+                                </div>
+                            }
+                            @if (recommendations.ClinicalProtocol.TreatmentGuidelines.Any())
+                            {
+                                <div class="protocol-subsection">
+                                    <h6>Treatment Guidelines</h6>
+                                    <ul>@foreach (var guideline in recommendations.ClinicalProtocol.TreatmentGuidelines) { <li>@guideline</li> }</ul>
+                                </div>
+                            }
+                            @if (recommendations.ClinicalProtocol.MonitoringRequirements.Any())
+                            {
+                                <div class="protocol-subsection">
+                                    <h6>Monitoring Requirements</h6>
+                                    <ul>@foreach (var requirement in recommendations.ClinicalProtocol.MonitoringRequirements) { <li>@requirement</li> }</ul>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Insurance Requirements -->
+                @if (recommendations.InsuranceRequirements.Any())
+                {
+                    <div class="recommendation-section">
+                        <h5>💼 Insurance Requirements</h5>
+                        <div class="insurance-grid">
+                            @foreach (var requirement in recommendations.InsuranceRequirements)
+                            {
+                                <div class="insurance-card category-@(requirement.Category.ToLower())">
+                                    <div class="requirement-header">
+                                        <span class="requirement-text">@requirement.Requirement</span>
+                                        <span class="priority-badge">@requirement.Priority</span>
+                                    </div>
+                                    <p class="requirement-description">@requirement.Description</p>
+                                    <span class="category-badge">@requirement.Category</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Patient-Specific Notes -->
+                @if (recommendations.PatientSpecificNotes.Any())
+                {
+                    <div class="recommendation-section">
+                        <h5>👤 Patient-Specific Considerations</h5>
+                        <ul class="notes-list">
+                            @foreach (var note in recommendations.PatientSpecificNotes)
+                            {
+                                <li>@note</li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                <!-- Risk Factors -->
+                @if (recommendations.RiskFactors.Any())
+                {
+                    <div class="recommendation-section">
+                        <h5>⚠️ Risk Factors to Monitor</h5>
+                        <ul class="risk-list">
+                            @foreach (var risk in recommendations.RiskFactors)
+                            {
+                                <li>@risk</li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                <!-- Action Buttons -->
+                <div class="recommendation-actions">
+                    <RadzenButton Text="📋 Create Treatment Plan" ButtonStyle="ButtonStyle.Success" 
+                        Click="@CreateTreatmentPlan" />
+                    <RadzenButton Text="📅 Schedule Follow-up" ButtonStyle="ButtonStyle.Primary" 
+                        Click="@ScheduleFollowUp" />
+                    <RadzenButton Text="📄 Generate Report" ButtonStyle="ButtonStyle.Info" 
+                        Click="@GenerateReport" />
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (isLoading)
+    {
+        <div class="loading-overlay">
+            <div class="loading-spinner"></div>
+            <p>AI is analyzing your diagnosis and generating recommendations...</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<User> Patients { get; set; } = new();
+
+    private bool showRecommendations = false;
+    private bool isLoading = false;
+    private int selectedPatientId = 0;
+    private string diagnosis = "";
+    private string additionalNotes = "";
+    private ClinicalRecommendation? recommendations;
+    private List<DiagnosisSuggestion> diagnosisSuggestions = new();
+
+    private async Task GetRecommendations()
+    {
+        if (selectedPatientId == 0 || string.IsNullOrWhiteSpace(diagnosis))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please select a patient and enter a diagnosis");
+            return;
+        }
+
+        isLoading = true;
+        try
+        {
+            var request = new ClinicalRecommendationRequest
+            {
+                Diagnosis = diagnosis,
+                PatientId = selectedPatientId
+            };
+
+            var response = await Http.PostAsJsonAsync("api/clinicaldecisionsupport/recommendations", request);
+            if (response.IsSuccessStatusCode)
+            {
+                recommendations = await response.Content.ReadFromJsonAsync<ClinicalRecommendation>();
+                showRecommendations = true;
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error getting recommendations");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", "Error getting recommendations");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task GetDiagnosisSuggestions()
+    {
+        if (selectedPatientId == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please select a patient first");
+            return;
+        }
+
+        isLoading = true;
+        try
+        {
+            var request = new SymptomAnalysisRequest
+            {
+                Symptoms = additionalNotes,
+                PatientId = selectedPatientId
+            };
+
+            var response = await Http.PostAsJsonAsync("api/clinicaldecisionsupport/diagnosis-suggestions", request);
+            if (response.IsSuccessStatusCode)
+            {
+                diagnosisSuggestions = await response.Content.ReadFromJsonAsync<List<DiagnosisSuggestion>>() ?? new();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error getting diagnosis suggestions");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", "Error getting diagnosis suggestions");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void SelectSuggestion(DiagnosisSuggestion suggestion)
+    {
+        diagnosis = suggestion.Diagnosis;
+        StateHasChanged();
+    }
+
+    private string GetConfidenceLevel(double confidence)
+    {
+        return confidence switch
+        {
+            >= 0.8 => "high",
+            >= 0.6 => "medium",
+            _ => "low"
+        };
+    }
+
+    private async Task CreateTreatmentPlan()
+    {
+        await JSRuntime.InvokeVoidAsync("alert", "Treatment plan creation feature coming soon!");
+    }
+
+    private async Task ScheduleFollowUp()
+    {
+        await JSRuntime.InvokeVoidAsync("alert", "Follow-up scheduling feature coming soon!");
+    }
+
+    private async Task GenerateReport()
+    {
+        await JSRuntime.InvokeVoidAsync("alert", "Report generation feature coming soon!");
+    }
+}
+
+<style>
+    .clinical-decision-support {
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .header {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+
+    .header h3 {
+        color: #2c3e50;
+        margin-bottom: 10px;
+    }
+
+    .subtitle {
+        color: #7f8c8d;
+        font-size: 16px;
+    }
+
+    .diagnosis-input-section {
+        background: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-label {
+        display: block;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 8px;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 15px;
+        margin-top: 25px;
+    }
+
+    .diagnosis-suggestions {
+        background: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .suggestions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 15px;
+        margin-top: 15px;
+    }
+
+    .suggestion-card {
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .suggestion-card:hover {
+        border-color: #007bff;
+        box-shadow: 0 4px 12px rgba(0,123,255,0.15);
+    }
+
+    .suggestion-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .diagnosis-name {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .confidence-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .confidence-high { background: #d4edda; color: #155724; }
+    .confidence-medium { background: #fff3cd; color: #856404; }
+    .confidence-low { background: #f8d7da; color: #721c24; }
+
+    .severity-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 10px;
+        display: inline-block;
+    }
+
+    .severity-mild { background: #d1ecf1; color: #0c5460; }
+    .severity-moderate { background: #fff3cd; color: #856404; }
+    .severity-severe { background: #f8d7da; color: #721c24; }
+    .severity-critical { background: #f5c6cb; color: #721c24; }
+
+    .reasoning {
+        color: #6c757d;
+        font-size: 14px;
+        margin: 0;
+    }
+
+    .recommendations-section {
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+
+    .recommendations-header {
+        background: #f8f9fa;
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+
+    .recommendations-header h4 {
+        margin: 0;
+        color: #2c3e50;
+    }
+
+    .severity-indicator {
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 14px;
+    }
+
+    .recommendations-content {
+        padding: 25px;
+    }
+
+    .recommendation-section {
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .recommendation-section:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+    }
+
+    .recommendation-section h5 {
+        color: #2c3e50;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .action-list, .notes-list, .risk-list {
+        list-style: none;
+        padding: 0;
+    }
+
+    .action-list li, .notes-list li, .risk-list li {
+        background: #f8f9fa;
+        padding: 12px 15px;
+        margin-bottom: 8px;
+        border-radius: 6px;
+        border-left: 4px solid #007bff;
+    }
+
+    .follow-up-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 15px;
+    }
+
+    .follow-up-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        background: #f8f9fa;
+    }
+
+    .follow-up-card.priority-high {
+        border-left: 4px solid #dc3545;
+    }
+
+    .follow-up-card.priority-medium {
+        border-left: 4px solid #ffc107;
+    }
+
+    .follow-up-card.priority-low {
+        border-left: 4px solid #28a745;
+    }
+
+    .step-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .step-text {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .priority-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .step-details p {
+        margin: 5px 0;
+        font-size: 14px;
+        color: #6c757d;
+    }
+
+    .protocol-sections {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+    }
+
+    .protocol-subsection {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 6px;
+    }
+
+    .protocol-subsection h6 {
+        color: #495057;
+        margin-bottom: 10px;
+    }
+
+    .protocol-subsection ul {
+        margin: 0;
+        padding-left: 20px;
+    }
+
+    .insurance-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 15px;
+    }
+
+    .insurance-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        background: white;
+    }
+
+    .requirement-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .requirement-text {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .requirement-description {
+        color: #6c757d;
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+
+    .category-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        background: #e9ecef;
+        color: #495057;
+    }
+
+    .recommendation-actions {
+        display: flex;
+        gap: 15px;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #e0e0e0;
+    }
+
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 5px solid #f3f3f3;
+        border-top: 5px solid #007bff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+    }
+
+    .loading-overlay p {
+        color: white;
+        font-size: 18px;
+        margin: 0;
+    }
+</style>
