@@ -927,13 +927,39 @@
             return document.getElementById('agora-local-video');
         };
         
-        // Global error handler to catch JavaScript syntax errors
-        window.addEventListener('error', function(e) {
-            console.error('🚨 Global JavaScript Error:', e.error);
-            console.error('🚨 Error message:', e.message);
-            console.error('🚨 Error source:', e.filename, 'line:', e.lineno);
-            console.error('🚨 Stack trace:', e.error?.stack);
-        });
+    // Copy to clipboard helper
+    window.copyToClipboard = async (text) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            console.log('✅ Text copied to clipboard');
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to copy to clipboard:', error);
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                console.log('✅ Text copied to clipboard (fallback)');
+                return true;
+            } catch (fallbackError) {
+                console.error('❌ Fallback copy failed:', fallbackError);
+                return false;
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        }
+    };
+
+    // Global error handler to catch JavaScript syntax errors
+    window.addEventListener('error', function(e) {
+        console.error('🚨 Global JavaScript Error:', e.error);
+        console.error('🚨 Error message:', e.message);
+        console.error('🚨 Error source:', e.filename, 'line:', e.lineno);
+        console.error('🚨 Stack trace:', e.error?.stack);
+    });
         
         window.addEventListener('unhandledrejection', function(e) {
             console.error('🚨 Unhandled Promise Rejection:', e.reason);

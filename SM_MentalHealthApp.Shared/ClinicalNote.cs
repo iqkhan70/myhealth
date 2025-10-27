@@ -36,6 +36,8 @@ namespace SM_MentalHealthApp.Shared
 
         public bool IsActive { get; set; } = true;
 
+        public bool IsArchived { get; set; } = false;
+
         // Tags for better organization and search
         public string? Tags { get; set; } // Comma-separated tags like "diabetes,medication,urgent"
 

@@ -197,11 +197,11 @@
 
                 <!-- Action Buttons -->
                 <div class="recommendation-actions">
-                    <RadzenButton Text="📋 Create Treatment Plan" ButtonStyle="ButtonStyle.Success" 
+                    <RadzenButton Text="💾 Save Treatment Plan" ButtonStyle="ButtonStyle.Success" 
                         Click="@CreateTreatmentPlan" />
-                    <RadzenButton Text="📅 Schedule Follow-up" ButtonStyle="ButtonStyle.Primary" 
+                    <RadzenButton Text="📅 Copy Follow-up Schedule" ButtonStyle="ButtonStyle.Primary" 
                         Click="@ScheduleFollowUp" />
-                    <RadzenButton Text="📄 Generate Report" ButtonStyle="ButtonStyle.Info" 
+                    <RadzenButton Text="💾 Save Clinical Report" ButtonStyle="ButtonStyle.Info" 
                         Click="@GenerateReport" />
                 </div>
             </div>
@@ -321,20 +321,199 @@
         };
     }
 
+    private string MapSeverityToPriority(string severity)
+    {
+        if (string.IsNullOrWhiteSpace(severity))
+            return "Normal";
+
+        var severityLower = severity.ToLower();
+        return severityLower switch
+        {
+            "critical" or "severe" => "High",
+            "moderate" => "Normal",
+            "mild" or "low" => "Low",
+            _ => "Normal"
+        };
+    }
+
     private async Task CreateTreatmentPlan()
     {
-        await JSRuntime.InvokeVoidAsync("alert", "Treatment plan creation feature coming soon!");
+        if (recommendations == null || selectedPatientId == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please get recommendations first");
+            return;
+        }
+
+        isLoading = true;
+        try
+        {
+            // Create a treatment plan based on recommendations
+            var reportContent = "TREATMENT PLAN\n" +
+                "========================\n" +
+                $"Patient ID: {selectedPatientId}\n" +
+                $"Diagnosis: {recommendations.Diagnosis}\n" +
+                $"Severity: {recommendations.Severity}\n" +
+                $"Generated: {DateTime.Now:yyyy-MM-dd HH:mm}\n\n" +
+                "IMMEDIATE ACTIONS:\n" +
+                string.Join("\n", recommendations.ImmediateActions.Select((a, i) => $"{i + 1}. {a}")) + "\n\n" +
+                "PATIENT-SPECIFIC NOTES:\n" +
+                string.Join("\n", recommendations.PatientSpecificNotes.Select((n, i) => $"{i + 1}. {n}")) + "\n\n" +
+                "RISK FACTORS:\n" +
+                string.Join("\n", recommendations.RiskFactors.Select((r, i) => $"{i + 1}. {r}")) + "\n\n" +
+                "CONTRAINDICATIONS:\n" +
+                string.Join("\n", recommendations.Contraindications.Select((c, i) => $"{i + 1}. {c}")) + "\n\n" +
+                "ALTERNATIVE TREATMENTS:\n" +
+                string.Join("\n", recommendations.AlternativeTreatments.Select((t, i) => $"{i + 1}. {t}")) + "\n\n" +
+                "FOLLOW-UP STEPS:\n" +
+                string.Join("\n", recommendations.FollowUpSteps.Select((s, i) => $"{i + 1}. {s.Step} ({s.Priority})"));
+
+            // Save to clinical notes
+            var noteRequest = new
+            {
+                PatientId = selectedPatientId,
+                Title = $"AI Treatment Plan - {recommendations.Diagnosis}",
+                Content = reportContent,
+                NoteType = "Treatment Plan",
+                Priority = MapSeverityToPriority(recommendations.Severity),
+                Tags = "AI-Generated, Treatment Plan, Clinical Decision Support"
+            };
+
+            var response = await Http.PostAsJsonAsync("api/clinicalnotes", noteRequest);
+            if (response.IsSuccessStatusCode)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Treatment plan saved to clinical notes!");
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                await JSRuntime.InvokeVoidAsync("console.error", $"Save failed: {errorContent}");
+                await JSRuntime.InvokeVoidAsync("alert", $"Error saving treatment plan: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error creating treatment plan: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     private async Task ScheduleFollowUp()
     {
-        await JSRuntime.InvokeVoidAsync("alert", "Follow-up scheduling feature coming soon!");
+        if (recommendations == null || selectedPatientId == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please get recommendations first");
+            return;
+        }
+
+        isLoading = true;
+        try
+        {
+            // Create a simple follow-up schedule
+            var upcomingSteps = recommendations.FollowUpSteps
+                .Where(s => s.Priority.Equals("High", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(s => s.Priority)
+                .ToList();
+
+            if (!upcomingSteps.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No high-priority follow-up steps found");
+                return;
+            }
+
+            var followUpContent = "FOLLOW-UP SCHEDULE\n" +
+                "====================\n" +
+                $"Patient ID: {selectedPatientId}\n" +
+                $"Diagnosis: {recommendations.Diagnosis}\n" +
+                $"Schedule Created: {DateTime.Now:yyyy-MM-dd}\n\n" +
+                "HIGH PRIORITY FOLLOW-UP ITEMS:\n" +
+                string.Join("\n\n", upcomingSteps.Select((s, i) => 
+                    $"{i + 1}. {s.Step}\n   Timeline: {s.Timeline}\n   Responsible: {s.ResponsibleParty}\n   Documentation: {s.DocumentationRequired}"));
+
+            // Copy to clipboard
+            await JSRuntime.InvokeVoidAsync("copyToClipboard", followUpContent);
+            await JSRuntime.InvokeVoidAsync("alert", "Follow-up schedule copied to clipboard!");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error scheduling follow-up: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     private async Task GenerateReport()
     {
-        await JSRuntime.InvokeVoidAsync("alert", "Report generation feature coming soon!");
+        if (recommendations == null || selectedPatientId == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please get recommendations first");
+            return;
+        }
+
+        isLoading = true;
+        try
+        {
+            // Generate a comprehensive clinical report
+            var reportContent = "CLINICAL DECISION SUPPORT REPORT\n" +
+                "===================================\n" +
+                $"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
+                $"Patient ID: {selectedPatientId}\n" +
+                $"Diagnosis: {recommendations.Diagnosis}\n" +
+                $"Severity Assessment: {recommendations.Severity}\n\n" +
+                "CLINICAL RECOMMENDATIONS\n" +
+                "------------------------\n" +
+                string.Join("\n", recommendations.ImmediateActions.Select((a, i) => $"{i + 1}. {a}")) + "\n\n" +
+                "CLINICAL PROTOCOL\n" +
+                "-----------------\n" +
+                "Diagnostic Criteria:\n" +
+                string.Join("\n", recommendations.ClinicalProtocol.DiagnosticCriteria.Select((d, i) => $"{i + 1}. {d}")) + "\n\n" +
+                "Treatment Guidelines:\n" +
+                string.Join("\n", recommendations.ClinicalProtocol.TreatmentGuidelines.Select((t, i) => $"{i + 1}. {t}")) + "\n\n" +
+                "Monitoring Requirements:\n" +
+                string.Join("\n", recommendations.ClinicalProtocol.MonitoringRequirements.Select((m, i) => $"{i + 1}. {m}")) + "\n\n" +
+                "Safety Considerations:\n" +
+                string.Join("\n", recommendations.ClinicalProtocol.SafetyConsiderations.Select((s, i) => $"{i + 1}. {s}")) + "\n\n" +
+                "INSURANCE REQUIREMENTS\n" +
+                "----------------------\n" +
+                string.Join("\n", recommendations.InsuranceRequirements.Select((r, i) => $"{i + 1}. [{r.Category}] {r.Requirement}\n   Description: {r.Description}\n   Priority: {r.Priority}"));
+
+            // Save to clinical notes
+            var noteRequest = new
+            {
+                PatientId = selectedPatientId,
+                Title = $"AI Clinical Report - {recommendations.Diagnosis}",
+                Content = reportContent,
+                NoteType = "Clinical Report",
+                Priority = MapSeverityToPriority(recommendations.Severity),
+                Tags = "AI-Generated, Clinical Report, Clinical Decision Support"
+            };
+
+            var response = await Http.PostAsJsonAsync("api/clinicalnotes", noteRequest);
+            if (response.IsSuccessStatusCode)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Clinical report saved to clinical notes!");
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                await JSRuntime.InvokeVoidAsync("console.error", $"Save failed: {errorContent}");
+                await JSRuntime.InvokeVoidAsync("alert", $"Error saving clinical report: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error generating report: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
+
 }
 
 <style>

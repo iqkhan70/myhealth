@@ -268,6 +268,34 @@ namespace SM_MentalHealthApp.Server.Services
 
                 var context = new StringBuilder();
 
+                // Get clinical notes for the patient
+                var recentClinicalNotes = await _context.ClinicalNotes
+                    .Where(cn => cn.PatientId == patientId && cn.IsActive)
+                    .OrderByDescending(cn => cn.CreatedAt)
+                    .Take(5)
+                    .ToListAsync();
+
+                _logger.LogInformation("Found {ClinicalNotesCount} clinical notes for patient {PatientId}", recentClinicalNotes.Count, patientId);
+
+                if (recentClinicalNotes.Any())
+                {
+                    context.AppendLine("=== RECENT CLINICAL NOTES ===");
+                    foreach (var note in recentClinicalNotes)
+                    {
+                        context.AppendLine($"[{note.CreatedAt:MM/dd/yyyy}] {note.Title} ({note.NoteType})");
+                        if (!string.IsNullOrEmpty(note.Content))
+                        {
+                            context.AppendLine($"Content: {note.Content.Substring(0, Math.Min(200, note.Content.Length))}...");
+                        }
+                        if (!string.IsNullOrEmpty(note.Tags))
+                        {
+                            context.AppendLine($"Tags: {note.Tags}");
+                        }
+                        context.AppendLine($"Priority: {note.Priority}");
+                        context.AppendLine();
+                    }
+                }
+
                 // Get journal entries (existing functionality)
                 var recentEntries = await _context.JournalEntries
                     .Where(e => e.UserId == patientId)
