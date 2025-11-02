@@ -9,7 +9,14 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri("http://localhost:5262/") });
+builder.Services.AddScoped(sp =>
+{
+    // Get the base address where the app is running
+    var baseUri = new Uri(builder.HostEnvironment.BaseAddress);
+    // Construct server URL using same hostname but server port (5262)
+    var serverUrl = $"{baseUri.Scheme}://{baseUri.Host}:5262/";
+    return new HttpClient { BaseAddress = new Uri(serverUrl) };
+});
 builder.Services.AddScoped<DialogService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<TooltipService>();

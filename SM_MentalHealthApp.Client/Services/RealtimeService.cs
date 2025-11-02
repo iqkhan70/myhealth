@@ -93,7 +93,7 @@ namespace SM_MentalHealthApp.Client.Services
                 _httpClient.DefaultRequestHeaders.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-                var response = await _httpClient.PostAsync("http://localhost:5262/api/realtime/connect", content);
+                var response = await _httpClient.PostAsync("/api/realtime/connect", content);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -145,7 +145,7 @@ namespace SM_MentalHealthApp.Client.Services
                     var json = JsonSerializer.Serialize(request);
                     var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-                    await _httpClient.PostAsync("http://localhost:5262/api/realtime/disconnect", content);
+                    await _httpClient.PostAsync("/api/realtime/disconnect", content);
                 }
                 catch (Exception ex)
                 {
@@ -179,7 +179,7 @@ namespace SM_MentalHealthApp.Client.Services
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync("http://localhost:5262/api/realtime/poll", content);
+                var response = await _httpClient.PostAsync("/api/realtime/poll", content);
                 _logger.LogDebug("Poll response status: {StatusCode}", response.StatusCode);
 
                 if (response.IsSuccessStatusCode)
@@ -260,7 +260,7 @@ namespace SM_MentalHealthApp.Client.Services
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync("http://localhost:5262/api/realtime/poll", content);
+                var response = await _httpClient.PostAsync("/api/realtime/poll", content);
 
                 if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
                 {
@@ -414,7 +414,7 @@ namespace SM_MentalHealthApp.Client.Services
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-                await _httpClient.PostAsync("http://localhost:5262/api/realtime/send-message", content);
+                await _httpClient.PostAsync("/api/realtime/send-message", content);
             }
             catch (Exception ex)
             {
@@ -442,7 +442,7 @@ namespace SM_MentalHealthApp.Client.Services
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-                await _httpClient.PostAsync("http://localhost:5262/api/realtime/initiate-call", content);
+                await _httpClient.PostAsync("/api/realtime/initiate-call", content);
             }
             catch (Exception ex)
             {
@@ -469,7 +469,7 @@ namespace SM_MentalHealthApp.Client.Services
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-                await _httpClient.PostAsync("http://localhost:5262/api/realtime/accept-call", content);
+                await _httpClient.PostAsync("/api/realtime/accept-call", content);
             }
             catch (Exception ex)
             {
@@ -496,7 +496,7 @@ namespace SM_MentalHealthApp.Client.Services
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-                await _httpClient.PostAsync("http://localhost:5262/api/realtime/reject-call", content);
+                await _httpClient.PostAsync("/api/realtime/reject-call", content);
             }
             catch (Exception ex)
             {
@@ -523,7 +523,7 @@ namespace SM_MentalHealthApp.Client.Services
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-                await _httpClient.PostAsync("http://localhost:5262/api/realtime/end-call", content);
+                await _httpClient.PostAsync("/api/realtime/end-call", content);
             }
             catch (Exception ex)
             {

@@ -993,7 +993,7 @@
                 otherUserId = selectedUser.Id
             };
 
-            var response = await Http.PostAsJsonAsync("http://localhost:5262/api/realtime/get-message-history", request);
+            var response = await Http.PostAsJsonAsync("/api/realtime/get-message-history", request);
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadFromJsonAsync<JsonElement>();

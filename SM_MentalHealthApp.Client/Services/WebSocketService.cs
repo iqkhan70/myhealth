@@ -19,10 +19,13 @@ namespace SM_MentalHealthApp.Client.Services
         public event Action<UserStatusChange>? OnUserStatusChanged;
         public event Action<bool>? OnConnectionChanged;
 
-        public WebSocketService(IAuthService authService)
+        public WebSocketService(IAuthService authService, HttpClient httpClient)
         {
             _authService = authService;
-            _hubUrl = "ws://localhost:5262/mobilehub";
+            // Construct hub URL from HttpClient BaseAddress
+            var baseUri = httpClient.BaseAddress ?? new Uri("http://localhost:5262/");
+            var port = baseUri.Port != -1 ? $":{baseUri.Port}" : "";
+            _hubUrl = $"ws://{baseUri.Host}{port}/mobilehub";
         }
 
         public async Task StartAsync()

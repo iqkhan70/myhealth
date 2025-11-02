@@ -20,10 +20,13 @@ namespace SM_MentalHealthApp.Client.Services
         public event Action<UserStatusChange>? OnUserStatusChanged;
         public event Action<bool>? OnConnectionChanged;
 
-        public SignalRService(IAuthService authService)
+        public SignalRService(IAuthService authService, HttpClient httpClient)
         {
             _authService = authService;
-            _hubUrl = "http://localhost:5262/mobilehub"; // Connect to local server
+            // Construct hub URL from HttpClient BaseAddress
+            var baseUri = httpClient.BaseAddress ?? new Uri("http://localhost:5262/");
+            var port = baseUri.Port != -1 ? $":{baseUri.Port}" : "";
+            _hubUrl = $"{baseUri.Scheme}://{baseUri.Host}{port}/mobilehub";
         }
 
         public async Task StartAsync()
