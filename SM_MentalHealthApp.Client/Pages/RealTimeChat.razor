@@ -110,18 +110,11 @@
                     @foreach (var user in users)
                     {
                         <div class="user-item @(selectedUser?.Id == user.Id ? "selected" : "")"
-                             @onclick="async () => await SelectUser(user)">
-                            <div class="user-avatar">
-                                @user.FirstName?.Substring(0, 1).ToUpper()
-                            </div>
+                            @onclick="async () => await SelectUser(user)">
                             <div class="user-info">
                                 <div class="user-name">@user.FirstName @user.LastName</div>
                                 <div class="user-status">
-                                    @if (AuthService.CurrentUser?.RoleId == 2)
-                                    {
-                                        <span class="user-role">Patient</span>
-                                    }
-                                    else if (AuthService.CurrentUser?.RoleId == 1)
+                                    @if (AuthService.CurrentUser?.RoleId == 1)
                                     {
                                         <span class="user-specialization">@(user.Specialization ?? "Doctor")</span>
                                     }
@@ -129,12 +122,20 @@
                             </div>
                             <div class="user-actions">
                                 <button class="action-btn video-btn" @onclick:stopPropagation="true"
-                                        @onclick="() => InitiateVideoCall(user)" title="Video Call">
-                                    <i class="fas fa-video"></i>
+                                    @onclick="() => InitiateVideoCall(user)" title="Start Video Call">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
+                                    </svg>
                                 </button>
                                 <button class="action-btn audio-btn" @onclick:stopPropagation="true"
-                                        @onclick="() => InitiateAudioCall(user)" title="Audio Call">
-                                    <i class="fas fa-phone"></i>
+                                    @onclick="() => InitiateAudioCall(user)" title="Start Audio Call">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"
+                                        xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                            d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" />
+                                    </svg>
                                 </button>
                             </div>
                         </div>
@@ -170,6 +171,13 @@
                         </div>
                         <div class="user-details">
                             <div class="selected-user-name">@selectedUser.FirstName @selectedUser.LastName</div>
+                            @if (!string.IsNullOrEmpty(selectedUser.Email))
+                            {
+                                <div class="selected-user-email">
+                                    <i class="fas fa-envelope" style="margin-right: 6px; font-size: 11px;"></i>
+                                    @selectedUser.Email
+                                </div>
+                            }
                             <div class="selected-user-role">
                                 @if (AuthService.CurrentUser?.RoleId == 2)
                                 {
@@ -182,14 +190,12 @@
                             </div>
                         </div>
                         <div class="call-buttons">
-                            <button class="btn btn-outline-primary btn-sm"
-                                    @onclick="() => StartVideoCall(selectedUser.Id)"
-                                    title="Start Video Call">
+                            <button class="btn btn-outline-primary btn-sm" @onclick="() => StartVideoCall(selectedUser.Id)"
+                                title="Start Video Call">
                                 <i class="fas fa-video"></i>
                             </button>
-                            <button class="btn btn-outline-success btn-sm"
-                                    @onclick="() => StartAudioCall(selectedUser.Id)"
-                                    title="Start Audio Call">
+                            <button class="btn btn-outline-success btn-sm" @onclick="() => StartAudioCall(selectedUser.Id)"
+                                title="Start Audio Call">
                                 <i class="fas fa-phone"></i>
                             </button>
                         </div>
@@ -227,12 +233,11 @@
 
                 <div class="message-input-area">
                     <div class="input-container">
-                        <input type="text" @bind="newMessage" @bind:event="oninput"
-                               @onkeydown="HandleKeyDown"
-                               placeholder="Type a message... (Press Enter to send)"
-                               class="message-input" disabled="@(!RealtimeService.IsConnected)" />
+                        <input type="text" @bind="newMessage" @bind:event="oninput" @onkeydown="HandleKeyDown"
+                            placeholder="Type a message... (Press Enter to send)" class="message-input"
+                            disabled="@(!RealtimeService.IsConnected)" />
                         <button class="send-btn" @onclick="SendMessage"
-                                disabled="@(string.IsNullOrWhiteSpace(newMessage) || !RealtimeService.IsConnected)">
+                            disabled="@(string.IsNullOrWhiteSpace(newMessage) || !RealtimeService.IsConnected)">
                             <i class="fas fa-paper-plane"></i>
                         </button>
                     </div>
@@ -388,6 +393,7 @@
         from {
             transform: rotate(0deg);
         }
+
         to {
             transform: rotate(360deg);
         }
@@ -412,7 +418,6 @@
 
     .user-item:hover {
         background: #f8f9fa;
-        transform: translateX(4px);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
 
@@ -460,28 +465,45 @@
     }
 
     .action-btn {
-        width: 32px;
-        height: 32px;
+        width: 40px;
+        height: 40px;
         border: none;
-        border-radius: 50%;
+        border-radius: 8px;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
         transition: all 0.2s;
-        font-size: 14px;
-        background: rgba(255, 255, 255, 0.1);
+        color: white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    }
+
+    .action-btn svg {
+        width: 24px !important;
+        height: 24px !important;
+        fill: currentColor !important;
         color: white;
     }
 
+    .action-btn i {
+        font-size: 15px;
+    }
+
     .action-btn:hover {
-        background: rgba(255, 255, 255, 0.2);
+        opacity: 0.95;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+    }
+
+    .action-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     }
 
     .action-btn:disabled {
-        background: rgba(255, 255, 255, 0.05);
-        color: rgba(255, 255, 255, 0.5);
+        opacity: 0.5;
         cursor: not-allowed;
+        transform: none;
     }
 
     .test-call-btn {
@@ -603,6 +625,7 @@
         justify-content: center;
         border-radius: 50%;
     }
+
     .selected-user-avatar {
         width: 50px;
         height: 50px;
@@ -621,6 +644,14 @@
         font-weight: 600;
         color: #333;
         margin-bottom: 4px;
+    }
+
+    .selected-user-email {
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
     }
 
     .selected-user-role {
@@ -915,7 +946,7 @@
         }
 
         if (messages.Count > lastMessageCount && !isAutoRefreshing &&
-            (DateTime.Now - lastScrollTime).TotalMilliseconds > 500)
+        (DateTime.Now - lastScrollTime).TotalMilliseconds > 500)
         {
             lastMessageCount = messages.Count;
             lastScrollTime = DateTime.Now;
@@ -932,8 +963,8 @@
         try
         {
             string endpoint = AuthService.CurrentUser?.RoleId == 2
-                ? "/api/mobile/doctor/patients"
-                : "/api/mobile/patient/doctors";
+            ? "/api/mobile/doctor/patients"
+            : "/api/mobile/patient/doctors";
 
             var response = await Http.GetAsync(endpoint);
             if (response.IsSuccessStatusCode)
@@ -976,7 +1007,7 @@
                         Message = m.GetProperty("message").GetString() ?? "",
                         SenderName = m.GetProperty("senderName").GetString() ?? "",
                         Timestamp = DateTime.TryParse(m.GetProperty("timestamp").GetString(), out var t)
-                            ? t : DateTime.UtcNow
+                    ? t : DateTime.UtcNow
                     }).OrderBy(x => x.Timestamp).ToList();
                 }
             }
@@ -1036,7 +1067,7 @@
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if ((e.Key == "Enter" || e.Key == "NumpadEnter") &&
-            !string.IsNullOrWhiteSpace(newMessage) && RealtimeService.IsConnected)
+        !string.IsNullOrWhiteSpace(newMessage) && RealtimeService.IsConnected)
         {
             await SendMessage();
         }
@@ -1047,7 +1078,7 @@
         if (selectedUser == null) return;
 
         if ((message.SenderId == selectedUser.Id && message.TargetUserId == AuthService.CurrentUser?.Id) ||
-            (message.SenderId == AuthService.CurrentUser?.Id && message.TargetUserId == selectedUser.Id))
+        (message.SenderId == AuthService.CurrentUser?.Id && message.TargetUserId == selectedUser.Id))
         {
             if (!messages.Any(m => m.Id == message.Id))
                 messages.Add(message);
@@ -1129,13 +1160,13 @@
     private void StartVideoCall(int userId)
     {
         NotificationService.Notify(NotificationSeverity.Info, "Video Call",
-            $"Starting video call with user {userId}");
+        $"Starting video call with user {userId}");
     }
 
     private void StartAudioCall(int userId)
     {
         NotificationService.Notify(NotificationSeverity.Info, "Audio Call",
-            $"Starting audio call with user {userId}");
+        $"Starting audio call with user {userId}");
     }
 
     private async void AcceptCall()
@@ -1145,9 +1176,10 @@
         try
         {
             NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
-                $"Accepting {incomingCall.CallType} call from {incomingCall.CallerName}");
+            $"Accepting {incomingCall.CallType} call from {incomingCall.CallerName}");
 
-            var url = $"https://localhost:5443/shared-room?mobile_call=true&caller={incomingCall.CallerName}&channel={incomingCall.CallId}";
+            var url =
+            $"https://localhost:5443/shared-room?mobile_call=true&caller={incomingCall.CallerName}&channel={incomingCall.CallId}";
             await JS.InvokeVoidAsync("open", url, "_blank");
             incomingCall = null;
             StateHasChanged();
@@ -1162,7 +1194,7 @@
     {
         if (incomingCall == null) return;
         NotificationService.Notify(NotificationSeverity.Warning, "Call Declined",
-            $"Declined {incomingCall.CallType} call from {incomingCall.CallerName}");
+        $"Declined {incomingCall.CallType} call from {incomingCall.CallerName}");
         incomingCall = null;
         StateHasChanged();
     }
@@ -1186,7 +1218,7 @@
             NotificationService.Notify(NotificationSeverity.Info, "Testing Audio", "Testing audio system...");
             var result = await JS.InvokeAsync<bool>("agoraService.testAudio");
             NotificationService.Notify(result ? NotificationSeverity.Success : NotificationSeverity.Warning,
-                "Audio Test", result ? "Audio system works!" : "Audio configured but silent.");
+            "Audio Test", result ? "Audio system works!" : "Audio configured but silent.");
         }
         catch (Exception ex)
         {
@@ -1201,7 +1233,7 @@
             NotificationService.Notify(NotificationSeverity.Info, "Testing Agora SDK", "Checking SDK...");
             var result = await JS.InvokeAsync<bool>("agoraService.testAgoraSDK");
             NotificationService.Notify(result ? NotificationSeverity.Success : NotificationSeverity.Error,
-                "Agora SDK", result ? "SDK loaded and ready!" : "SDK not loaded!");
+            "Agora SDK", result ? "SDK loaded and ready!" : "SDK not loaded!");
         }
         catch (Exception ex)
         {
@@ -1211,19 +1243,19 @@
 
     [JSInvokable]
     public void OnUserJoinedCallback(int uid) =>
-        NotificationService.Notify(NotificationSeverity.Info, "User Joined", $"User {uid} joined");
+    NotificationService.Notify(NotificationSeverity.Info, "User Joined", $"User {uid} joined");
 
     [JSInvokable]
     public void OnUserLeftCallback(int uid) =>
-        NotificationService.Notify(NotificationSeverity.Info, "User Left", $"User {uid} left");
+    NotificationService.Notify(NotificationSeverity.Info, "User Left", $"User {uid} left");
 
     [JSInvokable]
     public void OnConnectionStateChangedCallback(string state) =>
-        NotificationService.Notify(NotificationSeverity.Info, "Connection State", $"State: {state}");
+    NotificationService.Notify(NotificationSeverity.Info, "Connection State", $"State: {state}");
 
     [JSInvokable]
     public void OnErrorCallback(string error) =>
-        NotificationService.Notify(NotificationSeverity.Error, "Agora Error", error);
+    NotificationService.Notify(NotificationSeverity.Error, "Agora Error", error);
 
     public void Dispose()
     {
@@ -1241,4 +1273,3 @@
         public DateTime CallTime { get; set; } = DateTime.UtcNow;
     }
 }
-
