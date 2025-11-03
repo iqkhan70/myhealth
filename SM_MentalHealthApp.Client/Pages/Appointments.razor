@@ -98,11 +98,21 @@
         background: white;
         padding: 0;
         border-radius: 8px;
-        max-width: 600px;
+        max-width: 800px;
         width: 90%;
         max-height: 90vh;
         overflow-y: auto;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    @@media (max-width: 768px) {
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+        
+        .modal-content {
+            max-width: 95%;
+        }
     }
 
     .modal-header {
@@ -129,6 +139,17 @@
 
     .form-group {
         margin-bottom: 15px;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    .form-row-full {
+        grid-column: 1 / -1;
     }
 
     .form-label {
@@ -299,50 +320,62 @@
                             </ul>
                         </div>
                     }
-                    <div class="form-group">
-                        <label class="form-label">Doctor <span class="required-asterisk">*</span></label>
-                        <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
-                            @bind-value="appointmentForm.DoctorId" Change="@OnDoctorChanged"
-                            AllowFiltering="true" Placeholder="Select Doctor"
-                            Style="width: 100%" />
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Doctor <span class="required-asterisk">*</span></label>
+                            <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
+                                @bind-value="appointmentForm.DoctorId" Change="@OnDoctorChanged"
+                                AllowFiltering="true" Placeholder="Select Doctor"
+                                Style="width: 100%" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Patient <span class="required-asterisk">*</span></label>
+                            <RadzenDropDown Data="@availablePatients" TextProperty="FullName" ValueProperty="Id"
+                                @bind-value="appointmentForm.PatientId" AllowFiltering="true" Placeholder="Select Patient"
+                                Style="width: 100%" />
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Patient <span class="required-asterisk">*</span></label>
-                        <RadzenDropDown Data="@availablePatients" TextProperty="FullName" ValueProperty="Id"
-                            @bind-value="appointmentForm.PatientId" AllowFiltering="true" Placeholder="Select Patient"
-                            Style="width: 100%" />
-                        @if (appointmentForm.DoctorId > 0 && availablePatients.Count == 0)
-                        {
-                            <div class="error-message">No patients assigned to this doctor. Please assign a patient first.</div>
-                        }
+                    @if (appointmentForm.DoctorId > 0 && availablePatients.Count == 0)
+                    {
+                        <div class="error-message form-row-full">No patients assigned to this doctor. Please assign a patient first.</div>
+                    }
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Date <span class="required-asterisk">*</span></label>
+                            <RadzenDatePicker @bind-value="appointmentDateTime" DateFormat="MM/dd/yyyy" 
+                                Style="width: 100%" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Time <span class="required-asterisk">*</span></label>
+                            <RadzenTextBox @bind-value="appointmentTimeString" Placeholder="HH:mm (e.g., 09:00)" 
+                                Style="width: 100%" />
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Date <span class="required-asterisk">*</span></label>
-                        <RadzenDatePicker @bind-value="appointmentDateTime" DateFormat="MM/dd/yyyy" 
-                            Style="width: 100%; margin-bottom: 10px;" />
-                        <label class="form-label">Time <span class="required-asterisk">*</span></label>
-                        <RadzenTextBox @bind-value="appointmentTimeString" Placeholder="HH:mm (24-hour format, e.g., 09:00)" 
-                            Style="width: 100%;" />
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Duration (minutes) <span class="required-asterisk">*</span></label>
+                            <RadzenNumeric TValue="int" @bind-value="durationMinutes" Min="15" Max="240" Step="15" 
+                                Style="width: 100%" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Appointment Type</label>
+                            <RadzenDropDown Data="@appointmentTypes" TextProperty="Name" ValueProperty="Value"
+                                @bind-value="appointmentForm.AppointmentType" TValue="AppointmentType" Style="width: 100%" />
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Duration (minutes) <span class="required-asterisk">*</span></label>
-                        <RadzenNumeric TValue="int" @bind-value="durationMinutes" Min="15" Max="240" Step="15" 
-                            Style="width: 100%" />
+                    <div class="form-row form-row-full">
+                        <div class="form-group" style="width: 100%;">
+                            <label class="form-label">Reason</label>
+                            <RadzenTextBox @bind-value="appointmentForm.Reason" Placeholder="Reason for appointment" 
+                                Style="width: 100%" />
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Appointment Type</label>
-                        <RadzenDropDown Data="@appointmentTypes" TextProperty="Name" ValueProperty="Value"
-                            @bind-value="appointmentForm.AppointmentType" TValue="AppointmentType" Style="width: 100%" />
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Reason</label>
-                        <RadzenTextBox @bind-value="appointmentForm.Reason" Placeholder="Reason for appointment" 
-                            Style="width: 100%" />
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Notes</label>
-                        <RadzenTextArea @bind-value="appointmentForm.Notes" Placeholder="Additional notes" 
-                            Rows="3" Style="width: 100%" />
+                    <div class="form-row form-row-full">
+                        <div class="form-group" style="width: 100%;">
+                            <label class="form-label">Notes</label>
+                            <RadzenTextArea @bind-value="appointmentForm.Notes" Placeholder="Additional notes" 
+                                Rows="3" Style="width: 100%" />
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
