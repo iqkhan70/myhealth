@@ -25,6 +25,10 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<RegisteredDevice> RegisteredDevices { get; set; }
             public DbSet<EmergencyIncident> EmergencyIncidents { get; set; }
 
+            // Appointment system entities
+            public DbSet<Appointment> Appointments { get; set; }
+            public DbSet<DoctorAvailability> DoctorAvailabilities { get; set; }
+
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
                   base.OnModelCreating(modelBuilder);
@@ -334,6 +338,69 @@ namespace SM_MentalHealthApp.Server.Data
                         // Indexes for performance
                         entity.HasIndex(e => new { e.SenderId, e.ReceiverId, e.SentAt });
                         entity.HasIndex(e => new { e.ReceiverId, e.IsRead });
+                  });
+
+                  // Configure Appointment entity
+                  modelBuilder.Entity<Appointment>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.AppointmentDateTime).IsRequired();
+                        entity.Property(e => e.Duration).IsRequired();
+                        entity.Property(e => e.AppointmentType).HasConversion<int>();
+                        entity.Property(e => e.Status).HasConversion<int>();
+                        entity.Property(e => e.Reason).HasMaxLength(500);
+                        entity.Property(e => e.Notes).HasMaxLength(2000);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.Doctor)
+                        .WithMany()
+                        .HasForeignKey(e => e.DoctorId)
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                        entity.HasOne(e => e.Patient)
+                        .WithMany()
+                        .HasForeignKey(e => e.PatientId)
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.CreatedByUser)
+                        .WithMany()
+                        .HasForeignKey(e => e.CreatedByUserId)
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.DoctorId);
+                        entity.HasIndex(e => e.PatientId);
+                        entity.HasIndex(e => e.AppointmentDateTime);
+                        entity.HasIndex(e => new { e.DoctorId, e.AppointmentDateTime });
+                        entity.HasIndex(e => e.Status);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.AppointmentType);
+                  });
+
+                  // Configure DoctorAvailability entity
+                  modelBuilder.Entity<DoctorAvailability>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Date).IsRequired();
+                        entity.Property(e => e.IsOutOfOffice).HasDefaultValue(false);
+                        entity.Property(e => e.Reason).HasMaxLength(500);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationship
+                        entity.HasOne(e => e.Doctor)
+                        .WithMany()
+                        .HasForeignKey(e => e.DoctorId)
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                        // Unique constraint: one availability record per doctor per day
+                        entity.HasIndex(e => new { e.DoctorId, e.Date }).IsUnique();
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.DoctorId);
+                        entity.HasIndex(e => e.Date);
+                        entity.HasIndex(e => e.IsOutOfOffice);
                   });
             }
       }

@@ -64,6 +64,7 @@ builder.Services.AddScoped<IIntelligentContextService, IntelligentContextService
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ISmsService, VonageSmsService>();
 builder.Services.AddScoped<IClinicalDecisionSupportService, ClinicalDecisionSupportService>();
+builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 builder.Services.AddScoped<AgoraTokenService>();
 builder.Services.AddScoped<IDocumentUploadService, DocumentUploadService>();
 

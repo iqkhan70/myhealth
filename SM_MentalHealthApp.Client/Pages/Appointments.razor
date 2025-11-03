@@ -1,0 +1,797 @@
+@page "/appointments"
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using System.Linq
+@inject HttpClient Http
+@inject IAuthService AuthService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Appointment Management</PageTitle>
+
+<style>
+    .appointment-container {
+        padding: 20px;
+    }
+
+    .appointment-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .appointment-controls {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        align-items: end;
+    }
+
+    .control-group {
+        display: flex;
+        flex-direction: column;
+        min-width: 200px;
+    }
+
+    .control-label {
+        font-weight: 500;
+        margin-bottom: 5px;
+        font-size: 14px;
+    }
+
+    .badge-urgent {
+        background-color: #dc3545;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .badge-regular {
+        background-color: #28a745;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .badge-after-hours {
+        background-color: #ffc107;
+        color: #000;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .status-scheduled { background-color: #17a2b8; color: white; }
+    .status-confirmed { background-color: #28a745; color: white; }
+    .status-inprogress { background-color: #ffc107; color: #000; }
+    .status-completed { background-color: #6c757d; color: white; }
+    .status-cancelled { background-color: #dc3545; color: white; }
+    .status-noshow { background-color: #fd7e14; color: white; }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        padding: 0;
+        border-radius: 8px;
+        max-width: 600px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .modal-header {
+        padding: 20px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: #f8f9fa;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .modal-footer {
+        padding: 15px 20px;
+        border-top: 1px solid #dee2e6;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        background-color: #f8f9fa;
+    }
+
+    .form-group {
+        margin-bottom: 15px;
+    }
+
+    .form-label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
+
+    .required-asterisk {
+        color: red;
+    }
+
+    .error-message {
+        color: #dc3545;
+        font-size: 14px;
+        margin-top: 5px;
+    }
+
+    .validation-warning {
+        background-color: #fff3cd;
+        border: 1px solid #ffc107;
+        color: #856404;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+    }
+</style>
+
+<div class="appointment-container">
+    <div class="appointment-header">
+        <h2><i class="fas fa-calendar-alt me-2"></i>Appointment Management</h2>
+        <RadzenButton Icon="add" Text="New Appointment" ButtonStyle="ButtonStyle.Success"
+            Click="@ShowAddDialog" />
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center p-4">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            <p>Loading appointments...</p>
+        </div>
+    }
+    else
+    {
+        <!-- Filters -->
+        <div class="appointment-controls">
+            <div class="control-group">
+                <label class="control-label">Doctor</label>
+                <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
+                    @bind-value="filterDoctorId" AllowFiltering="true" Placeholder="All Doctors"
+                    Style="width: 200px" />
+            </div>
+            <div class="control-group">
+                <label class="control-label">Patient</label>
+                <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
+                    @bind-value="filterPatientId" AllowFiltering="true" Placeholder="All Patients"
+                    Style="width: 200px" />
+            </div>
+            <div class="control-group">
+                <label class="control-label">Start Date</label>
+                <RadzenDatePicker @bind-value="filterStartDate" DateFormat="MM/dd/yyyy" 
+                    Style="width: 200px" />
+            </div>
+            <div class="control-group">
+                <label class="control-label">End Date</label>
+                <RadzenDatePicker @bind-value="filterEndDate" DateFormat="MM/dd/yyyy" 
+                    Style="width: 200px" />
+            </div>
+            <div class="control-group">
+                <RadzenButton Text="Apply Filters" ButtonStyle="ButtonStyle.Primary" 
+                    Click="@LoadAppointments" Icon="filter" />
+            </div>
+            <div class="control-group">
+                <RadzenButton Text="Clear" ButtonStyle="ButtonStyle.Light" 
+                    Click="@ClearFilters" Icon="clear" />
+            </div>
+            <div class="control-group">
+                <RadzenButton Text="Manage OOO" ButtonStyle="ButtonStyle.Info" 
+                    Click="@ShowOOODialog" Icon="event_busy" />
+            </div>
+        </div>
+
+        <!-- Appointments Grid -->
+        <RadzenDataGrid Data="@filteredAppointments" TItem="AppointmentDto" AllowPaging="true"
+            PageSize="20" AllowSorting="true" FilterMode="FilterMode.Advanced" 
+            ShowPagingSummary="true" EmptyText="No appointments found" AllowFiltering="true"
+            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" ShowFilterRow="true">
+            <Columns>
+                <RadzenDataGridColumn TItem="AppointmentDto" Property="AppointmentDateTime" Title="Date & Time" Width="150px">
+                    <Template>
+                        <div>@context.AppointmentDateTime.ToString("MM/dd/yyyy")</div>
+                        <div style="font-size: 12px; color: #666;">@context.AppointmentDateTime.ToString("hh:mm tt")</div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="AppointmentDto" Property="DoctorName" Title="Doctor" Width="150px" />
+                <RadzenDataGridColumn TItem="AppointmentDto" Property="PatientName" Title="Patient" Width="150px" />
+                <RadzenDataGridColumn TItem="AppointmentDto" Property="Duration" Title="Duration" Width="100px">
+                    <Template>
+                        @context.Duration.TotalMinutes.ToString("0") min
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="AppointmentDto" Property="AppointmentType" Title="Type" Width="120px">
+                    <Template>
+                        @if (context.IsUrgentCare)
+                        {
+                            <span class="badge-urgent">URGENT CARE</span>
+                        }
+                        else
+                        {
+                            <span class="badge-regular">REGULAR</span>
+                        }
+                        @if (!context.IsBusinessHours && !context.IsUrgentCare)
+                        {
+                            <span class="badge-after-hours">AFTER HOURS</span>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="AppointmentDto" Property="Status" Title="Status" Width="120px">
+                    <Template>
+                        <span class="status-badge status-@context.Status.ToString().ToLower()">
+                            @context.Status.ToString().ToUpper()
+                        </span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="AppointmentDto" Property="Reason" Title="Reason" Width="200px" />
+                <RadzenDataGridColumn TItem="AppointmentDto" Property="CreatedBy" Title="Created By" Width="120px" />
+                <RadzenDataGridColumn TItem="AppointmentDto" Sortable="false" Filterable="false" Title="Actions" Width="150px">
+                    <Template>
+                        <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
+                            Click="@(() => EditAppointment(context))" />
+                        @if (context.Status == AppointmentStatus.Scheduled || context.Status == AppointmentStatus.Confirmed)
+                        {
+                            <RadzenButton Icon="cancel" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
+                                Click="@(() => CancelAppointment(context))" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    }
+
+    <!-- Add/Edit Appointment Modal -->
+    @if (showDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseDialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h4>@(editingAppointment == null ? "New Appointment" : "Edit Appointment")</h4>
+                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" 
+                        Click="CloseDialog" />
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(validationError))
+                    {
+                        <div class="error-message">
+                            <i class="fas fa-exclamation-circle"></i> @validationError
+                        </div>
+                    }
+                    @if (validationWarnings.Any())
+                    {
+                        <div class="validation-warning">
+                            <strong>Warnings:</strong>
+                            <ul style="margin: 5px 0; padding-left: 20px;">
+                                @foreach (var warning in validationWarnings)
+                                {
+                                    <li>@warning</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                    <div class="form-group">
+                        <label class="form-label">Doctor <span class="required-asterisk">*</span></label>
+                        <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
+                            @bind-value="appointmentForm.DoctorId" Change="@OnDoctorChanged"
+                            AllowFiltering="true" Placeholder="Select Doctor"
+                            Style="width: 100%" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Patient <span class="required-asterisk">*</span></label>
+                        <RadzenDropDown Data="@availablePatients" TextProperty="FullName" ValueProperty="Id"
+                            @bind-value="appointmentForm.PatientId" AllowFiltering="true" Placeholder="Select Patient"
+                            Style="width: 100%" />
+                        @if (appointmentForm.DoctorId > 0 && availablePatients.Count == 0)
+                        {
+                            <div class="error-message">No patients assigned to this doctor. Please assign a patient first.</div>
+                        }
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Date <span class="required-asterisk">*</span></label>
+                        <RadzenDatePicker @bind-value="appointmentDateTime" DateFormat="MM/dd/yyyy" 
+                            Style="width: 100%; margin-bottom: 10px;" />
+                        <label class="form-label">Time <span class="required-asterisk">*</span></label>
+                        <RadzenTextBox @bind-value="appointmentTimeString" Placeholder="HH:mm (24-hour format, e.g., 09:00)" 
+                            Style="width: 100%;" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Duration (minutes) <span class="required-asterisk">*</span></label>
+                        <RadzenNumeric TValue="int" @bind-value="durationMinutes" Min="15" Max="240" Step="15" 
+                            Style="width: 100%" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Appointment Type</label>
+                        <RadzenDropDown Data="@appointmentTypes" TextProperty="Name" ValueProperty="Value"
+                            @bind-value="appointmentForm.AppointmentType" TValue="AppointmentType" Style="width: 100%" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Reason</label>
+                        <RadzenTextBox @bind-value="appointmentForm.Reason" Placeholder="Reason for appointment" 
+                            Style="width: 100%" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Notes</label>
+                        <RadzenTextArea @bind-value="appointmentForm.Notes" Placeholder="Additional notes" 
+                            Rows="3" Style="width: 100%" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="CloseDialog" />
+                    <RadzenButton Text="@(editingAppointment == null ? "Create" : "Update")" 
+                        ButtonStyle="ButtonStyle.Success" Click="SaveAppointment" />
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- OOO Management Modal -->
+    @if (showOOODialog)
+    {
+        <div class="modal-overlay" @onclick="CloseOOODialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h4>Manage Doctor Out of Office</h4>
+                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" 
+                        Click="CloseOOODialog" />
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Doctor</label>
+                        <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
+                            @bind-value="oooForm.DoctorId" AllowFiltering="true" Placeholder="Select Doctor"
+                            Style="width: 100%" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Date</label>
+                        <RadzenDatePicker @bind-value="oooDate" DateFormat="MM/dd/yyyy" 
+                            Style="width: 100%" />
+                    </div>
+                    <div class="form-group">
+                        <RadzenCheckBox @bind-value="oooForm.IsOutOfOffice" Name="IsOutOfOffice" />
+                        <label>Mark as Out of Office</label>
+                    </div>
+                    @if (oooForm.IsOutOfOffice)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Reason</label>
+                            <RadzenTextBox @bind-value="oooForm.Reason" Placeholder="Reason for being out of office" 
+                                Style="width: 100%" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Partial Day (Optional)</label>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <span>From:</span>
+                                <RadzenTextBox @bind-value="oooStartTimeString" Placeholder="HH:mm" Style="width: 150px;" />
+                                <span>To:</span>
+                                <RadzenTextBox @bind-value="oooEndTimeString" Placeholder="HH:mm" Style="width: 150px;" />
+                            </div>
+                            <small style="color: #666;">Leave empty for full day OOO (format: HH:mm, e.g., 09:00)</small>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="CloseOOODialog" />
+                    <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Success" Click="SaveOOO" />
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<AppointmentDto> appointments = new();
+    private List<AppointmentDto> filteredAppointments = new();
+    private List<User> doctors = new();
+    private List<User> patients = new();
+    private List<User> availablePatients = new();
+    private bool isLoading = true;
+    private bool showDialog = false;
+    private bool showOOODialog = false;
+    private AppointmentDto? editingAppointment = null;
+    private CreateAppointmentRequest appointmentForm = new();
+    private DoctorAvailabilityRequest oooForm = new();
+    
+    // Filters
+    private int? filterDoctorId = null;
+    private int? filterPatientId = null;
+    private DateTime? filterStartDate = null;
+    private DateTime? filterEndDate = null;
+
+    // Appointment form
+    private DateTime? appointmentDateTime = DateTime.Now.Date.AddDays(1);
+    private string appointmentTimeString = "09:00";
+
+    // OOO form
+    private DateTime? oooDate = DateTime.Now.Date;
+    private string oooStartTimeString = "";
+    private string oooEndTimeString = "";
+
+    private int durationMinutes = 30;
+    private string validationError = "";
+    private List<string> validationWarnings = new();
+
+    private class AppointmentTypeOption
+    {
+        public string Name { get; set; } = string.Empty;
+        public AppointmentType Value { get; set; }
+    }
+
+    private List<AppointmentTypeOption> appointmentTypes = new()
+    {
+        new AppointmentTypeOption { Name = "Regular", Value = AppointmentType.Regular },
+        new AppointmentTypeOption { Name = "Urgent Care", Value = AppointmentType.UrgentCare }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthService.InitializeAsync();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            isLoading = true;
+            StateHasChanged();
+
+            // Load doctors
+            var doctorsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors");
+            doctors = doctorsResponse ?? new();
+
+            // Load patients
+            var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
+            patients = patientsResponse ?? new();
+
+            await LoadAppointments();
+            isLoading = false;
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error loading data: {ex.Message}");
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadAppointments()
+    {
+        try
+        {
+            var queryParams = new List<string>();
+            if (filterDoctorId.HasValue)
+                queryParams.Add($"doctorId={filterDoctorId.Value}");
+            if (filterPatientId.HasValue)
+                queryParams.Add($"patientId={filterPatientId.Value}");
+            if (filterStartDate.HasValue)
+                queryParams.Add($"startDate={filterStartDate.Value:yyyy-MM-dd}");
+            if (filterEndDate.HasValue)
+                queryParams.Add($"endDate={filterEndDate.Value:yyyy-MM-dd}");
+
+            var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
+            var response = await Http.GetFromJsonAsync<List<AppointmentDto>>($"api/appointment{queryString}");
+            appointments = response ?? new();
+            filteredAppointments = appointments;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error loading appointments: {ex.Message}");
+        }
+    }
+
+    private async Task LoadAvailablePatients(int doctorId)
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{doctorId}/patients");
+            availablePatients = response ?? new();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            availablePatients = new();
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading patients: {ex.Message}");
+        }
+    }
+
+    private void ShowAddDialog()
+    {
+        editingAppointment = null;
+        appointmentForm = new CreateAppointmentRequest
+        {
+            AppointmentType = AppointmentType.Regular,
+            Duration = TimeSpan.FromMinutes(30)
+        };
+        appointmentDateTime = DateTime.Now.Date.AddDays(1);
+        appointmentTimeString = "09:00";
+        durationMinutes = 30;
+        validationError = "";
+        validationWarnings = new();
+        availablePatients = new();
+        showDialog = true;
+    }
+
+    private void EditAppointment(AppointmentDto appointment)
+    {
+        editingAppointment = appointment;
+        appointmentForm = new CreateAppointmentRequest
+        {
+            DoctorId = appointment.DoctorId,
+            PatientId = appointment.PatientId,
+            AppointmentDateTime = appointment.AppointmentDateTime,
+            Duration = appointment.Duration,
+            AppointmentType = appointment.AppointmentType,
+            Reason = appointment.Reason,
+            Notes = appointment.Notes
+        };
+        appointmentDateTime = appointment.AppointmentDateTime.Date;
+        appointmentTimeString = appointment.AppointmentDateTime.ToString("HH:mm");
+        durationMinutes = (int)appointment.Duration.TotalMinutes;
+        validationError = "";
+        validationWarnings = new();
+        LoadAvailablePatients(appointment.DoctorId);
+        showDialog = true;
+    }
+
+    private async Task SaveAppointment()
+    {
+        try
+        {
+            validationError = "";
+            validationWarnings = new();
+
+            if (appointmentForm.DoctorId == 0)
+            {
+                validationError = "Please select a doctor";
+                return;
+            }
+
+            if (appointmentForm.PatientId == 0)
+            {
+                validationError = "Please select a patient";
+                return;
+            }
+
+            if (!appointmentDateTime.HasValue)
+            {
+                validationError = "Please select a date";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(appointmentTimeString))
+            {
+                validationError = "Please enter a time";
+                return;
+            }
+
+            // Parse time string (HH:mm format)
+            if (!TimeSpan.TryParse(appointmentTimeString, out var timeSpan))
+            {
+                validationError = "Invalid time format. Please use HH:mm format (e.g., 09:00)";
+                return;
+            }
+
+            appointmentForm.AppointmentDateTime = appointmentDateTime.Value.Date.Add(timeSpan);
+            appointmentForm.Duration = TimeSpan.FromMinutes(durationMinutes);
+
+            // Validate before creating
+            var validationResponse = await Http.PostAsJsonAsync("api/appointment/validate", appointmentForm);
+            if (validationResponse.IsSuccessStatusCode)
+            {
+                var validationResult = await validationResponse.Content.ReadFromJsonAsync<AppointmentValidationResult>();
+                if (validationResult != null && !validationResult.IsValid)
+                {
+                    validationError = validationResult.ErrorMessage ?? "Validation failed";
+                    validationWarnings = validationResult.Warnings;
+                    return;
+                }
+                if (validationResult != null && validationResult.Warnings.Any())
+                {
+                    validationWarnings = validationResult.Warnings;
+                }
+            }
+
+            HttpResponseMessage response;
+            if (editingAppointment == null)
+            {
+                response = await Http.PostAsJsonAsync("api/appointment", appointmentForm);
+            }
+            else
+            {
+                var updateRequest = new UpdateAppointmentRequest
+                {
+                    Id = editingAppointment.Id,
+                    AppointmentDateTime = appointmentForm.AppointmentDateTime,
+                    Duration = appointmentForm.Duration,
+                    AppointmentType = appointmentForm.AppointmentType,
+                    Reason = appointmentForm.Reason,
+                    Notes = appointmentForm.Notes
+                };
+                response = await Http.PutAsJsonAsync($"api/appointment/{editingAppointment.Id}", updateRequest);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Appointment saved successfully!");
+                CloseDialog();
+                await LoadAppointments();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                validationError = $"Error saving appointment: {errorContent}";
+            }
+        }
+        catch (Exception ex)
+        {
+            validationError = $"Error: {ex.Message}";
+        }
+    }
+
+    private async Task CancelAppointment(AppointmentDto appointment)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"Are you sure you want to cancel the appointment with {appointment.PatientName} on {appointment.AppointmentDateTime:MM/dd/yyyy}?");
+        
+        if (!confirmed)
+            return;
+
+        try
+        {
+            var response = await Http.PostAsync($"api/appointment/{appointment.Id}/cancel", null);
+            if (response.IsSuccessStatusCode)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Appointment cancelled successfully!");
+                await LoadAppointments();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                await JSRuntime.InvokeVoidAsync("alert", $"Error cancelling appointment: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private void CloseDialog()
+    {
+        showDialog = false;
+        editingAppointment = null;
+        appointmentForm = new();
+        validationError = "";
+        validationWarnings = new();
+    }
+
+    private void ClearFilters()
+    {
+        filterDoctorId = null;
+        filterPatientId = null;
+        filterStartDate = null;
+        filterEndDate = null;
+        LoadAppointments();
+    }
+
+    private void ShowOOODialog()
+    {
+        oooForm = new DoctorAvailabilityRequest
+        {
+            IsOutOfOffice = false
+        };
+        oooDate = DateTime.Now.Date;
+        oooStartTimeString = "";
+        oooEndTimeString = "";
+        showOOODialog = true;
+    }
+
+    private async Task SaveOOO()
+    {
+        try
+        {
+            if (oooForm.DoctorId == 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Please select a doctor");
+                return;
+            }
+
+            if (!oooDate.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Please select a date");
+                return;
+            }
+
+            oooForm.Date = oooDate.Value;
+            
+            // Parse time strings if provided
+            if (!string.IsNullOrWhiteSpace(oooStartTimeString) && TimeSpan.TryParse(oooStartTimeString, out var startTime))
+            {
+                oooForm.StartTime = startTime;
+            }
+            else
+            {
+                oooForm.StartTime = null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(oooEndTimeString) && TimeSpan.TryParse(oooEndTimeString, out var endTime))
+            {
+                oooForm.EndTime = endTime;
+            }
+            else
+            {
+                oooForm.EndTime = null;
+            }
+
+            var response = await Http.PostAsJsonAsync("api/appointment/doctor-availability", oooForm);
+            if (response.IsSuccessStatusCode)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Doctor availability updated successfully!");
+                CloseOOODialog();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                await JSRuntime.InvokeVoidAsync("alert", $"Error: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private void CloseOOODialog()
+    {
+        showOOODialog = false;
+        oooForm = new();
+    }
+
+    private async Task OnDoctorChanged()
+    {
+        if (appointmentForm.DoctorId > 0 && showDialog)
+        {
+            await LoadAvailablePatients(appointmentForm.DoctorId);
+            if (availablePatients.Count == 0)
+            {
+                appointmentForm.PatientId = 0;
+            }
+        }
+        else
+        {
+            availablePatients = new();
+            appointmentForm.PatientId = 0;
+        }
+        StateHasChanged();
+    }
+}
