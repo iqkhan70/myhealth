@@ -33,6 +33,8 @@ namespace SM_MentalHealthApp.Shared
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
         public bool IsActive { get; set; } = true;
+        public bool DayBeforeReminderSent { get; set; } = false; // Track if reminder was sent 1 day before
+        public bool DayOfReminderSent { get; set; } = false; // Track if reminder was sent on the day
 
         // Navigation properties
         [JsonIgnore]

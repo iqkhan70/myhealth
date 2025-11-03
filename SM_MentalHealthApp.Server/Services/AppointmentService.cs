@@ -25,11 +25,13 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly JournalDbContext _context;
         private readonly ILogger<AppointmentService> _logger;
         private readonly BusinessHours _businessHours;
+        private readonly ISmsService _smsService;
 
-        public AppointmentService(JournalDbContext context, ILogger<AppointmentService> logger)
+        public AppointmentService(JournalDbContext context, ILogger<AppointmentService> logger, ISmsService smsService)
         {
             _context = context;
             _logger = logger;
+            _smsService = smsService;
             _businessHours = new BusinessHours(); // Default: 9 AM - 5 PM, Mon-Fri
         }
 
@@ -153,7 +155,57 @@ namespace SM_MentalHealthApp.Server.Services
             _context.Appointments.Add(appointment);
             await _context.SaveChangesAsync();
 
+            // Send SMS notification to patient
+            await SendAppointmentConfirmationSmsAsync(appointment);
+
             return await GetAppointmentByIdAsync(appointment.Id) ?? throw new Exception("Failed to retrieve created appointment");
+        }
+
+        private async Task SendAppointmentConfirmationSmsAsync(Appointment appointment)
+        {
+            try
+            {
+                // Load patient to get phone number
+                var patient = await _context.Users.FindAsync(appointment.PatientId);
+                if (patient == null || string.IsNullOrEmpty(patient.MobilePhone))
+                {
+                    _logger.LogWarning("Patient {PatientId} does not have a mobile phone number. Skipping SMS notification.", appointment.PatientId);
+                    return;
+                }
+
+                var doctor = await _context.Users.FindAsync(appointment.DoctorId);
+                var doctorName = doctor != null ? $"{doctor.FirstName} {doctor.LastName}" : "your doctor";
+
+                var message = $"📅 Appointment Confirmed\n\n" +
+                    $"You have an appointment with Dr. {doctorName} on {appointment.AppointmentDateTime:MM/dd/yyyy} at {appointment.AppointmentDateTime:hh:mm tt}.\n\n" +
+                    $"Duration: {(int)appointment.Duration.TotalMinutes} minutes\n" +
+                    $"Type: {(appointment.AppointmentType == AppointmentType.UrgentCare ? "Urgent Care" : "Regular")}\n\n";
+
+                if (!string.IsNullOrEmpty(appointment.Reason))
+                {
+                    message += $"Reason: {appointment.Reason}\n\n";
+                }
+
+                message += "You will receive a reminder 1 day before and on the day of your appointment.\n\n" +
+                    "Reply STOP to opt out of appointment reminders.";
+
+                var success = await _smsService.SendSmsAsync(patient.MobilePhone, message);
+                if (success)
+                {
+                    _logger.LogInformation("Appointment confirmation SMS sent to patient {PatientId} ({PhoneNumber})",
+                        appointment.PatientId, patient.MobilePhone);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to send appointment confirmation SMS to patient {PatientId} ({PhoneNumber})",
+                        appointment.PatientId, patient.MobilePhone);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending appointment confirmation SMS for appointment {AppointmentId}", appointment.Id);
+                // Don't throw - appointment creation should succeed even if SMS fails
+            }
         }
 
         public async Task<AppointmentDto?> UpdateAppointmentAsync(UpdateAppointmentRequest request)

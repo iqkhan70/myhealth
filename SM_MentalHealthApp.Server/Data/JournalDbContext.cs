@@ -351,6 +351,8 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Reason).HasMaxLength(500);
                         entity.Property(e => e.Notes).HasMaxLength(2000);
                         entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.DayBeforeReminderSent).HasDefaultValue(false);
+                        entity.Property(e => e.DayOfReminderSent).HasDefaultValue(false);
                         entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
 
                         // Foreign key relationships
