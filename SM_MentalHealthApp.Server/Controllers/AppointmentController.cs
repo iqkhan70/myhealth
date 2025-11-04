@@ -165,8 +165,8 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting appointments");
-                return StatusCode(500, "Internal server error");
+                _logger.LogError(ex, "Error getting appointments: {Message}, StackTrace: {StackTrace}", ex.Message, ex.StackTrace);
+                return StatusCode(500, $"Internal server error: {ex.Message}");
             }
         }
 

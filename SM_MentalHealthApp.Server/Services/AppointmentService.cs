@@ -147,6 +147,7 @@ namespace SM_MentalHealthApp.Server.Services
                 Status = AppointmentStatus.Scheduled,
                 Reason = request.Reason,
                 Notes = request.Notes,
+                TimeZoneId = request.TimeZoneId ?? "UTC",
                 CreatedByUserId = createdByUserId,
                 IsBusinessHours = isBusinessHours,
                 IsActive = true
@@ -258,6 +259,9 @@ namespace SM_MentalHealthApp.Server.Services
             if (request.Notes != null)
                 appointment.Notes = request.Notes;
 
+            if (request.TimeZoneId != null)
+                appointment.TimeZoneId = request.TimeZoneId;
+
             appointment.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
@@ -281,29 +285,43 @@ namespace SM_MentalHealthApp.Server.Services
 
         public async Task<List<AppointmentDto>> GetAppointmentsAsync(int? doctorId = null, int? patientId = null, DateTime? startDate = null, DateTime? endDate = null)
         {
-            var query = _context.Appointments
-                .Include(a => a.Doctor)
-                .Include(a => a.Patient)
-                .Include(a => a.CreatedByUser)
-                .Where(a => a.IsActive);
+            try
+            {
+                var query = _context.Appointments
+                    .Include(a => a.Doctor)
+                    .Include(a => a.Patient)
+                    .Include(a => a.CreatedByUser)
+                    .Where(a => a.IsActive);
 
-            if (doctorId.HasValue)
-                query = query.Where(a => a.DoctorId == doctorId.Value);
+                if (doctorId.HasValue)
+                    query = query.Where(a => a.DoctorId == doctorId.Value);
 
-            if (patientId.HasValue)
-                query = query.Where(a => a.PatientId == patientId.Value);
+                if (patientId.HasValue)
+                    query = query.Where(a => a.PatientId == patientId.Value);
 
-            if (startDate.HasValue)
-                query = query.Where(a => a.AppointmentDateTime >= startDate.Value);
+                if (startDate.HasValue)
+                    query = query.Where(a => a.AppointmentDateTime >= startDate.Value);
 
-            if (endDate.HasValue)
-                query = query.Where(a => a.AppointmentDateTime <= endDate.Value);
+                if (endDate.HasValue)
+                    query = query.Where(a => a.AppointmentDateTime <= endDate.Value);
 
-            var appointments = await query
-                .OrderBy(a => a.AppointmentDateTime)
-                .ToListAsync();
+                var appointments = await query
+                    .OrderBy(a => a.AppointmentDateTime)
+                    .ToListAsync();
 
-            return appointments.Select(a => MapToDto(a)).ToList();
+                return appointments.Select(a => MapToDto(a)).ToList();
+            }
+            catch (Exception ex)
+            {
+                // If the error is about TimeZoneId column not existing, it means migration hasn't been applied
+                if (ex.Message.Contains("TimeZoneId") || ex.Message.Contains("Column") || ex.InnerException?.Message.Contains("TimeZoneId") == true)
+                {
+                    throw new InvalidOperationException(
+                        "Database migration required: Please run 'dotnet ef database update' to add the TimeZoneId column. " +
+                        $"Original error: {ex.Message}", ex);
+                }
+                throw;
+            }
         }
 
         public async Task<AppointmentDto?> GetAppointmentByIdAsync(int appointmentId)
@@ -445,33 +463,70 @@ namespace SM_MentalHealthApp.Server.Services
 
         private AppointmentDto MapToDto(Appointment appointment)
         {
-            return new AppointmentDto
+            try
             {
-                Id = appointment.Id,
-                DoctorId = appointment.DoctorId,
-                DoctorName = appointment.Doctor != null
-                    ? $"{appointment.Doctor.FirstName} {appointment.Doctor.LastName}"
-                    : "Unknown Doctor",
-                DoctorEmail = appointment.Doctor?.Email ?? "",
-                PatientId = appointment.PatientId,
-                PatientName = appointment.Patient != null
-                    ? $"{appointment.Patient.FirstName} {appointment.Patient.LastName}"
-                    : "Unknown Patient",
-                PatientEmail = appointment.Patient?.Email ?? "",
-                AppointmentDateTime = appointment.AppointmentDateTime,
-                EndDateTime = appointment.EndDateTime,
-                Duration = appointment.Duration,
-                AppointmentType = appointment.AppointmentType,
-                Status = appointment.Status,
-                Reason = appointment.Reason,
-                Notes = appointment.Notes,
-                IsUrgentCare = appointment.IsUrgentCare,
-                IsBusinessHours = appointment.IsBusinessHours,
-                CreatedBy = appointment.CreatedByUser != null
-                    ? $"{appointment.CreatedByUser.FirstName} {appointment.CreatedByUser.LastName}"
-                    : "Unknown",
-                CreatedAt = appointment.CreatedAt
-            };
+                return new AppointmentDto
+                {
+                    Id = appointment.Id,
+                    DoctorId = appointment.DoctorId,
+                    DoctorName = appointment.Doctor != null
+                        ? $"{appointment.Doctor.FirstName} {appointment.Doctor.LastName}"
+                        : "Unknown Doctor",
+                    DoctorEmail = appointment.Doctor?.Email ?? "",
+                    PatientId = appointment.PatientId,
+                    PatientName = appointment.Patient != null
+                        ? $"{appointment.Patient.FirstName} {appointment.Patient.LastName}"
+                        : "Unknown Patient",
+                    PatientEmail = appointment.Patient?.Email ?? "",
+                    AppointmentDateTime = appointment.AppointmentDateTime,
+                    EndDateTime = appointment.EndDateTime,
+                    Duration = appointment.Duration,
+                    AppointmentType = appointment.AppointmentType,
+                    Status = appointment.Status,
+                    Reason = appointment.Reason,
+                    Notes = appointment.Notes,
+                    IsUrgentCare = appointment.IsUrgentCare,
+                    IsBusinessHours = appointment.IsBusinessHours,
+                    TimeZoneId = string.IsNullOrEmpty(appointment.TimeZoneId) ? "UTC" : appointment.TimeZoneId,
+                    CreatedBy = appointment.CreatedByUser != null
+                        ? $"{appointment.CreatedByUser.FirstName} {appointment.CreatedByUser.LastName}"
+                        : "Unknown",
+                    CreatedAt = appointment.CreatedAt
+                };
+            }
+            catch (Exception ex)
+            {
+                // Log the error and return a basic DTO
+                // This can happen if TimeZoneId column doesn't exist in the database yet
+                return new AppointmentDto
+                {
+                    Id = appointment.Id,
+                    DoctorId = appointment.DoctorId,
+                    DoctorName = appointment.Doctor != null
+                        ? $"{appointment.Doctor.FirstName} {appointment.Doctor.LastName}"
+                        : "Unknown Doctor",
+                    DoctorEmail = appointment.Doctor?.Email ?? "",
+                    PatientId = appointment.PatientId,
+                    PatientName = appointment.Patient != null
+                        ? $"{appointment.Patient.FirstName} {appointment.Patient.LastName}"
+                        : "Unknown Patient",
+                    PatientEmail = appointment.Patient?.Email ?? "",
+                    AppointmentDateTime = appointment.AppointmentDateTime,
+                    EndDateTime = appointment.EndDateTime,
+                    Duration = appointment.Duration,
+                    AppointmentType = appointment.AppointmentType,
+                    Status = appointment.Status,
+                    Reason = appointment.Reason,
+                    Notes = appointment.Notes,
+                    IsUrgentCare = appointment.IsUrgentCare,
+                    IsBusinessHours = appointment.IsBusinessHours,
+                    TimeZoneId = "UTC", // Default fallback
+                    CreatedBy = appointment.CreatedByUser != null
+                        ? $"{appointment.CreatedByUser.FirstName} {appointment.CreatedByUser.LastName}"
+                        : "Unknown",
+                    CreatedAt = appointment.CreatedAt
+                };
+            }
         }
     }
 }

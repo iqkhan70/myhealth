@@ -238,10 +238,14 @@
             ShowPagingSummary="true" EmptyText="No appointments found" AllowFiltering="true"
             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" ShowFilterRow="true">
             <Columns>
-                <RadzenDataGridColumn TItem="AppointmentDto" Property="AppointmentDateTime" Title="Date & Time" Width="150px">
+                <RadzenDataGridColumn TItem="AppointmentDto" Property="AppointmentDateTime" Title="Date & Time" Width="180px">
                     <Template>
                         <div>@context.AppointmentDateTime.ToString("MM/dd/yyyy")</div>
                         <div style="font-size: 12px; color: #666;">@context.AppointmentDateTime.ToString("hh:mm tt")</div>
+                        @if (!string.IsNullOrEmpty(context?.TimeZoneId) && context.TimeZoneId != "UTC")
+                        {
+                            <div style="font-size: 11px; color: #999; margin-top: 2px;">📍 @context.TimeZoneId</div>
+                        }
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="AppointmentDto" Property="DoctorName" Title="Doctor" Width="150px" />
@@ -358,6 +362,14 @@
                                 Style="width: 100%" />
                         </div>
                         <div class="form-group">
+                            <label class="form-label">Timezone <span class="required-asterisk">*</span></label>
+                            <RadzenDropDown Data="@timezones" TextProperty="DisplayName" ValueProperty="Id"
+                                @bind-value="selectedTimezone" TValue="string" AllowFiltering="true" Placeholder="Select Timezone"
+                                Style="width: 100%" />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
                             <label class="form-label">Appointment Type</label>
                             <RadzenDropDown Data="@appointmentTypes" TextProperty="Name" ValueProperty="Value"
                                 @bind-value="appointmentForm.AppointmentType" TValue="AppointmentType" Style="width: 100%" />
@@ -472,6 +484,7 @@
     private int durationMinutes = 30;
     private string validationError = "";
     private List<string> validationWarnings = new();
+    private string selectedTimezone = "America/New_York"; // Default timezone
 
     private class AppointmentTypeOption
     {
@@ -479,10 +492,40 @@
         public AppointmentType Value { get; set; }
     }
 
+    private class TimezoneOption
+    {
+        public string Id { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+    }
+
     private List<AppointmentTypeOption> appointmentTypes = new()
     {
         new AppointmentTypeOption { Name = "Regular", Value = AppointmentType.Regular },
         new AppointmentTypeOption { Name = "Urgent Care", Value = AppointmentType.UrgentCare }
+    };
+
+    private List<TimezoneOption> timezones = new()
+    {
+        new TimezoneOption { Id = "America/New_York", DisplayName = "Eastern Time (ET) - America/New_York" },
+        new TimezoneOption { Id = "America/Chicago", DisplayName = "Central Time (CT) - America/Chicago" },
+        new TimezoneOption { Id = "America/Denver", DisplayName = "Mountain Time (MT) - America/Denver" },
+        new TimezoneOption { Id = "America/Los_Angeles", DisplayName = "Pacific Time (PT) - America/Los_Angeles" },
+        new TimezoneOption { Id = "America/Phoenix", DisplayName = "Arizona Time - America/Phoenix" },
+        new TimezoneOption { Id = "America/Anchorage", DisplayName = "Alaska Time - America/Anchorage" },
+        new TimezoneOption { Id = "Pacific/Honolulu", DisplayName = "Hawaii Time - Pacific/Honolulu" },
+        new TimezoneOption { Id = "UTC", DisplayName = "Coordinated Universal Time (UTC)" },
+        new TimezoneOption { Id = "Europe/London", DisplayName = "Greenwich Mean Time (GMT) - Europe/London" },
+        new TimezoneOption { Id = "Europe/Paris", DisplayName = "Central European Time (CET) - Europe/Paris" },
+        new TimezoneOption { Id = "Asia/Tokyo", DisplayName = "Japan Standard Time (JST) - Asia/Tokyo" },
+        new TimezoneOption { Id = "Asia/Shanghai", DisplayName = "China Standard Time (CST) - Asia/Shanghai" },
+        new TimezoneOption { Id = "Asia/Dubai", DisplayName = "Gulf Standard Time (GST) - Asia/Dubai" },
+        new TimezoneOption { Id = "Asia/Kolkata", DisplayName = "India Standard Time (IST) - Asia/Kolkata" },
+        new TimezoneOption { Id = "Australia/Sydney", DisplayName = "Australian Eastern Time (AET) - Australia/Sydney" },
+        new TimezoneOption { Id = "America/Toronto", DisplayName = "Eastern Time (ET) - America/Toronto" },
+        new TimezoneOption { Id = "America/Vancouver", DisplayName = "Pacific Time (PT) - America/Vancouver" },
+        new TimezoneOption { Id = "America/Mexico_City", DisplayName = "Central Time (CT) - America/Mexico_City" },
+        new TimezoneOption { Id = "America/Sao_Paulo", DisplayName = "Brasilia Time - America/Sao_Paulo" },
+        new TimezoneOption { Id = "Europe/Berlin", DisplayName = "Central European Time (CET) - Europe/Berlin" }
     };
 
     protected override async Task OnInitializedAsync()
@@ -563,11 +606,13 @@
         appointmentForm = new CreateAppointmentRequest
         {
             AppointmentType = AppointmentType.Regular,
-            Duration = TimeSpan.FromMinutes(30)
+            Duration = TimeSpan.FromMinutes(30),
+            TimeZoneId = "America/New_York"
         };
         appointmentDateTime = DateTime.Now.Date.AddDays(1);
         appointmentTimeString = "09:00";
         durationMinutes = 30;
+        selectedTimezone = "America/New_York";
         validationError = "";
         validationWarnings = new();
         availablePatients = new();
@@ -585,11 +630,13 @@
             Duration = appointment.Duration,
             AppointmentType = appointment.AppointmentType,
             Reason = appointment.Reason,
-            Notes = appointment.Notes
+            Notes = appointment.Notes,
+            TimeZoneId = !string.IsNullOrEmpty(appointment.TimeZoneId) ? appointment.TimeZoneId : "America/New_York"
         };
         appointmentDateTime = appointment.AppointmentDateTime.Date;
         appointmentTimeString = appointment.AppointmentDateTime.ToString("HH:mm");
         durationMinutes = (int)appointment.Duration.TotalMinutes;
+        selectedTimezone = !string.IsNullOrEmpty(appointment.TimeZoneId) ? appointment.TimeZoneId : "America/New_York";
         validationError = "";
         validationWarnings = new();
         LoadAvailablePatients(appointment.DoctorId);
@@ -634,8 +681,15 @@
                 return;
             }
 
+            if (string.IsNullOrWhiteSpace(selectedTimezone))
+            {
+                validationError = "Please select a timezone";
+                return;
+            }
+
             appointmentForm.AppointmentDateTime = appointmentDateTime.Value.Date.Add(timeSpan);
             appointmentForm.Duration = TimeSpan.FromMinutes(durationMinutes);
+            appointmentForm.TimeZoneId = selectedTimezone;
 
             // Validate before creating
             var validationResponse = await Http.PostAsJsonAsync("api/appointment/validate", appointmentForm);
@@ -668,7 +722,8 @@
                     Duration = appointmentForm.Duration,
                     AppointmentType = appointmentForm.AppointmentType,
                     Reason = appointmentForm.Reason,
-                    Notes = appointmentForm.Notes
+                    Notes = appointmentForm.Notes,
+                    TimeZoneId = appointmentForm.TimeZoneId
                 };
                 response = await Http.PutAsJsonAsync($"api/appointment/{editingAppointment.Id}", updateRequest);
             }

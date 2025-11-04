@@ -35,6 +35,7 @@ namespace SM_MentalHealthApp.Shared
         public bool IsActive { get; set; } = true;
         public bool DayBeforeReminderSent { get; set; } = false; // Track if reminder was sent 1 day before
         public bool DayOfReminderSent { get; set; } = false; // Track if reminder was sent on the day
+        public string TimeZoneId { get; set; } = "UTC"; // Timezone for the appointment (e.g., "America/New_York", "UTC")
 
         // Navigation properties
         [JsonIgnore]
@@ -92,6 +93,7 @@ namespace SM_MentalHealthApp.Shared
         public AppointmentType AppointmentType { get; set; } = AppointmentType.Regular;
         public string? Reason { get; set; }
         public string? Notes { get; set; }
+        public string TimeZoneId { get; set; } = "UTC"; // Timezone for the appointment
     }
 
     public class UpdateAppointmentRequest
@@ -103,6 +105,7 @@ namespace SM_MentalHealthApp.Shared
         public AppointmentStatus? Status { get; set; }
         public string? Reason { get; set; }
         public string? Notes { get; set; }
+        public string? TimeZoneId { get; set; }
     }
 
     public class AppointmentDto
@@ -123,6 +126,7 @@ namespace SM_MentalHealthApp.Shared
         public string? Notes { get; set; }
         public bool IsUrgentCare { get; set; }
         public bool IsBusinessHours { get; set; }
+        public string TimeZoneId { get; set; } = "UTC";
         public string CreatedBy { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
     }
