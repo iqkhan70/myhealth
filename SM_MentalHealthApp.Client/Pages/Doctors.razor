@@ -255,8 +255,8 @@
 <!-- Add/Edit Doctor Modal -->
 @if (showDoctorForm)
 {
-    <div class="modal-overlay" @onclick="CloseDoctorForm">
-        <div class="modal-content" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-content">
             <div class="modal-header">
                 <h3>@(editingDoctor == null ? "Add New Doctor" : "Edit Doctor")</h3>
                 <button @onclick="CloseDoctorForm" class="close-btn">✕</button>
@@ -342,8 +342,8 @@
 <!-- Doctor Details Modal -->
 @if (showDoctorDetails && selectedDoctor != null)
 {
-    <div class="modal-overlay" @onclick="CloseDoctorDetails">
-        <div class="modal-content doctor-details-modal" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-content doctor-details-modal">
             <div class="modal-header">
                 <h3>Doctor Details - @selectedDoctor.FirstName @selectedDoctor.LastName</h3>
                 <button @onclick="CloseDoctorDetails" class="close-btn">✕</button>

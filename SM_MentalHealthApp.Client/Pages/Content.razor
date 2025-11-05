@@ -163,8 +163,8 @@
 <!-- Add/Edit Content Modal -->
 @if (showContentForm)
 {
-    <div class="modal-overlay" @onclick="CloseContentForm">
-        <div class="modal-content" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-content">
             <div class="modal-header">
                 <h3>@GetFormTitle()</h3>
                 <button @onclick="CloseContentForm" class="close-btn">✕</button>

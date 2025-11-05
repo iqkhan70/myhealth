@@ -126,8 +126,8 @@
 <!-- Add/Edit Note Dialog -->
 @if (showNoteDialog)
 {
-    <div class="modal-overlay" @onclick="CloseNoteDialog">
-        <div class="modal-content" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-content">
             <div class="modal-header">
                 <h3>@(editingNote?.Id == 0 ? "Add Clinical Note" : "Edit Clinical Note")</h3>
                 <button @onclick="CloseNoteDialog" class="close-btn">✕</button>
@@ -192,8 +192,8 @@
 <!-- View Note Dialog -->
 @if (showViewDialog)
 {
-    <div class="modal-overlay" @onclick="CloseViewDialog">
-        <div class="modal-content" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-content">
             <div class="modal-header">
                 <h3>Clinical Note Details</h3>
                 <button @onclick="CloseViewDialog" class="close-btn">✕</button>

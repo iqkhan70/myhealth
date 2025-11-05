@@ -321,8 +321,8 @@
 <!-- Add/Edit Patient Modal -->
 @if (showPatientForm)
 {
-    <div class="modal-overlay" @onclick="ClosePatientForm">
-        <div class="modal-content" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-content">
             <div class="modal-header">
                 <h3>@(editingUser == null ? "Add New Patient" : "Edit Patient")</h3>
                 <button @onclick="ClosePatientForm" class="close-btn">✕</button>
@@ -396,8 +396,8 @@
 <!-- Patient Details Modal -->
 @if (showPatientDetails && selectedUser != null)
 {
-    <div class="modal-overlay" @onclick="ClosePatientDetails">
-        <div class="modal-content patient-details-modal" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-content patient-details-modal">
             <div class="modal-header">
                 <h3>User Details - @selectedUser.FirstName @selectedUser.LastName</h3>
                 <button @onclick="ClosePatientDetails" class="close-btn">✕</button>
@@ -471,8 +471,8 @@
 <!-- Patient Stats Modal -->
 @if (showPatientStats && selectedUser != null && userStats is not null)
 {
-    <div class="modal-overlay" @onclick="ClosePatientStats">
-        <div class="modal-content patient-stats-modal" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-content patient-stats-modal">
             <div class="modal-header">
                 <h3>User Statistics - @selectedUser.FirstName @selectedUser.LastName</h3>
                 <button @onclick="ClosePatientStats" class="close-btn">✕</button>
@@ -523,8 +523,8 @@
 <!-- Doctor Assignment Modal -->
 @if (showAssignModal && selectedUser != null)
 {
-    <div class="modal-overlay" @onclick="CloseAssignModal">
-        <div class="modal-content" @onclick:stopPropagation="true">
+    <div class="modal-overlay">
+        <div class="modal-content">
             <div class="modal-header">
                 <h3>Assign Patient to Another Doctor</h3>
                 <button @onclick="CloseAssignModal" class="close-btn">✕</button>
@@ -560,8 +560,8 @@
 <!-- Unassign Confirmation Modal -->
 @if (showUnassignConfirmation && selectedUser != null)
 {
-    <div class="modal-overlay" @onclick="CloseUnassignConfirmation" style="display: block !important; z-index: 9999 !important;">
-        <div class="modal-content" @onclick:stopPropagation="true">
+    <div class="modal-overlay" style="display: block !important; z-index: 9999 !important;">
+        <div class="modal-content">
             <div class="modal-header">
                 <h3>⚠️ Confirm Unassignment</h3>
                 <button @onclick="CloseUnassignConfirmation" class="close-btn">✕</button>
