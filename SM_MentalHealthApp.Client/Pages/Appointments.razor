@@ -105,8 +105,19 @@
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
 
+    .form-row-3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
     @@media (max-width: 768px) {
         .form-row {
+            grid-template-columns: 1fr;
+        }
+        
+        .form-row-3 {
             grid-template-columns: 1fr;
         }
         
@@ -330,7 +341,7 @@
                             </ul>
                         </div>
                     }
-                    <div class="form-row">
+                    <div class="form-row-3">
                         @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show read-only
                         {
                             <div class="form-group">
@@ -355,12 +366,17 @@
                                 @bind-value="appointmentForm.PatientId" AllowFiltering="true" Placeholder="Select Patient"
                                 Style="width: 100%" />
                         </div>
+                        <div class="form-group">
+                            <label class="form-label">Appointment Type</label>
+                            <RadzenDropDown Data="@appointmentTypes" TextProperty="Name" ValueProperty="Value"
+                                @bind-value="appointmentForm.AppointmentType" TValue="AppointmentType" Style="width: 100%" />
+                        </div>
                     </div>
                     @if (appointmentForm.DoctorId > 0 && availablePatients.Count == 0)
                     {
                         <div class="error-message form-row-full">No patients assigned to this doctor. Please assign a patient first.</div>
                     }
-                    <div class="form-row">
+                    <div class="form-row-3">
                         <div class="form-group">
                             <label class="form-label">Date <span class="required-asterisk">*</span></label>
                             <RadzenDatePicker @bind-value="appointmentDateTime" DateFormat="MM/dd/yyyy" 
@@ -371,25 +387,18 @@
                             <RadzenTextBox @bind-value="appointmentTimeString" Placeholder="HH:mm (e.g., 09:00)" 
                                 Style="width: 100%" />
                         </div>
-                    </div>
-                    <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Duration (minutes) <span class="required-asterisk">*</span></label>
                             <RadzenNumeric TValue="int" @bind-value="durationMinutes" Min="15" Max="240" Step="15" 
                                 Style="width: 100%" />
                         </div>
+                    </div>
+                    <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Timezone <span class="required-asterisk">*</span></label>
                             <RadzenDropDown Data="@timezones" TextProperty="DisplayName" ValueProperty="Id"
                                 @bind-value="selectedTimezone" TValue="string" AllowFiltering="true" Placeholder="Select Timezone"
                                 Style="width: 100%" />
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Appointment Type</label>
-                            <RadzenDropDown Data="@appointmentTypes" TextProperty="Name" ValueProperty="Value"
-                                @bind-value="appointmentForm.AppointmentType" TValue="AppointmentType" Style="width: 100%" />
                         </div>
                     </div>
                     <div class="form-row form-row-full">
