@@ -30,7 +30,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Validate an appointment before creating it
         /// </summary>
         [HttpPost("validate")]
-        [Authorize(Roles = "Admin")] // Only admin can create appointments
+        [Authorize(Roles = "Admin,Doctor")] // Admin and Doctor can create appointments
         public async Task<ActionResult<AppointmentValidationResult>> ValidateAppointment([FromBody] CreateAppointmentRequest request)
         {
             try
@@ -50,10 +50,11 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
-        /// Create a new appointment (Admin only)
+        /// Create a new appointment (Admin or Doctor)
+        /// Doctors can only create appointments for themselves with their assigned patients
         /// </summary>
         [HttpPost]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Doctor")]
         public async Task<ActionResult<AppointmentDto>> CreateAppointment([FromBody] CreateAppointmentRequest request)
         {
             try
@@ -61,6 +62,29 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var userId = GetCurrentUserId();
                 if (!userId.HasValue)
                     return Unauthorized("Invalid user token");
+
+                // Get current user's role
+                var userClaim = User.FindFirst("roleId")?.Value;
+                if (!int.TryParse(userClaim, out int roleId))
+                    return Unauthorized("Invalid role");
+
+                // If doctor, enforce restrictions:
+                // 1. Doctor can only create appointments for themselves
+                // 2. Patient must be assigned to them
+                if (roleId == 2) // Doctor role
+                {
+                    if (request.DoctorId != userId.Value)
+                    {
+                        return BadRequest("Doctors can only create appointments for themselves");
+                    }
+
+                    // Check if patient is assigned to this doctor
+                    var isAssigned = await _appointmentService.IsPatientAssignedToDoctorAsync(request.PatientId, userId.Value);
+                    if (!isAssigned)
+                    {
+                        return BadRequest("Patient must be assigned to you before scheduling an appointment. Please contact admin to assign the patient.");
+                    }
+                }
 
                 var appointment = await _appointmentService.CreateAppointmentAsync(request, userId.Value);
                 return CreatedAtAction(nameof(GetAppointment), new { id = appointment.Id }, appointment);
@@ -77,16 +101,50 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
-        /// Update an existing appointment (Admin only)
+        /// Update an existing appointment (Admin or Doctor)
+        /// Doctors can only update their own appointments
         /// </summary>
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Doctor")]
         public async Task<ActionResult<AppointmentDto>> UpdateAppointment(int id, [FromBody] UpdateAppointmentRequest request)
         {
             try
             {
                 if (id != request.Id)
                     return BadRequest("Appointment ID mismatch");
+
+                var userId = GetCurrentUserId();
+                if (!userId.HasValue)
+                    return Unauthorized("Invalid user token");
+
+                // Get current user's role
+                var userClaim = User.FindFirst("roleId")?.Value;
+                if (!int.TryParse(userClaim, out int roleId))
+                    return Unauthorized("Invalid role");
+
+                // If doctor, check if this is their appointment
+                if (roleId == 2) // Doctor role
+                {
+                    var existingAppointment = await _appointmentService.GetAppointmentByIdAsync(id);
+                    if (existingAppointment == null)
+                        return NotFound("Appointment not found");
+
+                    if (existingAppointment.DoctorId != userId.Value)
+                    {
+                        return Forbid("Doctors can only update their own appointments");
+                    }
+
+                    // Ensure doctor can't change the doctor ID
+                    if (request.AppointmentDateTime.HasValue)
+                    {
+                        // Verify patient is still assigned if date/time changed
+                        var isAssigned = await _appointmentService.IsPatientAssignedToDoctorAsync(existingAppointment.PatientId, userId.Value);
+                        if (!isAssigned)
+                        {
+                            return BadRequest("Patient must be assigned to you to update this appointment");
+                        }
+                    }
+                }
 
                 var appointment = await _appointmentService.UpdateAppointmentAsync(request);
                 if (appointment == null)
@@ -106,14 +164,37 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
-        /// Cancel an appointment (Admin only)
+        /// Cancel an appointment (Admin or Doctor)
+        /// Doctors can only cancel their own appointments
         /// </summary>
         [HttpPost("{id}/cancel")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Doctor")]
         public async Task<ActionResult> CancelAppointment(int id)
         {
             try
             {
+                var userId = GetCurrentUserId();
+                if (!userId.HasValue)
+                    return Unauthorized("Invalid user token");
+
+                // Get current user's role
+                var userClaim = User.FindFirst("roleId")?.Value;
+                if (!int.TryParse(userClaim, out int roleId))
+                    return Unauthorized("Invalid role");
+
+                // If doctor, check if this is their appointment
+                if (roleId == 2) // Doctor role
+                {
+                    var appointment = await _appointmentService.GetAppointmentByIdAsync(id);
+                    if (appointment == null)
+                        return NotFound("Appointment not found");
+
+                    if (appointment.DoctorId != userId.Value)
+                    {
+                        return Forbid("Doctors can only cancel their own appointments");
+                    }
+                }
+
                 var success = await _appointmentService.CancelAppointmentAsync(id);
                 if (!success)
                     return NotFound("Appointment not found");

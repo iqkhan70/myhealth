@@ -196,12 +196,15 @@
     {
         <!-- Filters -->
         <div class="appointment-controls">
-            <div class="control-group">
-                <label class="control-label">Doctor</label>
-                <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
-                    @bind-value="filterDoctorId" AllowFiltering="true" Placeholder="All Doctors"
-                    Style="width: 200px" />
-            </div>
+            @if (AuthService.CurrentUser?.RoleId == 3) // Admin only - can filter by doctor
+            {
+                <div class="control-group">
+                    <label class="control-label">Doctor</label>
+                    <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
+                        @bind-value="filterDoctorId" AllowFiltering="true" Placeholder="All Doctors"
+                        Style="width: 200px" />
+                </div>
+            }
             <div class="control-group">
                 <label class="control-label">Patient</label>
                 <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
@@ -226,10 +229,13 @@
                 <RadzenButton Text="Clear" ButtonStyle="ButtonStyle.Light" 
                     Click="@ClearFilters" Icon="clear" />
             </div>
-            <div class="control-group">
-                <RadzenButton Text="Manage OOO" ButtonStyle="ButtonStyle.Info" 
-                    Click="@ShowOOODialog" Icon="event_busy" />
-            </div>
+            @if (AuthService.CurrentUser?.RoleId == 3) // Admin only
+            {
+                <div class="control-group">
+                    <RadzenButton Text="Manage OOO" ButtonStyle="ButtonStyle.Info" 
+                        Click="@ShowOOODialog" Icon="event_busy" />
+                </div>
+            }
         </div>
 
         <!-- Appointments Grid -->
@@ -325,13 +331,24 @@
                         </div>
                     }
                     <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Doctor <span class="required-asterisk">*</span></label>
-                            <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
-                                @bind-value="appointmentForm.DoctorId" Change="@OnDoctorChanged"
-                                AllowFiltering="true" Placeholder="Select Doctor"
-                                Style="width: 100%" />
-                        </div>
+                        @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show read-only
+                        {
+                            <div class="form-group">
+                                <label class="form-label">Doctor</label>
+                                <RadzenTextBox Value="@currentDoctorName" 
+                                    ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
+                            </div>
+                        }
+                        else // Admin - show dropdown
+                        {
+                            <div class="form-group">
+                                <label class="form-label">Doctor <span class="required-asterisk">*</span></label>
+                                <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
+                                    @bind-value="appointmentForm.DoctorId" Change="@OnDoctorChanged"
+                                    AllowFiltering="true" Placeholder="Select Doctor"
+                                    Style="width: 100%" />
+                            </div>
+                        }
                         <div class="form-group">
                             <label class="form-label">Patient <span class="required-asterisk">*</span></label>
                             <RadzenDropDown Data="@availablePatients" TextProperty="FullName" ValueProperty="Id"
@@ -485,6 +502,7 @@
     private string validationError = "";
     private List<string> validationWarnings = new();
     private string selectedTimezone = "America/New_York"; // Default timezone
+    private string currentDoctorName = ""; // For doctor read-only display
 
     private class AppointmentTypeOption
     {
@@ -541,13 +559,65 @@
             isLoading = true;
             StateHasChanged();
 
-            // Load doctors
-            var doctorsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors");
-            doctors = doctorsResponse ?? new();
+            // Check user role
+            var currentUser = AuthService.CurrentUser;
+            var isDoctor = currentUser?.RoleId == 2;
+            var isAdmin = currentUser?.RoleId == 3;
 
-            // Load patients
-            var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
-            patients = patientsResponse ?? new();
+            if (isDoctor)
+            {
+                // For doctors: clear all filters (API will automatically filter by doctor)
+                filterDoctorId = null;
+                filterPatientId = null;
+                filterStartDate = null;
+                filterEndDate = null;
+
+                // For doctors: load only their assigned patients
+                // Use doctor endpoint which is accessible to doctors
+                List<User>? patientsResponse = null;
+                try
+                {
+                    patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/doctor/my-patients");
+                }
+                catch
+                {
+                    // Fallback to admin endpoint if doctor endpoint fails
+                    try
+                    {
+                        patientsResponse = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{currentUser.Id}/patients");
+                    }
+                    catch
+                    {
+                        // If both fail, use empty list
+                        patientsResponse = new();
+                    }
+                }
+                availablePatients = patientsResponse ?? new();
+                patients = availablePatients; // For filtering
+                
+                // Set doctor to current user - use current user data directly
+                // Create a User object from AuthUser for display purposes
+                var doctorUser = new User
+                {
+                    Id = currentUser.Id,
+                    FirstName = currentUser.FirstName,
+                    LastName = currentUser.LastName,
+                    Email = currentUser.Email,
+                    RoleId = currentUser.RoleId
+                };
+                doctors = new List<User> { doctorUser };
+                currentDoctorName = $"{currentUser.FirstName} {currentUser.LastName}";
+                appointmentForm.DoctorId = currentUser.Id;
+            }
+            else if (isAdmin)
+            {
+                // For admins: load all doctors and patients
+                var doctorsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors");
+                doctors = doctorsResponse ?? new();
+
+                var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
+                patients = patientsResponse ?? new();
+            }
 
             await LoadAppointments();
             isLoading = false;
@@ -564,7 +634,9 @@
         try
         {
             var queryParams = new List<string>();
-            if (filterDoctorId.HasValue)
+            // For doctors, don't add doctorId filter - API will automatically filter by doctor
+            // For admins, add doctorId filter if specified
+            if (AuthService.CurrentUser?.RoleId == 3 && filterDoctorId.HasValue)
                 queryParams.Add($"doctorId={filterDoctorId.Value}");
             if (filterPatientId.HasValue)
                 queryParams.Add($"patientId={filterPatientId.Value}");
@@ -577,11 +649,14 @@
             var response = await Http.GetFromJsonAsync<List<AppointmentDto>>($"api/appointment{queryString}");
             appointments = response ?? new();
             filteredAppointments = appointments;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
             await JSRuntime.InvokeVoidAsync("alert", $"Error loading appointments: {ex.Message}");
+            appointments = new();
+            filteredAppointments = new();
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -603,11 +678,15 @@
     private void ShowAddDialog()
     {
         editingAppointment = null;
+        var currentUser = AuthService.CurrentUser;
+        var isDoctor = currentUser?.RoleId == 2;
+
         appointmentForm = new CreateAppointmentRequest
         {
             AppointmentType = AppointmentType.Regular,
             Duration = TimeSpan.FromMinutes(30),
-            TimeZoneId = "America/New_York"
+            TimeZoneId = "America/New_York",
+            DoctorId = isDoctor ? (currentUser?.Id ?? 0) : 0
         };
         appointmentDateTime = DateTime.Now.Date.AddDays(1);
         appointmentTimeString = "09:00";
@@ -615,12 +694,32 @@
         selectedTimezone = "America/New_York";
         validationError = "";
         validationWarnings = new();
-        availablePatients = new();
+
+        // For doctors, load their assigned patients
+        if (isDoctor)
+        {
+            availablePatients = patients; // Already loaded in LoadData
+        }
+        else
+        {
+            availablePatients = new();
+        }
+
         showDialog = true;
     }
 
     private void EditAppointment(AppointmentDto appointment)
     {
+        var currentUser = AuthService.CurrentUser;
+        var isDoctor = currentUser?.RoleId == 2;
+
+        // Doctors can only edit their own appointments
+        if (isDoctor && appointment.DoctorId != currentUser?.Id)
+        {
+            JSRuntime.InvokeVoidAsync("alert", "You can only edit your own appointments");
+            return;
+        }
+
         editingAppointment = appointment;
         appointmentForm = new CreateAppointmentRequest
         {
@@ -639,7 +738,16 @@
         selectedTimezone = !string.IsNullOrEmpty(appointment.TimeZoneId) ? appointment.TimeZoneId : "America/New_York";
         validationError = "";
         validationWarnings = new();
-        LoadAvailablePatients(appointment.DoctorId);
+        
+        if (isDoctor)
+        {
+            availablePatients = patients; // Already loaded
+        }
+        else
+        {
+            LoadAvailablePatients(appointment.DoctorId);
+        }
+        
         showDialog = true;
     }
 
@@ -748,6 +856,16 @@
 
     private async Task CancelAppointment(AppointmentDto appointment)
     {
+        var currentUser = AuthService.CurrentUser;
+        var isDoctor = currentUser?.RoleId == 2;
+
+        // Doctors can only cancel their own appointments
+        if (isDoctor && appointment.DoctorId != currentUser?.Id)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "You can only cancel your own appointments");
+            return;
+        }
+
         var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
             $"Are you sure you want to cancel the appointment with {appointment.PatientName} on {appointment.AppointmentDateTime:MM/dd/yyyy}?");
         
