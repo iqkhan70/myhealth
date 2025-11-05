@@ -60,6 +60,7 @@ namespace SM_MentalHealthApp.Shared
         public string? Reason { get; set; } // Reason for OOO
         public TimeSpan? StartTime { get; set; } // Available start time (nullable for full day OOO)
         public TimeSpan? EndTime { get; set; } // Available end time (nullable for full day OOO)
+        public string TimeZoneId { get; set; } = "UTC"; // Timezone for the OOO (e.g., "America/New_York", "UTC")
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
 
@@ -139,6 +140,7 @@ namespace SM_MentalHealthApp.Shared
         public string? Reason { get; set; }
         public TimeSpan? StartTime { get; set; }
         public TimeSpan? EndTime { get; set; }
+        public string TimeZoneId { get; set; } = "UTC"; // Timezone for the OOO
     }
 
     public class DoctorAvailabilityDto
@@ -151,6 +153,7 @@ namespace SM_MentalHealthApp.Shared
         public string? Reason { get; set; }
         public TimeSpan? StartTime { get; set; }
         public TimeSpan? EndTime { get; set; }
+        public string TimeZoneId { get; set; } = "UTC"; // Timezone for the OOO
     }
 
     public class AppointmentValidationResult

@@ -229,7 +229,7 @@
                 <RadzenButton Text="Clear" ButtonStyle="ButtonStyle.Light" 
                     Click="@ClearFilters" Icon="clear" />
             </div>
-            @if (AuthService.CurrentUser?.RoleId == 3) // Admin only
+            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) // Doctor or Admin
             {
                 <div class="control-group">
                     <RadzenButton Text="Manage OOO" ButtonStyle="ButtonStyle.Info" 
@@ -429,13 +429,27 @@
                 <div class="modal-body">
                     <div class="form-group">
                         <label class="form-label">Doctor</label>
+                        @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show read-only
+                        {
+                            <RadzenTextBox Value="@currentDoctorName" 
+                                ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
+                        }
+                        else // Admin - show dropdown
+                        {
                         <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
-                            @bind-value="oooForm.DoctorId" AllowFiltering="true" Placeholder="Select Doctor"
+                            Value="@oooForm.DoctorId" ValueChanged="@((int? value) => OnOOODoctorChanged(value))" AllowFiltering="true" Placeholder="Select Doctor"
                             Style="width: 100%" />
+                        }
                     </div>
                     <div class="form-group">
                         <label class="form-label">Date</label>
-                        <RadzenDatePicker @bind-value="oooDate" DateFormat="MM/dd/yyyy" 
+                        <RadzenDatePicker Value="@oooDate" ValueChanged="@((DateTime? value) => OnOOODateChanged(value))" DateFormat="MM/dd/yyyy" 
+                            Style="width: 100%" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Timezone <span class="required-asterisk">*</span></label>
+                        <RadzenDropDown Data="@timezones" TextProperty="DisplayName" ValueProperty="Id"
+                            @bind-value="selectedOOOTimezone" TValue="string" AllowFiltering="true" Placeholder="Select Timezone"
                             Style="width: 100%" />
                     </div>
                     <div class="form-group">
@@ -459,6 +473,34 @@
                             </div>
                             <small style="color: #666;">Leave empty for full day OOO (format: HH:mm, e.g., 09:00)</small>
                         </div>
+                        @if (oooForm.StartTime.HasValue || oooForm.EndTime.HasValue)
+                        {
+                            <div class="form-group" style="background-color: #f0f0f0; padding: 10px; border-radius: 4px; margin-top: 10px;">
+                                <strong>Current OOO Time:</strong>
+                                <div style="margin-top: 5px;">
+                                    @if (oooForm.StartTime.HasValue && oooForm.EndTime.HasValue)
+                                    {
+                                        <span>@($"{oooForm.StartTime.Value.Hours:D2}:{oooForm.StartTime.Value.Minutes:D2}") - @($"{oooForm.EndTime.Value.Hours:D2}:{oooForm.EndTime.Value.Minutes:D2}")</span>
+                                    }
+                                    else if (oooForm.StartTime.HasValue)
+                                    {
+                                        <span>From @($"{oooForm.StartTime.Value.Hours:D2}:{oooForm.StartTime.Value.Minutes:D2}")</span>
+                                    }
+                                    else if (oooForm.EndTime.HasValue)
+                                    {
+                                        <span>Until @($"{oooForm.EndTime.Value.Hours:D2}:{oooForm.EndTime.Value.Minutes:D2}")</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Full Day</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(selectedOOOTimezone) && selectedOOOTimezone != "UTC")
+                                    {
+                                        <div style="font-size: 11px; color: #666; margin-top: 3px;">📍 @selectedOOOTimezone</div>
+                                    }
+                                </div>
+                            </div>
+                        }
                     }
                 </div>
                 <div class="modal-footer">
@@ -482,6 +524,7 @@
     private AppointmentDto? editingAppointment = null;
     private CreateAppointmentRequest appointmentForm = new();
     private DoctorAvailabilityRequest oooForm = new();
+    private string selectedOOOTimezone = "America/New_York"; // Default timezone for OOO
     
     // Filters
     private int? filterDoctorId = null;
@@ -795,7 +838,9 @@
                 return;
             }
 
-            appointmentForm.AppointmentDateTime = appointmentDateTime.Value.Date.Add(timeSpan);
+            // Create DateTime in the selected timezone (as Unspecified kind)
+            var localDateTime = appointmentDateTime.Value.Date.Add(timeSpan);
+            appointmentForm.AppointmentDateTime = DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified);
             appointmentForm.Duration = TimeSpan.FromMinutes(durationMinutes);
             appointmentForm.TimeZoneId = selectedTimezone;
 
@@ -910,22 +955,89 @@
         LoadAppointments();
     }
 
-    private void ShowOOODialog()
+    private async Task ShowOOODialog()
     {
+        var currentUser = AuthService.CurrentUser;
+        var isDoctor = currentUser?.RoleId == 2;
+
         oooForm = new DoctorAvailabilityRequest
         {
-            IsOutOfOffice = false
+            IsOutOfOffice = false,
+            DoctorId = isDoctor ? (currentUser?.Id ?? 0) : 0
         };
         oooDate = DateTime.Now.Date;
         oooStartTimeString = "";
         oooEndTimeString = "";
+        selectedOOOTimezone = "America/New_York"; // Reset to default
         showOOODialog = true;
+
+        // Load existing OOO entry if doctor is selected and date is set
+        if (oooForm.DoctorId > 0 && oooDate.HasValue)
+        {
+            await LoadExistingOOO();
+        }
+    }
+
+    private async Task LoadExistingOOO()
+    {
+        if (oooForm.DoctorId == 0 || !oooDate.HasValue)
+            return;
+
+        try
+        {
+            var response = await Http.GetAsync($"api/appointment/doctor-availability/{oooForm.DoctorId}?date={oooDate.Value:yyyy-MM-dd}");
+            if (response.IsSuccessStatusCode)
+            {
+                var availability = await response.Content.ReadFromJsonAsync<DoctorAvailability>();
+                if (availability != null)
+                {
+                    oooForm.IsOutOfOffice = availability.IsOutOfOffice;
+                    oooForm.Reason = availability.Reason ?? "";
+                    oooForm.StartTime = availability.StartTime;
+                    oooForm.EndTime = availability.EndTime;
+                    selectedOOOTimezone = availability.TimeZoneId ?? "America/New_York";
+                    
+                    // Populate time strings
+                    if (availability.StartTime.HasValue)
+                    {
+                        oooStartTimeString = $"{availability.StartTime.Value.Hours:D2}:{availability.StartTime.Value.Minutes:D2}";
+                    }
+                    else
+                    {
+                        oooStartTimeString = "";
+                    }
+                    
+                    if (availability.EndTime.HasValue)
+                    {
+                        oooEndTimeString = $"{availability.EndTime.Value.Hours:D2}:{availability.EndTime.Value.Minutes:D2}";
+                    }
+                    else
+                    {
+                        oooEndTimeString = "";
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Silently fail - it's okay if there's no existing entry
+            System.Diagnostics.Debug.WriteLine($"Error loading OOO: {ex.Message}");
+        }
     }
 
     private async Task SaveOOO()
     {
         try
         {
+            var currentUser = AuthService.CurrentUser;
+            var isDoctor = currentUser?.RoleId == 2;
+
+            // For doctors, ensure they're setting it for themselves
+            if (isDoctor)
+            {
+                oooForm.DoctorId = currentUser?.Id ?? 0;
+            }
+
             if (oooForm.DoctorId == 0)
             {
                 await JSRuntime.InvokeVoidAsync("alert", "Please select a doctor");
@@ -939,6 +1051,7 @@
             }
 
             oooForm.Date = oooDate.Value;
+            oooForm.TimeZoneId = selectedOOOTimezone;
             
             // Parse time strings if provided
             if (!string.IsNullOrWhiteSpace(oooStartTimeString) && TimeSpan.TryParse(oooStartTimeString, out var startTime))
@@ -977,10 +1090,35 @@
         }
     }
 
+    private async Task OnOOODoctorChanged(int? doctorId)
+    {
+        if (doctorId.HasValue)
+        {
+            oooForm.DoctorId = doctorId.Value;
+            if (oooDate.HasValue)
+            {
+                await LoadExistingOOO();
+            }
+        }
+    }
+
+    private async Task OnOOODateChanged(DateTime? date)
+    {
+        oooDate = date;
+        if (date.HasValue && oooForm.DoctorId > 0)
+        {
+            await LoadExistingOOO();
+        }
+    }
+
     private void CloseOOODialog()
     {
         showOOODialog = false;
+        oooDate = null;
         oooForm = new();
+        oooStartTimeString = "";
+        oooEndTimeString = "";
+        selectedOOOTimezone = "America/New_York";
     }
 
     private async Task OnDoctorChanged()

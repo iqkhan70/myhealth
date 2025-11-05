@@ -72,13 +72,56 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             // Check if appointment is in the past
-            if (request.AppointmentDateTime < DateTime.UtcNow)
+            // Convert appointment DateTime to UTC if timezone is provided
+            DateTime appointmentUtc = request.AppointmentDateTime;
+            if (!string.IsNullOrEmpty(request.TimeZoneId) && request.TimeZoneId != "UTC")
+            {
+                try
+                {
+                    var timeZone = TimeZoneInfo.FindSystemTimeZoneById(request.TimeZoneId);
+                    // If AppointmentDateTime is already in UTC (DateTime.Kind == Utc), convert it
+                    // Otherwise, assume it's in the specified timezone
+                    if (request.AppointmentDateTime.Kind == DateTimeKind.Utc)
+                    {
+                        // Already UTC, no conversion needed
+                        appointmentUtc = request.AppointmentDateTime;
+                    }
+                    else
+                    {
+                        // Treat as local time in the specified timezone, convert to UTC
+                        appointmentUtc = TimeZoneInfo.ConvertTimeToUtc(request.AppointmentDateTime, timeZone);
+                    }
+                }
+                catch
+                {
+                    // If timezone conversion fails, use the DateTime as-is (assume it's already UTC)
+                    appointmentUtc = request.AppointmentDateTime.Kind == DateTimeKind.Utc
+                        ? request.AppointmentDateTime
+                        : request.AppointmentDateTime.ToUniversalTime();
+                }
+            }
+            else if (request.AppointmentDateTime.Kind == DateTimeKind.Unspecified)
+            {
+                // Unspecified kind - assume it's UTC or convert to UTC
+                appointmentUtc = request.AppointmentDateTime.ToUniversalTime();
+            }
+            else if (request.AppointmentDateTime.Kind == DateTimeKind.Local)
+            {
+                appointmentUtc = request.AppointmentDateTime.ToUniversalTime();
+            }
+            else
+            {
+                appointmentUtc = request.AppointmentDateTime;
+            }
+
+            if (appointmentUtc < DateTime.UtcNow)
             {
                 result.IsValid = false;
                 result.ErrorMessage = "Cannot schedule appointments in the past.";
                 return result;
             }
 
+            // Use the local date/time for checking availability (not UTC)
             var appointmentDate = request.AppointmentDateTime.Date;
             var appointmentTime = request.AppointmentDateTime.TimeOfDay;
             var endDateTime = request.AppointmentDateTime.Add(request.Duration);
@@ -412,7 +455,8 @@ namespace SM_MentalHealthApp.Server.Services
                     IsOutOfOffice = request.IsOutOfOffice,
                     Reason = request.Reason,
                     StartTime = request.StartTime,
-                    EndTime = request.EndTime
+                    EndTime = request.EndTime,
+                    TimeZoneId = request.TimeZoneId ?? "UTC"
                 };
                 _context.DoctorAvailabilities.Add(availability);
             }
@@ -422,6 +466,7 @@ namespace SM_MentalHealthApp.Server.Services
                 availability.Reason = request.Reason;
                 availability.StartTime = request.StartTime;
                 availability.EndTime = request.EndTime;
+                availability.TimeZoneId = request.TimeZoneId ?? "UTC";
                 availability.UpdatedAt = DateTime.UtcNow;
             }
 

@@ -324,14 +324,33 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
-        /// Set doctor availability (Admin only)
+        /// Set doctor availability (Admin or Doctor)
+        /// Doctors can only set availability for themselves
         /// </summary>
         [HttpPost("doctor-availability")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Doctor")]
         public async Task<ActionResult<DoctorAvailability>> SetDoctorAvailability([FromBody] DoctorAvailabilityRequest request)
         {
             try
             {
+                var userId = GetCurrentUserId();
+                if (!userId.HasValue)
+                    return Unauthorized("Invalid user token");
+
+                // Get current user's role
+                var userClaim = User.FindFirst("roleId")?.Value;
+                if (!int.TryParse(userClaim, out int roleId))
+                    return Unauthorized("Invalid role");
+
+                // If doctor, ensure they can only set availability for themselves
+                if (roleId == 2) // Doctor role
+                {
+                    if (request.DoctorId != userId.Value)
+                    {
+                        return Forbid("Doctors can only set availability for themselves");
+                    }
+                }
+
                 var availability = await _appointmentService.SetDoctorAvailabilityAsync(request);
                 return Ok(availability);
             }
