@@ -3,9 +3,10 @@ using SM_MentalHealthApp.Client.Services;
 
 namespace SM_MentalHealthApp.Client.Components
 {
-    public class AuthenticationStateProvider : ComponentBase
+    public class AuthenticationStateProvider : ComponentBase, IDisposable
     {
         [Inject] protected IAuthService AuthService { get; set; } = null!;
+        [Inject] protected ISessionTimeoutService SessionTimeoutService { get; set; } = null!;
         [Inject] protected NavigationManager Navigation { get; set; } = null!;
         [Parameter] public RenderFragment? ChildContent { get; set; }
 
@@ -30,7 +31,35 @@ namespace SM_MentalHealthApp.Client.Components
                 return;
             }
 
+            // Start session timeout tracking
+            SessionTimeoutService.OnTimeoutWarning += OnTimeoutWarning;
+            SessionTimeoutService.OnTimeout += OnTimeout;
+            SessionTimeoutService.Start();
+
             await base.OnInitializedAsync();
+        }
+
+        private void OnTimeoutWarning(int remainingMinutes)
+        {
+            // The warning will be shown by the SessionTimeoutWarning component
+            // We'll use a static reference or event to communicate with the warning component
+            InvokeAsync(StateHasChanged);
+        }
+
+        private void OnTimeout()
+        {
+            _ = Task.Run(async () =>
+            {
+                await AuthService.LogoutAsync();
+                await InvokeAsync(() => Navigation.NavigateTo("/login"));
+            });
+        }
+
+        public void Dispose()
+        {
+            SessionTimeoutService.OnTimeoutWarning -= OnTimeoutWarning;
+            SessionTimeoutService.OnTimeout -= OnTimeout;
+            SessionTimeoutService.Stop();
         }
 
         protected override void BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder)

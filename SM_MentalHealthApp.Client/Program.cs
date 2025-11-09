@@ -22,6 +22,7 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<TooltipService>();
 builder.Services.AddScoped<ContextMenuService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ISessionTimeoutService, SessionTimeoutService>();
 builder.Services.AddScoped<IDocumentUploadService, DocumentUploadService>();
 
 // Add SignalR for real-time communication

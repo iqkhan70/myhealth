@@ -1,0 +1,179 @@
+@using SM_MentalHealthApp.Client.Services
+@using Microsoft.AspNetCore.Components
+@inject IAuthService AuthService
+@inject ISessionTimeoutService SessionTimeoutService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+@if (showWarning)
+{
+    <div class="session-timeout-overlay">
+        <div class="session-timeout-dialog">
+            <div class="session-timeout-header">
+                <h4>⚠️ Session Timeout Warning</h4>
+            </div>
+            <div class="session-timeout-body">
+                <p>Your session will expire in <strong>@remainingMinutes minute(s)</strong> due to inactivity.</p>
+                <p>Click "Stay Logged In" to continue your session.</p>
+            </div>
+            <div class="session-timeout-footer">
+                <button class="btn btn-primary" @onclick="StayLoggedIn">Stay Logged In</button>
+                <button class="btn btn-secondary" @onclick="LogoutNow">Logout Now</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool showWarning = false;
+    private int remainingMinutes = 5;
+
+    protected override void OnInitialized()
+    {
+        SessionTimeoutService.OnTimeoutWarning += HandleTimeoutWarning;
+    }
+
+    private void HandleTimeoutWarning(int minutesRemaining)
+    {
+        remainingMinutes = minutesRemaining;
+        showWarning = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void ShowWarning(int minutesRemaining)
+    {
+        remainingMinutes = minutesRemaining;
+        showWarning = true;
+        StateHasChanged();
+    }
+
+    public void HideWarning()
+    {
+        showWarning = false;
+        StateHasChanged();
+    }
+
+    private void StayLoggedIn()
+    {
+        showWarning = false;
+        SessionTimeoutService.Reset(); // Reset the timeout timer
+        StateHasChanged();
+    }
+
+    private async Task LogoutNow()
+    {
+        showWarning = false;
+        SessionTimeoutService.Stop(); // Stop the timeout service
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+        SessionTimeoutService.OnTimeoutWarning -= HandleTimeoutWarning;
+    }
+}
+
+<style>
+    .session-timeout-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+    }
+
+    .session-timeout-dialog {
+        background: white;
+        border-radius: 8px;
+        padding: 0;
+        max-width: 500px;
+        width: 90%;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        animation: slideIn 0.3s ease-out;
+    }
+
+    @@keyframes slideIn {
+        from {
+            transform: translateY(-50px);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    .session-timeout-header {
+        background-color: #ffc107;
+        color: #000;
+        padding: 20px;
+        border-radius: 8px 8px 0 0;
+    }
+
+    .session-timeout-header h4 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+    }
+
+    .session-timeout-body {
+        padding: 25px;
+    }
+
+    .session-timeout-body p {
+        margin: 10px 0;
+        font-size: 16px;
+        line-height: 1.5;
+    }
+
+    .session-timeout-body strong {
+        color: #dc3545;
+        font-size: 18px;
+    }
+
+    .session-timeout-footer {
+        padding: 15px 25px;
+        border-top: 1px solid #dee2e6;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        background-color: #f8f9fa;
+        border-radius: 0 0 8px 8px;
+    }
+
+    .session-timeout-footer .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background-color 0.2s;
+    }
+
+    .session-timeout-footer .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+
+    .session-timeout-footer .btn-primary:hover {
+        background-color: #0056b3;
+    }
+
+    .session-timeout-footer .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .session-timeout-footer .btn-secondary:hover {
+        background-color: #545b62;
+    }
+</style>

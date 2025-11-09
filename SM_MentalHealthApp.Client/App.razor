@@ -12,6 +12,7 @@
                 <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
                 <FocusOnNavigate RouteData="@routeData" Selector="h1" />
             </AuthenticationStateProvider>
+            <SessionTimeoutWarning @ref="timeoutWarning" />
         }
     </Found>
     <NotFound>
@@ -23,12 +24,14 @@
 </Router>
 
 @code {
-    private bool IsLoginPage(Type pageType)
+    private SessionTimeoutWarning? timeoutWarning;
+
+    private bool IsLoginPage(Type? pageType)
     {
         return pageType?.Name == "Login";
     }
-    
-    private bool IsChangePasswordPage(Type pageType)
+
+    private bool IsChangePasswordPage(Type? pageType)
     {
         return pageType?.Name == "ChangePassword";
     }

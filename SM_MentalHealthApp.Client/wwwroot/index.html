@@ -185,6 +185,53 @@
     window.removeToken = () => {
         localStorage.removeItem('authToken');
     };
+
+    // Session timeout activity tracking
+    let activityDotNetRef = null;
+    let activityTrackingActive = false;
+
+    window.setupActivityTracking = (dotNetRef) => {
+        activityDotNetRef = dotNetRef;
+        activityTrackingActive = true;
+        
+        // Track various user activities
+        const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+        
+        const handleActivity = () => {
+            if (activityTrackingActive && activityDotNetRef) {
+                activityDotNetRef.invokeMethodAsync('OnUserActivity');
+            }
+        };
+        
+        // Throttle activity events to avoid too many calls (max once per second)
+        let lastActivityTime = 0;
+        const throttledHandleActivity = () => {
+            const now = Date.now();
+            if (now - lastActivityTime > 1000) {
+                lastActivityTime = now;
+                handleActivity();
+            }
+        };
+        
+        events.forEach(event => {
+            document.addEventListener(event, throttledHandleActivity, { passive: true });
+        });
+        
+        // Also track visibility changes (tab focus)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && activityTrackingActive) {
+                handleActivity();
+            }
+        });
+        
+        console.log('✅ Activity tracking started');
+    };
+
+    window.removeActivityTracking = () => {
+        activityTrackingActive = false;
+        activityDotNetRef = null;
+        console.log('✅ Activity tracking stopped');
+    };
     
     window.playSound = (soundType) => {
         if (!window.soundEnabled) {
