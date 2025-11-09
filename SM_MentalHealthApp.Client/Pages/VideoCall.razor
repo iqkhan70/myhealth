@@ -26,11 +26,9 @@
                 <p>Click "Start Call" to begin the video call</p>
             </div>
             <div class="call-actions">
-                
 
-                <button class="btn btn-primary btn-lg"
-                        @onclick="() => StartVideoCall(UserId)"
-                        disabled="@isConnecting">
+
+                <button class="btn btn-primary btn-lg" @onclick="() => StartVideoCall(UserId)" disabled="@isConnecting">
 
 
                     @if (isConnecting)
@@ -395,7 +393,7 @@
             if (uid == 0) uid = (uint)new Random().Next(100000, 999999);
 
             // Join channel (this is always a video call since it's the VideoCall page)
-            var success = await AgoraService.JoinChannelAsync(channelName, "007eJxTYGipULqfWp0RX5/8ovnzxa0uTnaO2VMeVwnsPGMueMJ6zgcFhtS0REPDJONE8xQDUxMDy+RES3PLtCQj00TTJBMLy8TUj1nfMhoCGRmU/m1mZWSAQBCfgyE5MScn3jDemIEBADjYIpc=", uid);
+            var success = await AgoraService.JoinChannelAsync(channelName, "007eJxTYBCfev3xZN7Ihh0a0wy2/ncRPrtJ10dIudy3T21f+L3Xps0KDKlpiYaGScaJ5ikGpiYGlsmJluaWaUlGpommSSYWlompxXcFMhsCGRlErpcwMTJAIIjPwZCcmJMTbxxvyMAAAJUVH8Q=", uid);
             if (!success)
             {
                 throw new Exception("Failed to join call");
@@ -444,10 +442,10 @@
             // ✅ Join the Agora channel (video enabled)
             var uid = (uint)callerId;
             var success = await AgoraService.JoinChannelAsync(
-                channelName,
-                token,   // use fetched token, not hardcoded one
-                uid,
-                true     // true = video call
+            channelName,
+            token, // use fetched token, not hardcoded one
+            uid,
+            true // true = video call
             );
 
             if (!success)

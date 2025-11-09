@@ -26,9 +26,7 @@
                 <p>Click "Start Call" to begin the audio call</p>
             </div>
             <div class="call-actions">
-                    <button class="btn btn-primary btn-lg"
-                        @onclick="() => StartCall(UserId)"
-                        disabled="@isConnecting">
+                <button class="btn btn-primary btn-lg" @onclick="() => StartCall(UserId)" disabled="@isConnecting">
                     @if (isConnecting)
                     {
                         <span class="spinner-border spinner-border-sm me-2"></span>
@@ -264,9 +262,9 @@
 
             // Initialize Agora
             var initialized = await AgoraService.InitializeAsync("efa11b3a7d05409ca979fb25a5b489ae");
-            
-            
-            
+
+
+
             if (!initialized)
             {
                 error = "Failed to initialize audio service";
@@ -345,13 +343,15 @@
             var channelName = $"call_{smallerId}_{largerId}";
 
             // ✅ Fetch token from server (server handles Redis)
-            var token = await AgoraService.GetAgoraTokenAsync(channelName,(uint)callerId);
+            var token = await AgoraService.GetAgoraTokenAsync(channelName, (uint)callerId);
             if (string.IsNullOrEmpty(token))
                 throw new Exception("Failed to get call token");
 
             // ✅ Join the Agora channel
             var uid = (uint)callerId;
-            var success = await AgoraService.JoinChannelAsync(channelName, "007eJxTYGipULqfWp0RX5/8ovnzxa0uTnaO2VMeVwnsPGMueMJ6zgcFhtS0REPDJONE8xQDUxMDy+RES3PLtCQj00TTJBMLy8TUj1nfMhoCGRmU/m1mZWSAQBCfgyE5MScn3jDemIEBADjYIpc=", (uint)callerId, false);
+            var success = await AgoraService.JoinChannelAsync(channelName,
+            "007eJxTYBCfev3xZN7Ihh0a0wy2/ncRPrtJ10dIudy3T21f+L3Xps0KDKlpiYaGScaJ5ikGpiYGlsmJluaWaUlGpommSSYWlompxXcFMhsCGRlErpcwMTJAIIjPwZCcmJMTbxxvyMAAAJUVH8Q=",
+            (uint)callerId, false);
             if (!success)
                 throw new Exception("Failed to join call");
 
