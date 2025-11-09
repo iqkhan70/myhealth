@@ -1,0 +1,246 @@
+@using Radzen
+@using Radzen.Blazor
+@inherits ComponentBase
+@typeparam TItem
+
+@if (ShowErrorAlert && !string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <RadzenAlert AlertStyle="AlertStyle.Danger" Icon="error" Text="@_errorMessage" Style="margin-bottom: 1rem;" />
+}
+
+<RadzenDataGrid TItem="TItem" Data="@_items" class="@Class" AllowAlternatingRows="@AllowAlternatingRows"
+    AllowFiltering="@AllowFiltering" GridLines="@GridLines" AllowColumnResize="@AllowColumnResize"
+    FilterMode="@FilterMode" AllowSorting="@AllowSorting" PageSize="@PageSize" AllowPaging="@AllowPaging"
+    PagerHorizontalAlign="@PagerHorizontalAlign" ShowPagingSummary="@ShowPagingSummary" ColumnWidth="@ColumnWidth"
+    LogicalFilterOperator="@LogicalFilterOperator" SelectionMode="@SelectionMode"
+    RowExpand="@(item => HandleRowExpand(item))" @attributes="AdditionalAttributes">
+    <Columns>
+        @if (Columns is not null)
+        {
+            foreach (var col in Columns)
+            {
+                @switch (col)
+                {
+                    case SMDataGridBadgeColumn<TItem> badgeCol:
+                        <RadzenDataGridColumn TItem="TItem" Property="@col.Property" Title="@col.Title" Width="@col.Width"
+                            TextAlign="@(col.TextAlign ?? TextAlign.Left)" Sortable="@(col.Sortable ?? true)"
+                            Filterable="@(col.Filterable ?? true)">
+                            <Template Context="data">
+                                @{
+                                    var badgeData = badgeCol.GetBadgeData(data);
+                                }
+                                @if (badgeData.HasBadgeText)
+                                {
+                                    <RadzenBadge BadgeStyle="@(badgeData.BadgeStyle == NotificationSeverity.Success ? BadgeStyle.Success : 
+                                                                                                               badgeData.BadgeStyle == NotificationSeverity.Error ? BadgeStyle.Danger :
+                                                                                                               badgeData.BadgeStyle == NotificationSeverity.Warning ? BadgeStyle.Warning :
+                                                                                                               BadgeStyle.Info)" Text="@badgeData.BadgeText" />
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        break;
+
+                    case SMDataGridTextAndBadgeColumn<TItem> textAndBadgeCol:
+                        <RadzenDataGridColumn TItem="TItem" Property="@col.Property" Title="@col.Title" Width="@col.Width"
+                            TextAlign="@(col.TextAlign ?? TextAlign.Left)" Sortable="@(col.Sortable ?? true)"
+                            Filterable="@(col.Filterable ?? true)">
+                            <Template Context="data">
+                                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween"
+                                    AlignItems="AlignItems.Normal" class="rz-pb-2">
+                                    @{
+                                        var textAndBadgeData = textAndBadgeCol.GetTextAndBadgeData(data);
+                                    }
+                                    <span>@textAndBadgeData.Text</span>
+                                    @if (textAndBadgeData.ShouldDisplayBadge && textAndBadgeData.HasBadgeText)
+                                    {
+                                        <RadzenBadge BadgeStyle="@(textAndBadgeData.BadgeStyle == NotificationSeverity.Success ? BadgeStyle.Success : 
+                                                                                                                       textAndBadgeData.BadgeStyle == NotificationSeverity.Error ? BadgeStyle.Danger :
+                                                                                                                       textAndBadgeData.BadgeStyle == NotificationSeverity.Warning ? BadgeStyle.Warning :
+                                                                                                                       BadgeStyle.Info)"
+                        Text="@textAndBadgeData.BadgeText" />
+                                        }
+                                </RadzenStack>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        break;
+
+                    case SMDataGridTemplateColumn<TItem> templateCol:
+                        <RadzenDataGridColumn TItem="TItem" Property="@col.Property" Title="@col.Title" Width="@col.Width"
+                            TextAlign="@(col.TextAlign ?? TextAlign.Left)" Sortable="@(col.Sortable ?? true)"
+                            Filterable="@(col.Filterable ?? true)">
+                            <Template Context="data">
+                                @if (templateCol.Template is not null)
+                                {
+                                    @templateCol.Template(data)
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        break;
+
+                    default:
+                        <RadzenDataGridColumn TItem="TItem" Property="@col.Property" Title="@col.Title" Width="@col.Width"
+                            TextAlign="@(col.TextAlign ?? TextAlign.Left)" Sortable="@(col.Sortable ?? true)"
+                            Filterable="@(col.Filterable ?? true)" />
+                        break;
+                }
+            }
+        }
+
+        @if (Actions is not null && Actions.Count > 0)
+        {
+            <RadzenDataGridColumn TItem="TItem" Title="@ActionsTitle" Sortable="false" Filterable="false"
+                Width="@ActionsWidth" TextAlign="@ActionsTextAlign">
+                <Template Context="row">
+                    <div style="display: flex; justify-content: center; align-items: center; gap: 5px;">
+                        @foreach (var action in Actions)
+                        {
+                            var disabled = (DisableActionsWhileLoading && _isLoading) || (action.Disabled?.Invoke(row) ??
+                            false);
+                            <RadzenButton Icon="@action.Icon" ButtonStyle="@action.ButtonStyle" Variant="@action.Variant"
+                                Size="@action.Size" Disabled="@disabled"
+                                Click="@(async () => await InvokeRowActionAsync(action, row))" @onclick:stopPropagation="true"
+                                class="mr-1" />
+                        }
+                    </div>
+                </Template>
+            </RadzenDataGridColumn>
+        }
+    </Columns>
+
+    <Template Context="item">
+        @if (ExpansionTemplate is not null)
+        {
+            @ExpansionTemplate(item)
+        }
+    </Template>
+</RadzenDataGrid>
+
+@code {
+    private List<TItem> _items = new();
+    private CancellationTokenSource? _cts;
+    private bool _isLoading;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cts = new CancellationTokenSource();
+        if (AutoLoad && LoadItems is not null)
+        {
+            await LoadAsync(_cts.Token);
+        }
+    }
+
+    public async Task RefreshAsync()
+    {
+        if (_cts is null || LoadItems is null) return;
+        await LoadAsync(_cts.Token);
+    }
+
+    private async Task LoadAsync(CancellationToken ct)
+    {
+        if (_isLoading || LoadItems is null) return;
+
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            var items = await LoadItems(ct);
+            _items = items?.ToList() ?? new();
+
+            if (OnItemsLoaded.HasDelegate)
+            {
+                await OnItemsLoaded.InvokeAsync(_items);
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+            if (OnLoadError.HasDelegate)
+            {
+                await OnLoadError.InvokeAsync(ex);
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+            if (!ct.IsCancellationRequested)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task InvokeRowActionAsync(SMDataGridActionButton<TItem> action, TItem row)
+    {
+        try
+        {
+            if (action.OnClick is null) return;
+
+            if (_cts is null)
+            {
+                _cts = new CancellationTokenSource();
+            }
+
+            await action.OnClick(row, _cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Swallow cancellations silently
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = "An unexpected error occurred.";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task HandleRowExpand(TItem item)
+    {
+        if (OnRowExpandCallback.HasDelegate)
+        {
+            await OnRowExpandCallback.InvokeAsync(item);
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+
+    // Public API
+    [Parameter] public Func<CancellationToken, Task<IEnumerable<TItem>>>? LoadItems { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<TItem>> OnItemsLoaded { get; set; }
+    [Parameter] public EventCallback<Exception> OnLoadError { get; set; }
+    [Parameter] public bool AutoLoad { get; set; } = true;
+    [Parameter] public bool ShowErrorAlert { get; set; } = true;
+    [Parameter] public bool DisableActionsWhileLoading { get; set; } = true;
+
+    [Parameter] public List<SMDataGridColumn<TItem>>? Columns { get; set; }
+    [Parameter] public List<SMDataGridActionButton<TItem>>? Actions { get; set; }
+    [Parameter] public string ActionsTitle { get; set; } = "Actions";
+    [Parameter] public string? ActionsWidth { get; set; } = "90px";
+    [Parameter] public TextAlign ActionsTextAlign { get; set; } = TextAlign.Center;
+
+    [Parameter] public string? Class { get; set; } = "rz-mt-2";
+    [Parameter] public bool AllowAlternatingRows { get; set; } = true;
+    [Parameter] public bool AllowFiltering { get; set; } = true;
+    [Parameter] public DataGridGridLines GridLines { get; set; } = DataGridGridLines.Both;
+    [Parameter] public bool AllowColumnResize { get; set; } = true;
+    [Parameter] public FilterMode FilterMode { get; set; } = FilterMode.Advanced;
+    [Parameter] public bool AllowSorting { get; set; } = true;
+    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public bool AllowPaging { get; set; } = true;
+    [Parameter] public HorizontalAlign PagerHorizontalAlign { get; set; } = HorizontalAlign.Left;
+    [Parameter] public bool ShowPagingSummary { get; set; } = true;
+    [Parameter] public string? ColumnWidth { get; set; } = "300px";
+    [Parameter] public LogicalFilterOperator LogicalFilterOperator { get; set; } = LogicalFilterOperator.Or;
+    [Parameter] public DataGridSelectionMode SelectionMode { get; set; } = DataGridSelectionMode.Single;
+
+    [Parameter] public RenderFragment<TItem>? ExpansionTemplate { get; set; }
+    [Parameter] public EventCallback<TItem> OnRowExpandCallback { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}

@@ -24,6 +24,10 @@ builder.Services.AddScoped<ContextMenuService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ISessionTimeoutService, SessionTimeoutService>();
 builder.Services.AddScoped<IDocumentUploadService, DocumentUploadService>();
+builder.Services.AddScoped<IChatHistoryService, ChatHistoryService>();
+builder.Services.AddScoped<IClinicalNotesService, ClinicalNotesService>();
+builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+builder.Services.AddScoped<IPatientService, PatientService>();
 
 // Add SignalR for real-time communication
 builder.Services.AddScoped<ISignalRService, SignalRService>();

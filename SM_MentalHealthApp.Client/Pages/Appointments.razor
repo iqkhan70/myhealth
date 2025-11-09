@@ -1,10 +1,15 @@
 @page "/appointments"
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components.Grid
+@using Radzen
+@using Radzen.Blazor
 @using System.Linq
 @inject HttpClient Http
 @inject IAuthService AuthService
+@inject IAppointmentService AppointmentService
 @inject IJSRuntime JSRuntime
+@inject NotificationService NotificationService
 
 <PageTitle>Appointment Management</PageTitle>
 
@@ -80,6 +85,26 @@
     .status-completed { background-color: #6c757d; color: white; }
     .status-cancelled { background-color: #dc3545; color: white; }
     .status-noshow { background-color: #fd7e14; color: white; }
+
+    .appointment-meta {
+        margin-bottom: 20px;
+    }
+
+    .meta-row {
+        display: flex;
+        margin-bottom: 10px;
+    }
+
+    .meta-label {
+        font-weight: 500;
+        color: #666;
+        min-width: 120px;
+    }
+
+    .meta-value {
+        color: #333;
+        margin-left: 10px;
+    }
 
     .modal-overlay {
         position: fixed;
@@ -196,121 +221,144 @@
             Click="@ShowAddDialog" />
     </div>
 
-    @if (isLoading)
-    {
-        <div class="text-center p-4">
-            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-            <p>Loading appointments...</p>
+    <!-- Filters -->
+    <div class="appointment-controls">
+        @if (AuthService.CurrentUser?.RoleId == 3) // Admin only - can filter by doctor
+        {
+            <div class="control-group">
+                <label class="control-label">Doctor</label>
+                <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
+                    @bind-value="filterDoctorId" AllowFiltering="true" Placeholder="All Doctors"
+                    Style="width: 200px" />
+            </div>
+        }
+        <div class="control-group">
+            <label class="control-label">Patient</label>
+            <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
+                @bind-value="filterPatientId" AllowFiltering="true" Placeholder="All Patients"
+                Style="width: 200px" />
         </div>
-    }
-    else
-    {
-        <!-- Filters -->
-        <div class="appointment-controls">
-            @if (AuthService.CurrentUser?.RoleId == 3) // Admin only - can filter by doctor
-            {
-                <div class="control-group">
-                    <label class="control-label">Doctor</label>
-                    <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
-                        @bind-value="filterDoctorId" AllowFiltering="true" Placeholder="All Doctors"
-                        Style="width: 200px" />
-                </div>
-            }
-            <div class="control-group">
-                <label class="control-label">Patient</label>
-                <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
-                    @bind-value="filterPatientId" AllowFiltering="true" Placeholder="All Patients"
-                    Style="width: 200px" />
-            </div>
-            <div class="control-group">
-                <label class="control-label">Start Date</label>
-                <RadzenDatePicker @bind-value="filterStartDate" DateFormat="MM/dd/yyyy" 
-                    Style="width: 200px" />
-            </div>
-            <div class="control-group">
-                <label class="control-label">End Date</label>
-                <RadzenDatePicker @bind-value="filterEndDate" DateFormat="MM/dd/yyyy" 
-                    Style="width: 200px" />
-            </div>
-            <div class="control-group">
-                <RadzenButton Text="Apply Filters" ButtonStyle="ButtonStyle.Primary" 
-                    Click="@LoadAppointments" Icon="filter" />
-            </div>
-            <div class="control-group">
-                <RadzenButton Text="Clear" ButtonStyle="ButtonStyle.Light" 
-                    Click="@ClearFilters" Icon="clear" />
-            </div>
-            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) // Doctor or Admin
-            {
-                <div class="control-group">
-                    <RadzenButton Text="Manage OOO" ButtonStyle="ButtonStyle.Info" 
-                        Click="@ShowOOODialog" Icon="event_busy" />
-                </div>
-            }
+        <div class="control-group">
+            <label class="control-label">Start Date</label>
+            <RadzenDatePicker @bind-value="filterStartDate" DateFormat="MM/dd/yyyy" 
+                Style="width: 200px" />
         </div>
+        <div class="control-group">
+            <label class="control-label">End Date</label>
+            <RadzenDatePicker @bind-value="filterEndDate" DateFormat="MM/dd/yyyy" 
+                Style="width: 200px" />
+        </div>
+        <div class="control-group">
+            <RadzenButton Text="Apply Filters" ButtonStyle="ButtonStyle.Primary" 
+                Click="@ApplyFilters" Icon="filter" />
+        </div>
+        <div class="control-group">
+            <RadzenButton Text="Clear" ButtonStyle="ButtonStyle.Light" 
+                Click="@ClearFilters" Icon="clear" />
+        </div>
+        @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) // Doctor or Admin
+        {
+            <div class="control-group">
+                <RadzenButton Text="Manage OOO" ButtonStyle="ButtonStyle.Info" 
+                    Click="@ShowOOODialog" Icon="event_busy" />
+            </div>
+        }
+    </div>
 
-        <!-- Appointments Grid -->
-        <RadzenDataGrid Data="@filteredAppointments" TItem="AppointmentDto" AllowPaging="true"
-            PageSize="20" AllowSorting="true" FilterMode="FilterMode.Advanced" 
-            ShowPagingSummary="true" EmptyText="No appointments found" AllowFiltering="true"
-            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" ShowFilterRow="true">
-            <Columns>
-                <RadzenDataGridColumn TItem="AppointmentDto" Property="AppointmentDateTime" Title="Date & Time" Width="180px">
-                    <Template>
-                        <div>@context.AppointmentDateTime.ToString("MM/dd/yyyy")</div>
-                        <div style="font-size: 12px; color: #666;">@context.AppointmentDateTime.ToString("hh:mm tt")</div>
-                        @if (!string.IsNullOrEmpty(context?.TimeZoneId) && context.TimeZoneId != "UTC")
-                        {
-                            <div style="font-size: 11px; color: #999; margin-top: 2px;">📍 @context.TimeZoneId</div>
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="AppointmentDto" Property="DoctorName" Title="Doctor" Width="150px" />
-                <RadzenDataGridColumn TItem="AppointmentDto" Property="PatientName" Title="Patient" Width="150px" />
-                <RadzenDataGridColumn TItem="AppointmentDto" Property="Duration" Title="Duration" Width="100px">
-                    <Template>
-                        @context.Duration.TotalMinutes.ToString("0") min
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="AppointmentDto" Property="AppointmentType" Title="Type" Width="120px">
-                    <Template>
-                        @if (context.IsUrgentCare)
-                        {
-                            <span class="badge-urgent">URGENT CARE</span>
-                        }
-                        else
-                        {
-                            <span class="badge-regular">REGULAR</span>
-                        }
-                        @if (!context.IsBusinessHours && !context.IsUrgentCare)
-                        {
-                            <span class="badge-after-hours">AFTER HOURS</span>
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="AppointmentDto" Property="Status" Title="Status" Width="120px">
-                    <Template>
-                        <span class="status-badge status-@context.Status.ToString().ToLower()">
-                            @context.Status.ToString().ToUpper()
-                        </span>
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="AppointmentDto" Property="Reason" Title="Reason" Width="200px" />
-                <RadzenDataGridColumn TItem="AppointmentDto" Property="CreatedBy" Title="Created By" Width="120px" />
-                <RadzenDataGridColumn TItem="AppointmentDto" Sortable="false" Filterable="false" Title="Actions" Width="150px">
-                    <Template>
-                        <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
-                            Click="@(() => EditAppointment(context))" />
-                        @if (context.Status == AppointmentStatus.Scheduled || context.Status == AppointmentStatus.Confirmed)
-                        {
-                            <RadzenButton Icon="cancel" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
-                                Click="@(() => CancelAppointment(context))" />
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-            </Columns>
-        </RadzenDataGrid>
-    }
+    <!-- Appointments Grid -->
+    <SMDataGrid TItem="AppointmentDto" 
+               Columns="_columns" 
+               Actions="_actions" 
+               ActionsWidth="150px"
+               LoadItems="LoadAppointmentsAsync" 
+               @ref="_grid" 
+               PageSize="20"
+               OnRowExpandCallback="@OnRowExpand">
+        <ExpansionTemplate Context="appointment">
+            @{
+                var expandedAppointment = expandedAppointments.ContainsKey(appointment.Id) ? expandedAppointments[appointment.Id] : appointment;
+            }
+            <div class="p-3">
+                <div class="row">
+                    <div class="col-12">
+                        <h6>Appointment Details</h6>
+                        <div class="appointment-meta mb-3">
+                            <div class="meta-row">
+                                <span class="meta-label"><strong>Doctor:</strong></span>
+                                <span class="meta-value">@expandedAppointment.DoctorName (@expandedAppointment.DoctorEmail)</span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label"><strong>Patient:</strong></span>
+                                <span class="meta-value">@expandedAppointment.PatientName (@expandedAppointment.PatientEmail)</span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label"><strong>Date & Time:</strong></span>
+                                <span class="meta-value">@expandedAppointment.AppointmentDateTime.ToString("MMM dd, yyyy HH:mm") - @expandedAppointment.EndDateTime.ToString("HH:mm")</span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label"><strong>Duration:</strong></span>
+                                <span class="meta-value">@expandedAppointment.Duration.TotalMinutes.ToString("0") minutes</span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label"><strong>Type:</strong></span>
+                                <span class="meta-value">
+                                    @if (expandedAppointment.IsUrgentCare)
+                                    {
+                                        <span class="badge-urgent">URGENT CARE</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge-regular">REGULAR</span>
+                                    }
+                                    @if (!expandedAppointment.IsBusinessHours && !expandedAppointment.IsUrgentCare)
+                                    {
+                                        <span class="badge-after-hours">AFTER HOURS</span>
+                                    }
+                                </span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label"><strong>Status:</strong></span>
+                                <span class="meta-value">
+                                    <span class="status-badge status-@expandedAppointment.Status.ToString().ToLower()">
+                                        @expandedAppointment.Status.ToString().ToUpper()
+                                    </span>
+                                </span>
+                            </div>
+                            @if (!string.IsNullOrEmpty(expandedAppointment.TimeZoneId) && expandedAppointment.TimeZoneId != "UTC")
+                            {
+                                <div class="meta-row">
+                                    <span class="meta-label"><strong>Timezone:</strong></span>
+                                    <span class="meta-value">📍 @expandedAppointment.TimeZoneId</span>
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(expandedAppointment.Reason))
+                            {
+                                <div class="meta-row">
+                                    <span class="meta-label"><strong>Reason:</strong></span>
+                                    <span class="meta-value">@expandedAppointment.Reason</span>
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(expandedAppointment.Notes))
+                            {
+                                <div class="meta-row">
+                                    <span class="meta-label"><strong>Notes:</strong></span>
+                                    <span class="meta-value">@expandedAppointment.Notes</span>
+                                </div>
+                            }
+                            <div class="meta-row">
+                                <span class="meta-label"><strong>Created By:</strong></span>
+                                <span class="meta-value">@expandedAppointment.CreatedBy</span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label"><strong>Created At:</strong></span>
+                                <span class="meta-value">@expandedAppointment.CreatedAt.ToString("MMM dd, yyyy HH:mm")</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </ExpansionTemplate>
+    </SMDataGrid>
 
     <!-- Add/Edit Appointment Modal -->
     @if (showDialog)
@@ -522,12 +570,14 @@
 </div>
 
 @code {
-    private List<AppointmentDto> appointments = new();
-    private List<AppointmentDto> filteredAppointments = new();
+    private SMDataGrid<AppointmentDto>? _grid;
     private List<User> doctors = new();
     private List<User> patients = new();
     private List<User> availablePatients = new();
-    private bool isLoading = true;
+    private Dictionary<int, AppointmentDto> expandedAppointments = new Dictionary<int, AppointmentDto>();
+    
+    private List<SMDataGridColumn<AppointmentDto>> _columns = new();
+    private List<SMDataGridActionButton<AppointmentDto>> _actions = new();
     private bool showDialog = false;
     private bool showOOODialog = false;
     private AppointmentDto? editingAppointment = null;
@@ -602,15 +652,14 @@
     {
         await AuthService.InitializeAsync();
         await LoadData();
+        InitializeColumns();
+        InitializeActions();
     }
 
     private async Task LoadData()
     {
         try
         {
-            isLoading = true;
-            StateHasChanged();
-
             // Check user role
             var currentUser = AuthService.CurrentUser;
             var isDoctor = currentUser?.RoleId == 2;
@@ -625,7 +674,6 @@
                 filterEndDate = null;
 
                 // For doctors: load only their assigned patients
-                // Use doctor endpoint which is accessible to doctors
                 List<User>? patientsResponse = null;
                 try
                 {
@@ -633,22 +681,18 @@
                 }
                 catch
                 {
-                    // Fallback to admin endpoint if doctor endpoint fails
                     try
                     {
                         patientsResponse = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{currentUser.Id}/patients");
                     }
                     catch
                     {
-                        // If both fail, use empty list
                         patientsResponse = new();
                     }
                 }
                 availablePatients = patientsResponse ?? new();
-                patients = availablePatients; // For filtering
+                patients = availablePatients;
                 
-                // Set doctor to current user - use current user data directly
-                // Create a User object from AuthUser for display purposes
                 var doctorUser = new User
                 {
                     Id = currentUser.Id,
@@ -663,52 +707,219 @@
             }
             else if (isAdmin)
             {
-                // For admins: load all doctors and patients
                 var doctorsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors");
                 doctors = doctorsResponse ?? new();
 
                 var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
                 patients = patientsResponse ?? new();
             }
-
-            await LoadAppointments();
-            isLoading = false;
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error loading data: {ex.Message}");
-            isLoading = false;
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Error loading data: {ex.Message}",
+                Duration = 6000
+            });
         }
     }
 
-    private async Task LoadAppointments()
+    private void InitializeColumns()
+    {
+        _columns = new List<SMDataGridColumn<AppointmentDto>>
+        {
+            new SMDataGridTemplateColumn<AppointmentDto>
+            {
+                Property = nameof(AppointmentDto.AppointmentDateTime),
+                Title = "Date & Time",
+                Width = "180px",
+                Template = appointment => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.AddContent(1, appointment.AppointmentDateTime.ToString("MM/dd/yyyy"));
+                    builder.CloseElement();
+                    builder.OpenElement(2, "div");
+                    builder.AddAttribute(3, "style", "font-size: 12px; color: #666;");
+                    builder.AddContent(4, appointment.AppointmentDateTime.ToString("hh:mm tt"));
+                    builder.CloseElement();
+                    if (!string.IsNullOrEmpty(appointment.TimeZoneId) && appointment.TimeZoneId != "UTC")
+                    {
+                        builder.OpenElement(5, "div");
+                        builder.AddAttribute(6, "style", "font-size: 11px; color: #999; margin-top: 2px;");
+                        builder.AddContent(7, $"📍 {appointment.TimeZoneId}");
+                        builder.CloseElement();
+                    }
+                }
+            },
+            new SMDataGridColumn<AppointmentDto>
+            {
+                Property = nameof(AppointmentDto.DoctorName),
+                Title = "Doctor",
+                Width = "150px"
+            },
+            new SMDataGridColumn<AppointmentDto>
+            {
+                Property = nameof(AppointmentDto.PatientName),
+                Title = "Patient",
+                Width = "150px"
+            },
+            new SMDataGridTemplateColumn<AppointmentDto>
+            {
+                Property = nameof(AppointmentDto.Duration),
+                Title = "Duration",
+                Width = "100px",
+                Template = appointment => builder =>
+                {
+                    builder.AddContent(0, $"{appointment.Duration.TotalMinutes:0} min");
+                }
+            },
+            new SMDataGridTemplateColumn<AppointmentDto>
+            {
+                Property = nameof(AppointmentDto.AppointmentType),
+                Title = "Type",
+                Width = "120px",
+                Template = appointment => builder =>
+                {
+                    if (appointment.IsUrgentCare)
+                    {
+                        builder.OpenElement(0, "span");
+                        builder.AddAttribute(1, "class", "badge-urgent");
+                        builder.AddContent(2, "URGENT CARE");
+                        builder.CloseElement();
+                    }
+                    else
+                    {
+                        builder.OpenElement(3, "span");
+                        builder.AddAttribute(4, "class", "badge-regular");
+                        builder.AddContent(5, "REGULAR");
+                        builder.CloseElement();
+                    }
+                    if (!appointment.IsBusinessHours && !appointment.IsUrgentCare)
+                    {
+                        builder.OpenElement(6, "span");
+                        builder.AddAttribute(7, "class", "badge-after-hours");
+                        builder.AddContent(8, "AFTER HOURS");
+                        builder.CloseElement();
+                    }
+                }
+            },
+            new SMDataGridTemplateColumn<AppointmentDto>
+            {
+                Property = nameof(AppointmentDto.Status),
+                Title = "Status",
+                Width = "120px",
+                Template = appointment => builder =>
+                {
+                    builder.OpenElement(0, "span");
+                    builder.AddAttribute(1, "class", $"status-badge status-{appointment.Status.ToString().ToLower()}");
+                    builder.AddContent(2, appointment.Status.ToString().ToUpper());
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridColumn<AppointmentDto>
+            {
+                Property = nameof(AppointmentDto.Reason),
+                Title = "Reason",
+                Width = "200px"
+            },
+            new SMDataGridColumn<AppointmentDto>
+            {
+                Property = nameof(AppointmentDto.CreatedBy),
+                Title = "Created By",
+                Width = "120px"
+            }
+        };
+    }
+
+    private void InitializeActions()
+    {
+        _actions.Add(new SMDataGridActionButton<AppointmentDto>
+        {
+            Icon = "edit",
+            ButtonStyle = ButtonStyle.Light,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            OnClick = async (row, ct) => await EditAppointmentAsync(row, ct)
+        });
+
+        _actions.Add(new SMDataGridActionButton<AppointmentDto>
+        {
+            Icon = "cancel",
+            ButtonStyle = ButtonStyle.Danger,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            OnClick = async (row, ct) => await CancelAppointmentAsync(row, ct),
+            Disabled = (appointment) => appointment.Status != AppointmentStatus.Scheduled && appointment.Status != AppointmentStatus.Confirmed
+        });
+    }
+
+    private async Task<IEnumerable<AppointmentDto>> LoadAppointmentsAsync(CancellationToken ct)
     {
         try
         {
-            var queryParams = new List<string>();
+            int? doctorId = null;
             // For doctors, don't add doctorId filter - API will automatically filter by doctor
             // For admins, add doctorId filter if specified
             if (AuthService.CurrentUser?.RoleId == 3 && filterDoctorId.HasValue)
-                queryParams.Add($"doctorId={filterDoctorId.Value}");
-            if (filterPatientId.HasValue)
-                queryParams.Add($"patientId={filterPatientId.Value}");
-            if (filterStartDate.HasValue)
-                queryParams.Add($"startDate={filterStartDate.Value:yyyy-MM-dd}");
-            if (filterEndDate.HasValue)
-                queryParams.Add($"endDate={filterEndDate.Value:yyyy-MM-dd}");
+            {
+                doctorId = filterDoctorId.Value;
+            }
 
-            var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
-            var response = await Http.GetFromJsonAsync<List<AppointmentDto>>($"api/appointment{queryString}");
-            appointments = response ?? new();
-            filteredAppointments = appointments;
-            await InvokeAsync(StateHasChanged);
+            var appointments = await AppointmentService.ListAsync(
+                doctorId: doctorId,
+                patientId: filterPatientId,
+                startDate: filterStartDate,
+                endDate: filterEndDate,
+                ct: ct);
+            
+            return appointments;
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error loading appointments: {ex.Message}");
-            appointments = new();
-            filteredAppointments = new();
-            await InvokeAsync(StateHasChanged);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load appointments: {ex.Message}",
+                Duration = 6000
+            });
+            return new List<AppointmentDto>();
+        }
+    }
+
+    private async Task OnRowExpand(AppointmentDto appointment)
+    {
+        try
+        {
+            if (!expandedAppointments.ContainsKey(appointment.Id))
+            {
+                var fullAppointment = await AppointmentService.GetAsync(appointment.Id);
+                if (fullAppointment != null)
+                {
+                    expandedAppointments[appointment.Id] = fullAppointment;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load appointment details: {ex.Message}",
+                Duration = 4000
+            });
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
         }
     }
 
@@ -760,7 +971,7 @@
         showDialog = true;
     }
 
-    private void EditAppointment(AppointmentDto appointment)
+    private async Task EditAppointmentAsync(AppointmentDto appointment, CancellationToken ct)
     {
         var currentUser = AuthService.CurrentUser;
         var isDoctor = currentUser?.RoleId == 2;
@@ -768,7 +979,13 @@
         // Doctors can only edit their own appointments
         if (isDoctor && appointment.DoctorId != currentUser?.Id)
         {
-            JSRuntime.InvokeVoidAsync("alert", "You can only edit your own appointments");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Warning,
+                Summary = "Access Denied",
+                Detail = "You can only edit your own appointments",
+                Duration = 4000
+            });
             return;
         }
 
@@ -797,7 +1014,7 @@
         }
         else
         {
-            LoadAvailablePatients(appointment.DoctorId);
+            await LoadAvailablePatients(appointment.DoctorId);
         }
         
         showDialog = true;
@@ -892,9 +1109,18 @@
 
             if (response.IsSuccessStatusCode)
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Appointment saved successfully!");
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Appointment saved successfully!",
+                    Duration = 4000
+                });
                 CloseDialog();
-                await LoadAppointments();
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
             }
             else
             {
@@ -908,7 +1134,7 @@
         }
     }
 
-    private async Task CancelAppointment(AppointmentDto appointment)
+    private async Task CancelAppointmentAsync(AppointmentDto appointment, CancellationToken ct)
     {
         var currentUser = AuthService.CurrentUser;
         var isDoctor = currentUser?.RoleId == 2;
@@ -916,7 +1142,13 @@
         // Doctors can only cancel their own appointments
         if (isDoctor && appointment.DoctorId != currentUser?.Id)
         {
-            await JSRuntime.InvokeVoidAsync("alert", "You can only cancel your own appointments");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Warning,
+                Summary = "Access Denied",
+                Detail = "You can only cancel your own appointments",
+                Duration = 4000
+            });
             return;
         }
 
@@ -928,21 +1160,28 @@
 
         try
         {
-            var response = await Http.PostAsync($"api/appointment/{appointment.Id}/cancel", null);
-            if (response.IsSuccessStatusCode)
+            await AppointmentService.CancelAsync(appointment.Id, ct);
+            NotificationService.Notify(new NotificationMessage
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Appointment cancelled successfully!");
-                await LoadAppointments();
-            }
-            else
+                Severity = NotificationSeverity.Success,
+                Summary = "Success",
+                Detail = "Appointment cancelled successfully!",
+                Duration = 4000
+            });
+            if (_grid != null)
             {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                await JSRuntime.InvokeVoidAsync("alert", $"Error cancelling appointment: {errorContent}");
+                await _grid.RefreshAsync();
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to cancel appointment: {ex.Message}",
+                Duration = 6000
+            });
         }
     }
 
@@ -955,13 +1194,16 @@
         validationWarnings = new();
     }
 
-    private void ClearFilters()
+    private async Task ClearFilters()
     {
         filterDoctorId = null;
         filterPatientId = null;
         filterStartDate = null;
         filterEndDate = null;
-        LoadAppointments();
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
     }
 
     private async Task ShowOOODialog()

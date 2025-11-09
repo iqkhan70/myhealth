@@ -211,6 +211,40 @@ namespace SM_MentalHealthApp.Shared
         public int PatientId { get; set; }
     }
 
+    // Patient Request Models
+    public class CreatePatientRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
+    }
+
+    public class UpdatePatientRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
+        public string? Password { get; set; }
+    }
+
+    // AI Health Check Result
+    public class AiHealthCheckResult
+    {
+        public bool Success { get; set; }
+        public string Severity { get; set; } = string.Empty;
+        public string AiResponse { get; set; } = string.Empty;
+        public int AlertsSent { get; set; }
+        public int DoctorsNotified { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
     // Content Analysis Models
     public class ContentAnalysis
     {

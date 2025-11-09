@@ -1,43 +1,24 @@
 @page "/chat-history"
 @using SM_MentalHealthApp.Shared
-@using System.Text.Json
 @using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components.Grid
 @using Radzen
 @using Radzen.Blazor
+@using System.Text.Json
 @inject HttpClient Http
 @inject IJSRuntime JSRuntime
 @inject IAuthService AuthService
-@inject DialogService DialogService
+@inject IChatHistoryService ChatHistoryService
 @inject NotificationService NotificationService
 
 <PageTitle>Chat History</PageTitle>
 
 <style>
-    .rz-datatable-scrollable-wrapper {
-        overflow-x: hidden !important;
-    }
-    
-    .rz-datatable-scrollable {
-        overflow-x: hidden !important;
-    }
-    
-    .rz-datatable-scrollbar {
-        display: none !important;
-    }
-    
-    .rz-datatable-scrollbar-vertical {
-        display: none !important;
-    }
-    
-    .rz-datatable-scrollbar-horizontal {
-        display: none !important;
-    }
-    
     .conversation-messages {
         word-wrap: break-word;
         overflow-wrap: break-word;
     }
-    
+
     .message-content {
         word-wrap: break-word;
         white-space: pre-wrap;
@@ -51,7 +32,7 @@
         <div class="col-12">
             <h2>💬 Chat History</h2>
             <p class="text-muted">View and search your conversation history with the AI assistant</p>
-            
+
             <div class="row mb-3">
                 @if (currentUserRole == "Doctor" && patients != null && patients.Any())
                 {
@@ -76,232 +57,142 @@
                         </div>
                     </div>
                 }
-                
             </div>
         </div>
     </div>
 
-    @if (isLoading)
-    {
-        <div class="text-center">
-            <div class="spinner-border" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p>Loading chat sessions...</p>
-        </div>
-    }
-    else if (sessions == null || !sessions.Any())
-    {
-        <div class="alert alert-info">
-            <h4>No Chat History Found</h4>
-            <p>You haven't had any conversations with the AI yet. Start chatting to see your history here!</p>
-            <a href="/chat" class="btn btn-primary">Start Chatting</a>
-        </div>
-    }
-    else
-    {
-        <RadzenDataGrid Data="@sessions" 
-                        TItem="ChatSession" 
-                        AllowPaging="true" 
-                        PageSize="10"
-                        AllowSorting="true"
-                        AllowFiltering="true"
-                        FilterMode="FilterMode.Advanced"
-                        ShowPagingSummary="true"
-                        PagingSummaryFormat="Page {0} of {1} ({2} sessions)"
-                        RowExpand="@OnRowExpand"
-                        class="w-100"
-                        style="overflow-x: hidden;">
-            <Columns>
-                <RadzenDataGridColumn TItem="ChatSession" Property="PatientDisplayName" Title="About Patient" Width="200px">
-                    <Template Context="session">
-                        @if (session.PatientId.HasValue)
+    <SMDataGrid TItem="ChatSession" Columns="_columns" Actions="_actions" ActionsWidth="120px"
+        LoadItems="ct => ChatHistoryService.ListAsync(selectedPatientId, ct)" @ref="_grid" PageSize="10"
+        OnRowExpandCallback="@OnRowExpand">
+        <ExpansionTemplate Context="session">
+            @{
+                var expandedSession = expandedSessions.ContainsKey(session.Id) ? expandedSessions[session.Id] : session;
+            }
+            <div class="p-3">
+                <div class="row">
+                    <div class="col-12">
+                        <h6>Session Information</h6>
+                        <p>
+                            <strong>Created:</strong> @expandedSession.CreatedAt.ToString("MM/dd/yyyy HH:mm:ss") |
+                            <strong>Last Activity:</strong> @expandedSession.LastActivityAt.ToString("MM/dd/yyyy HH:mm:ss") |
+                            <strong>Messages:</strong> @expandedSession.MessageCount
+                        </p>
+
+                        @if (expandedSession.PatientId.HasValue)
                         {
-                            <span class="badge bg-info">@(session.Patient?.FullName ?? $"Patient {session.PatientId}")</span>
+                            <p><strong>About Patient:</strong> @(expandedSession.Patient?.FullName ?? $"Patient {expandedSession.PatientId}")</p>
                         }
-                        else
+
+                        @if (!string.IsNullOrEmpty(expandedSession.Summary))
                         {
-                            <span class="badge bg-secondary">General Chat</span>
-                        }
-                        @if (session.UserId != GetCurrentUserId())
-                        {
-                            <span class="badge bg-warning ms-1">Doctor Chat</span>
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-                
-                <RadzenDataGridColumn TItem="ChatSession" Property="UserDisplayName" Title="Conducted By" Width="150px">
-                    <Template Context="session">
-                        @if (session.User != null)
-                        {
-                            <div>
-                                <strong>@(session.User.FullName ?? $"{session.User.FirstName} {session.User.LastName}")</strong>
-                                <br>
-                                <small class="text-muted">@(session.User.Email ?? "Unknown")</small>
+                            <div class="alert alert-light mb-3">
+                                <h6>📝 AI Summary</h6>
+                                <p>@expandedSession.Summary</p>
                             </div>
                         }
-                        else
-                        {
-                            <span class="text-muted">Unknown User</span>
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-                
-                <RadzenDataGridColumn TItem="ChatSession" Property="MessageCount" Title="Messages" Width="100px" TextAlign="TextAlign.Center">
-                    <Template Context="session">
-                        <span class="badge bg-success">@session.MessageCount</span>
-                    </Template>
-                </RadzenDataGridColumn>
-                
-                <RadzenDataGridColumn TItem="ChatSession" Property="CreatedAt" Title="Created" Width="150px">
-                    <Template Context="session">
-                        @session.CreatedAt.ToString("MM/dd/yyyy HH:mm")
-                    </Template>
-                </RadzenDataGridColumn>
-                
-                <RadzenDataGridColumn TItem="ChatSession" Property="LastActivityAt" Title="Last Activity" Width="150px">
-                    <Template Context="session">
-                        @session.LastActivityAt.ToString("MM/dd/yyyy HH:mm")
-                    </Template>
-                </RadzenDataGridColumn>
-                
-                <RadzenDataGridColumn TItem="ChatSession" Property="Summary" Title="Summary" Width="300px">
-                    <Template Context="session">
-                        @if (!string.IsNullOrEmpty(session.Summary))
-                        {
-                            <div class="text-truncate" style="max-width: 300px;" title="@session.Summary">
-                                @(session.Summary.Length > 100 ? session.Summary.Substring(0, 100) + "..." : session.Summary)
-                            </div>
-                        }
-                        else
-                        {
-                            <span class="text-muted">No summary available</span>
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-                
-                <RadzenDataGridColumn TItem="ChatSession" Sortable="false" Filterable="false" Title="Actions" Width="80px">
-                    <Template Context="session">
-                        @if (CanDeleteSession(session))
-                        {
-                            <RadzenButton Text="Delete" 
-                                        ButtonStyle="ButtonStyle.Danger" 
-                                        Size="ButtonSize.Small"
-                                        Click="@(() => TestDelete(session))" />
-                        }
-                        else
-                        {
-                            <span class="text-muted small">Protected</span>
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-            </Columns>
-            
-            <Template Context="session">
-                @{
-                    var expandedSession = expandedSessions.ContainsKey(session.Id) ? expandedSessions[session.Id] : session;
-                }
-                <div class="p-3">
-                    <div class="row">
-                        <div class="col-12">
-                            <h6>Session Information</h6>
-                            <p><strong>Created:</strong> @expandedSession.CreatedAt.ToString("MM/dd/yyyy HH:mm:ss") | 
-                               <strong>Last Activity:</strong> @expandedSession.LastActivityAt.ToString("MM/dd/yyyy HH:mm:ss") | 
-                               <strong>Messages:</strong> @expandedSession.MessageCount</p>
-                            
-                            @if (expandedSession.PatientId.HasValue)
+
+                        <div class="conversation-messages" style="max-height: 400px; overflow-y: auto;">
+                            @if (expandedSession.Messages != null && expandedSession.Messages.Any())
                             {
-                                <p><strong>About Patient:</strong> @(expandedSession.Patient?.FullName ?? $"Patient {expandedSession.PatientId}")</p>
-                            }
-                            
-                            @if (!string.IsNullOrEmpty(expandedSession.Summary))
-                            {
-                                <div class="alert alert-light mb-3">
-                                    <h6>📝 AI Summary</h6>
-                                    <p>@expandedSession.Summary</p>
-                                </div>
-                            }
-                            
-                            <div class="conversation-messages" style="max-height: 400px; overflow-y: auto;">
-                                @if (expandedSession.Messages != null && expandedSession.Messages.Any())
+                                @foreach (var message in expandedSession.Messages.OrderBy(m => m.Timestamp))
                                 {
-                                    @foreach (var message in expandedSession.Messages.OrderBy(m => m.Timestamp))
-                                    {
-                                        <div class="message mb-3 p-3 rounded @(message.Role == MessageRole.User ? "bg-light border" : "bg-light border-start border-4 border-info")">
-                                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                                <strong>
-                                                    @if (message.Role == MessageRole.User)
-                                                    {
-                                                        <span>👤 You</span>
-                                                    }
-                                                    else if (message.Role == MessageRole.Assistant)
-                                                    {
-                                                        <span>🤖 AI Assistant</span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span>⚙️ System</span>
-                                                    }
-                                                </strong>
-                                                <small class="text-muted">@message.Timestamp.ToString("HH:mm:ss")</small>
-                                            </div>
-                                            <div class="message-content" style="word-wrap: break-word; white-space: pre-wrap; overflow-wrap: break-word;">
-                                                @message.Content
-                                            </div>
-                                            <div class="message-metadata mt-2">
-                                                @if (message.IsMedicalData)
-                                                {
-                                                    <span class="badge bg-danger">Medical Data</span>
-                                                }
-                                                <span class="badge bg-secondary">@message.MessageType</span>
-                                                @if (!string.IsNullOrEmpty(message.Metadata))
-                                                {
-                                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ShowMetadata(message.Metadata)">
-                                                        View Metadata
-                                                    </button>
-                                                }
-                                            </div>
+                                    <div class="message mb-3 p-3 rounded @(message.Role == MessageRole.User ? "bg-light border" : "bg-light border-start border-4 border-info")">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <strong>
+                                                @(message.Role == MessageRole.User ? "👤 You" : message.Role == MessageRole.Assistant ? "🤖 AI Assistant" : "⚙️ System")
+                                            </strong>
+                                            <small class="text-muted">@message.Timestamp.ToString("HH:mm:ss")</small>
                                         </div>
-                                    }
-                                }
-                                else
-                                {
-                                    <div class="text-muted text-center">
-                                        <p>No messages found in this session.</p>
+                                        <div class="message-content" style="word-wrap: break-word; white-space: pre-wrap; overflow-wrap: break-word;">
+                                            @message.Content
+                                        </div>
+                                        <div class="message-metadata mt-2">
+                                            @if (message.IsMedicalData)
+                                            {
+                                                <span class="badge bg-danger">Medical Data</span>
+                                            }
+                                            <span class="badge bg-secondary">@message.MessageType</span>
+                                            @if (!string.IsNullOrEmpty(message.Metadata))
+                                            {
+                                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => ShowMetadata(message.Metadata)">
+                                                    View Metadata
+                                                </button>
+                                            }
+                                        </div>
                                     </div>
                                 }
-                            </div>
+                            }
+                            else
+                            {
+                                <div class="text-muted text-center">
+                                    <p>No messages found in this session.</p>
+                                </div>
+                            }
                         </div>
                     </div>
                 </div>
-            </Template>
-        </RadzenDataGrid>
-    }
+            </div>
+        </ExpansionTemplate>
+    </SMDataGrid>
 </div>
 
 @code {
-    private List<ChatSession>? sessions;
-    private bool isLoading = true;
+    private SMDataGrid<ChatSession>? _grid;
     private int? selectedPatientId = null;
     private List<User>? patients;
     private string? currentUserRole;
     private Dictionary<int, ChatSession> expandedSessions = new Dictionary<int, ChatSession>();
 
+    private readonly List<SMDataGridColumn<ChatSession>> _columns =
+    [
+    new() { Property = nameof(ChatSession.PatientDisplayName), Title = "About Patient", Width = "200px" },
+new() { Property = nameof(ChatSession.UserDisplayName), Title = "Conducted By", Width = "150px" },
+new SMDataGridBadgeColumn<ChatSession>
+{
+Property = nameof(ChatSession.MessageCount),
+Title = "Messages",
+Width = "100px",
+TextAlign = TextAlign.Center,
+GetBadgeData = (session) => (session.MessageCount.ToString(), NotificationSeverity.Success, true)
+},
+new() { Property = nameof(ChatSession.CreatedAt), Title = "Created", Width = "150px" },
+new() { Property = nameof(ChatSession.LastActivityAt), Title = "Last Activity", Width = "150px" },
+new() { Property = nameof(ChatSession.Summary), Title = "Summary", Width = "300px" }
+    ];
+
+    private readonly List<SMDataGridActionButton<ChatSession>> _actions = [];
+
     protected override async Task OnInitializedAsync()
     {
         await LoadUserInfo();
-        await LoadSessions();
+
+        _actions.Add(new SMDataGridActionButton<ChatSession>
+        {
+            Icon = "delete",
+            ButtonStyle = ButtonStyle.Danger,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            OnClick = async (row, ct) => await DeleteSessionAsync(row, ct),
+            Disabled = (session) => !CanDeleteSession(session)
+        });
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Refresh grid when patient filter changes
+        if (_grid != null)
+        {
+            _ = _grid.RefreshAsync();
+        }
     }
 
     private async Task LoadUserInfo()
     {
         try
         {
-            // Get current user info to determine role
             var userResponse = await Http.GetFromJsonAsync<AuthUser>("api/auth/me");
             currentUserRole = userResponse?.RoleName;
-            
-            // If user is a doctor, load their patients
+
             if (userResponse?.RoleId == 2)
             {
                 var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/doctor/patients");
@@ -314,186 +205,73 @@
         }
     }
 
-        private async Task LoadSessions()
+    private async Task OnRowExpand(ChatSession session)
+    {
+        try
         {
-            try
+            if (!expandedSessions.ContainsKey(session.Id))
             {
-                isLoading = true;
-                
-                // Ensure authorization header is set
-                var token = AuthService.Token;
-                if (!string.IsNullOrEmpty(token))
+                var sessionDetails = await ChatHistoryService.GetAsync(session.Id);
+                if (sessionDetails != null)
                 {
-                    Http.DefaultRequestHeaders.Authorization = 
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                    expandedSessions[session.Id] = sessionDetails;
+                    StateHasChanged();
                 }
-                
-                var url = selectedPatientId.HasValue 
-                    ? $"api/chathistory/sessions?patientId={selectedPatientId.Value}"
-                    : "api/chathistory/sessions";
-                var response = await Http.GetFromJsonAsync<List<ChatSession>>(url);
-                sessions = response ?? new List<ChatSession>();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error loading sessions: {ex.Message}");
-            sessions = new List<ChatSession>();
-        }
-        finally
-        {
-            isLoading = false;
-        }
-    }
-
-        private async Task OnRowExpand(ChatSession session)
-        {
-            try
-            {
-                // Check if we already have the expanded data
-                if (expandedSessions.ContainsKey(session.Id))
-                {
-                    return; // Already loaded
-                }
-
-                // Ensure authorization header is set
-                var token = AuthService.Token;
-                if (!string.IsNullOrEmpty(token))
-                {
-                    Http.DefaultRequestHeaders.Authorization = 
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                }
-
-                // Load full session details with messages when row is expanded
-                var sessionDetails = await Http.GetFromJsonAsync<ChatSession>($"api/chathistory/sessions/{session.Id}");
-            if (sessionDetails != null)
-            {
-                // Store the expanded session data
-                expandedSessions[session.Id] = sessionDetails;
-                StateHasChanged();
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading session details: {ex.Message}");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load session details: {ex.Message}",
+                Duration = 4000
+            });
         }
     }
 
-    private async Task TestDelete(ChatSession session)
+    private async Task DeleteSessionAsync(ChatSession session, CancellationToken ct)
     {
-        Console.WriteLine($"TestDelete called for session {session.Id}");
-        await DeleteSession(session);
-    }
-
-    private async Task DeleteSession(ChatSession session)
-    {
-        Console.WriteLine($"DeleteSession called for session {session.Id}");
         try
         {
-            // Show confirmation dialog
-            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
-                $"Are you sure you want to delete this chat session?\n\n" +
-                $"Session: {(session.PatientId.HasValue ? session.Patient?.FullName ?? $"Patient {session.PatientId}" : "General Chat")}\n" +
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm",
+            $"Are you sure you want to delete this chat session?\n\n" +
+            $"Session: {(session.PatientId.HasValue ? session.Patient?.FullName ?? $"Patient {session.PatientId}" : "General Chat")}\n" +
                 $"Messages: {session.MessageCount}\n" +
                 $"Created: {session.CreatedAt:MM/dd/yyyy HH:mm}\n\n" +
                 $"⚠️ This action cannot be undone!");
 
-            if (confirmed == true)
+            if (confirmed)
             {
-                Console.WriteLine($"Attempting to delete session {session.Id}");
+                await ChatHistoryService.DeleteAsync(session.Id, ct);
                 
-                // Check if user is authenticated
-                if (!AuthService.IsAuthenticated)
+                NotificationService.Notify(new NotificationMessage
                 {
-                    NotificationService.Notify(new NotificationMessage 
-                    { 
-                        Severity = NotificationSeverity.Error, 
-                        Summary = "Authentication Required", 
-                        Detail = "Please log in again to perform this action.",
-                        Duration = 4000
-                    });
-                    return;
-                }
-                
-                // Ensure authorization header is set
-                var token = AuthService.Token;
-                Console.WriteLine($"Using token: {token?.Substring(0, Math.Min(50, token?.Length ?? 0))}...");
-                if (!string.IsNullOrEmpty(token))
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Chat session deleted successfully!",
+                    Duration = 4000
+                });
+
+                if (expandedSessions.ContainsKey(session.Id))
                 {
-                    Http.DefaultRequestHeaders.Authorization = 
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                    expandedSessions.Remove(session.Id);
                 }
-                
-                var response = await Http.DeleteAsync($"api/chathistory/sessions/{session.Id}");
-                Console.WriteLine($"Delete response status: {response.StatusCode}");
-                
-                var responseContent = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"Delete response content: {responseContent}");
-                
-                if (response.IsSuccessStatusCode)
+
+                if (_grid != null)
                 {
-                    NotificationService.Notify(new NotificationMessage 
-                    { 
-                        Severity = NotificationSeverity.Success, 
-                        Summary = "Success", 
-                        Detail = "Chat session deleted successfully!",
-                        Duration = 4000
-                    });
-                    
-                    // Remove from expanded sessions if it was expanded
-                    if (expandedSessions.ContainsKey(session.Id))
-                    {
-                        expandedSessions.Remove(session.Id);
-                    }
-                    
-                    // Reload sessions after deletion
-                    await LoadSessions();
+                    await _grid.RefreshAsync();
                 }
-                else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                {
-                    NotificationService.Notify(new NotificationMessage 
-                    { 
-                        Severity = NotificationSeverity.Error, 
-                        Summary = "Authentication Required", 
-                        Detail = "Your session has expired. Please log in again.",
-                        Duration = 4000
-                    });
-                    
-                    // Clear the token and redirect to login
-                    await AuthService.LogoutAsync();
-                }
-                else
-                {
-                    Console.WriteLine($"Delete error: {responseContent}");
-                    
-                    // Check if response is HTML (error page) instead of JSON
-                    string errorMessage = responseContent;
-                    if (responseContent.StartsWith("<"))
-                    {
-                        errorMessage = $"Server returned an error page. Status: {response.StatusCode}";
-                    }
-                    
-                    NotificationService.Notify(new NotificationMessage 
-                    { 
-                        Severity = NotificationSeverity.Error, 
-                        Summary = "Delete Failed", 
-                        Detail = $"Failed to delete session: {errorMessage}",
-                        Duration = 6000
-                    });
-                }
-            }
-            else
-            {
-                Console.WriteLine("Delete cancelled by user");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Delete exception: {ex.Message}");
-            NotificationService.Notify(new NotificationMessage 
-            { 
-                Severity = NotificationSeverity.Error, 
-                Summary = "Error", 
-                Detail = $"An error occurred while deleting: {ex.Message}",
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to delete session: {ex.Message}",
                 Duration = 6000
             });
         }
@@ -502,15 +280,20 @@
     private async Task OnPatientFilterChanged(ChangeEventArgs e)
     {
         selectedPatientId = string.IsNullOrEmpty(e.Value?.ToString()) ? null : int.Parse(e.Value.ToString()!);
-        await LoadSessions();
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
     }
-    
+
     private async Task ClearPatientFilter()
     {
         selectedPatientId = null;
-        await LoadSessions();
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
     }
-    
 
     private int GetCurrentUserId()
     {
@@ -521,41 +304,31 @@
     {
         var currentUserId = GetCurrentUserId();
         var currentUserRole = AuthService.CurrentUser?.RoleId ?? 0;
-        
-        Console.WriteLine($"CanDeleteSession - SessionId: {session.Id}, SessionUserId: {session.UserId}, CurrentUserId: {currentUserId}, CurrentUserRole: {currentUserRole}");
-        
-        // Patients can only delete their own direct conversations
-        // They cannot delete doctor's chats about them
+
         if (currentUserRole == 1) // Patient
         {
-            var canDelete = session.UserId == currentUserId;
-            Console.WriteLine($"Patient can delete: {canDelete}");
-            return canDelete;
+            return session.UserId == currentUserId;
         }
-        
-        // Doctors can delete their own sessions
+
         if (currentUserRole == 2) // Doctor
         {
-            var canDelete = session.UserId == currentUserId;
-            Console.WriteLine($"Doctor can delete: {canDelete}");
-            return canDelete;
+            return session.UserId == currentUserId;
         }
-        
-        // Admins can delete any session
+
         if (currentUserRole == 3) // Admin
         {
-            Console.WriteLine("Admin can delete: true");
             return true;
         }
-        
-        Console.WriteLine("No role match, cannot delete");
+
         return false;
     }
 
-    private async Task ShowMetadata(string metadata)
+    private async Task ShowMetadata(string? metadata)
     {
         try
         {
+            if (string.IsNullOrEmpty(metadata)) return;
+            
             var jsonObject = JsonSerializer.Deserialize<JsonElement>(metadata);
             var formattedJson = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
             await JSRuntime.InvokeVoidAsync("alert", $"Metadata:\n\n{formattedJson}");

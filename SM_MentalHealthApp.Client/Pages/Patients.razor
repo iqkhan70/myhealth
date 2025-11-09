@@ -2,47 +2,18 @@
 @inject HttpClient Http
 @inject NotificationService NotificationService
 @inject IAuthService AuthService
+@inject IPatientService PatientService
+@inject IJSRuntime JSRuntime
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components.Grid
+@using Radzen
+@using Radzen.Blazor
 @using System.Net.Http
 
 @code {
-    // AI Health Check result class
-    public class AiHealthCheckResult
-    {
-        public bool Success { get; set; }
-        public string Severity { get; set; } = string.Empty;
-        public string AiResponse { get; set; } = string.Empty;
-        public int AlertsSent { get; set; }
-        public int DoctorsNotified { get; set; }
-        public string Message { get; set; } = string.Empty;
-    }
-
-    // CreatePatientRequest class for the form
-    public class CreatePatientRequest
-    {
-        public string FirstName { get; set; } = string.Empty;
-        public string LastName { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
-        public DateTime DateOfBirth { get; set; }
-        public string Gender { get; set; } = string.Empty;
-        public string? MobilePhone { get; set; }
-    }
-
     // Track original values for dirty field detection
     private User? _originalUser;
-
-    public class UpdatePatientRequest
-    {
-        public string FirstName { get; set; } = string.Empty;
-        public string LastName { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public DateTime DateOfBirth { get; set; }
-        public string Gender { get; set; } = string.Empty;
-        public string? MobilePhone { get; set; }
-        public string? Password { get; set; }
-    }
 }
 
 <div class="users-page">
@@ -113,207 +84,76 @@
 
         <!-- Patients Grid -->
         <div class="users-content">
-            @if (isLoading)
-            {
-                <div class="loading-state">
-                    <div class="loading-spinner"></div>
-                    <p>Loading users...</p>
-                </div>
-            }
-            else
-            {
-                <RadzenDataGrid Data="@GetFilteredUsers()" 
-                               TItem="User" 
-                               AllowPaging="true" 
-                               PageSize="15"
-                               AllowSorting="true" 
-                               FilterMode="FilterMode.Advanced" 
-                               ShowPagingSummary="true"
-                               EmptyText="No patients found"
-                               AllowFiltering="true"
-                               FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                               ShowFilterRow="true"
-                               ShowFilterRowButtons="true">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="User" Property="FirstName" Title="Name" Width="200px" Filterable="true">
-                            <Template Context="user">
-                                @if (user != null)
-                                {
-                                    <div>
-                                        <strong>@(user.FirstName ?? "") @(user.LastName ?? "")</strong>
-                                        <br />
-                                        <small class="text-muted">@(user.Email ?? "")</small>
+            <SMDataGrid TItem="User" 
+                       Columns="_columns" 
+                       Actions="_actions" 
+                       ActionsWidth="300px"
+                       LoadItems="LoadPatientsAsync" 
+                       @ref="_grid" 
+                       PageSize="15"
+                       OnRowExpandCallback="@OnRowExpand">
+                <ExpansionTemplate Context="user">
+                    @{
+                        var expandedUser = expandedUsers.ContainsKey(user.Id) ? expandedUsers[user.Id] : user;
+                    }
+                    <div class="p-3">
+                        <div class="row">
+                            <div class="col-12">
+                                <h6>Patient Details</h6>
+                                <div class="patient-meta mb-3">
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Name:</strong></span>
+                                        <span class="meta-value">@expandedUser.FirstName @expandedUser.LastName</span>
                                     </div>
-                                }
-                                else
-                                {
-                                    <div class="text-muted">Invalid user data</div>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="120px" Filterable="true">
-                            <Template Context="user">
-                                @if (user != null)
-                                {
-                                    @user.DateOfBirth.ToString("MMM dd, yyyy")
-                                }
-                                else
-                                {
-                                    <span class="text-muted">-</span>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="User" Property="Gender" Title="Gender" Width="100px" Filterable="true">
-                            <Template Context="user">
-                                @if (user != null && !string.IsNullOrEmpty(user.Gender))
-                                {
-                                    <span class="badge badge-info">@user.Gender</span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">Not specified</span>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="User" Property="IsActive" Title="Status" Width="100px" Filterable="false">
-                            <Template Context="user">
-                                @if (user != null)
-                                {
-                                    <span class="status-badge @(user.IsActive ? "active" : "inactive")">
-                                        @(user.IsActive ? "Active" : "Inactive")
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">-</span>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="User" Property="JournalEntries" Title="Journal Entries" Width="120px" Filterable="false" Sortable="false">
-                            <Template Context="user">
-                                @if (user != null)
-                                {
-                                    <span class="badge badge-primary">@user.JournalEntries.Count</span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">-</span>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="User" Property="LastLoginAt" Title="Last Login" Width="120px" Filterable="true">
-                            <Template Context="user">
-                                @if (user != null)
-                                {
-                                    @(user.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never")
-                                }
-                                else
-                                {
-                                    <span class="text-muted">-</span>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="User" Property="CreatedAt" Title="Member Since" Width="120px" Filterable="true">
-                            <Template Context="user">
-                                @if (user != null)
-                                {
-                                    @user.CreatedAt.ToString("MMM dd, yyyy")
-                                }
-                                else
-                                {
-                                    <span class="text-muted">-</span>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="User" Property="Actions" Title="Actions" Width="250px" Sortable="false" Filterable="false">
-                            <Template Context="user">
-                                @if (user != null)
-                                {
-                                    <div class="action-buttons">
-                                    <RadzenButton Icon="visibility" 
-                                                ButtonStyle="ButtonStyle.Info" 
-                                                ButtonType="ButtonType.Button" 
-                                                Size="ButtonSize.Small"
-                                                Click="@(() => ViewUserDetails(user))"
-                                                Title="View Details" />
-                                    
-                                    <RadzenButton Icon="edit" 
-                                                ButtonStyle="ButtonStyle.Success" 
-                                                ButtonType="ButtonType.Button" 
-                                                Size="ButtonSize.Small"
-                                                Click="@(() => EditUser(user))"
-                                                Title="Edit Patient" />
-                                    
-                                    <RadzenButton Icon="analytics" 
-                                                ButtonStyle="ButtonStyle.Primary" 
-                                                ButtonType="ButtonType.Button" 
-                                                Size="ButtonSize.Small"
-                                                Click="@(() => ViewUserStats(user))"
-                                                Title="View Stats" />
-                                    
-                                    <RadzenButton Icon="psychology" 
-                                                ButtonStyle="ButtonStyle.Warning" 
-                                                ButtonType="ButtonType.Button" 
-                                                Size="ButtonSize.Small"
-                                                Click="@(() => PerformAiHealthCheck(user))"
-                                                Title="AI Health Check"
-                                                Disabled="@isPerformingHealthCheck" />
-                                    
-                                    @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show assignment controls
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Email:</strong></span>
+                                        <span class="meta-value">@expandedUser.Email</span>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Date of Birth:</strong></span>
+                                        <span class="meta-value">@expandedUser.DateOfBirth.ToString("MMM dd, yyyy")</span>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Gender:</strong></span>
+                                        <span class="meta-value">@(expandedUser.Gender ?? "Not specified")</span>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(expandedUser.MobilePhone))
                                     {
-                                        <RadzenButton Icon="person_add" 
-                                                    ButtonStyle="ButtonStyle.Warning" 
-                                                    ButtonType="ButtonType.Button" 
-                                                    Size="ButtonSize.Small"
-                                                    Click="@(() => ShowAssignPatientModal(user))"
-                                                    Title="Assign to Another Doctor" />
-                                        
-                                        <button class="btn btn-danger btn-sm" 
-                                                @onclick="@(() => ShowUnassignConfirmation(user))"
-                                                title="Unassign from Me">
-                                            <i class="fas fa-user-minus"></i>
-                                        </button>
+                                        <div class="meta-row">
+                                            <span class="meta-label"><strong>Mobile Phone:</strong></span>
+                                            <span class="meta-value">@expandedUser.MobilePhone</span>
+                                        </div>
                                     }
-                                    
-                                    @if (AuthService.CurrentUser?.RoleId == 3) // Admin - show admin controls
-                                    {
-                                        @if (user.IsActive)
-                                        {
-                                            <RadzenButton Icon="block" 
-                                                        ButtonStyle="ButtonStyle.Danger" 
-                                                        ButtonType="ButtonType.Button" 
-                                                        Size="ButtonSize.Small"
-                                                        Click="@(() => DeactivateUser(user))"
-                                                        Title="Deactivate" />
-                                        }
-                                        else
-                                        {
-                                            <RadzenButton Icon="check" 
-                                                        ButtonStyle="ButtonStyle.Success" 
-                                                        ButtonType="ButtonType.Button" 
-                                                        Size="ButtonSize.Small"
-                                                        Click="@(() => ReactivateUser(user))"
-                                                        Title="Reactivate" />
-                                        }
-                                    }
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Status:</strong></span>
+                                        <span class="meta-value">
+                                            <span class="status-badge @(expandedUser.IsActive ? "active" : "inactive")">
+                                                @(expandedUser.IsActive ? "Active" : "Inactive")
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Member Since:</strong></span>
+                                        <span class="meta-value">@expandedUser.CreatedAt.ToString("MMM dd, yyyy 'at' h:mm tt")</span>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Last Login:</strong></span>
+                                        <span class="meta-value">@(expandedUser.LastLoginAt?.ToString("MMM dd, yyyy 'at' h:mm tt") ?? "Never")</span>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Journal Entries:</strong></span>
+                                        <span class="meta-value">@expandedUser.JournalEntries.Count</span>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Chat Sessions:</strong></span>
+                                        <span class="meta-value">@expandedUser.ChatSessions.Count</span>
+                                    </div>
                                 </div>
-                                }
-                                else
-                                {
-                                    <div class="text-muted">Invalid user data</div>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-                    </Columns>
-                </RadzenDataGrid>
-            }
+                            </div>
+                        </div>
+                    </div>
+                </ExpansionTemplate>
+            </SMDataGrid>
         </div>
     }
 </div>
@@ -600,10 +440,13 @@
 }
 
 @code {
-    private List<User> users = new();
+    private SMDataGrid<User>? _grid;
+    private Dictionary<int, User> expandedUsers = new Dictionary<int, User>();
+    private List<SMDataGridColumn<User>> _columns = new();
+    private List<SMDataGridActionButton<User>> _actions = new();
+    
     private User? selectedUser;
     private UserStats? userStats;
-    private bool isLoading = true;
     private bool showPatientForm = false;
     private bool showPatientDetails = false;
     private bool showPatientStats = false;
@@ -640,103 +483,285 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadPatients();
+        InitializeColumns();
+        InitializeActions();
     }
 
-    private async Task LoadPatients()
+    private void InitializeColumns()
+    {
+        _columns = new List<SMDataGridColumn<User>>
+        {
+            new SMDataGridTemplateColumn<User>
+            {
+                Property = nameof(User.FirstName),
+                Title = "Name",
+                Width = "200px",
+                Template = user => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.OpenElement(1, "strong");
+                    builder.AddContent(2, $"{user.FirstName} {user.LastName}");
+                    builder.CloseElement();
+                    builder.OpenElement(3, "br");
+                    builder.CloseElement();
+                    builder.OpenElement(4, "small");
+                    builder.AddAttribute(5, "class", "text-muted");
+                    builder.AddContent(6, user.Email);
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<User>
+            {
+                Property = nameof(User.DateOfBirth),
+                Title = "Date of Birth",
+                Width = "120px",
+                Template = user => builder =>
+                {
+                    builder.AddContent(0, user.DateOfBirth.ToString("MMM dd, yyyy"));
+                }
+            },
+            new SMDataGridTemplateColumn<User>
+            {
+                Property = nameof(User.Gender),
+                Title = "Gender",
+                Width = "100px",
+                Template = user => builder =>
+                {
+                    if (!string.IsNullOrEmpty(user.Gender))
+                    {
+                        builder.OpenElement(0, "span");
+                        builder.AddAttribute(1, "class", "badge badge-info");
+                        builder.AddContent(2, user.Gender);
+                        builder.CloseElement();
+                    }
+                    else
+                    {
+                        builder.OpenElement(3, "span");
+                        builder.AddAttribute(4, "class", "text-muted");
+                        builder.AddContent(5, "Not specified");
+                        builder.CloseElement();
+                    }
+                }
+            },
+            new SMDataGridTemplateColumn<User>
+            {
+                Property = nameof(User.IsActive),
+                Title = "Status",
+                Width = "100px",
+                Template = user => builder =>
+                {
+                    builder.OpenElement(0, "span");
+                    builder.AddAttribute(1, "class", $"status-badge {(user.IsActive ? "active" : "inactive")}");
+                    builder.AddContent(2, user.IsActive ? "Active" : "Inactive");
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<User>
+            {
+                Property = nameof(User.JournalEntries),
+                Title = "Journal Entries",
+                Width = "120px",
+                Sortable = false,
+                Template = user => builder =>
+                {
+                    builder.OpenElement(0, "span");
+                    builder.AddAttribute(1, "class", "badge badge-primary");
+                    builder.AddContent(2, user.JournalEntries?.Count ?? 0);
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<User>
+            {
+                Property = nameof(User.LastLoginAt),
+                Title = "Last Login",
+                Width = "120px",
+                Template = user => builder =>
+                {
+                    builder.AddContent(0, user.LastLoginAt?.ToString("MMM dd, yyyy") ?? "Never");
+                }
+            },
+            new SMDataGridTemplateColumn<User>
+            {
+                Property = nameof(User.CreatedAt),
+                Title = "Member Since",
+                Width = "120px",
+                Template = user => builder =>
+                {
+                    builder.AddContent(0, user.CreatedAt.ToString("MMM dd, yyyy"));
+                }
+            }
+        };
+    }
+
+    private void InitializeActions()
+    {
+        _actions.Add(new SMDataGridActionButton<User>
+        {
+            Icon = "visibility",
+            ButtonStyle = ButtonStyle.Info,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            OnClick = async (row, ct) => await ViewUserDetailsAsync(row, ct)
+        });
+
+        _actions.Add(new SMDataGridActionButton<User>
+        {
+            Icon = "edit",
+            ButtonStyle = ButtonStyle.Success,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            OnClick = async (row, ct) => await EditUserAsync(row, ct)
+        });
+
+        _actions.Add(new SMDataGridActionButton<User>
+        {
+            Icon = "analytics",
+            ButtonStyle = ButtonStyle.Primary,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            OnClick = async (row, ct) => await ViewUserStatsAsync(row, ct)
+        });
+
+        _actions.Add(new SMDataGridActionButton<User>
+        {
+            Icon = "psychology",
+            ButtonStyle = ButtonStyle.Warning,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            OnClick = async (row, ct) => await PerformAiHealthCheckAsync(row, ct),
+            Disabled = (user) => isPerformingHealthCheck
+        });
+
+        // Doctor-specific actions
+        if (AuthService.CurrentUser?.RoleId == 2)
+        {
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "person_add",
+                ButtonStyle = ButtonStyle.Warning,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                OnClick = async (row, ct) => await ShowAssignPatientModalAsync(row, ct)
+            });
+        }
+
+        // Admin-specific actions
+        if (AuthService.CurrentUser?.RoleId == 3)
+        {
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "block",
+                ButtonStyle = ButtonStyle.Danger,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                OnClick = async (row, ct) => await DeactivateUserAsync(row, ct),
+                Disabled = (user) => !user.IsActive
+            });
+
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "check",
+                ButtonStyle = ButtonStyle.Success,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                OnClick = async (row, ct) => await ReactivateUserAsync(row, ct),
+                Disabled = (user) => user.IsActive
+            });
+        }
+    }
+
+    private async Task<IEnumerable<User>> LoadPatientsAsync(CancellationToken ct)
     {
         try
         {
-            isLoading = true;
-            
-            if (AuthService.CurrentUser?.RoleId == 2) // Doctor - load only assigned users
-            {
-                users = await Http.GetFromJsonAsync<List<User>>("api/doctor/my-patients") ?? new();
-            }
-            else if (AuthService.CurrentUser?.RoleId == 3) // Admin - load all patients
-            {
-                users = await Http.GetFromJsonAsync<List<User>>("api/admin/patients") ?? new();
-            }
-            else
-            {
-                users = new(); // No access
-            }
+            var users = await PatientService.ListAsync(ct);
             
             // Load journal entry counts for each patient
-            await LoadJournalEntryCounts();
-            
-            // Debug: Check for null users
-            var nullUsers = users.Where(u => u == null).Count();
-            if (nullUsers > 0)
+            foreach (var user in users.Where(u => u.RoleId == 1))
             {
-                Console.WriteLine($"Warning: Found {nullUsers} null users in the list");
+                try
+                {
+                    var entries = await PatientService.GetJournalEntriesAsync(user.Id, ct);
+                    user.JournalEntries = entries;
+                }
+                catch
+                {
+                    user.JournalEntries = new();
+                }
+            }
+
+            // Apply custom filters
+            var filtered = users.Where(u => u != null && u.RoleId == 1).AsEnumerable();
+
+            if (selectedStatusFilter.HasValue)
+            {
+                filtered = filtered.Where(u => u.IsActive == selectedStatusFilter.Value);
+            }
+
+            if (!string.IsNullOrEmpty(selectedJournalFilter))
+            {
+                filtered = selectedJournalFilter switch
+                {
+                    "0" => filtered.Where(u => (u.JournalEntries?.Count ?? 0) == 0),
+                    "1-5" => filtered.Where(u => (u.JournalEntries?.Count ?? 0) >= 1 && (u.JournalEntries?.Count ?? 0) <= 5),
+                    "6-10" => filtered.Where(u => (u.JournalEntries?.Count ?? 0) >= 6 && (u.JournalEntries?.Count ?? 0) <= 10),
+                    "10+" => filtered.Where(u => (u.JournalEntries?.Count ?? 0) > 10),
+                    _ => filtered
+                };
+            }
+
+            return filtered.ToList();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load patients: {ex.Message}",
+                Duration = 6000
+            });
+            return new List<User>();
+        }
+    }
+
+    private async Task OnRowExpand(User user)
+    {
+        try
+        {
+            if (!expandedUsers.ContainsKey(user.Id))
+            {
+                var fullUser = await PatientService.GetAsync(user.Id);
+                if (fullUser != null)
+                {
+                    // Load journal entries and chat sessions
+                    fullUser.JournalEntries = await PatientService.GetJournalEntriesAsync(user.Id);
+                    expandedUsers[user.Id] = fullUser;
+                    StateHasChanged();
+                }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading users: {ex.Message}");
-            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load users: " + ex.Message);
-        }
-        finally
-        {
-            isLoading = false;
-        }
-    }
-
-    private async Task LoadJournalEntryCounts()
-    {
-        try
-        {
-            foreach (var user in users.Where(u => u.RoleId == 1)) // Only for patients
+            NotificationService.Notify(new NotificationMessage
             {
-                try
-                {
-                    var entries = await Http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/user/{user.Id}") ?? new();
-                    user.JournalEntries = entries; // Populate the JournalEntries property
-                }
-                catch (Exception)
-                {
-                    user.JournalEntries = new(); // Set empty list if error
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // Log error but don't show to user
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load patient details: {ex.Message}",
+                Duration = 4000
+            });
         }
     }
 
-    private List<User> GetFilteredUsers()
-    {
-        var filtered = users.Where(u => u != null && u.RoleId == 1).AsEnumerable();
-
-        // Apply status filter
-        if (selectedStatusFilter.HasValue)
-        {
-            filtered = filtered.Where(u => u != null && u.IsActive == selectedStatusFilter.Value);
-        }
-
-        // Apply journal entries filter
-        if (!string.IsNullOrEmpty(selectedJournalFilter))
-        {
-            filtered = selectedJournalFilter switch
-            {
-                "0" => filtered.Where(u => u.JournalEntries.Count == 0),
-                "1-5" => filtered.Where(u => u.JournalEntries.Count >= 1 && u.JournalEntries.Count <= 5),
-                "6-10" => filtered.Where(u => u.JournalEntries.Count >= 6 && u.JournalEntries.Count <= 10),
-                "10+" => filtered.Where(u => u.JournalEntries.Count > 10),
-                _ => filtered
-            };
-        }
-
-        return filtered.ToList();
-    }
-
-    private void ClearFilters()
+    private async Task ClearFilters()
     {
         selectedStatusFilter = null;
         selectedJournalFilter = null;
-        StateHasChanged();
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
     }
 
 
@@ -748,7 +773,7 @@
         showPatientForm = true;
     }
 
-    private void EditUser(User user)
+    private async Task EditUserAsync(User user, CancellationToken ct)
     {
         if (user == null) return;
         
@@ -795,87 +820,72 @@
             
             if (editingUser == null)
             {
-                // Create new patient using the admin endpoint
-                var result = await Http.PostAsJsonAsync("api/admin/create-patient", patientForm);
-                if (result.IsSuccessStatusCode)
+                await PatientService.CreateAsync(patientForm);
+                NotificationService.Notify(new NotificationMessage
                 {
-                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient added successfully!");
-                    await LoadPatients(); // Reload the list
-                }
-                else
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Patient added successfully!",
+                    Duration = 4000
+                });
+                if (_grid != null)
                 {
-                    var error = await result.Content.ReadAsStringAsync();
-                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to add patient: " + error);
+                    await _grid.RefreshAsync();
                 }
             }
             else
             {
-                // Update existing patient - only send changed fields
                 var updateRequest = new UpdatePatientRequest();
                 
-                // Only include fields that have actually changed
                 if (_originalUser != null)
                 {
-                    Console.WriteLine($"DEBUG - Original: FirstName='{_originalUser.FirstName}', LastName='{_originalUser.LastName}', Email='{_originalUser.Email}', MobilePhone='{_originalUser.MobilePhone}'");
-                    Console.WriteLine($"DEBUG - Form: FirstName='{patientForm.FirstName}', LastName='{patientForm.LastName}', Email='{patientForm.Email}', MobilePhone='{patientForm.MobilePhone}'");
-                    
-                    // Only set properties that have actually changed
                     if (!string.IsNullOrWhiteSpace(patientForm.FirstName) && patientForm.FirstName != (_originalUser.FirstName ?? string.Empty))
                     {
                         updateRequest.FirstName = patientForm.FirstName;
-                        Console.WriteLine("DEBUG - FirstName changed, including in request");
                     }
                     
                     if (!string.IsNullOrWhiteSpace(patientForm.LastName) && patientForm.LastName != (_originalUser.LastName ?? string.Empty))
                     {
                         updateRequest.LastName = patientForm.LastName;
-                        Console.WriteLine("DEBUG - LastName changed, including in request");
                     }
                     
                     if (!string.IsNullOrWhiteSpace(patientForm.Email) && patientForm.Email != (_originalUser.Email ?? string.Empty))
                     {
                         updateRequest.Email = patientForm.Email;
-                        Console.WriteLine("DEBUG - Email changed, including in request");
                     }
                     
                     if (patientForm.DateOfBirth != _originalUser.DateOfBirth)
                     {
                         updateRequest.DateOfBirth = patientForm.DateOfBirth;
-                        Console.WriteLine("DEBUG - DateOfBirth changed, including in request");
                     }
                     
                     if (!string.IsNullOrWhiteSpace(patientForm.Gender) && patientForm.Gender != (_originalUser.Gender ?? string.Empty))
                     {
                         updateRequest.Gender = patientForm.Gender;
-                        Console.WriteLine("DEBUG - Gender changed, including in request");
                     }
                     
                     if (patientForm.MobilePhone != (_originalUser.MobilePhone ?? string.Empty))
                     {
                         updateRequest.MobilePhone = patientForm.MobilePhone;
-                        Console.WriteLine("DEBUG - MobilePhone changed, including in request");
                     }
                     
-                    // Only include password if provided
                     if (!string.IsNullOrWhiteSpace(patientForm.Password))
                     {
                         updateRequest.Password = patientForm.Password;
-                        Console.WriteLine("DEBUG - Password provided, including in request");
                     }
-                    
-                    Console.WriteLine($"DEBUG - Final request: FirstName='{updateRequest.FirstName}', LastName='{updateRequest.LastName}', Email='{updateRequest.Email}', MobilePhone='{updateRequest.MobilePhone}', Password='{updateRequest.Password}'");
                 }
 
-                var result = await Http.PutAsJsonAsync($"api/admin/update-patient/{editingUser.Id}", updateRequest);
-                if (result.IsSuccessStatusCode)
+                await PatientService.UpdateAsync(editingUser.Id, updateRequest);
+                NotificationService.Notify(new NotificationMessage
                 {
-                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient updated successfully!");
-                    await LoadPatients(); // Reload the list
-                }
-                else
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Patient updated successfully!",
+                    Duration = 4000
+                });
+                if (_grid != null)
                 {
-                    var error = await result.Content.ReadAsStringAsync();
-                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update patient: " + error);
+                    await _grid.RefreshAsync();
                 }
             }
             
@@ -891,7 +901,7 @@
         }
     }
 
-    private void ViewUserDetails(User user)
+    private async Task ViewUserDetailsAsync(User user, CancellationToken ct)
     {
         if (user == null) return;
         
@@ -905,20 +915,25 @@
         selectedUser = null;
     }
 
-    private async Task ViewUserStats(User user)
+    private async Task ViewUserStatsAsync(User user, CancellationToken ct)
     {
         if (user == null) return;
         
         try
         {
             selectedUser = user;
-            var response = await Http.GetFromJsonAsync<UserStats>($"api/user/{user.Id}/stats");
-            userStats = response;
+            userStats = await PatientService.GetStatsAsync(user.Id, ct);
             showPatientStats = true;
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load patient stats: " + ex.Message);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load patient stats: {ex.Message}",
+                Duration = 6000
+            });
         }
     }
 
@@ -929,7 +944,7 @@
         userStats = null;
     }
 
-    private async Task PerformAiHealthCheck(User user)
+    private async Task PerformAiHealthCheckAsync(User user, CancellationToken ct)
     {
         if (user == null) return;
         
@@ -938,42 +953,51 @@
             isPerformingHealthCheck = true;
             StateHasChanged();
             
-            NotificationService.Notify(NotificationSeverity.Info, "AI Health Check", $"Analyzing {user.FirstName} {user.LastName}'s health status...");
-            
-            var response = await Http.PostAsync($"api/admin/ai-health-check/{user.Id}", null);
-            
-            if (response.IsSuccessStatusCode)
+            NotificationService.Notify(new NotificationMessage
             {
-                var result = await response.Content.ReadFromJsonAsync<AiHealthCheckResult>();
-                
-                if (result != null)
+                Severity = NotificationSeverity.Info,
+                Summary = "AI Health Check",
+                Detail = $"Analyzing {user.FirstName} {user.LastName}'s health status...",
+                Duration = 4000
+            });
+            
+            var result = await PatientService.PerformAiHealthCheckAsync(user.Id, ct);
+            
+            if (result != null)
+            {
+                if (result.Severity == "High")
                 {
-                    if (result.Severity == "High")
+                    NotificationService.Notify(new NotificationMessage
                     {
-                        NotificationService.Notify(NotificationSeverity.Warning, "AI Health Alert", 
-                            $"⚠️ {result.Message} ({result.AlertsSent} doctors notified)");
-                    }
-                    else
-                    {
-                        NotificationService.Notify(NotificationSeverity.Success, "AI Health Check", 
-                            $"✅ {result.Message}");
-                    }
-                    
-                    // Show detailed AI response in console for debugging
-                    Console.WriteLine($"AI Response for {user.FirstName}: {result.AiResponse}");
+                        Severity = NotificationSeverity.Warning,
+                        Summary = "AI Health Alert",
+                        Detail = $"⚠️ {result.Message} ({result.AlertsSent} doctors notified)",
+                        Duration = 6000
+                    });
                 }
-            }
-            else
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                NotificationService.Notify(NotificationSeverity.Error, "Error", 
-                    $"AI Health Check failed: {errorContent}");
+                else
+                {
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Success,
+                        Summary = "AI Health Check",
+                        Detail = $"✅ {result.Message}",
+                        Duration = 4000
+                    });
+                }
+                
+                Console.WriteLine($"AI Response for {user.FirstName}: {result.AiResponse}");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", 
-                $"AI Health Check failed: {ex.Message}");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"AI Health Check failed: {ex.Message}",
+                Duration = 6000
+            });
         }
         finally
         {
@@ -982,62 +1006,79 @@
         }
     }
 
-    private async Task DeactivateUser(User user)
+    private async Task DeactivateUserAsync(User user, CancellationToken ct)
     {
         if (user == null) return;
         
         try
         {
-            var result = await Http.DeleteAsync($"api/user/{user.Id}");
-            if (result.IsSuccessStatusCode)
+            await PatientService.DeleteAsync(user.Id, ct);
+            NotificationService.Notify(new NotificationMessage
             {
-                user.IsActive = false;
-                NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient deactivated successfully!");
-            }
-            else
+                Severity = NotificationSeverity.Success,
+                Summary = "Success",
+                Detail = "Patient deactivated successfully!",
+                Duration = 4000
+            });
+            if (_grid != null)
             {
-                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to deactivate patient.");
+                await _grid.RefreshAsync();
             }
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to deactivate patient: " + ex.Message);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to deactivate patient: {ex.Message}",
+                Duration = 6000
+            });
         }
     }
 
-    private async Task ReactivateUser(User user)
+    private async Task ReactivateUserAsync(User user, CancellationToken ct)
     {
         if (user == null) return;
         
         try
         {
             user.IsActive = true;
-            var result = await Http.PutAsJsonAsync($"api/user/{user.Id}", user);
-            if (result.IsSuccessStatusCode)
+            var updatedUser = await PatientService.UpdateAsync(user.Id, new UpdatePatientRequest
             {
-                var updatedUser = await result.Content.ReadFromJsonAsync<User>();
-                if (updatedUser != null)
-                {
-                    var index = users.FindIndex(p => p.Id == updatedUser.Id);
-                    if (index >= 0)
-                    {
-                        users[index] = updatedUser;
-                    }
-                }
-                NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient reactivated successfully!");
-            }
-            else
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email,
+                DateOfBirth = user.DateOfBirth,
+                Gender = user.Gender,
+                MobilePhone = user.MobilePhone
+            }, ct);
+            
+            NotificationService.Notify(new NotificationMessage
             {
-                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reactivate patient.");
+                Severity = NotificationSeverity.Success,
+                Summary = "Success",
+                Detail = "Patient reactivated successfully!",
+                Duration = 4000
+            });
+            if (_grid != null)
+            {
+                await _grid.RefreshAsync();
             }
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reactivate patient: " + ex.Message);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to reactivate patient: {ex.Message}",
+                Duration = 6000
+            });
         }
     }
 
-    private async Task ShowAssignPatientModal(User user)
+    private async Task ShowAssignPatientModalAsync(User user, CancellationToken ct)
     {
         if (user == null) return;
         
@@ -1046,10 +1087,8 @@
             selectedUser = user;
             selectedDoctorId = 0;
             
-            // Load available doctors
-            availableDoctors = await Http.GetFromJsonAsync<List<User>>("api/doctor/doctors") ?? new();
+            availableDoctors = await PatientService.GetDoctorsAsync(ct);
             
-            // Remove current doctor from the list
             if (AuthService.CurrentUser?.Id != null)
             {
                 availableDoctors = availableDoctors.Where(d => d.Id != AuthService.CurrentUser.Id).ToList();
@@ -1059,7 +1098,13 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load doctors: " + ex.Message);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load doctors: {ex.Message}",
+                Duration = 6000
+            });
         }
     }
 
@@ -1089,13 +1134,23 @@
                 ToDoctorId = selectedDoctorId
             };
 
-            var response = await Http.PostAsJsonAsync("api/doctor/assign-patient", request);
+            await PatientService.AssignToDoctorAsync(request);
+            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
 
             if (response.IsSuccessStatusCode)
             {
-                NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient assigned to doctor successfully!");
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Patient assigned to doctor successfully!",
+                    Duration = 4000
+                });
                 CloseAssignModal();
-                await LoadPatients(); // Reload to refresh the list
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
             }
             else
             {
@@ -1150,16 +1205,23 @@
                 PatientId = selectedUser.Id
             };
 
-            var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/doctor/unassign-patient")
-            {
-                Content = JsonContent.Create(request)
-            });
+            await PatientService.UnassignFromDoctorAsync(request);
+            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
 
             if (response.IsSuccessStatusCode)
             {
-                NotificationService.Notify(NotificationSeverity.Success, "Success", "Patient unassigned from you successfully!");
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Patient unassigned from you successfully!",
+                    Duration = 4000
+                });
                 CloseUnassignConfirmation();
-                await LoadPatients(); // Reload to refresh the list
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
             }
             else
             {
@@ -1382,5 +1444,25 @@
         outline: none;
         border-color: #007bff;
         box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+
+    .patient-meta {
+        margin-bottom: 20px;
+    }
+
+    .meta-row {
+        display: flex;
+        margin-bottom: 10px;
+    }
+
+    .meta-label {
+        font-weight: 500;
+        color: #666;
+        min-width: 120px;
+    }
+
+    .meta-value {
+        color: #333;
+        margin-left: 10px;
     }
 </style>

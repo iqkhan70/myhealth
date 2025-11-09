@@ -1,9 +1,14 @@
 @page "/clinical-notes"
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
-@inject HttpClient Http
+@using SM_MentalHealthApp.Client.Components.Grid
+@using Radzen
+@using Radzen.Blazor
+@inject IClinicalNotesService ClinicalNotesService
 @inject IAuthService AuthService
 @inject IJSRuntime JSRuntime
+@inject NotificationService NotificationService
+@inject HttpClient Http
 
 <PageTitle>Clinical Notes</PageTitle>
 
@@ -16,109 +21,81 @@
                     Click="@(() => ShowAddNoteDialog())" />
             </div>
 
-
-            <!-- Clinical Notes Data Grid -->
-            <RadzenDataGrid Data="@clinicalNotes" TItem="ClinicalNoteDto" AllowPaging="true" PageSize="10"
-                AllowSorting="true" FilterMode="FilterMode.Advanced" ShowPagingSummary="true"
-                EmptyText="No clinical notes found" AllowFiltering="true"
-                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" ShowFilterRow="true"
-                ShowFilterRowButtons="true">
-
-                <Columns>
-                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="Title" Title="Title" Width="200px"
-                        Filterable="true">
-                        <Template Context="note">
-                            <div>
-                                <strong>@note.Title</strong>
-                                @if (note.IsConfidential)
-                                {
-                                    <i class="fas fa-lock text-warning ms-1" title="Confidential"></i>
-                                }
+            <SMDataGrid TItem="ClinicalNoteDto" 
+                       Columns="_columns" 
+                       Actions="_actions" 
+                       ActionsWidth="150px"
+                       LoadItems="LoadClinicalNotesAsync" 
+                       @ref="_grid" 
+                       PageSize="10"
+                       OnRowExpandCallback="@OnRowExpand">
+                <ExpansionTemplate Context="note">
+                    @{
+                        var expandedNote = expandedNotes.ContainsKey(note.Id) ? expandedNotes[note.Id] : note;
+                    }
+                    <div class="p-3">
+                        <div class="row">
+                            <div class="col-12">
+                                <h6>Clinical Note Details</h6>
+                                <div class="note-meta mb-3">
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Patient:</strong></span>
+                                        <span class="meta-value">@expandedNote.PatientName (ID: @expandedNote.PatientId)</span>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Doctor:</strong></span>
+                                        <span class="meta-value">@expandedNote.DoctorName (ID: @expandedNote.DoctorId)</span>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Type:</strong></span>
+                                        <span class="meta-value">
+                                            <span class="badge bg-primary">@expandedNote.NoteType</span>
+                                        </span>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Priority:</strong></span>
+                                        <span class="meta-value">
+                                            <span class="badge @GetPriorityClass(expandedNote.Priority)">@expandedNote.Priority</span>
+                                        </span>
+                                    </div>
+                                    <div class="meta-row">
+                                        <span class="meta-label"><strong>Created:</strong></span>
+                                        <span class="meta-value">@expandedNote.CreatedAt.ToString("MMM dd, yyyy HH:mm")</span>
+                                    </div>
+                                    @if (expandedNote.UpdatedAt.HasValue)
+                                    {
+                                        <div class="meta-row">
+                                            <span class="meta-label"><strong>Updated:</strong></span>
+                                            <span class="meta-value">@expandedNote.UpdatedAt.Value.ToString("MMM dd, yyyy HH:mm")</span>
+                                        </div>
+                                    }
+                                    @if (expandedNote.IsConfidential)
+                                    {
+                                        <div class="meta-row">
+                                            <span class="meta-label"><strong>Status:</strong></span>
+                                            <span class="meta-value">
+                                                <i class="fas fa-lock text-warning"></i> Confidential
+                                            </span>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(expandedNote.Tags))
+                                    {
+                                        <div class="meta-row">
+                                            <span class="meta-label"><strong>Tags:</strong></span>
+                                            <span class="meta-value">@expandedNote.Tags</span>
+                                        </div>
+                                    }
+                                </div>
+                                
+                                <div class="note-content-full">
+                                    <h6>Full Content:</h6>
+                                    <div class="content-text">@expandedNote.Content</div>
+                                </div>
                             </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="PatientName" Title="Patient" Width="150px"
-                        Filterable="true">
-                        <Template Context="note">
-                            <div>
-                                <strong>@note.PatientName</strong>
-                                <br />
-                                <small class="text-muted">ID: @note.PatientId</small>
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="Content" Title="Content" Width="300px"
-                        Filterable="true">
-                        <Template Context="note">
-                            <div class="note-content">
-                                @if (note.Content.Length > 100)
-                                {
-                                    @(note.Content.Substring(0, 100) + "...")
-                                }
-                                else
-                                {
-                                    @note.Content
-                                }
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="NoteType" Title="Type" Width="120px"
-                        Filterable="true">
-                        <Template Context="note">
-                            <span class="badge bg-primary">@note.NoteType</span>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="Priority" Title="Priority" Width="120px"
-                        Filterable="true">
-                        <Template Context="note">
-                            <span class="badge @GetPriorityClass(note.Priority)">@note.Priority</span>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="CreatedAt" Title="Created" Width="120px"
-                        Filterable="true">
-                        <Template Context="note">
-                            @note.CreatedAt.ToString("MMM dd, yyyy")
-                            <br />
-                            <small class="text-muted">@note.CreatedAt.ToString("HH:mm")</small>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="DoctorName" Title="Doctor" Width="150px"
-                        Filterable="true">
-                        <Template Context="note">
-                            <div>
-                                <strong>@note.DoctorName</strong>
-                                <br />
-                                <small class="text-muted">ID: @note.DoctorId</small>
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="ClinicalNoteDto" Property="Actions" Title="Actions" Width="150px"
-                        Sortable="false" Filterable="false">
-                        <Template Context="note">
-                            <div class="action-buttons">
-                                <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Info"
-                                    ButtonType="ButtonType.Button" Size="ButtonSize.Small"
-                                    Click="@(() => ViewNote(note))" Title="View" />
-
-                                <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Success"
-                                    ButtonType="ButtonType.Button" Size="ButtonSize.Small"
-                                    Click="@(() => EditNote(note))" Title="Edit" />
-
-                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger"
-                                    ButtonType="ButtonType.Button" Size="ButtonSize.Small"
-                                    Click="@(() => DeleteNote(note))" Title="Delete" />
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-                </Columns>
-            </RadzenDataGrid>
+                        </div>
+                    </div>
+                </ExpansionTemplate>
+            </SMDataGrid>
         </div>
     </div>
 </div>
@@ -251,9 +228,8 @@
     </div>
 }
 
-
 @code {
-    private List<ClinicalNoteDto> clinicalNotes = new();
+    private SMDataGrid<ClinicalNoteDto>? _grid;
     private List<User> patients = new();
     private List<string> noteTypes = new();
     private List<string> priorities = new();
@@ -264,24 +240,191 @@
     private ClinicalNoteDto? viewingNote;
     private CreateClinicalNoteRequest noteForm = new();
 
+    private List<SMDataGridColumn<ClinicalNoteDto>> _columns = new();
+    private List<SMDataGridActionButton<ClinicalNoteDto>> _actions = new();
+    private Dictionary<int, ClinicalNoteDto> expandedNotes = new Dictionary<int, ClinicalNoteDto>();
+
     protected override async Task OnInitializedAsync()
     {
-        await LoadData();
         await LoadPatients();
         await LoadNoteTypes();
         await LoadPriorities();
+
+        InitializeColumns();
+        InitializeActions();
     }
 
-    private async Task LoadData()
+    private void InitializeColumns()
+    {
+        _columns = new List<SMDataGridColumn<ClinicalNoteDto>>
+        {
+            new SMDataGridTemplateColumn<ClinicalNoteDto>
+            {
+                Property = nameof(ClinicalNoteDto.Title),
+                Title = "Title",
+                Width = "200px",
+                Template = note => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.OpenElement(1, "strong");
+                    builder.AddContent(2, note.Title);
+                    builder.CloseElement();
+                    if (note.IsConfidential)
+                    {
+                        builder.OpenElement(3, "i");
+                        builder.AddAttribute(4, "class", "fas fa-lock text-warning ms-1");
+                        builder.AddAttribute(5, "title", "Confidential");
+                        builder.CloseElement();
+                    }
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<ClinicalNoteDto>
+            {
+                Property = nameof(ClinicalNoteDto.PatientName),
+                Title = "Patient",
+                Width = "150px",
+                Template = note => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.OpenElement(1, "strong");
+                    builder.AddContent(2, note.PatientName);
+                    builder.CloseElement();
+                    builder.OpenElement(3, "br");
+                    builder.CloseElement();
+                    builder.OpenElement(4, "small");
+                    builder.AddAttribute(5, "class", "text-muted");
+                    builder.AddContent(6, $"ID: {note.PatientId}");
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<ClinicalNoteDto>
+            {
+                Property = nameof(ClinicalNoteDto.Content),
+                Title = "Content",
+                Width = "300px",
+                Template = note => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.AddAttribute(1, "class", "note-content");
+                    var content = note.Content.Length > 100 ? note.Content.Substring(0, 100) + "..." : note.Content;
+                    builder.AddContent(2, content);
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<ClinicalNoteDto>
+            {
+                Property = nameof(ClinicalNoteDto.NoteType),
+                Title = "Type",
+                Width = "120px",
+                Template = note => builder =>
+                {
+                    builder.OpenElement(0, "span");
+                    builder.AddAttribute(1, "class", "badge bg-primary");
+                    builder.AddContent(2, note.NoteType);
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<ClinicalNoteDto>
+            {
+                Property = nameof(ClinicalNoteDto.Priority),
+                Title = "Priority",
+                Width = "120px",
+                Template = note => builder =>
+                {
+                    builder.OpenElement(0, "span");
+                    builder.AddAttribute(1, "class", $"badge {GetPriorityClass(note.Priority)}");
+                    builder.AddContent(2, note.Priority);
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<ClinicalNoteDto>
+            {
+                Property = nameof(ClinicalNoteDto.CreatedAt),
+                Title = "Created",
+                Width = "120px",
+                Template = note => builder =>
+                {
+                    builder.AddContent(0, note.CreatedAt.ToString("MMM dd, yyyy"));
+                    builder.OpenElement(1, "br");
+                    builder.CloseElement();
+                    builder.OpenElement(2, "small");
+                    builder.AddAttribute(3, "class", "text-muted");
+                    builder.AddContent(4, note.CreatedAt.ToString("HH:mm"));
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<ClinicalNoteDto>
+            {
+                Property = nameof(ClinicalNoteDto.DoctorName),
+                Title = "Doctor",
+                Width = "150px",
+                Template = note => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.OpenElement(1, "strong");
+                    builder.AddContent(2, note.DoctorName);
+                    builder.CloseElement();
+                    builder.OpenElement(3, "br");
+                    builder.CloseElement();
+                    builder.OpenElement(4, "small");
+                    builder.AddAttribute(5, "class", "text-muted");
+                    builder.AddContent(6, $"ID: {note.DoctorId}");
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+            }
+        };
+    }
+
+    private void InitializeActions()
+    {
+        _actions.Add(new SMDataGridActionButton<ClinicalNoteDto>
+        {
+            Icon = "visibility",
+            ButtonStyle = ButtonStyle.Info,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            OnClick = async (row, ct) => await ViewNoteAsync(row, ct)
+        });
+
+        _actions.Add(new SMDataGridActionButton<ClinicalNoteDto>
+        {
+            Icon = "edit",
+            ButtonStyle = ButtonStyle.Success,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            OnClick = async (row, ct) => await EditNoteAsync(row, ct)
+        });
+
+        _actions.Add(new SMDataGridActionButton<ClinicalNoteDto>
+        {
+            Icon = "delete",
+            ButtonStyle = ButtonStyle.Danger,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            OnClick = async (row, ct) => await DeleteNoteAsync(row, ct)
+        });
+    }
+
+    private async Task<IEnumerable<ClinicalNoteDto>> LoadClinicalNotesAsync(CancellationToken ct)
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<ClinicalNoteDto>>("api/clinicalnotes");
-            clinicalNotes = response ?? new();
+            var notes = await ClinicalNotesService.ListAsync(null, null, ct);
+            return notes;
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("console.error", "Error loading clinical notes:", ex.Message);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load clinical notes: {ex.Message}",
+                Duration = 6000
+            });
+            return new List<ClinicalNoteDto>();
         }
     }
 
@@ -302,8 +445,7 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<string>>("api/clinicalnotes/note-types");
-            noteTypes = response ?? new();
+            noteTypes = await ClinicalNotesService.GetNoteTypesAsync();
         }
         catch (Exception ex)
         {
@@ -315,15 +457,13 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<string>>("api/clinicalnotes/priorities");
-            priorities = response ?? new();
+            priorities = await ClinicalNotesService.GetPrioritiesAsync();
         }
         catch (Exception ex)
         {
             await JSRuntime.InvokeVoidAsync("console.error", "Error loading priorities:", ex.Message);
         }
     }
-
 
     private void ShowAddNoteDialog()
     {
@@ -332,7 +472,7 @@
         showNoteDialog = true;
     }
 
-    private void EditNote(ClinicalNoteDto note)
+    private async Task EditNoteAsync(ClinicalNoteDto note, CancellationToken ct)
     {
         editingNote = note;
         noteForm = new CreateClinicalNoteRequest
@@ -348,10 +488,50 @@
         showNoteDialog = true;
     }
 
-    private void ViewNote(ClinicalNoteDto note)
+    private async Task OnRowExpand(ClinicalNoteDto note)
     {
-        viewingNote = note;
-        showViewDialog = true;
+        try
+        {
+            if (!expandedNotes.ContainsKey(note.Id))
+            {
+                var fullNote = await ClinicalNotesService.GetAsync(note.Id);
+                if (fullNote != null)
+                {
+                    expandedNotes[note.Id] = fullNote;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load note details: {ex.Message}",
+                Duration = 4000
+            });
+        }
+    }
+
+    private async Task ViewNoteAsync(ClinicalNoteDto note, CancellationToken ct)
+    {
+        try
+        {
+            var fullNote = await ClinicalNotesService.GetAsync(note.Id, ct);
+            viewingNote = fullNote ?? note;
+            showViewDialog = true;
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load note details: {ex.Message}",
+                Duration = 4000
+            });
+        }
     }
 
     private async Task SaveNote()
@@ -361,12 +541,19 @@
             if (editingNote?.Id == 0)
             {
                 // Create new note
-                var response = await Http.PostAsJsonAsync("api/clinicalnotes", noteForm);
-                if (response.IsSuccessStatusCode)
+                await ClinicalNotesService.CreateAsync(noteForm);
+                showNoteDialog = false;
+                if (_grid != null)
                 {
-                    await LoadData();
-                    showNoteDialog = false;
+                    await _grid.RefreshAsync();
                 }
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Clinical note created successfully!",
+                    Duration = 4000
+                });
             }
             else
             {
@@ -381,17 +568,30 @@
                     Tags = noteForm.Tags
                 };
 
-                var response = await Http.PutAsJsonAsync($"api/clinicalnotes/{editingNote.Id}", updateRequest);
-                if (response.IsSuccessStatusCode)
+                await ClinicalNotesService.UpdateAsync(editingNote!.Id, updateRequest);
+                showNoteDialog = false;
+                if (_grid != null)
                 {
-                    await LoadData();
-                    showNoteDialog = false;
+                    await _grid.RefreshAsync();
                 }
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Clinical note updated successfully!",
+                    Duration = 4000
+                });
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("console.error", "Error saving clinical note:", ex.Message);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to save clinical note: {ex.Message}",
+                Duration = 6000
+            });
         }
     }
 
@@ -408,25 +608,6 @@
         viewingNote = null;
     }
 
-    private async Task DeleteNote(ClinicalNoteDto note)
-    {
-        if (await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the note '{note.Title}'?"))
-        {
-            try
-            {
-                var response = await Http.DeleteAsync($"api/clinicalnotes/{note.Id}");
-                if (response.IsSuccessStatusCode)
-                {
-                    await LoadData();
-                }
-            }
-            catch (Exception ex)
-            {
-                await JSRuntime.InvokeVoidAsync("console.error", "Error deleting clinical note:", ex.Message);
-            }
-        }
-    }
-
     private string GetPriorityClass(string priority)
     {
         return priority.ToLower() switch
@@ -437,6 +618,41 @@
             "critical" => "bg-danger",
             _ => "bg-secondary"
         };
+    }
+
+    private async Task DeleteNoteAsync(ClinicalNoteDto note, CancellationToken ct)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"Are you sure you want to delete the note '{note.Title}'?");
+        
+        if (confirmed)
+        {
+            try
+            {
+                await ClinicalNotesService.DeleteAsync(note.Id, ct);
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Clinical note deleted successfully!",
+                    Duration = 4000
+                });
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Error",
+                    Detail = $"Failed to delete clinical note: {ex.Message}",
+                    Duration = 6000
+                });
+            }
+        }
     }
 }
 
@@ -508,7 +724,6 @@
     .close-btn:hover {
         color: #333;
     }
-
 
     .form-group {
         margin-bottom: 20px;
@@ -588,8 +803,6 @@
         gap: 0.5rem;
     }
 
-
-    /* View dialog specific styles */
     .note-details h4 {
         margin-top: 0;
         margin-bottom: 15px;
@@ -599,6 +812,16 @@
 
     .note-details h5 {
         margin-top: 15px;
+        margin-bottom: 10px;
+        color: #2c3e50;
+        font-size: 1.1em;
+    }
+
+    .note-content-full {
+        margin-top: 20px;
+    }
+
+    .note-content-full h6 {
         margin-bottom: 10px;
         color: #2c3e50;
         font-size: 1.1em;
