@@ -1,27 +1,12 @@
 using SM_MentalHealthApp.Shared;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
 namespace SM_MentalHealthApp.Client.Services;
 
-public class ClinicalNotesService : IClinicalNotesService
+public class ClinicalNotesService : BaseService, IClinicalNotesService
 {
-    private readonly HttpClient _http;
-    private readonly IAuthService _authService;
-
-    public ClinicalNotesService(HttpClient http, IAuthService authService)
+    public ClinicalNotesService(HttpClient http, IAuthService authService) : base(http, authService)
     {
-        _http = http;
-        _authService = authService;
-    }
-
-    private void AddAuthorizationHeader()
-    {
-        var token = _authService.Token;
-        if (!string.IsNullOrEmpty(token))
-        {
-            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        }
     }
 
     public async Task<List<ClinicalNoteDto>> ListAsync(int? patientId = null, int? doctorId = null, CancellationToken ct = default)

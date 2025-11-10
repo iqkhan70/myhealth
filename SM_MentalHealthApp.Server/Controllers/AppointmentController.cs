@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
+using SM_MentalHealthApp.Shared.Constants;
 using System.Security.Claims;
 
 namespace SM_MentalHealthApp.Server.Controllers
@@ -9,7 +10,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
-    public class AppointmentController : ControllerBase
+    public class AppointmentController : BaseController
     {
         private readonly IAppointmentService _appointmentService;
         private readonly ILogger<AppointmentController> _logger;
@@ -18,12 +19,6 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             _appointmentService = appointmentService;
             _logger = logger;
-        }
-
-        private int? GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirst("userId")?.Value;
-            return int.TryParse(userIdClaim, out int userId) ? userId : null;
         }
 
         /// <summary>
@@ -71,7 +66,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // If doctor, enforce restrictions:
                 // 1. Doctor can only create appointments for themselves
                 // 2. Patient must be assigned to them
-                if (roleId == 2) // Doctor role
+                if (roleId == Roles.Doctor)
                 {
                     if (request.DoctorId != userId.Value)
                     {
@@ -123,7 +118,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return Unauthorized("Invalid role");
 
                 // If doctor, check if this is their appointment
-                if (roleId == 2) // Doctor role
+                if (roleId == Roles.Doctor)
                 {
                     var existingAppointment = await _appointmentService.GetAppointmentByIdAsync(id);
                     if (existingAppointment == null)
@@ -183,7 +178,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return Unauthorized("Invalid role");
 
                 // If doctor, check if this is their appointment
-                if (roleId == 2) // Doctor role
+                if (roleId == Roles.Doctor)
                 {
                     var appointment = await _appointmentService.GetAppointmentByIdAsync(id);
                     if (appointment == null)

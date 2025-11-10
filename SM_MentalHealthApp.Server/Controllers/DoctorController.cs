@@ -120,7 +120,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             var token = authHeader.Substring("Bearer ".Length).Trim();
             var user = await _authService.GetUserFromTokenAsync(token);
 
-            if (user == null || user.RoleId != 2) // Role 2 = Doctor
+            if (user == null || user.RoleId != Shared.Constants.Roles.Doctor)
             {
                 return null;
             }

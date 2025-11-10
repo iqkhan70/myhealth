@@ -9,7 +9,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
-    public class ChatHistoryController : ControllerBase
+    public class ChatHistoryController : BaseController
     {
         private readonly IChatHistoryService _chatHistoryService;
         private readonly ILogger<ChatHistoryController> _logger;
@@ -26,12 +26,12 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                if (userId == 0)
+                if (!userId.HasValue)
                 {
                     return Unauthorized("User not authenticated");
                 }
 
-                var sessions = await _chatHistoryService.GetUserSessionsAsync(userId, patientId);
+                var sessions = await _chatHistoryService.GetUserSessionsAsync(userId.Value, patientId);
                 return Ok(sessions);
             }
             catch (Exception ex)
@@ -47,7 +47,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                if (userId == 0)
+                if (!userId.HasValue)
                 {
                     return Unauthorized("User not authenticated");
                 }
@@ -59,21 +59,21 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // Get user's role to determine access permissions
-                var userRole = GetCurrentUserRole();
+                var userRole = GetCurrentRoleId();
 
                 // Role-based access control
-                if (userRole == 1) // Patient
+                if (userRole == Shared.Constants.Roles.Patient)
                 {
                     // Patients can see their own direct conversations and when doctors chat about them
-                    if (session.UserId != userId && session.PatientId != userId)
+                    if (session.UserId != userId.Value && session.PatientId != userId.Value)
                     {
                         return StatusCode(403, "Access denied to this session");
                     }
                 }
-                else if (userRole == 2) // Doctor
+                else if (userRole == Shared.Constants.Roles.Doctor)
                 {
                     // Doctors can only see their own conversations
-                    if (session.UserId != userId)
+                    if (session.UserId != userId.Value)
                     {
                         return StatusCode(403, "Access denied to this session");
                     }
@@ -121,14 +121,14 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // Get user's role to determine access permissions
-                var userRole = GetCurrentUserRole();
+                var userRole = GetCurrentRoleId();
 
                 // Role-based access control for deletion
-                if (userRole == 1) // Patient
+                if (userRole == Shared.Constants.Roles.Patient)
                 {
                     // Patients can only delete their own direct conversations
                     // They cannot delete doctor's chats about them (even if they are the PatientId)
-                    if (session.UserId != userId)
+                    if (session.UserId != userId.Value)
                     {
                         return StatusCode(403, "Access denied: You can only delete your own conversations, not doctor's chats about you");
                     }
@@ -136,7 +136,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 else if (userRole == 2) // Doctor
                 {
                     // Doctors can only delete their own sessions
-                    if (session.UserId != userId)
+                    if (session.UserId != userId.Value)
                     {
                         return StatusCode(403, "Access denied to this session");
                     }
@@ -168,14 +168,14 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                if (userId == 0)
+                if (!userId.HasValue)
                 {
                     return Unauthorized("User not authenticated");
                 }
 
                 // Only allow admins to trigger cleanup
-                var userRole = GetCurrentUserRole();
-                if (userRole != 3) // Admin role
+                var userRole = GetCurrentRoleId();
+                if (userRole != Shared.Constants.Roles.Admin)
                 {
                     return StatusCode(403, "Only administrators can trigger cleanup");
                 }
@@ -190,19 +190,13 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-        private int GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirst("userId")?.Value;
-            return int.TryParse(userIdClaim, out var userId) ? userId : 0;
-        }
-
         [HttpPost("sessions/{sessionId}/generate-summary")]
         public async Task<ActionResult> GenerateSummary(int sessionId)
         {
             try
             {
                 var userId = GetCurrentUserId();
-                if (userId == 0)
+                if (!userId.HasValue)
                 {
                     return Unauthorized("User not authenticated");
                 }
@@ -215,12 +209,12 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // Check access permissions
-                var userRole = GetCurrentUserRole();
-                if (userRole == 1 && session.UserId != userId && session.PatientId != userId) // Patient
+                var userRole = GetCurrentRoleId();
+                if (userRole == Shared.Constants.Roles.Patient && session.UserId != userId.Value && session.PatientId != userId.Value)
                 {
                     return Forbid("Access denied to this session");
                 }
-                else if (userRole == 2 && session.UserId != userId) // Doctor
+                else if (userRole == Shared.Constants.Roles.Doctor && session.UserId != userId.Value)
                 {
                     return Forbid("Access denied to this session");
                 }
@@ -233,12 +227,6 @@ namespace SM_MentalHealthApp.Server.Controllers
                 _logger.LogError(ex, "Error generating summary for session {SessionId}", sessionId);
                 return StatusCode(500, "Internal server error");
             }
-        }
-
-        private int GetCurrentUserRole()
-        {
-            var roleIdClaim = User.FindFirst("roleId")?.Value;
-            return int.TryParse(roleIdClaim, out var roleId) ? roleId : 0;
         }
     }
 }

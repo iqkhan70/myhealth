@@ -9,7 +9,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
-    public class ContentAnalysisController : ControllerBase
+    public class ContentAnalysisController : BaseController
     {
         private readonly IContentAnalysisService _contentAnalysisService;
         private readonly IAuthService _authService;
@@ -122,13 +122,18 @@ namespace SM_MentalHealthApp.Server.Controllers
 
         private async Task<AuthUser?> GetCurrentUserAsync()
         {
-            var authHeader = Request.Headers["Authorization"].FirstOrDefault();
-            if (authHeader == null || !authHeader.StartsWith("Bearer "))
+            var userId = GetCurrentUserId();
+            if (!userId.HasValue)
             {
                 return null;
             }
 
-            var token = authHeader.Substring("Bearer ".Length).Trim();
+            var token = Request.Headers["Authorization"].FirstOrDefault()?.Substring("Bearer ".Length).Trim();
+            if (string.IsNullOrEmpty(token))
+            {
+                return null;
+            }
+
             return await _authService.GetUserFromTokenAsync(token);
         }
     }

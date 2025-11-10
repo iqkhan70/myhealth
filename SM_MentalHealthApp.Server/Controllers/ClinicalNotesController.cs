@@ -8,7 +8,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize(Roles = "Doctor")]
-    public class ClinicalNotesController : ControllerBase
+    public class ClinicalNotesController : BaseController
     {
         private readonly IClinicalNotesService _clinicalNotesService;
         private readonly IContentAnalysisService _contentAnalysisService;
@@ -248,15 +248,5 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-        /// <summary>
-        /// Get current user ID from JWT token
-        /// </summary>
-        private int? GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirst("userId");
-            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
-                return userId;
-            return null;
-        }
     }
 }

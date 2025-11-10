@@ -344,12 +344,12 @@ namespace SM_MentalHealthApp.Server.Services
                     .AsQueryable();
 
                 // Role-based session filtering
-                if (user.RoleId == 1) // Patient
+                if (user.RoleId == Shared.Constants.Roles.Patient)
                 {
                     // Patients see their own direct conversations and when doctors chat about them
                     query = query.Where(s => s.UserId == userId || s.PatientId == userId);
                 }
-                else if (user.RoleId == 2) // Doctor
+                else if (user.RoleId == Shared.Constants.Roles.Doctor)
                 {
                     // Doctors see their own conversations
                     query = query.Where(s => s.UserId == userId);
@@ -360,7 +360,7 @@ namespace SM_MentalHealthApp.Server.Services
                         query = query.Where(s => s.PatientId == patientId.Value);
                     }
                 }
-                else if (user.RoleId == 3) // Admin
+                else if (user.RoleId == Shared.Constants.Roles.Admin)
                 {
                     // Admins see all sessions
                     // If patientId is specified, filter to only sessions about that patient

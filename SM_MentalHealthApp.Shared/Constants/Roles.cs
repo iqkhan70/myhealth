@@ -1,0 +1,28 @@
+namespace SM_MentalHealthApp.Shared.Constants;
+
+/// <summary>
+/// Role constants for the application
+/// </summary>
+public static class Roles
+{
+    public const int Patient = 1;
+    public const int Doctor = 2;
+    public const int Admin = 3;
+    
+    /// <summary>
+    /// Gets the role name for a given role ID
+    /// </summary>
+    public static string GetRoleName(int roleId) => roleId switch
+    {
+        Patient => "Patient",
+        Doctor => "Doctor",
+        Admin => "Admin",
+        _ => "Unknown"
+    };
+    
+    /// <summary>
+    /// Checks if a role ID is valid
+    /// </summary>
+    public static bool IsValid(int roleId) => roleId >= Patient && roleId <= Admin;
+}
+

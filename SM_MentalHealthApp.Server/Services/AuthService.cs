@@ -185,8 +185,8 @@ namespace SM_MentalHealthApp.Server.Services
                     return null;
                 }
 
-                // Check if user is a patient (roleId = 1)
-                if (roleId == 1)
+                // Check if user is a patient
+                if (roleId == Shared.Constants.Roles.Patient)
                 {
                     var user = await _context.Users
                         .Include(u => u.Role)
@@ -207,8 +207,8 @@ namespace SM_MentalHealthApp.Server.Services
                         MustChangePassword = user.MustChangePassword
                     };
                 }
-                // Check if user is a doctor (roleId = 2) or admin (roleId = 3)
-                else if (roleId == 2 || roleId == 3)
+                // Check if user is a doctor or admin
+                else if (roleId == Shared.Constants.Roles.Doctor || roleId == Shared.Constants.Roles.Admin)
                 {
                     var user = await _context.Users
                         .Include(u => u.Role)

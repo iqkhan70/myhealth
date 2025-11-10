@@ -77,7 +77,7 @@ namespace SM_MentalHealthApp.Server.Services
             existingUser.LastLoginAt = DateTime.UtcNow;
 
             // Update role-specific fields if they exist
-            if (user.RoleId == 2) // Doctor
+            if (user.RoleId == Shared.Constants.Roles.Doctor)
             {
                 existingUser.Specialization = user.Specialization;
                 existingUser.LicenseNumber = user.LicenseNumber;
@@ -115,7 +115,7 @@ namespace SM_MentalHealthApp.Server.Services
                     Email = "demo@mentalhealth.app",
                     DateOfBirth = DateTime.UtcNow.AddYears(-30),
                     Gender = "Other",
-                    RoleId = 1, // Patient role
+                    RoleId = Shared.Constants.Roles.Patient,
                     CreatedAt = DateTime.UtcNow,
                     LastLoginAt = DateTime.UtcNow,
                     IsActive = true

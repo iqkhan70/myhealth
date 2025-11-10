@@ -9,7 +9,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
-    public class DocumentUploadController : ControllerBase
+    public class DocumentUploadController : BaseController
     {
         private readonly IDocumentUploadService _documentUploadService;
         private readonly ILogger<DocumentUploadController> _logger;
@@ -31,12 +31,12 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var currentUserId = GetCurrentUserId();
-                if (currentUserId == 0)
+                if (!currentUserId.HasValue)
                 {
                     return Unauthorized("Invalid user token");
                 }
 
-                var response = await _documentUploadService.InitiateUploadAsync(request, currentUserId);
+                var response = await _documentUploadService.InitiateUploadAsync(request, currentUserId.Value);
 
                 if (!response.Success)
                 {
@@ -65,7 +65,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var currentUserId = GetCurrentUserId();
-                if (currentUserId == 0)
+                if (!currentUserId.HasValue)
                 {
                     return Unauthorized("Invalid user token");
                 }
@@ -99,12 +99,12 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var currentUserId = GetCurrentUserId();
-                if (currentUserId == 0)
+                if (!currentUserId.HasValue)
                 {
                     return Unauthorized("Invalid user token");
                 }
 
-                var response = await _documentUploadService.GetDocumentsAsync(request, currentUserId);
+                var response = await _documentUploadService.GetDocumentsAsync(request, currentUserId.Value);
                 return Ok(response);
             }
             catch (Exception ex)
@@ -123,12 +123,12 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var currentUserId = GetCurrentUserId();
-                if (currentUserId == 0)
+                if (!currentUserId.HasValue)
                 {
                     return Unauthorized("Invalid user token");
                 }
 
-                var document = await _documentUploadService.GetDocumentAsync(contentId, currentUserId);
+                var document = await _documentUploadService.GetDocumentAsync(contentId, currentUserId.Value);
 
                 if (document == null)
                 {
@@ -153,12 +153,12 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var currentUserId = GetCurrentUserId();
-                if (currentUserId == 0)
+                if (!currentUserId.HasValue)
                 {
                     return Unauthorized("Invalid user token");
                 }
 
-                var downloadUrl = await _documentUploadService.GetDownloadUrlAsync(contentId, currentUserId);
+                var downloadUrl = await _documentUploadService.GetDownloadUrlAsync(contentId, currentUserId.Value);
 
                 if (string.IsNullOrEmpty(downloadUrl))
                 {
@@ -183,12 +183,12 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var currentUserId = GetCurrentUserId();
-                if (currentUserId == 0)
+                if (!currentUserId.HasValue)
                 {
                     return Unauthorized("Invalid user token");
                 }
 
-                var thumbnailUrl = await _documentUploadService.GetThumbnailUrlAsync(contentId, currentUserId);
+                var thumbnailUrl = await _documentUploadService.GetThumbnailUrlAsync(contentId, currentUserId.Value);
 
                 if (string.IsNullOrEmpty(thumbnailUrl))
                 {
@@ -213,12 +213,12 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var currentUserId = GetCurrentUserId();
-                if (currentUserId == 0)
+                if (!currentUserId.HasValue)
                 {
                     return Unauthorized("Invalid user token");
                 }
 
-                var response = await _documentUploadService.DeleteDocumentAsync(contentId, currentUserId);
+                var response = await _documentUploadService.DeleteDocumentAsync(contentId, currentUserId.Value);
 
                 if (!response.Success)
                 {
@@ -266,15 +266,6 @@ namespace SM_MentalHealthApp.Server.Controllers
             });
         }
 
-        private int GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (int.TryParse(userIdClaim, out int userId))
-            {
-                return userId;
-            }
-            return 0;
-        }
     }
 
     // Additional request/response models

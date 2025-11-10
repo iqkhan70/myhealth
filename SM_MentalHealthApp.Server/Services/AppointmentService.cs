@@ -53,7 +53,7 @@ namespace SM_MentalHealthApp.Server.Services
                 .Include(u => u.Role)
                 .FirstOrDefaultAsync(u => u.Id == request.DoctorId && u.IsActive);
 
-            if (doctor == null || doctor.RoleId != 2) // Role 2 = Doctor
+            if (doctor == null || doctor.RoleId != Shared.Constants.Roles.Doctor)
             {
                 result.IsValid = false;
                 result.ErrorMessage = "Invalid or inactive doctor.";
