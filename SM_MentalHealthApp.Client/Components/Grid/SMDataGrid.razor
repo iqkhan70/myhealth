@@ -114,7 +114,7 @@
                             <RadzenButton Icon="@action.Icon" ButtonStyle="@action.ButtonStyle" Variant="@action.Variant"
                                 Size="@action.Size" Disabled="@disabled"
                                 Click="@(async () => await InvokeRowActionAsync(action, row))" @onclick:stopPropagation="true"
-                                class="mr-1" />
+                                Title="@action.Tooltip" class="mr-1" />
                         }
                     </div>
                 </Template>

@@ -410,9 +410,6 @@
             </div>
             
             <div class="modal-body">
-                <div style="background: red; color: white; padding: 10px; margin-bottom: 10px;">
-                    DEBUG: Modal is showing! showUnassignConfirmation = @showUnassignConfirmation, selectedUser = @(selectedUser?.FirstName ?? "null")
-                </div>
                 <div class="confirmation-warning">
                     <div class="warning-icon">
                         <i class="fas fa-exclamation-triangle"></i>
@@ -604,6 +601,7 @@
             ButtonStyle = ButtonStyle.Info,
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
+            Tooltip = "View patient details",
             OnClick = async (row, ct) => await ViewUserDetailsAsync(row, ct)
         });
 
@@ -613,6 +611,7 @@
             ButtonStyle = ButtonStyle.Success,
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
+            Tooltip = "Edit patient information",
             OnClick = async (row, ct) => await EditUserAsync(row, ct)
         });
 
@@ -622,6 +621,7 @@
             ButtonStyle = ButtonStyle.Primary,
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
+            Tooltip = "View patient statistics",
             OnClick = async (row, ct) => await ViewUserStatsAsync(row, ct)
         });
 
@@ -631,6 +631,7 @@
             ButtonStyle = ButtonStyle.Warning,
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
+            Tooltip = "Perform AI health check analysis",
             OnClick = async (row, ct) => await PerformAiHealthCheckAsync(row, ct),
             Disabled = (user) => isPerformingHealthCheck
         });
@@ -638,13 +639,30 @@
         // Doctor-specific actions
         if (AuthService.CurrentUser?.RoleId == 2)
         {
+            // For doctors: allow reassigning to another doctor
             _actions.Add(new SMDataGridActionButton<User>
             {
                 Icon = "person_add",
                 ButtonStyle = ButtonStyle.Warning,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
+                Tooltip = "Assign patient to another doctor",
                 OnClick = async (row, ct) => await ShowAssignPatientModalAsync(row, ct)
+            });
+
+            // For doctors: allow unassigning from themselves
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "person_remove",
+                ButtonStyle = ButtonStyle.Danger,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Unassign patient from me",
+                OnClick = async (row, ct) => 
+                {
+                    ShowUnassignConfirmation(row);
+                    await Task.CompletedTask;
+                }
             });
         }
 
@@ -657,6 +675,7 @@
                 ButtonStyle = ButtonStyle.Danger,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
+                Tooltip = "Deactivate patient",
                 OnClick = async (row, ct) => await DeactivateUserAsync(row, ct),
                 Disabled = (user) => !user.IsActive
             });
@@ -667,6 +686,7 @@
                 ButtonStyle = ButtonStyle.Success,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
+                Tooltip = "Reactivate patient",
                 OnClick = async (row, ct) => await ReactivateUserAsync(row, ct),
                 Disabled = (user) => user.IsActive
             });
@@ -1037,13 +1057,14 @@
         selectedUser = null;
         selectedDoctorId = 0;
         availableDoctors.Clear();
+        StateHasChanged();
     }
 
     private async Task AssignPatientToDoctor()
     {
         if (selectedUser == null || selectedDoctorId == 0)
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Please select a doctor to assign the patient to.");
+            NotificationService.ShowWarning("Please select a doctor to assign the patient to.");
             return;
         }
 
@@ -1058,21 +1079,12 @@
             };
 
             await PatientService.AssignToDoctorAsync(request);
-            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
-
-            if (response.IsSuccessStatusCode)
+            
+            NotificationService.ShowSuccess("Patient assigned to doctor successfully!");
+            CloseAssignModal();
+            if (_grid != null)
             {
-                NotificationService.ShowSuccess("Patient assigned to doctor successfully!");
-                CloseAssignModal();
-                if (_grid != null)
-                {
-                    await _grid.RefreshAsync();
-                }
-            }
-            else
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                NotificationService.ShowError($"Failed to assign patient: {errorContent}");
+                await _grid.RefreshAsync();
             }
         }
         catch (Exception ex)
@@ -1089,14 +1101,8 @@
     {
         if (user == null) return;
         
-        Console.WriteLine($"ShowUnassignConfirmation called for user: {user.FirstName} {user.LastName}");
         selectedUser = user;
         showUnassignConfirmation = true;
-        Console.WriteLine($"showUnassignConfirmation set to: {showUnassignConfirmation}");
-        
-        // Add a simple test to see if this method is being called
-        NotificationService.ShowInfo($"ShowUnassignConfirmation called for {user.FirstName}");
-        
         StateHasChanged();
     }
 
@@ -1104,6 +1110,7 @@
     {
         showUnassignConfirmation = false;
         selectedUser = null;
+        StateHasChanged();
     }
 
     private async Task ConfirmUnassignPatient()
@@ -1123,21 +1130,12 @@
             };
 
             await PatientService.UnassignFromDoctorAsync(request);
-            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
-
-            if (response.IsSuccessStatusCode)
+            
+            NotificationService.ShowSuccess("Patient unassigned from you successfully!");
+            CloseUnassignConfirmation();
+            if (_grid != null)
             {
-                NotificationService.ShowSuccess("Patient unassigned from you successfully!");
-                CloseUnassignConfirmation();
-                if (_grid != null)
-                {
-                    await _grid.RefreshAsync();
-                }
-            }
-            else
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                NotificationService.ShowError($"Failed to unassign patient: {errorContent}");
+                await _grid.RefreshAsync();
             }
         }
         catch (Exception ex)

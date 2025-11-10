@@ -11,6 +11,7 @@ public class SMDataGridActionButton<TItem>
     public Func<TItem, CancellationToken, Task>? OnClick { get; set; }
     public string? Policy { get; set; }
     public Func<TItem, bool>? Disabled { get; set; }
+    public string? Tooltip { get; set; }
 
     public bool HasPolicy => !string.IsNullOrWhiteSpace(Policy);
 }
