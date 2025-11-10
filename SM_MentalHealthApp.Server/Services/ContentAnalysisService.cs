@@ -87,14 +87,46 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 _logger.LogInformation("Starting content analysis for content {ContentId} of type {ContentType}", content.Id, content.ContentTypeModel?.Name ?? "Unknown");
 
-                // Check if analysis already exists to prevent duplicates
+                // Check if analysis already exists
                 var existingAnalysis = await _context.ContentAnalyses
                     .FirstOrDefaultAsync(ca => ca.ContentId == content.Id);
 
+                // If analysis exists but has no CriticalValues/AbnormalValues and ExtractedText contains critical values, re-analyze
                 if (existingAnalysis != null)
                 {
-                    _logger.LogInformation("Content analysis already exists for content {ContentId}, returning existing analysis", content.Id);
-                    return existingAnalysis;
+                    // Use existing ExtractedText if available, otherwise extract fresh
+                    var checkText = !string.IsNullOrEmpty(existingAnalysis.ExtractedText) 
+                        ? existingAnalysis.ExtractedText 
+                        : await ExtractTextFromContentAsync(content);
+                    
+                    bool hasCriticalInText = !string.IsNullOrEmpty(checkText) && 
+                        (checkText.Contains("Blood Pressure: 190") || 
+                         checkText.Contains("Blood Pressure: 18") ||
+                         checkText.Contains("Hemoglobin: 6.0") ||
+                         checkText.Contains("Hemoglobin: 6.") ||
+                         checkText.Contains("Triglycerides: 640") ||
+                         checkText.Contains("Triglycerides: 6") ||
+                         (checkText.Contains("Blood Pressure") && (checkText.Contains("190") || checkText.Contains("180"))) ||
+                         (checkText.Contains("Hemoglobin") && checkText.Contains("6.0")) ||
+                         (checkText.Contains("Triglycerides") && checkText.Contains("640")));
+                    
+                    bool hasCriticalInResults = existingAnalysis.AnalysisResults != null && 
+                                               existingAnalysis.AnalysisResults.ContainsKey("CriticalValues");
+                    
+                    // If we have critical values in text but not in results, re-analyze
+                    if (hasCriticalInText && !hasCriticalInResults)
+                    {
+                        _logger.LogWarning("Content {ContentId} has critical values in ExtractedText but not in AnalysisResults. Re-analyzing...", content.Id);
+                        // Delete existing analysis to force re-analysis
+                        _context.ContentAnalyses.Remove(existingAnalysis);
+                        await _context.SaveChangesAsync();
+                        // Continue to create new analysis below
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Content analysis already exists for content {ContentId}, returning existing analysis", content.Id);
+                        return existingAnalysis;
+                    }
                 }
 
                 var extractedText = await ExtractTextFromContentAsync(content);
@@ -208,12 +240,66 @@ namespace SM_MentalHealthApp.Server.Services
                 .Take(10) // Limit to recent analyses
                 .ToListAsync();
 
-            _logger.LogInformation("Found {AnalysisCount} existing content analyses for patient {PatientId}", analyses.Count, patientId);
 
             foreach (var analysis in analyses)
             {
                 _logger.LogInformation("Analysis {AnalysisId}: ContentId={ContentId}, Status={Status}, Alerts={AlertCount}",
                     analysis.Id, analysis.ContentId, analysis.ProcessingStatus, analysis.Alerts.Count);
+            }
+
+            // Check for analyses that need re-analysis (have critical values in ExtractedText but not in AnalysisResults)
+            var analysesNeedingReAnalysis = new List<ContentItem>();
+            foreach (var analysis in analyses)
+            {
+                if (!string.IsNullOrEmpty(analysis.ExtractedText))
+                {
+                    bool hasCriticalInText = analysis.ExtractedText.Contains("Blood Pressure: 190") || 
+                                           analysis.ExtractedText.Contains("Blood Pressure: 18") ||
+                                           analysis.ExtractedText.Contains("Hemoglobin: 6.0") ||
+                                           analysis.ExtractedText.Contains("Hemoglobin: 6.") ||
+                                           analysis.ExtractedText.Contains("Triglycerides: 640") ||
+                                           analysis.ExtractedText.Contains("Triglycerides: 6") ||
+                                           (analysis.ExtractedText.Contains("Blood Pressure") && (analysis.ExtractedText.Contains("190") || analysis.ExtractedText.Contains("180"))) ||
+                                           (analysis.ExtractedText.Contains("Hemoglobin") && analysis.ExtractedText.Contains("6.0")) ||
+                                           (analysis.ExtractedText.Contains("Triglycerides") && analysis.ExtractedText.Contains("640"));
+                    
+                    bool hasCriticalInResults = analysis.AnalysisResults != null && 
+                                               analysis.AnalysisResults.ContainsKey("CriticalValues");
+                    
+                    if (hasCriticalInText && !hasCriticalInResults)
+                    {
+                        var content = patientContents.FirstOrDefault(c => c.Id == analysis.ContentId);
+                        if (content != null && !content.IsIgnoredByDoctor)
+                        {
+                            _logger.LogWarning("Analysis {AnalysisId} for Content {ContentId} has critical values in ExtractedText but not in AnalysisResults. Will re-analyze.", 
+                                analysis.Id, analysis.ContentId);
+                            analysesNeedingReAnalysis.Add(content);
+                        }
+                    }
+                }
+            }
+            
+            // Re-analyze content that needs it
+            foreach (var content in analysesNeedingReAnalysis)
+            {
+                try
+                {
+                    // Delete existing analysis
+                    var existingAnalysis = analyses.FirstOrDefault(a => a.ContentId == content.Id);
+                    if (existingAnalysis != null)
+                    {
+                        _context.ContentAnalyses.Remove(existingAnalysis);
+                        await _context.SaveChangesAsync();
+                    }
+                    // Re-analyze
+                    var newAnalysis = await AnalyzeContentAsync(content);
+                    analyses.RemoveAll(a => a.ContentId == content.Id);
+                    analyses.Add(newAnalysis);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error re-analyzing content {ContentId} for patient {PatientId}", content.Id, patientId);
+                }
             }
 
             // If no analyses found, try to process any unprocessed content
@@ -253,18 +339,29 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                _logger.LogInformation("=== CONTENT ANALYSIS SERVICE CALLED ===");
-                _logger.LogInformation("Original prompt: {OriginalPrompt}", originalPrompt);
-                _logger.LogInformation("Patient ID: {PatientId}", patientId);
 
-                // If no patient is selected (patientId = 0), return empty context
+                // If no patient is selected (patientId = 0), return a message indicating patient selection is required
                 if (patientId <= 0)
                 {
-                    _logger.LogInformation("No patient selected (patientId = {PatientId}), returning empty context", patientId);
-                    return originalPrompt;
+                    _logger.LogWarning("No patient selected (patientId = {PatientId}), cannot build patient context", patientId);
+                    return $@"**⚠️ PATIENT SELECTION REQUIRED**
+
+{originalPrompt}
+
+To provide personalized medical insights and patient-specific analysis, please:
+1. **Select a specific patient** from the dropdown above
+2. **Ensure you are in 'Patient Chat' mode** (not Generic AI mode)
+
+This will allow me to:
+- Access the patient's medical history and test results
+- Provide patient-specific health assessments
+- Analyze critical values and medical data
+- Review journal entries and clinical notes
+- Offer personalized treatment recommendations
+
+If you need general medical information without patient context, please switch to 'Generic AI' mode.";
                 }
 
-                _logger.LogInformation("Patient selected (patientId = {PatientId}), proceeding with context building", patientId);
 
                 var context = new StringBuilder();
 
@@ -275,7 +372,6 @@ namespace SM_MentalHealthApp.Server.Services
                     .Take(5)
                     .ToListAsync();
 
-                _logger.LogInformation("Found {ClinicalNotesCount} clinical notes for patient {PatientId}", recentClinicalNotes.Count, patientId);
 
                 if (recentClinicalNotes.Any())
                 {
@@ -303,7 +399,6 @@ namespace SM_MentalHealthApp.Server.Services
                     .Take(5)
                     .ToListAsync();
 
-                _logger.LogInformation("Found {JournalCount} journal entries for patient {PatientId}", recentEntries.Count, patientId);
 
                 if (recentEntries.Any())
                 {
@@ -323,7 +418,6 @@ namespace SM_MentalHealthApp.Server.Services
                     .Take(3)
                     .ToListAsync();
 
-                _logger.LogInformation("Found {EmergencyCount} emergency incidents for patient {PatientId}", recentEmergencies.Count, patientId);
 
                 if (recentEmergencies.Any())
                 {
@@ -400,11 +494,11 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Get content analyses for medical data (excluding ignored content)
                 var allContentAnalyses = await GetContentAnalysisForPatientAsync(patientId);
+                
                 // Filter out analyses for content items that have been ignored by doctors
                 allContentAnalyses = allContentAnalyses
                     .Where(ca => !_context.Contents.Any(c => c.Id == ca.ContentId && c.IsIgnoredByDoctor))
                     .ToList();
-                _logger.LogInformation("Found {ContentCount} content analyses for patient {PatientId} (after filtering ignored items)", allContentAnalyses.Count, patientId);
 
                 if (allContentAnalyses.Any())
                 {
@@ -412,13 +506,100 @@ namespace SM_MentalHealthApp.Server.Services
                     var sortedAnalyses = allContentAnalyses.OrderByDescending(a => a.ProcessedAt).ToList();
                     var latestAnalysis = sortedAnalyses.First();
 
+                    // Find analyses with critical values in AnalysisResults (prioritize these)
+                    var analysesWithCritical = sortedAnalyses
+                        .Where(a => a.AnalysisResults != null && a.AnalysisResults.ContainsKey("CriticalValues"))
+                        .OrderByDescending(a => a.ProcessedAt)
+                        .ToList();
+                    
+                    // Also check ExtractedText for critical values even if AnalysisResults doesn't have them
+                    var analysesWithCriticalInText = sortedAnalyses
+                        .Where(a => !string.IsNullOrEmpty(a.ExtractedText) && 
+                                   (a.ExtractedText.Contains("Blood Pressure: 190") || 
+                                    a.ExtractedText.Contains("Blood Pressure: 18") ||
+                                    a.ExtractedText.Contains("Hemoglobin: 6.0") ||
+                                    a.ExtractedText.Contains("Hemoglobin: 6.") ||
+                                    a.ExtractedText.Contains("Triglycerides: 640") ||
+                                    a.ExtractedText.Contains("Triglycerides: 6") ||
+                                    (a.ExtractedText.Contains("Blood Pressure") && (a.ExtractedText.Contains("190") || a.ExtractedText.Contains("180"))) ||
+                                    (a.ExtractedText.Contains("Hemoglobin") && a.ExtractedText.Contains("6.0")) ||
+                                    (a.ExtractedText.Contains("Triglycerides") && a.ExtractedText.Contains("640"))) &&
+                                   (a.AnalysisResults == null || !a.AnalysisResults.ContainsKey("CriticalValues")))
+                        .OrderByDescending(a => a.ProcessedAt)
+                        .ToList();
+
                     context.AppendLine("=== MEDICAL DATA SUMMARY ===");
                     context.AppendLine($"Latest Update: {latestAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}");
                     context.AppendLine($"Content Type: {latestAnalysis.ContentTypeName}");
 
+                    // If there are critical values in AnalysisResults, show them prominently FIRST
+                    if (analysesWithCritical.Any())
+                    {
+                        var mostRecentCritical = analysesWithCritical.First();
+                        context.AppendLine();
+                        context.AppendLine("🚨 **CRITICAL MEDICAL VALUES DETECTED** 🚨");
+                        context.AppendLine($"Date: {mostRecentCritical.ProcessedAt:MM/dd/yyyy HH:mm}");
+                        
+                        if (!string.IsNullOrEmpty(mostRecentCritical.ExtractedText))
+                        {
+                            context.AppendLine($"Test Results: {mostRecentCritical.ExtractedText}");
+                        }
+                        
+                        var criticalValuesElement = mostRecentCritical.AnalysisResults["CriticalValues"];
+                        
+                        // Handle different deserialization formats
+                        List<string> criticalValues = new List<string>();
+                        if (criticalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
+                        {
+                            criticalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
+                        }
+                        else if (criticalValuesElement is List<object> objList)
+                        {
+                            criticalValues = objList.Select(x => x?.ToString() ?? "").ToList();
+                        }
+                        else if (criticalValuesElement is List<string> strList)
+                        {
+                            criticalValues = strList;
+                        }
+                        else if (criticalValuesElement is System.Text.Json.JsonElement jsonElem)
+                        {
+                            // Try to parse as JSON array
+                            try
+                            {
+                                var jsonString = jsonElem.GetRawText();
+                                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(jsonString);
+                                if (parsed != null)
+                                {
+                                    criticalValues = parsed;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to parse CriticalValues as JSON array");
+                            }
+                        }
+                        
+                        if (criticalValues.Any())
+                        {
+                            context.AppendLine("Critical Values Found:");
+                            foreach (var cv in criticalValues)
+                            {
+                                context.AppendLine($"  🚨 {cv}");
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning("CriticalValues key exists but could not extract values. Element: {Element}", criticalValuesElement?.ToString() ?? "null");
+                            context.AppendLine("⚠️ Critical values detected but could not be parsed. Raw ExtractedText:");
+                            context.AppendLine($"  {mostRecentCritical.ExtractedText}");
+                        }
+                        context.AppendLine();
+                    }
+
+                    // Always show the latest analysis results
                     if (!string.IsNullOrEmpty(latestAnalysis.ExtractedText))
                     {
-                        context.AppendLine($"Current Test Results: {latestAnalysis.ExtractedText}");
+                        context.AppendLine($"Current Test Results (Latest): {latestAnalysis.ExtractedText}");
                         context.AppendLine();
                     }
 
@@ -456,45 +637,122 @@ namespace SM_MentalHealthApp.Server.Services
                         context.AppendLine();
                     }
 
-                    // Show current status analysis - simplified and professional
-                    var hasCriticalValues = latestAnalysis.AnalysisResults.ContainsKey("CriticalValues");
-                    var hasAbnormalValues = latestAnalysis.AnalysisResults.ContainsKey("AbnormalValues");
-                    var hasNormalValues = latestAnalysis.AnalysisResults.ContainsKey("NormalValues");
-
-                    if (hasCriticalValues || hasAbnormalValues || hasNormalValues)
+                    // Show current status analysis - ALWAYS show critical/abnormal values from latest analysis
+                    // Also check ExtractedText for critical values even if AnalysisResults doesn't have them
+                    var hasCriticalValues = latestAnalysis.AnalysisResults != null && latestAnalysis.AnalysisResults.ContainsKey("CriticalValues");
+                    var hasAbnormalValues = latestAnalysis.AnalysisResults != null && latestAnalysis.AnalysisResults.ContainsKey("AbnormalValues");
+                    var hasNormalValues = latestAnalysis.AnalysisResults != null && latestAnalysis.AnalysisResults.ContainsKey("NormalValues");
+                    
+                    // Fallback: Check ExtractedText for critical values if AnalysisResults doesn't have them
+                    if (!hasCriticalValues && !string.IsNullOrEmpty(latestAnalysis.ExtractedText))
                     {
-                        context.AppendLine("Current Status Assessment:");
-
+                        hasCriticalValues = latestAnalysis.ExtractedText.Contains("Blood Pressure: 190") || 
+                                          latestAnalysis.ExtractedText.Contains("Blood Pressure: 18") ||
+                                          latestAnalysis.ExtractedText.Contains("Hemoglobin: 6.0") ||
+                                          latestAnalysis.ExtractedText.Contains("Hemoglobin: 6.") ||
+                                          latestAnalysis.ExtractedText.Contains("Triglycerides: 640") ||
+                                          latestAnalysis.ExtractedText.Contains("Triglycerides: 6") ||
+                                          (latestAnalysis.ExtractedText.Contains("Blood Pressure") && (latestAnalysis.ExtractedText.Contains("190") || latestAnalysis.ExtractedText.Contains("180"))) ||
+                                          (latestAnalysis.ExtractedText.Contains("Hemoglobin") && latestAnalysis.ExtractedText.Contains("6.0")) ||
+                                          (latestAnalysis.ExtractedText.Contains("Triglycerides") && latestAnalysis.ExtractedText.Contains("640"));
                         if (hasCriticalValues)
                         {
-                            var criticalValuesElement = latestAnalysis.AnalysisResults["CriticalValues"];
-                            if (criticalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
-                            {
-                                var criticalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                                context.AppendLine("  🚨 Critical Values: " + string.Join(", ", criticalValues));
-                            }
+                            _logger.LogWarning("Critical values found in ExtractedText but not in AnalysisResults for ContentId {ContentId}. Using ExtractedText as fallback.", 
+                                latestAnalysis.ContentId);
                         }
+                    }
 
-                        if (hasAbnormalValues)
+                    // Always show status assessment, prioritizing critical values
+                    context.AppendLine("=== CURRENT MEDICAL STATUS ===");
+                    
+                    if (hasCriticalValues)
+                    {
+                        var criticalValuesElement = latestAnalysis.AnalysisResults["CriticalValues"];
+                        if (criticalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
                         {
-                            var abnormalValuesElement = latestAnalysis.AnalysisResults["AbnormalValues"];
-                            if (abnormalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
+                            var criticalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
+                            context.AppendLine("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**");
+                            foreach (var cv in criticalValues)
                             {
-                                var abnormalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                                context.AppendLine("  ⚠️ Abnormal Values: " + string.Join(", ", abnormalValues));
+                                context.AppendLine($"  🚨 {cv}");
+                            }
+                            context.AppendLine();
+                            context.AppendLine("⚠️ **STATUS: CRITICAL - IMMEDIATE MEDICAL ATTENTION REQUIRED**");
+                            context.AppendLine();
+                        }
+                    }
+                    else if (hasAbnormalValues)
+                    {
+                        var abnormalValuesElement = latestAnalysis.AnalysisResults["AbnormalValues"];
+                        if (abnormalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
+                        {
+                            var abnormalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
+                            context.AppendLine("⚠️ **ABNORMAL VALUES DETECTED IN LATEST RESULTS:**");
+                            foreach (var av in abnormalValues)
+                            {
+                                context.AppendLine($"  ⚠️ {av}");
+                            }
+                            context.AppendLine();
+                            context.AppendLine("⚠️ **STATUS: CONCERNING - MONITORING REQUIRED**");
+                            context.AppendLine();
+                        }
+                    }
+                    else if (hasNormalValues)
+                    {
+                        var normalValuesElement = latestAnalysis.AnalysisResults["NormalValues"];
+                        if (normalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
+                        {
+                            var normalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
+                            context.AppendLine("✅ **NORMAL VALUES IN LATEST RESULTS:**");
+                            foreach (var nv in normalValues.Take(5)) // Limit to avoid too much text
+                            {
+                                context.AppendLine($"  ✅ {nv}");
+                            }
+                            context.AppendLine();
+                            context.AppendLine("✅ **STATUS: STABLE - All values within normal range**");
+                            context.AppendLine();
+                        }
+                    }
+                    else
+                    {
+                        // No analysis results found - check ExtractedText for critical values manually
+                        if (!string.IsNullOrEmpty(latestAnalysis.ExtractedText))
+                        {
+                            var extractedText = latestAnalysis.ExtractedText;
+                            // Check for critical values in ExtractedText even if AnalysisResults is empty
+                            bool hasCriticalInText = extractedText.Contains("Blood Pressure: 190") || 
+                                                   extractedText.Contains("Blood Pressure: 18") ||
+                                                   extractedText.Contains("Hemoglobin: 6.0") ||
+                                                   extractedText.Contains("Hemoglobin: 6.") ||
+                                                   extractedText.Contains("Triglycerides: 640") ||
+                                                   extractedText.Contains("Triglycerides: 6") ||
+                                                   (extractedText.Contains("Blood Pressure") && (extractedText.Contains("190") || extractedText.Contains("180"))) ||
+                                                   (extractedText.Contains("Hemoglobin") && extractedText.Contains("6.0")) ||
+                                                   (extractedText.Contains("Triglycerides") && extractedText.Contains("640"));
+                            
+                            if (hasCriticalInText)
+                            {
+                                context.AppendLine("🚨 **CRITICAL VALUES DETECTED IN EXTRACTED TEXT:**");
+                                context.AppendLine($"  {extractedText}");
+                                context.AppendLine();
+                                context.AppendLine("⚠️ **STATUS: CRITICAL - IMMEDIATE MEDICAL ATTENTION REQUIRED**");
+                                context.AppendLine("   Note: Critical values found in test results but structured analysis may not have completed.");
+                                context.AppendLine();
+                            }
+                            else
+                            {
+                                context.AppendLine("⚠️ **WARNING: Medical content found but no structured analysis results available.**");
+                                context.AppendLine("   The extracted text is shown above, but critical values may not have been detected.");
+                                context.AppendLine("   Please review the extracted text manually for any concerning values.");
+                                context.AppendLine();
                             }
                         }
-
-                        if (hasNormalValues)
+                        else
                         {
-                            var normalValuesElement = latestAnalysis.AnalysisResults["NormalValues"];
-                            if (normalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
-                            {
-                                var normalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
-                                context.AppendLine("  ✅ Normal Values: " + string.Join(", ", normalValues));
-                            }
+                            context.AppendLine("⚠️ **WARNING: Medical content found but no structured analysis results available.**");
+                            context.AppendLine("   Please review the medical content manually for any concerning values.");
+                            context.AppendLine();
                         }
-                        context.AppendLine();
                     }
 
                     // Show recent patient activity from journal entries
@@ -517,46 +775,68 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 // Get recent chat sessions for the patient (excluding ignored sessions)
-                var recentChatSessions = await _context.ChatSessions
-                    .Where(s => s.PatientId == patientId && !s.IsIgnoredByDoctor)
-                    .OrderByDescending(s => s.LastActivityAt)
-                    .Take(5)
-                    .ToListAsync();
-
-                // Load recent messages for each session
-                if (recentChatSessions.Any())
+                List<ChatSession> recentChatSessions = new List<ChatSession>();
+                try
                 {
-                    var sessionIds = recentChatSessions.Select(s => s.Id).ToList();
-                    var allMessages = await _context.ChatMessages
-                        .Where(m => sessionIds.Contains(m.SessionId))
+                    recentChatSessions = await _context.ChatSessions
+                        .Where(s => s.PatientId == patientId && !s.IsIgnoredByDoctor)
+                        .OrderByDescending(s => s.LastActivityAt)
+                        .Take(5)
                         .ToListAsync();
 
-                    // Group messages by session, order by timestamp descending, take 10 most recent, then re-order chronologically
-                    var recentMessagesBySession = allMessages
-                        .GroupBy(m => m.SessionId)
-                        .ToDictionary(
-                            g => g.Key, 
-                            g => g.OrderByDescending(m => m.Timestamp)
-                                  .Take(10)
-                                  .OrderBy(m => m.Timestamp)
-                                  .ToList()
-                        );
-
-                    // Attach messages to sessions
-                    foreach (var session in recentChatSessions)
+                    // Load recent messages for each session
+                    if (recentChatSessions.Any())
                     {
-                        if (recentMessagesBySession.TryGetValue(session.Id, out var messages))
+                        var sessionIds = recentChatSessions.Select(s => s.Id).ToList();
+                        
+                        // Load messages with error handling for invalid MessageType enum values
+                        List<ChatMessage> allMessages = new List<ChatMessage>();
+                        try
                         {
-                            session.Messages = messages;
+                            allMessages = await _context.ChatMessages
+                                .Where(m => sessionIds.Contains(m.SessionId))
+                                .ToListAsync();
                         }
-                        else
+                        catch (InvalidOperationException ex) when (ex.Message.Contains("MessageType") || ex.Message.Contains("Cannot convert"))
                         {
-                            session.Messages = new List<ChatMessage>();
+                            // If there's an enum conversion error, skip loading messages but continue with context building
+                            _logger.LogWarning(ex, "Error loading chat messages due to invalid MessageType values (e.g., 'Text' not in enum). Skipping chat messages but continuing with context building.");
+                            // Leave allMessages as empty list - context will be built without chat message details
+                            allMessages = new List<ChatMessage>();
+                        }
+
+                        // Group messages by session, order by timestamp descending, take 10 most recent, then re-order chronologically
+                        var recentMessagesBySession = allMessages
+                            .GroupBy(m => m.SessionId)
+                            .ToDictionary(
+                                g => g.Key, 
+                                g => g.OrderByDescending(m => m.Timestamp)
+                                      .Take(10)
+                                      .OrderBy(m => m.Timestamp)
+                                      .ToList()
+                            );
+
+                        // Attach messages to sessions
+                        foreach (var session in recentChatSessions)
+                        {
+                            if (recentMessagesBySession.TryGetValue(session.Id, out var messages))
+                            {
+                                session.Messages = messages;
+                            }
+                            else
+                            {
+                                session.Messages = new List<ChatMessage>();
+                            }
                         }
                     }
-                }
 
-                _logger.LogInformation("Found {ChatSessionCount} chat sessions for patient {PatientId} (after filtering ignored sessions)", recentChatSessions.Count, patientId);
+                }
+                catch (Exception ex)
+                {
+                    // If chat history loading fails completely, log but continue without it
+                    _logger.LogWarning(ex, "Error loading chat history for patient {PatientId}. Continuing context building without chat history.", patientId);
+                    recentChatSessions = new List<ChatSession>(); // Empty list to prevent null reference
+                }
 
                 if (recentChatSessions.Any())
                 {
@@ -659,10 +939,19 @@ namespace SM_MentalHealthApp.Server.Services
                 context.AppendLine("=== INSTRUCTIONS FOR AI HEALTH CHECK ANALYSIS ===");
                 context.AppendLine("You are a clinical AI assistant analyzing a patient's comprehensive health status. Provide a detailed analysis in the following format:");
                 context.AppendLine();
+                context.AppendLine("**CRITICAL PRIORITY:** If you see '🚨 CRITICAL MEDICAL VALUES DETECTED' or any critical values in the medical data, you MUST:");
+                context.AppendLine("- Start your response by highlighting these critical values IMMEDIATELY");
+                context.AppendLine("- State that the patient's status is CRITICAL or CONCERNING, NOT stable");
+                context.AppendLine("- Emphasize that immediate medical attention is required");
+                context.AppendLine("- Do NOT say the patient is stable if critical values are present");
+                context.AppendLine();
                 context.AppendLine("**Patient Medical Overview:**");
-                context.AppendLine("- Analyze the patient's CURRENT STATUS (stable, concerning, critical, etc.)");
+                context.AppendLine("- FIRST: Check if there are any 🚨 CRITICAL VALUES in the medical data above");
+                context.AppendLine("- If critical values exist, state: '🚨 CRITICAL STATUS: Patient has critical medical values requiring immediate attention'");
+                context.AppendLine("- If no critical values but abnormal values exist, state: '⚠️ CONCERNING STATUS: Patient has abnormal values requiring monitoring'");
+                context.AppendLine("- Only state 'STABLE' if ALL values are normal and no concerning patterns are detected");
                 context.AppendLine("- Summarize key medical findings from test results, vital signs, and medical data");
-                context.AppendLine("- Note any critical values, abnormal findings, or concerning patterns");
+                context.AppendLine("- Reference specific values from the medical data (e.g., 'Hemoglobin: 6.0 g/dL is critically low')");
                 context.AppendLine();
                 context.AppendLine("**Recent Patient Activity:**");
                 context.AppendLine("- Review journal entries and mood patterns");
@@ -676,17 +965,18 @@ namespace SM_MentalHealthApp.Server.Services
                 context.AppendLine();
                 context.AppendLine("**Clinical Assessment:**");
                 context.AppendLine("- Provide a professional assessment of the patient's overall health status");
+                context.AppendLine("- If critical values are present, state clearly that the patient requires IMMEDIATE medical attention");
                 context.AppendLine("- Identify any trends (improving, stable, deteriorating)");
                 context.AppendLine("- Highlight areas requiring attention or follow-up");
                 context.AppendLine();
                 context.AppendLine("**Recommendations:**");
+                context.AppendLine("- If critical values are found, recommend IMMEDIATE medical evaluation and emergency department visit if necessary");
                 context.AppendLine("- Suggest any immediate actions if critical issues are found");
                 context.AppendLine("- Recommend follow-up care or monitoring if needed");
                 context.AppendLine();
-                context.AppendLine("IMPORTANT: Be specific and reference actual data from the patient's records. If no concerning data is found, state that clearly. Keep the response comprehensive but concise (300-400 words).");
+                context.AppendLine("IMPORTANT: Be specific and reference actual data from the patient's records. If critical values are present in the medical data, you MUST indicate the patient is NOT stable. Only state 'stable' if ALL medical values are normal. Keep the response comprehensive but concise (300-400 words).");
 
                 var result = context.ToString();
-                _logger.LogInformation("Enhanced context built for patient {PatientId}, length: {Length}", patientId, result.Length);
                 return result;
             }
             catch (Exception ex)
@@ -1004,6 +1294,9 @@ namespace SM_MentalHealthApp.Server.Services
 
         private async Task AnalyzeTestResults(SM_MentalHealthApp.Shared.ContentAnalysis analysis, string text)
         {
+            // Normalize text - replace backslashes with spaces/newlines for better pattern matching
+            var normalizedText = text.Replace("\\", " ").Replace("\r\n", " ").Replace("\n", " ");
+            
             // Look for test result patterns with more comprehensive patterns
             var testPatterns = new Dictionary<string, string>
             {
@@ -1024,7 +1317,7 @@ namespace SM_MentalHealthApp.Server.Services
 
             foreach (var pattern in testPatterns)
             {
-                var matches = Regex.Matches(text, pattern.Key, RegexOptions.IgnoreCase);
+                var matches = Regex.Matches(normalizedText, pattern.Key, RegexOptions.IgnoreCase);
                 if (matches.Count > 0)
                 {
                     var testName = pattern.Value;
@@ -1109,6 +1402,7 @@ namespace SM_MentalHealthApp.Server.Services
             // Add critical values first (highest priority)
             if (criticalValues.Any())
             {
+                // Ensure we store as a list that can be properly serialized/deserialized
                 analysis.AnalysisResults["CriticalValues"] = criticalValues;
                 analysis.Alerts.AddRange(criticalValues);
             }

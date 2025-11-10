@@ -213,8 +213,11 @@
                     builder.OpenElement(0, "div");
                     builder.AddAttribute(1, "class", "incident-type-cell");
                     builder.OpenElement(2, "span");
-                    builder.AddAttribute(3, "class", "type-icon");
-                    builder.AddContent(4, GetTypeIcon(incident.EmergencyType));
+                    var iconClass = (incident.EmergencyType == "Emergency" || string.IsNullOrEmpty(incident.EmergencyType)) 
+                        ? "type-icon emergency-icon" 
+                        : "type-icon";
+                    builder.AddAttribute(3, "class", iconClass);
+                    builder.AddMarkupContent(4, GetTypeIcon(incident.EmergencyType));
                     builder.CloseElement();
                     builder.OpenElement(5, "span");
                     builder.AddAttribute(6, "class", "type-name");
@@ -606,6 +609,11 @@
 
     .type-icon {
         font-size: 1.2em;
+    }
+
+    .type-icon.emergency-icon {
+        color: #e74c3c;
+        filter: drop-shadow(0 0 2px rgba(231, 76, 60, 0.5));
     }
 
     .type-name {

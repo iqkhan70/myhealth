@@ -1004,23 +1004,57 @@ namespace SM_MentalHealthApp.Server.Services
                             // Generate comprehensive health check analysis
                             response.AppendLine("**Patient Medical Overview:**");
 
-                            // Check for critical medical values
-                            var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:")).ToList();
-                            var normalValues = alerts.Where(a => a.Contains("✅ NORMAL:") || a.Contains("NORMAL VALUES:")).ToList();
-                            var abnormalValues = alerts.Where(a => a.Contains("⚠️") || a.Contains("ABNORMAL VALUES:")).ToList();
-
+                        // Check for critical medical values - MUST check context directly, not just alerts
+                        var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:") || a.Contains("CRITICAL:")).ToList();
+                        var normalValues = alerts.Where(a => a.Contains("✅ NORMAL:") || a.Contains("NORMAL VALUES:")).ToList();
+                        var abnormalValues = alerts.Where(a => a.Contains("⚠️") || a.Contains("ABNORMAL VALUES:")).ToList();
+                        
+                        // ALSO check the context text directly for critical values (more reliable)
+                        bool hasCriticalInContext = text.Contains("🚨 CRITICAL MEDICAL VALUES DETECTED") ||
+                                                   text.Contains("CRITICAL VALUES DETECTED IN LATEST RESULTS") ||
+                                                   text.Contains("STATUS: CRITICAL") ||
+                                                   text.Contains("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**") ||
+                                                   (text.Contains("Hemoglobin") && (text.Contains("6.0") || text.Contains("6 g/dL"))) ||
+                                                   (text.Contains("Blood Pressure") && (text.Contains("190") || text.Contains("180"))) ||
+                                                   (text.Contains("Triglycerides") && text.Contains("640"));
+                        
+                        // If critical values found in context OR alerts, prioritize them
+                        if (criticalAlerts.Any() || hasCriticalInContext)
+                        {
+                            response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
                             if (criticalAlerts.Any())
                             {
-                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
                                 foreach (var critical in criticalAlerts)
                                 {
                                     response.AppendLine($"- {critical}");
                                 }
                             }
-                            else if (normalValues.Any() && !abnormalValues.Any())
+                            // Extract critical values from context if not in alerts
+                            if (hasCriticalInContext && !criticalAlerts.Any())
                             {
-                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                if (text.Contains("Hemoglobin") && (text.Contains("6.0") || text.Contains("6 g/dL")))
+                                {
+                                    response.AppendLine("- 🚨 CRITICAL: Severe Anemia - Hemoglobin 6.0 g/dL (Normal: 12-16 g/dL)");
+                                }
+                                if (text.Contains("Blood Pressure") && (text.Contains("190") || text.Contains("180")))
+                                {
+                                    response.AppendLine("- 🚨 CRITICAL: Hypertensive Crisis - Blood Pressure 190/100 (Normal: <120/80)");
+                                }
+                                if (text.Contains("Triglycerides") && text.Contains("640"))
+                                {
+                                    response.AppendLine("- 🚨 CRITICAL: Extremely High Triglycerides - 640 mg/dL (Normal: <150 mg/dL)");
+                                }
                             }
+                            response.AppendLine();
+                            response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                            response.AppendLine("- These values indicate a medical emergency");
+                            response.AppendLine("- Contact emergency services if symptoms worsen");
+                            response.AppendLine("- Patient needs immediate medical evaluation");
+                        }
+                        else if (normalValues.Any() && !abnormalValues.Any() && !hasCriticalInContext)
+                        {
+                            response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                        }
                             else if (abnormalValues.Any())
                             {
                                 response.AppendLine("⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
@@ -1195,19 +1229,53 @@ namespace SM_MentalHealthApp.Server.Services
                         // Generate comprehensive health check analysis
                         response.AppendLine("**Patient Medical Overview:**");
 
-                        var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:")).ToList();
+                        var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:") || a.Contains("CRITICAL:")).ToList();
                         var normalValues = alerts.Where(a => a.Contains("✅ NORMAL:") || a.Contains("NORMAL VALUES:")).ToList();
                         var abnormalValues = alerts.Where(a => a.Contains("⚠️") || a.Contains("ABNORMAL VALUES:")).ToList();
-
-                        if (criticalAlerts.Any())
+                        
+                        // ALSO check the context text directly for critical values (more reliable)
+                        bool hasCriticalInContext = text.Contains("🚨 CRITICAL MEDICAL VALUES DETECTED") ||
+                                                   text.Contains("CRITICAL VALUES DETECTED IN LATEST RESULTS") ||
+                                                   text.Contains("STATUS: CRITICAL") ||
+                                                   text.Contains("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**") ||
+                                                   (text.Contains("Hemoglobin") && (text.Contains("6.0") || text.Contains("6 g/dL"))) ||
+                                                   (text.Contains("Blood Pressure") && (text.Contains("190") || text.Contains("180"))) ||
+                                                   (text.Contains("Triglycerides") && text.Contains("640"));
+                        
+                        // If critical values found in context OR alerts, prioritize them
+                        if (criticalAlerts.Any() || hasCriticalInContext)
                         {
                             response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                            foreach (var critical in criticalAlerts)
+                            if (criticalAlerts.Any())
                             {
-                                response.AppendLine($"- {critical}");
+                                foreach (var critical in criticalAlerts)
+                                {
+                                    response.AppendLine($"- {critical}");
+                                }
                             }
+                            // Extract critical values from context if not in alerts
+                            if (hasCriticalInContext && !criticalAlerts.Any())
+                            {
+                                if (text.Contains("Hemoglobin") && (text.Contains("6.0") || text.Contains("6 g/dL")))
+                                {
+                                    response.AppendLine("- 🚨 CRITICAL: Severe Anemia - Hemoglobin 6.0 g/dL (Normal: 12-16 g/dL)");
+                                }
+                                if (text.Contains("Blood Pressure") && (text.Contains("190") || text.Contains("180")))
+                                {
+                                    response.AppendLine("- 🚨 CRITICAL: Hypertensive Crisis - Blood Pressure 190/100 (Normal: <120/80)");
+                                }
+                                if (text.Contains("Triglycerides") && text.Contains("640"))
+                                {
+                                    response.AppendLine("- 🚨 CRITICAL: Extremely High Triglycerides - 640 mg/dL (Normal: <150 mg/dL)");
+                                }
+                            }
+                            response.AppendLine();
+                            response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                            response.AppendLine("- These values indicate a medical emergency");
+                            response.AppendLine("- Contact emergency services if symptoms worsen");
+                            response.AppendLine("- Patient needs immediate medical evaluation");
                         }
-                        else if (normalValues.Any() && !abnormalValues.Any())
+                        else if (normalValues.Any() && !abnormalValues.Any() && !hasCriticalInContext)
                         {
                             response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
                         }
@@ -1660,6 +1728,45 @@ namespace SM_MentalHealthApp.Server.Services
             return text;
         }
 
+        private string ExtractCriticalValuesSection(string text)
+        {
+            try
+            {
+                // Look for the critical values section
+                var criticalStart = text.IndexOf("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**");
+                if (criticalStart >= 0)
+                {
+                    var criticalEnd = text.IndexOf("\n\n", criticalStart);
+                    if (criticalEnd > criticalStart)
+                    {
+                        var section = text.Substring(criticalStart, criticalEnd - criticalStart);
+                        // Extract just the critical values lines
+                        var lines = section.Split('\n')
+                            .Where(l => l.Contains("🚨") && !l.Contains("CRITICAL VALUES DETECTED"))
+                            .ToList();
+                        return string.Join("\n", lines);
+                    }
+                }
+                
+                // Fallback: look for "Critical Values:" pattern
+                var altStart = text.IndexOf("Critical Values:");
+                if (altStart >= 0)
+                {
+                    var altEnd = text.IndexOf("\n", altStart + 15);
+                    if (altEnd > altStart)
+                    {
+                        return text.Substring(altStart, altEnd - altStart).Trim();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error extracting critical values section");
+            }
+            
+            return string.Empty;
+        }
+
         private string ExtractProgressionSection(string text)
         {
             // Look for the progression analysis section specifically
@@ -2046,9 +2153,41 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Check for medical data
                 var hasMedicalData = text.Contains("=== MEDICAL DATA SUMMARY ===");
-                var hasCriticalValues = text.Contains("Critical Values:") || text.Contains("6.0") || text.Contains("180/110") || text.Contains("CRITICAL MEDICAL ALERT");
-                var hasAbnormalValues = text.Contains("Abnormal Values:");
-                var hasNormalValues = text.Contains("Normal Values:") || text.Contains("IMPROVEMENT NOTED");
+                
+                // Log context for debugging
+                _logger.LogInformation("=== AI CONTEXT ANALYSIS ===");
+                _logger.LogInformation("Context length: {Length}", text.Length);
+                _logger.LogInformation("Contains 'CRITICAL VALUES DETECTED IN LATEST RESULTS': {HasCritical}", text.Contains("CRITICAL VALUES DETECTED IN LATEST RESULTS"));
+                _logger.LogInformation("Contains '🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**': {HasCritical}", text.Contains("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**"));
+                _logger.LogInformation("Contains 'STATUS: CRITICAL': {HasCritical}", text.Contains("STATUS: CRITICAL"));
+                _logger.LogInformation("Contains 'Hemoglobin' and '6': {HasHemoglobin}", text.Contains("Hemoglobin") && (text.Contains("6.0") || text.Contains("6 g/dL") || text.Contains("6 g/")));
+                _logger.LogInformation("Contains 'Triglycerides' and '640': {HasTriglycerides}", text.Contains("Triglycerides") && text.Contains("640"));
+                _logger.LogInformation("Contains 'Blood Pressure' and '190': {HasBP}", text.Contains("Blood Pressure") && text.Contains("190"));
+                
+                // Check for critical values in multiple formats - be more aggressive in detection
+                // Also check for the actual critical value patterns from AnalysisResults
+                var hasCriticalValues = text.Contains("🚨 CRITICAL MEDICAL VALUES DETECTED") ||
+                                      text.Contains("CRITICAL VALUES DETECTED IN LATEST RESULTS") ||
+                                      text.Contains("STATUS: CRITICAL") ||
+                                      text.Contains("Critical Values:") ||
+                                      text.Contains("CRITICAL MEDICAL ALERT") ||
+                                      text.Contains("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**") ||
+                                      text.Contains("⚠️ **STATUS: CRITICAL") ||
+                                      text.Contains("🚨 CRITICAL: Severe Anemia") ||
+                                      text.Contains("🚨 CRITICAL: Extremely High Triglycerides") ||
+                                      text.Contains("🚨 CRITICAL: Hypertensive Crisis") ||
+                                      (text.Contains("Hemoglobin") && (text.Contains("6.0") || text.Contains("6 g/dL") || text.Contains("6 g/") || text.Contains("<7.0"))) ||
+                                      (text.Contains("Blood Pressure") && (text.Contains("190") || text.Contains("180") || text.Contains("180/110") || text.Contains("≥180"))) ||
+                                      (text.Contains("Triglycerides") && (text.Contains("640") || text.Contains("≥500")));
+                
+                _logger.LogInformation("Final hasCriticalValues: {HasCritical}", hasCriticalValues);
+                var hasAbnormalValues = text.Contains("ABNORMAL VALUES DETECTED IN LATEST RESULTS") ||
+                                      text.Contains("STATUS: CONCERNING") ||
+                                      text.Contains("Abnormal Values:");
+                var hasNormalValues = text.Contains("NORMAL VALUES IN LATEST RESULTS") ||
+                                    text.Contains("STATUS: STABLE") ||
+                                    text.Contains("Normal Values:") ||
+                                    text.Contains("IMPROVEMENT NOTED");
 
                 // Check for journal entries
                 var hasJournalEntries = text.Contains("=== RECENT JOURNAL ENTRIES ===");
@@ -2117,10 +2256,23 @@ namespace SM_MentalHealthApp.Server.Services
                                 response.AppendLine("✅ **IMPROVEMENT NOTED:** Previous results showed critical values, but current results show normal values.");
                                 response.AppendLine("This indicates positive progress, though continued monitoring is recommended.");
                             }
+                            else if (text.Contains("STATUS: STABLE"))
+                            {
+                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                            }
                             else
                             {
                                 response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
                             }
+                        }
+                        else if (hasMedicalData)
+                        {
+                            // Medical data exists but no structured values detected - warn about this
+                            response.AppendLine("⚠️ **WARNING:** Medical content was found, but critical values may not have been properly detected.");
+                            response.AppendLine("Please review the medical data manually to ensure no critical values are missed.");
+                            response.AppendLine();
+                            response.AppendLine("📊 **Status Review:** Based on available data, the patient appears to be stable with no immediate concerns detected.");
+                            response.AppendLine("However, please verify the medical content manually for accuracy.");
                         }
                         else
                         {

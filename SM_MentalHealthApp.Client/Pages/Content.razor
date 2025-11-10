@@ -146,12 +146,6 @@
                             Sortable="false" Filterable="false">
                             <Template Context="content">
                                 <div class="action-buttons">
-                                    @if (content.IsIgnoredByDoctor)
-                                    {
-                                        <span class="badge bg-warning text-dark me-2" style="font-size: 0.75rem;" title="Ignored on: @(content.IgnoredAt?.ToString("MM/dd/yyyy HH:mm") ?? "Unknown")">
-                                            🚫 Ignored
-                                        </span>
-                                    }
                                     <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Info"
                                         ButtonType="ButtonType.Button" Size="ButtonSize.Small"
                                         Click="@(async () => await ViewContent(content))" Title="View/Download" />

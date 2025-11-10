@@ -11,7 +11,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     [ApiController]
     [ApiVersion("1.0")]
     [Route("api/[controller]")]
-    public class ContentController : ControllerBase
+    public class ContentController : BaseController
     {
         private readonly ContentService _contentService;
         private readonly ILogger<ContentController> _logger;
@@ -356,6 +356,45 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
+        /// Re-analyze a specific content item (Admin/Doctor only)
+        /// Useful when content has critical values in ExtractedText but not in AnalysisResults
+        /// </summary>
+        [HttpPost("{id}/re-analyze")]
+        [Authorize(Roles = "Admin,Doctor")]
+        public async Task<ActionResult> ReAnalyzeContent(int id)
+        {
+            try
+            {
+                _logger.LogInformation("Re-analyzing content {ContentId}", id);
+                var content = await _context.Contents.FindAsync(id);
+                if (content == null)
+                {
+                    return NotFound("Content not found");
+                }
+
+                // Delete existing analysis to force re-analysis
+                var existingAnalysis = await _context.ContentAnalyses
+                    .FirstOrDefaultAsync(ca => ca.ContentId == id);
+                if (existingAnalysis != null)
+                {
+                    _context.ContentAnalyses.Remove(existingAnalysis);
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Deleted existing analysis for content {ContentId}", id);
+                }
+
+                // Re-analyze the content
+                await _contentAnalysisService.AnalyzeContentAsync(content);
+                _logger.LogInformation("Re-analysis completed for content {ContentId}", id);
+                return Ok(new { message = "Content re-analyzed successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error re-analyzing content {ContentId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
         /// Toggle ignore status for a content item (doctors only)
         /// </summary>
         [HttpPost("{id}/toggle-ignore")]
@@ -411,16 +450,6 @@ namespace SM_MentalHealthApp.Server.Controllers
                 _logger.LogError(ex, "Error toggling ignore status for content {ContentId}", id);
                 return StatusCode(500, "Internal server error");
             }
-        }
-
-        private int? GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (int.TryParse(userIdClaim, out int userId))
-            {
-                return userId;
-            }
-            return null;
         }
 
         [HttpPost("cleanup-orphaned-data")]
