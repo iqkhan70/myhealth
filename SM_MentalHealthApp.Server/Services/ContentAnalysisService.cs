@@ -398,9 +398,13 @@ namespace SM_MentalHealthApp.Server.Services
                     context.AppendLine();
                 }
 
-                // Get content analyses for medical data
+                // Get content analyses for medical data (excluding ignored content)
                 var allContentAnalyses = await GetContentAnalysisForPatientAsync(patientId);
-                _logger.LogInformation("Found {ContentCount} content analyses for patient {PatientId}", allContentAnalyses.Count, patientId);
+                // Filter out analyses for content items that have been ignored by doctors
+                allContentAnalyses = allContentAnalyses
+                    .Where(ca => !_context.Contents.Any(c => c.Id == ca.ContentId && c.IsIgnoredByDoctor))
+                    .ToList();
+                _logger.LogInformation("Found {ContentCount} content analyses for patient {PatientId} (after filtering ignored items)", allContentAnalyses.Count, patientId);
 
                 if (allContentAnalyses.Any())
                 {

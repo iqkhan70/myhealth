@@ -98,6 +98,23 @@
                             </Template>
                         </RadzenDataGridColumn>
 
+                        <RadzenDataGridColumn TItem="ContentItemDto" Property="IsIgnoredByDoctor" Title="AI Status" Width="130px" Filterable="true" Sortable="true">
+                            <Template Context="content">
+                                @if (content.IsIgnoredByDoctor)
+                                {
+                                    <span class="badge bg-warning text-dark" title="This content is ignored and will be excluded from AI health check analysis">
+                                        🚫 Ignored
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success" title="This content is active and will be included in AI health check analysis">
+                                        ✅ Active
+                                    </span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+
                         <RadzenDataGridColumn TItem="ContentItemDto" Property="CreatedAt" Title="Added" Width="120px"
                             Filterable="true">
                             <Template Context="content">
@@ -125,16 +142,32 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="ContentItemDto" Property="Actions" Title="Actions" Width="150px"
+                        <RadzenDataGridColumn TItem="ContentItemDto" Property="Actions" Title="Actions" Width="200px"
                             Sortable="false" Filterable="false">
                             <Template Context="content">
                                 <div class="action-buttons">
+                                    @if (content.IsIgnoredByDoctor)
+                                    {
+                                        <span class="badge bg-warning text-dark me-2" style="font-size: 0.75rem;" title="Ignored on: @(content.IgnoredAt?.ToString("MM/dd/yyyy HH:mm") ?? "Unknown")">
+                                            🚫 Ignored
+                                        </span>
+                                    }
                                     <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Info"
                                         ButtonType="ButtonType.Button" Size="ButtonSize.Small"
                                         Click="@(async () => await ViewContent(content))" Title="View/Download" />
 
                                     <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Success" ButtonType="ButtonType.Button"
                                         Size="ButtonSize.Small" Click="@(() => EditContent(content))" Title="Edit" />
+
+                                    @if (AuthService.CurrentUser?.RoleId == 2) // Doctor can ignore/unignore
+                                    {
+                                        <RadzenButton Icon="@(content.IsIgnoredByDoctor ? "visibility" : "block")" 
+                                            ButtonStyle="@(content.IsIgnoredByDoctor ? ButtonStyle.Info : ButtonStyle.Warning)" 
+                                            ButtonType="ButtonType.Button"
+                                            Size="ButtonSize.Small" 
+                                            Click="@(async () => await ToggleIgnoreContentAsync(content))"
+                                            Title="@(content.IsIgnoredByDoctor ? "Unignore for AI analysis" : "Ignore for AI analysis")" />
+                                    }
 
                                     @if (AuthService.CurrentUser?.RoleId == 3) // Only admin can delete
                                     {
@@ -517,6 +550,55 @@
         }
     }
 
+    private async Task ToggleIgnoreContentAsync(ContentItemDto content)
+    {
+        try
+        {
+            // Add authorization header
+            var token = AuthService.Token;
+            var request = new HttpRequestMessage(HttpMethod.Post, $"api/content/{content.Id}/toggle-ignore");
+            if (!string.IsNullOrEmpty(token))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+            
+            var response = await Http.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                var message = result.TryGetProperty("message", out var msgProp) ? msgProp.GetString() : string.Empty;
+                var isIgnored = message?.Contains("ignored") == true && !message.Contains("unignored");
+                
+                // Reload data to get updated ignore status from server (this will get the actual state)
+                await LoadData();
+                
+                // Find the updated content item in the reloaded list
+                var updatedContent = contents.FirstOrDefault(c => c.Id == content.Id);
+                if (updatedContent != null)
+                {
+                    content.IsIgnoredByDoctor = updatedContent.IsIgnoredByDoctor;
+                    content.IgnoredByDoctorId = updatedContent.IgnoredByDoctorId;
+                    content.IgnoredAt = updatedContent.IgnoredAt;
+                }
+                
+                NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                    isIgnored 
+                        ? "Content ignored. It will be excluded from AI health check analysis." 
+                        : "Content unignored. It will be included in AI health check analysis.");
+                StateHasChanged();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to toggle ignore status: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to toggle ignore status: {ex.Message}");
+        }
+    }
+
     private async Task DeleteContent(ContentItemDto content)
     {
         try
@@ -683,6 +765,9 @@
         public int ContentTypeModelId { get; set; }
         public int PatientId { get; set; }
         public int? AddedByUserId { get; set; }
+        public bool IsIgnoredByDoctor { get; set; } = false;
+        public int? IgnoredByDoctorId { get; set; }
+        public DateTime? IgnoredAt { get; set; }
     }
 
 }

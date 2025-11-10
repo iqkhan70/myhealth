@@ -18,6 +18,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<List<ChatSession>> GetUserSessionsAsync(int userId, int? patientId = null);
         Task DeleteSessionAsync(int sessionId);
         Task GenerateSessionSummaryAsync(int sessionId);
+        Task ToggleIgnoreAsync(int sessionId, int doctorId);
     }
 
     public class ChatHistoryService : IChatHistoryService
@@ -536,6 +537,43 @@ Please provide a structured summary in 2-3 sentences that would be useful for cl
             {
                 _logger.LogError(ex, "Error in AI summary generation");
                 return "Summary generation failed - manual review recommended.";
+            }
+        }
+
+        public async Task ToggleIgnoreAsync(int sessionId, int doctorId)
+        {
+            try
+            {
+                var session = await _context.ChatSessions.FindAsync(sessionId);
+                if (session == null)
+                {
+                    throw new ArgumentException("Session not found");
+                }
+
+                // Toggle ignore status
+                if (session.IsIgnoredByDoctor)
+                {
+                    // Unignore
+                    session.IsIgnoredByDoctor = false;
+                    session.IgnoredByDoctorId = null;
+                    session.IgnoredAt = null;
+                    _logger.LogInformation("Session {SessionId} unignored by doctor {DoctorId}", sessionId, doctorId);
+                }
+                else
+                {
+                    // Ignore
+                    session.IsIgnoredByDoctor = true;
+                    session.IgnoredByDoctorId = doctorId;
+                    session.IgnoredAt = DateTime.UtcNow;
+                    _logger.LogInformation("Session {SessionId} ignored by doctor {DoctorId}", sessionId, doctorId);
+                }
+
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling ignore status for session {SessionId}", sessionId);
+                throw;
             }
         }
     }

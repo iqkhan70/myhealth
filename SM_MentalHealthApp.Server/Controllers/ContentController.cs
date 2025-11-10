@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using Amazon.S3;
@@ -75,7 +76,10 @@ namespace SM_MentalHealthApp.Server.Controllers
                         c.CreatedAt,
                         c.ContentTypeModelId,
                         PatientId = c.PatientId,
-                        AddedByUserId = c.AddedByUserId
+                        AddedByUserId = c.AddedByUserId,
+                        c.IsIgnoredByDoctor,
+                        c.IgnoredByDoctorId,
+                        c.IgnoredAt
                     })
                     .ToListAsync();
                 return Ok(contents);
@@ -349,6 +353,74 @@ namespace SM_MentalHealthApp.Server.Controllers
                 _logger.LogError(ex, "Error processing unanalyzed content");
                 return StatusCode(500, "Internal server error");
             }
+        }
+
+        /// <summary>
+        /// Toggle ignore status for a content item (doctors only)
+        /// </summary>
+        [HttpPost("{id}/toggle-ignore")]
+        [Authorize(Roles = "Doctor")]
+        public async Task<ActionResult> ToggleIgnoreContent(int id)
+        {
+            try
+            {
+                var doctorId = GetCurrentUserId();
+                if (!doctorId.HasValue)
+                {
+                    return Unauthorized("Doctor not authenticated");
+                }
+
+                var content = await _context.Contents.FindAsync(id);
+                if (content == null)
+                {
+                    return NotFound("Content not found");
+                }
+
+                // Verify doctor has access to this patient's content
+                var hasAccess = await _context.UserAssignments
+                    .AnyAsync(ua => ua.AssignerId == doctorId.Value && ua.AssigneeId == content.PatientId && ua.IsActive);
+                
+                if (!hasAccess && content.PatientId != doctorId.Value)
+                {
+                    return Forbid("You can only ignore content for your assigned patients");
+                }
+
+                // Toggle ignore status
+                if (content.IsIgnoredByDoctor)
+                {
+                    // Unignore
+                    content.IsIgnoredByDoctor = false;
+                    content.IgnoredByDoctorId = null;
+                    content.IgnoredAt = null;
+                    _logger.LogInformation("Content {ContentId} unignored by doctor {DoctorId}", id, doctorId);
+                }
+                else
+                {
+                    // Ignore
+                    content.IsIgnoredByDoctor = true;
+                    content.IgnoredByDoctorId = doctorId.Value;
+                    content.IgnoredAt = DateTime.UtcNow;
+                    _logger.LogInformation("Content {ContentId} ignored by doctor {DoctorId}", id, doctorId);
+                }
+
+                await _context.SaveChangesAsync();
+                return Ok(new { message = content.IsIgnoredByDoctor ? "Content ignored" : "Content unignored" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling ignore status for content {ContentId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        private int? GetCurrentUserId()
+        {
+            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (int.TryParse(userIdClaim, out int userId))
+            {
+                return userId;
+            }
+            return null;
         }
 
         [HttpPost("cleanup-orphaned-data")]

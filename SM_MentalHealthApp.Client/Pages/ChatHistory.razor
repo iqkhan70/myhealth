@@ -84,6 +84,20 @@
                             <p><strong>About Patient:</strong> @(expandedSession.Patient?.FullName ?? $"Patient {expandedSession.PatientId}")</p>
                         }
 
+                        @if (expandedSession.IsIgnoredByDoctor)
+                        {
+                            <div class="alert alert-warning mb-3">
+                                <h6>🚫 Ignored for AI Analysis</h6>
+                                <p>
+                                    This chat session has been marked as ignored and will be excluded from AI health check analysis.
+                                    @if (expandedSession.IgnoredAt.HasValue)
+                                    {
+                                        <br /><small>Ignored on: @expandedSession.IgnoredAt.Value.ToString("MM/dd/yyyy HH:mm")</small>
+                                    }
+                                </p>
+                            </div>
+                        }
+
                         @if (!string.IsNullOrEmpty(expandedSession.Summary))
                         {
                             <div class="alert alert-light mb-3">
@@ -158,6 +172,16 @@ Width = "100px",
 TextAlign = TextAlign.Center,
 GetBadgeData = (session) => (session.MessageCount.ToString(), NotificationSeverity.Success, true)
 },
+new SMDataGridBadgeColumn<ChatSession>
+{
+Property = nameof(ChatSession.IsIgnoredByDoctor),
+Title = "AI Status",
+Width = "120px",
+TextAlign = TextAlign.Center,
+GetBadgeData = (session) => session.IsIgnoredByDoctor 
+    ? ("🚫 Ignored", NotificationSeverity.Warning, true)
+    : ("✅ Active", NotificationSeverity.Success, true)
+},
 new() { Property = nameof(ChatSession.CreatedAt), Title = "Created", Width = "150px" },
 new() { Property = nameof(ChatSession.LastActivityAt), Title = "Last Activity", Width = "150px" },
 new() { Property = nameof(ChatSession.Summary), Title = "Summary", Width = "300px" }
@@ -168,6 +192,23 @@ new() { Property = nameof(ChatSession.Summary), Title = "Summary", Width = "300p
     protected override async Task OnInitializedAsync()
     {
         await LoadUserInfo();
+
+        // Add ignore/unignore button for doctors
+        if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+        {
+            _actions.Add(new SMDataGridActionButton<ChatSession>
+            {
+                IconFunc = (session) => session.IsIgnoredByDoctor ? "visibility" : "block",
+                ButtonStyleFunc = (session) => session.IsIgnoredByDoctor ? ButtonStyle.Info : ButtonStyle.Warning,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                TooltipFunc = (session) => session.IsIgnoredByDoctor 
+                    ? $"Unignore for AI analysis (Ignored on: {session.IgnoredAt?.ToString("MM/dd/yyyy HH:mm") ?? "Unknown"})" 
+                    : "Ignore for AI analysis - This will exclude this session from AI health check",
+                OnClick = async (row, ct) => await ToggleIgnoreSessionAsync(row, ct),
+                Disabled = (session) => session.UserId != GetCurrentUserId() // Only allow ignoring own sessions
+            });
+        }
 
         _actions.Add(new SMDataGridActionButton<ChatSession>
         {
@@ -283,6 +324,33 @@ new() { Property = nameof(ChatSession.Summary), Title = "Summary", Width = "300p
     private int GetCurrentUserId()
     {
         return AuthService.CurrentUser?.Id ?? 0;
+    }
+
+    private async Task ToggleIgnoreSessionAsync(ChatSession session, CancellationToken ct)
+    {
+        try
+        {
+            var wasIgnored = session.IsIgnoredByDoctor;
+            var isIgnored = await ChatHistoryService.ToggleIgnoreAsync(session.Id, ct);
+            
+            // Update the session in the grid
+            session.IsIgnoredByDoctor = isIgnored;
+            session.IgnoredByDoctorId = isIgnored ? GetCurrentUserId() : null;
+            session.IgnoredAt = isIgnored ? DateTime.UtcNow : null;
+            
+            NotificationService.ShowSuccess(isIgnored 
+                ? "Chat session ignored. It will be excluded from AI health check analysis." 
+                : "Chat session unignored. It will be included in AI health check analysis.");
+            
+            if (_grid != null)
+            {
+                await _grid.RefreshAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to toggle ignore status: {ex.Message}");
+        }
     }
 
     private bool CanDeleteSession(ChatSession session)

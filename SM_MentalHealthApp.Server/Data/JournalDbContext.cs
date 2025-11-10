@@ -111,6 +111,11 @@ namespace SM_MentalHealthApp.Server.Data
                         .WithMany()
                         .HasForeignKey(e => e.PatientId)
                         .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasOne(e => e.IgnoredByDoctor)
+                        .WithMany()
+                        .HasForeignKey(e => e.IgnoredByDoctorId)
+                        .OnDelete(DeleteBehavior.SetNull);
                   });
 
                   // Configure ChatMessage entity
@@ -159,6 +164,11 @@ namespace SM_MentalHealthApp.Server.Data
                         .WithMany()
                         .HasForeignKey(e => e.ContentTypeModelId)
                         .OnDelete(DeleteBehavior.Restrict);
+
+                        entity.HasOne(e => e.IgnoredByDoctor)
+                        .WithMany()
+                        .HasForeignKey(e => e.IgnoredByDoctorId)
+                        .OnDelete(DeleteBehavior.SetNull);
                   });
 
                   // Configure ContentAnalysis entity

@@ -184,9 +184,15 @@ namespace SM_MentalHealthApp.Shared
         public DateTime? LastAccessedAt { get; set; }
         public bool IsActive { get; set; } = true;
 
+        // Doctor ignore functionality - allows doctors to mark historical data as ignored for AI analysis
+        public bool IsIgnoredByDoctor { get; set; } = false;
+        public int? IgnoredByDoctorId { get; set; } // Which doctor marked this as ignored
+        public DateTime? IgnoredAt { get; set; } // When it was ignored
+
         // Navigation properties
         public User Patient { get; set; } = null!;
         public User? AddedByUser { get; set; }
+        public User? IgnoredByDoctor { get; set; } // Navigation to the doctor who ignored it
         public ContentTypeModel ContentTypeModel { get; set; } = null!;
     }
 

@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using System.Security.Claims;
+using SM_MentalHealthApp.Server.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -226,6 +228,46 @@ namespace SM_MentalHealthApp.Server.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error generating summary for session {SessionId}", sessionId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Toggle ignore status for a chat session (doctors only)
+        /// </summary>
+        [HttpPost("sessions/{sessionId}/toggle-ignore")]
+        [Authorize(Roles = "Doctor")]
+        public async Task<ActionResult> ToggleIgnoreSession(int sessionId)
+        {
+            try
+            {
+                var doctorId = GetCurrentUserId();
+                if (!doctorId.HasValue)
+                {
+                    return Unauthorized("Doctor not authenticated");
+                }
+
+                var session = await _chatHistoryService.GetSessionAsync(sessionId);
+                if (session == null)
+                {
+                    return NotFound("Session not found");
+                }
+
+                // Verify doctor has access to this session
+                if (session.UserId != doctorId.Value)
+                {
+                    return Forbid("You can only ignore your own chat sessions");
+                }
+
+                await _chatHistoryService.ToggleIgnoreAsync(sessionId, doctorId.Value);
+                
+                // Reload session to get updated status
+                var updatedSession = await _chatHistoryService.GetSessionAsync(sessionId);
+                return Ok(new { message = updatedSession?.IsIgnoredByDoctor == true ? "Session ignored" : "Session unignored", isIgnored = updatedSession?.IsIgnoredByDoctor ?? false });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling ignore status for session {SessionId}", sessionId);
                 return StatusCode(500, "Internal server error");
             }
         }

@@ -32,5 +32,14 @@ public class ChatHistoryService : BaseService, IChatHistoryService
         AddAuthorizationHeader();
         await _http.DeleteAsync($"api/chathistory/sessions/{sessionId}", ct);
     }
+
+    public async Task<bool> ToggleIgnoreAsync(int sessionId, CancellationToken ct = default)
+    {
+        AddAuthorizationHeader();
+        var response = await _http.PostAsync($"api/chathistory/sessions/{sessionId}/toggle-ignore", null, ct);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
+        return result.TryGetProperty("isIgnored", out var isIgnoredProp) && isIgnoredProp.GetBoolean();
+    }
 }
 

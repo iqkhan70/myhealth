@@ -28,9 +28,15 @@ namespace SM_MentalHealthApp.Shared
 
         public int MessageCount { get; set; } = 0;
 
+        // Doctor ignore functionality - allows doctors to mark historical data as ignored for AI analysis
+        public bool IsIgnoredByDoctor { get; set; } = false;
+        public int? IgnoredByDoctorId { get; set; } // Which doctor marked this as ignored
+        public DateTime? IgnoredAt { get; set; } // When it was ignored
+
         // Navigation properties
         public User? User { get; set; }
         public User? Patient { get; set; }
+        public User? IgnoredByDoctor { get; set; } // Navigation to the doctor who ignored it
         public ICollection<ChatMessage> Messages { get; set; } = new List<ChatMessage>();
 
         // Computed properties for search/filtering
