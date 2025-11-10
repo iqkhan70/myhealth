@@ -27,7 +27,7 @@ public class PatientService : BaseService, IPatientService
     public async Task<User?> GetAsync(int id, CancellationToken ct = default)
     {
         AddAuthorizationHeader();
-        return await _http.GetFromJsonAsync<User>($"api/user/{id}", ct);
+        return await _http.GetFromJsonAsync<User>($"api/patient/{id}", ct);
     }
 
     public async Task<User> CreateAsync(CreatePatientRequest request, CancellationToken ct = default)
@@ -49,14 +49,14 @@ public class PatientService : BaseService, IPatientService
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {
         AddAuthorizationHeader();
-        var response = await _http.DeleteAsync($"api/user/{id}", ct);
+        var response = await _http.DeleteAsync($"api/patient/{id}", ct);
         response.EnsureSuccessStatusCode();
     }
 
     public async Task<UserStats?> GetStatsAsync(int id, CancellationToken ct = default)
     {
         AddAuthorizationHeader();
-        return await _http.GetFromJsonAsync<UserStats>($"api/user/{id}/stats", ct);
+        return await _http.GetFromJsonAsync<UserStats>($"api/patient/{id}/stats", ct);
     }
 
     public async Task<AiHealthCheckResult?> PerformAiHealthCheckAsync(int id, CancellationToken ct = default)
