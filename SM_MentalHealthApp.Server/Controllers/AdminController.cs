@@ -251,6 +251,16 @@ namespace SM_MentalHealthApp.Server.Controllers
                         string contextBefore = response.Substring(contextStart, Math.Min(200, keywordIndex - contextStart));
                         string contextAfter = response.Substring(keywordIndex, Math.Min(200, contextEnd - keywordIndex));
 
+                        // Check if keyword is negated (e.g., "unable to detect critical", "no critical", "not critical")
+                        bool isNegated = contextBefore.Contains("unable to detect") ||
+                                       contextBefore.Contains("unable to") ||
+                                       contextBefore.Contains("no ") ||
+                                       contextBefore.Contains("not ") ||
+                                       contextBefore.Contains("without ") ||
+                                       contextBefore.Contains("lack of") ||
+                                       contextBefore.Contains("did not detect") ||
+                                       contextBefore.Contains("could not detect");
+
                         // If keyword appears near "recent", "history", "past", "previous", "activity", or in date brackets, it's likely historical
                         bool isHistorical = contextBefore.Contains("recent") ||
                                           contextBefore.Contains("history") ||
@@ -262,14 +272,15 @@ namespace SM_MentalHealthApp.Server.Controllers
                                           contextAfter.Contains("patient activity") ||
                                           (contextBefore.Contains("[") && contextBefore.Contains("/")); // Date format like [09/16/2025]
 
-                        if (!isHistorical)
+                        if (!isHistorical && !isNegated)
                         {
                             _logger.LogWarning("Critical keyword '{Keyword}' found in current context despite positive indicators. Flagging as high severity.", keyword);
                             return true;
                         }
                         else
                         {
-                            _logger.LogDebug("Critical keyword '{Keyword}' found but appears to be historical (context: '{Context}'). Ignoring.", keyword, contextBefore + "..." + contextAfter);
+                            _logger.LogDebug("Critical keyword '{Keyword}' found but appears to be negated or historical (negated: {IsNegated}, historical: {IsHistorical}, context: '{Context}'). Ignoring.",
+                                keyword, isNegated, isHistorical, contextBefore + "..." + contextAfter);
                         }
                     }
                 }
@@ -376,9 +387,50 @@ namespace SM_MentalHealthApp.Server.Controllers
             // Consider high severity if multiple indicators or critical keywords found
             // But require higher threshold if we have positive indicators
             int threshold = hasPositiveIndicators ? 3 : 2;
+
+            // Check for "critical" but exclude negated cases (e.g., "unable to detect critical", "no critical", "not critical")
+            bool hasCriticalInCurrentContext = false;
+            if (response.Contains("critical"))
+            {
+                int criticalIndex = response.IndexOf("critical");
+                if (criticalIndex > 0)
+                {
+                    int contextStart = Math.Max(0, criticalIndex - 50);
+                    string contextBefore = response.Substring(contextStart, Math.Min(50, criticalIndex - contextStart));
+                    // Check if it's negated
+                    bool isNegated = contextBefore.Contains("unable to detect") ||
+                                   contextBefore.Contains("no ") ||
+                                   contextBefore.Contains("not ") ||
+                                   contextBefore.Contains("without ") ||
+                                   contextBefore.Contains("lack of");
+
+                    // Check if it's in historical context
+                    bool isHistorical = response.Substring(0, Math.Min(500, response.Length)).Contains("recent");
+
+                    hasCriticalInCurrentContext = !isNegated && !isHistorical;
+                }
+            }
+
+            // Check for "emergency" but exclude negated cases
+            bool hasEmergencyInCurrentContext = false;
+            if (response.Contains("emergency"))
+            {
+                int emergencyIndex = response.IndexOf("emergency");
+                if (emergencyIndex > 0)
+                {
+                    int contextStart = Math.Max(0, emergencyIndex - 50);
+                    string contextBefore = response.Substring(contextStart, Math.Min(50, emergencyIndex - contextStart));
+                    bool isNegated = contextBefore.Contains("no ") ||
+                                   contextBefore.Contains("not ") ||
+                                   contextBefore.Contains("without ");
+                    bool isHistorical = response.Substring(0, Math.Min(500, response.Length)).Contains("recent");
+                    hasEmergencyInCurrentContext = !isNegated && !isHistorical;
+                }
+            }
+
             bool isHighSeverity = severityScore >= threshold ||
-                   (response.Contains("critical") && !response.Substring(0, Math.Min(500, response.Length)).Contains("recent")) ||
-                   (response.Contains("emergency") && !response.Substring(0, Math.Min(500, response.Length)).Contains("recent")) ||
+                   hasCriticalInCurrentContext ||
+                   hasEmergencyInCurrentContext ||
                    response.Contains("unacknowledged");
 
             _logger.LogDebug("Severity analysis complete. Score: {Score}, Threshold: {Threshold}, Result: {IsHighSeverity}",

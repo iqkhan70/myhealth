@@ -74,9 +74,15 @@ namespace SM_MentalHealthApp.Shared
         public string? Mood { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        // Doctor ignore functionality (for AI analysis exclusion)
+        public bool IsIgnoredByDoctor { get; set; } = false;
+        public int? IgnoredByDoctorId { get; set; }
+        public DateTime? IgnoredAt { get; set; }
+
         // Navigation properties
         public User? User { get; set; } // The patient
         public User? EnteredByUser { get; set; } // Who entered it (doctor or patient)
+        public User? IgnoredByDoctor { get; set; } // Doctor who ignored this entry
     }
 
 

@@ -100,10 +100,15 @@ namespace SM_MentalHealthApp.Server.Services
                 .ToDictionaryAsync(g => g.Key, g => g.Count());
         }
 
-        public async Task<JournalEntry?> GetEntryById(int entryId, int userId)
+        public async Task<JournalEntry?> GetEntryById(int entryId, int? userId)
         {
+            if (userId.HasValue)
+            {
+                return await _context.JournalEntries
+                    .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == userId.Value);
+            }
             return await _context.JournalEntries
-                .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == userId);
+                .FirstOrDefaultAsync(e => e.Id == entryId);
         }
 
         public async Task<bool> DeleteEntry(int entryId, int userId)
@@ -117,6 +122,40 @@ namespace SM_MentalHealthApp.Server.Services
             _context.JournalEntries.Remove(entry);
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        public async Task<bool> VerifyDoctorAccessAsync(int patientId, int doctorId)
+        {
+            // Check if doctor is assigned to this patient
+            return await _context.UserAssignments
+                .AnyAsync(ua => ua.AssignerId == doctorId && ua.AssigneeId == patientId && ua.IsActive);
+        }
+
+        public async Task ToggleIgnoreAsync(int entryId, int doctorId)
+        {
+            var entry = await _context.JournalEntries.FindAsync(entryId);
+            if (entry == null)
+            {
+                throw new ArgumentException("Journal entry not found");
+            }
+
+            // Toggle ignore status
+            if (entry.IsIgnoredByDoctor)
+            {
+                // Unignore
+                entry.IsIgnoredByDoctor = false;
+                entry.IgnoredByDoctorId = null;
+                entry.IgnoredAt = null;
+            }
+            else
+            {
+                // Ignore
+                entry.IsIgnoredByDoctor = true;
+                entry.IgnoredByDoctorId = doctorId;
+                entry.IgnoredAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
         }
 
         // Legacy method for backward compatibility

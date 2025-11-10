@@ -2,16 +2,24 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Shared;
 using SM_MentalHealthApp.Server.Services;
+using SM_MentalHealthApp.Server.Controllers;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
     [ApiController]
     [ApiVersion("1.0")]
     [Route("api/[controller]")]
-    public class JournalController : ControllerBase
+    [Authorize]
+    public class JournalController : BaseController
     {
         private readonly JournalService _journalService;
-        public JournalController(JournalService journalService) => _journalService = journalService;
+        private readonly ILogger<JournalController> _logger;
+
+        public JournalController(JournalService journalService, ILogger<JournalController> logger)
+        {
+            _journalService = journalService;
+            _logger = logger;
+        }
 
         [HttpPost("user/{userId}")]
         public async Task<ActionResult<JournalEntry>> PostEntry(int userId, [FromBody] JournalEntry entry)
@@ -65,6 +73,47 @@ namespace SM_MentalHealthApp.Server.Controllers
                 return NotFound();
             }
             return NoContent();
+        }
+
+        /// <summary>
+        /// Toggle ignore status for a journal entry (doctors only)
+        /// </summary>
+        [HttpPost("entry/{entryId}/toggle-ignore")]
+        [Authorize(Roles = "Doctor")]
+        public async Task<ActionResult> ToggleIgnoreEntry(int entryId)
+        {
+            try
+            {
+                var doctorId = GetCurrentUserId();
+                if (!doctorId.HasValue)
+                {
+                    return Unauthorized("Doctor not authenticated");
+                }
+
+                var entry = await _journalService.GetEntryById(entryId, null);
+                if (entry == null)
+                {
+                    return NotFound("Journal entry not found");
+                }
+
+                // Verify doctor has access to this patient's journal entry
+                var hasAccess = await _journalService.VerifyDoctorAccessAsync(entry.UserId, doctorId.Value);
+                if (!hasAccess)
+                {
+                    return StatusCode(403, "You can only ignore journal entries for your assigned patients");
+                }
+
+                await _journalService.ToggleIgnoreAsync(entryId, doctorId.Value);
+                
+                // Reload entry to get updated status
+                var updatedEntry = await _journalService.GetEntryById(entryId, null);
+                return Ok(new { message = updatedEntry?.IsIgnoredByDoctor == true ? "Journal entry ignored" : "Journal entry unignored", isIgnored = updatedEntry?.IsIgnoredByDoctor ?? false });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling ignore status for journal entry {EntryId}", entryId);
+                return StatusCode(500, "Internal server error");
+            }
         }
 
         // Legacy endpoints removed - use user-specific endpoints instead

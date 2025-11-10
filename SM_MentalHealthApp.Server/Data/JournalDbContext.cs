@@ -85,11 +85,23 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Text).IsRequired();
                         entity.Property(e => e.Mood).HasMaxLength(50);
 
-                        // Foreign key relationship
+                        // Foreign key relationship to patient (User)
                         entity.HasOne(e => e.User)
                         .WithMany(u => u.JournalEntries)
                         .HasForeignKey(e => e.UserId)
                         .OnDelete(DeleteBehavior.Cascade);
+
+                        // Foreign key relationship for who entered the entry (EnteredByUser)
+                        entity.HasOne(e => e.EnteredByUser)
+                        .WithMany()
+                        .HasForeignKey(e => e.EnteredByUserId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        // Foreign key relationship for ignored by doctor
+                        entity.HasOne(e => e.IgnoredByDoctor)
+                        .WithMany()
+                        .HasForeignKey(e => e.IgnoredByDoctorId)
+                        .OnDelete(DeleteBehavior.SetNull);
                   });
 
                   // Configure ChatSession entity

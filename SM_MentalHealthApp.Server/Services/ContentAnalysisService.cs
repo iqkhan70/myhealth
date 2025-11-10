@@ -296,10 +296,9 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
-                // Get journal entries (existing functionality)
-                // Note: Journal entries don't currently have ignore functionality
+                // Get journal entries (excluding ignored entries)
                 var recentEntries = await _context.JournalEntries
-                    .Where(e => e.UserId == patientId)
+                    .Where(e => e.UserId == patientId && !e.IsIgnoredByDoctor)
                     .OrderByDescending(e => e.CreatedAt)
                     .Take(5)
                     .ToListAsync();

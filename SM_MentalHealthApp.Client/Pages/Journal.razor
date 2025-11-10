@@ -146,6 +146,20 @@
                                             <div class="content-text">@expandedEntry.Text</div>
                                         </div>
                                         
+                                        @if (expandedEntry.IsIgnoredByDoctor)
+                                        {
+                                            <div class="alert alert-warning mb-3">
+                                                <h6>🚫 Ignored for AI Analysis</h6>
+                                                <p>
+                                                    This journal entry has been marked as ignored and will be excluded from AI health check analysis.
+                                                    @if (expandedEntry.IgnoredAt.HasValue)
+                                                    {
+                                                        <br /><small>Ignored on: @expandedEntry.IgnoredAt.Value.ToString("MM/dd/yyyy HH:mm")</small>
+                                                    }
+                                                </p>
+                                            </div>
+                                        }
+                                        
                                         @if (!string.IsNullOrEmpty(expandedEntry.AIResponse))
                                         {
                                             <div class="ai-response-section">
@@ -188,6 +202,9 @@
         public DateTime CreatedAt { get; set; }
         public int? EnteredByUserId { get; set; }
         public string EnteredByName { get; set; } = string.Empty;
+        public bool IsIgnoredByDoctor { get; set; }
+        public int? IgnoredByDoctorId { get; set; }
+        public DateTime? IgnoredAt { get; set; }
     }
 
     private bool CanLoadEntries => AuthService.CurrentUser != null && 
@@ -209,6 +226,17 @@
 
     private void InitializeColumns()
     {
+        _columns.Add(new SMDataGridBadgeColumn<JournalEntryDto>
+        {
+            Property = nameof(JournalEntryDto.IsIgnoredByDoctor),
+            Title = "AI Status",
+            Width = "120px",
+            TextAlign = TextAlign.Center,
+            GetBadgeData = (entry) => entry.IsIgnoredByDoctor 
+                ? ("🚫 Ignored", NotificationSeverity.Warning, true)
+                : ("✅ Active", NotificationSeverity.Success, true)
+        });
+        
         _columns.AddRange(new[]
         {
             new SMDataGridTemplateColumn<JournalEntryDto>
@@ -285,8 +313,21 @@
 
     private void InitializeActions()
     {
-        // No actions needed for journal entries currently
-        // Can add edit/delete later if needed
+        // Add ignore/unignore button for doctors
+        if (AuthService.CurrentUser?.RoleId == Shared.Constants.Roles.Doctor)
+        {
+            _actions.Add(new SMDataGridActionButton<JournalEntryDto>
+            {
+                IconFunc = (entry) => entry.IsIgnoredByDoctor ? "visibility" : "block",
+                ButtonStyleFunc = (entry) => entry.IsIgnoredByDoctor ? ButtonStyle.Info : ButtonStyle.Warning,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                TooltipFunc = (entry) => entry.IsIgnoredByDoctor 
+                    ? $"Unignore for AI analysis (Ignored on: {entry.IgnoredAt?.ToString("MM/dd/yyyy HH:mm") ?? "Unknown"})" 
+                    : "Ignore for AI analysis - This will exclude this entry from AI health check",
+                OnClick = async (row, ct) => await ToggleIgnoreEntryAsync(row, ct)
+            });
+        }
     }
 
     private async Task LoadAssignedPatients()
@@ -325,7 +366,10 @@
                 Mood = entry.Mood,
                 CreatedAt = entry.CreatedAt,
                 EnteredByUserId = entry.EnteredByUserId,
-                EnteredByName = entry.EnteredByUserId.HasValue ? GetDoctorName(entry.EnteredByUserId) : "Self Entry"
+                EnteredByName = entry.EnteredByUserId.HasValue ? GetDoctorName(entry.EnteredByUserId) : "Self Entry",
+                IsIgnoredByDoctor = entry.IsIgnoredByDoctor,
+                IgnoredByDoctorId = entry.IgnoredByDoctorId,
+                IgnoredAt = entry.IgnoredAt
             }).OrderByDescending(e => e.CreatedAt).ToList();
 
             return dtos;
@@ -496,6 +540,48 @@
             "Neutral" => "bg-secondary",
             _ => "bg-secondary"
         };
+    }
+
+    private async Task ToggleIgnoreEntryAsync(JournalEntryDto entry, CancellationToken ct)
+    {
+        try
+        {
+            var token = AuthService.Token;
+            var request = new HttpRequestMessage(HttpMethod.Post, $"api/journal/entry/{entry.Id}/toggle-ignore");
+            if (!string.IsNullOrEmpty(token))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+            var response = await Http.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+            
+            var result = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
+            var isIgnored = result.TryGetProperty("isIgnored", out var isIgnoredProp) && isIgnoredProp.GetBoolean();
+            
+            // Update the entry in the DTO
+            entry.IsIgnoredByDoctor = isIgnored;
+            if (isIgnored)
+            {
+                entry.IgnoredAt = DateTime.UtcNow;
+            }
+            else
+            {
+                entry.IgnoredAt = null;
+                entry.IgnoredByDoctorId = null;
+            }
+            
+            // Refresh the grid to show updated status
+            if (_grid != null)
+            {
+                await _grid.RefreshAsync();
+            }
+            
+            NotificationService.ShowSuccess(isIgnored ? "Journal entry ignored for AI analysis" : "Journal entry unignored for AI analysis");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to toggle ignore status: {ex.Message}");
+        }
     }
 }
 
