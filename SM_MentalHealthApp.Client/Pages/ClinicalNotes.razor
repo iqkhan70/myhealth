@@ -468,6 +468,7 @@
         editingNote = new ClinicalNoteDto { Id = 0 };
         noteForm = new CreateClinicalNoteRequest();
         showNoteDialog = true;
+        StateHasChanged();
     }
 
     private async Task EditNoteAsync(ClinicalNoteDto note, CancellationToken ct)
@@ -484,6 +485,7 @@
             Tags = note.Tags
         };
         showNoteDialog = true;
+        StateHasChanged();
     }
 
     private async Task OnRowExpand(ClinicalNoteDto note)
@@ -513,6 +515,7 @@
             var fullNote = await ClinicalNotesService.GetAsync(note.Id, ct);
             viewingNote = fullNote ?? note;
             showViewDialog = true;
+            StateHasChanged();
         }
         catch (Exception ex)
         {

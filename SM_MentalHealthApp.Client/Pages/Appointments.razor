@@ -985,6 +985,8 @@
         selectedTimezone = !string.IsNullOrEmpty(appointment.TimeZoneId) ? appointment.TimeZoneId : "America/New_York";
         validationError = "";
         validationWarnings = new();
+        showDialog = true;
+        StateHasChanged();
         
         if (isDoctor)
         {
@@ -994,8 +996,6 @@
         {
             await LoadAvailablePatients(appointment.DoctorId);
         }
-        
-        showDialog = true;
     }
 
     private async Task SaveAppointment()

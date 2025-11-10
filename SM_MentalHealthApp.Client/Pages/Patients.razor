@@ -761,6 +761,7 @@
         editingUser = null;
         patientForm = new CreatePatientRequest { DateOfBirth = DateTime.Now.AddYears(-25) };
         showPatientForm = true;
+        StateHasChanged();
     }
 
     private async Task EditUserAsync(User user, CancellationToken ct)
@@ -779,6 +780,7 @@
             MobilePhone = user.MobilePhone ?? string.Empty
         };
         showPatientForm = true;
+        StateHasChanged();
     }
 
     private void ClosePatientForm()
@@ -885,6 +887,7 @@
         
         selectedUser = user;
         showPatientDetails = true;
+        StateHasChanged();
     }
 
     private void ClosePatientDetails()
@@ -902,6 +905,7 @@
             selectedUser = user;
             userStats = await PatientService.GetStatsAsync(user.Id, ct);
             showPatientStats = true;
+            StateHasChanged();
         }
         catch (Exception ex)
         {
@@ -1019,6 +1023,7 @@
             }
             
             showAssignModal = true;
+            StateHasChanged();
         }
         catch (Exception ex)
         {
