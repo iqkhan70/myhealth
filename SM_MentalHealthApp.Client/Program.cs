@@ -1,40 +1,12 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using SM_MentalHealthApp.Client;
-using SM_MentalHealthApp.Client.Services;
-using Radzen;
-using Microsoft.AspNetCore.SignalR.Client;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-builder.Services.AddScoped(sp =>
-{
-    // Get the base address where the app is running
-    var baseUri = new Uri(builder.HostEnvironment.BaseAddress);
-    // Construct server URL using same hostname but server port (5262)
-    var serverUrl = $"{baseUri.Scheme}://{baseUri.Host}:5262/";
-    return new HttpClient { BaseAddress = new Uri(serverUrl) };
-});
-builder.Services.AddScoped<DialogService>();
-builder.Services.AddScoped<NotificationService>();
-builder.Services.AddScoped<TooltipService>();
-builder.Services.AddScoped<ContextMenuService>();
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<ISessionTimeoutService, SessionTimeoutService>();
-builder.Services.AddScoped<IDocumentUploadService, DocumentUploadService>();
-builder.Services.AddScoped<IChatHistoryService, ChatHistoryService>();
-builder.Services.AddScoped<IClinicalNotesService, ClinicalNotesService>();
-builder.Services.AddScoped<IAppointmentService, AppointmentService>();
-builder.Services.AddScoped<IPatientService, PatientService>();
-builder.Services.AddScoped<IJournalService, JournalService>();
-builder.Services.AddScoped<IEmergencyService, EmergencyService>();
-
-// Add SignalR for real-time communication
-builder.Services.AddScoped<ISignalRService, SignalRService>();
-builder.Services.AddScoped<IWebSocketService, WebSocketService>();
-builder.Services.AddScoped<IRealtimeService, RealtimeService>();
-builder.Services.AddScoped<IAgoraService, AgoraService>();
+// Register all services using centralized dependency injection
+builder.Services.AddClientServices(builder);
 
 await builder.Build().RunAsync();

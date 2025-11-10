@@ -77,12 +77,16 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                // Verify patient exists
+                // Validate patient ID is provided
+                if (request.PatientId <= 0)
+                    throw new ArgumentException("Patient must be selected. Please select a patient before saving the clinical note.");
+
+                // Verify patient exists and is active
                 var patient = await _context.Users
-                    .FirstOrDefaultAsync(u => u.Id == request.PatientId && u.RoleId == 1); // Role 1 = Patient
+                    .FirstOrDefaultAsync(u => u.Id == request.PatientId && u.RoleId == 1 && u.IsActive); // Role 1 = Patient, must be active
 
                 if (patient == null)
-                    throw new ArgumentException("Patient not found");
+                    throw new ArgumentException("Patient not found or inactive. Please select a valid active patient.");
 
                 // Verify doctor exists
                 var doctor = await _context.Users
