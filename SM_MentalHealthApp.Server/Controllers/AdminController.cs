@@ -186,7 +186,85 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var response = aiResponse.ToLower();
 
-            // Check for high-severity keywords and patterns
+            _logger.LogDebug("Analyzing AI response for severity. Response length: {Length}", response.Length);
+
+            // First, check for positive indicators that suggest normal/stable status
+            // If these are present prominently, we should be more cautious about flagging as high severity
+            var positiveIndicators = new[]
+            {
+                "stable", "normal", "no immediate concerns", "no concerns", "good", "healthy",
+                "within normal range", "acceptable", "improving", "resolved"
+            };
+
+            bool hasPositiveIndicators = false;
+            foreach (var indicator in positiveIndicators)
+            {
+                if (response.Contains(indicator))
+                {
+                    int indicatorPos = response.IndexOf(indicator);
+                    // Check context before the indicator to see if it's negated
+                    int startPos = Math.Max(0, indicatorPos - 15);
+                    string contextBefore = response.Substring(startPos, Math.Min(15, indicatorPos));
+                    if (!contextBefore.Contains("not "))
+                    {
+                        hasPositiveIndicators = true;
+                        _logger.LogDebug("Found positive indicator: {Indicator}", indicator);
+                        break;
+                    }
+                }
+            }
+
+            // Check for explicit current status statements
+            bool hasExplicitStableStatus = response.Contains("current status: stable") ||
+                                          response.Contains("status: stable") ||
+                                          response.Contains("current status is stable") ||
+                                          (response.Contains("stable") &&
+                                           (response.IndexOf("stable") < 200 || // Early in response
+                                            response.Substring(0, Math.Min(500, response.Length)).Contains("stable")));
+
+            // If we have strong positive indicators, only flag as high severity if there are very strong negative signals
+            if (hasPositiveIndicators || hasExplicitStableStatus)
+            {
+                _logger.LogDebug("Positive indicators found. Checking for critical keywords in current context only.");
+
+                // Only trigger on very strong indicators when status is otherwise stable
+                var criticalKeywords = new[] { "critical", "emergency", "immediate", "urgent", "suicide", "self-harm" };
+
+                foreach (var keyword in criticalKeywords)
+                {
+                    if (response.Contains(keyword))
+                    {
+                        // Look for context - if it's in a "recent activity" or historical section, be more lenient
+                        int keywordIndex = response.IndexOf(keyword);
+                        int contextStart = Math.Max(0, keywordIndex - 150);
+                        string contextBefore = response.Substring(contextStart, Math.Min(150, keywordIndex));
+
+                        // If keyword appears near "recent", "history", "past", "previous", it's likely historical
+                        bool isHistorical = contextBefore.Contains("recent") ||
+                                          contextBefore.Contains("history") ||
+                                          contextBefore.Contains("past") ||
+                                          contextBefore.Contains("previous") ||
+                                          contextBefore.Contains("activity") ||
+                                          contextBefore.Contains("[");
+
+                        if (!isHistorical)
+                        {
+                            _logger.LogWarning("Critical keyword '{Keyword}' found in current context despite positive indicators. Flagging as high severity.", keyword);
+                            return true;
+                        }
+                        else
+                        {
+                            _logger.LogDebug("Critical keyword '{Keyword}' found but appears to be historical. Ignoring.", keyword);
+                        }
+                    }
+                }
+
+                // For stable status, no high severity indicators found in current context
+                _logger.LogDebug("Stable status confirmed. No high severity indicators in current context.");
+                return false;
+            }
+
+            // Check for high-severity keywords and patterns (original logic for non-stable cases)
             var highSeverityKeywords = new[]
             {
                 "critical", "urgent", "immediate", "emergency", "severe", "concerning",
@@ -200,22 +278,72 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 if (response.Contains(keyword))
                 {
-                    severityScore++;
+                    // Check if keyword is in historical context
+                    int keywordPos = response.IndexOf(keyword);
+                    if (keywordPos > 0)
+                    {
+                        string contextBefore = response.Substring(Math.Max(0, keywordPos - 150), Math.Min(150, keywordPos));
+                        bool isHistorical = contextBefore.Contains("recent") ||
+                                          contextBefore.Contains("history") ||
+                                          contextBefore.Contains("past") ||
+                                          contextBefore.Contains("previous") ||
+                                          contextBefore.Contains("activity") ||
+                                          contextBefore.Contains("[");
+
+                        // Reduce score if it's historical
+                        if (!isHistorical)
+                        {
+                            severityScore++;
+                        }
+                    }
+                    else
+                    {
+                        severityScore++;
+                    }
                 }
             }
 
-            // Also check for specific medical value alerts
+            // Also check for specific medical value alerts (current, not historical)
             if (response.Contains("blood pressure") && (response.Contains("high") || response.Contains("elevated")))
-                severityScore += 2;
+            {
+                // Check if this is in current context
+                int bpIndex = response.IndexOf("blood pressure");
+                if (bpIndex < 300 || !response.Substring(0, Math.Min(500, response.Length)).Contains("recent"))
+                {
+                    severityScore += 2;
+                }
+            }
 
             if (response.Contains("hemoglobin") && response.Contains("low"))
-                severityScore += 2;
+            {
+                int hbIndex = response.IndexOf("hemoglobin");
+                if (hbIndex < 300 || !response.Substring(0, Math.Min(500, response.Length)).Contains("recent"))
+                {
+                    severityScore += 2;
+                }
+            }
 
             if (response.Contains("triglycerides") && response.Contains("high"))
-                severityScore += 1;
+            {
+                int trigIndex = response.IndexOf("triglycerides");
+                if (trigIndex < 300 || !response.Substring(0, Math.Min(500, response.Length)).Contains("recent"))
+                {
+                    severityScore += 1;
+                }
+            }
 
             // Consider high severity if multiple indicators or critical keywords found
-            return severityScore >= 2 || response.Contains("critical") || response.Contains("emergency") || response.Contains("unacknowledged");
+            // But require higher threshold if we have positive indicators
+            int threshold = hasPositiveIndicators ? 3 : 2;
+            bool isHighSeverity = severityScore >= threshold ||
+                   (response.Contains("critical") && !response.Substring(0, Math.Min(500, response.Length)).Contains("recent")) ||
+                   (response.Contains("emergency") && !response.Substring(0, Math.Min(500, response.Length)).Contains("recent")) ||
+                   response.Contains("unacknowledged");
+
+            _logger.LogDebug("Severity analysis complete. Score: {Score}, Threshold: {Threshold}, Result: {IsHighSeverity}",
+                severityScore, threshold, isHighSeverity);
+
+            return isHighSeverity;
         }
 
         [HttpGet("assignments")]
