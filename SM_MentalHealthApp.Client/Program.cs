@@ -29,6 +29,7 @@ builder.Services.AddScoped<IClinicalNotesService, ClinicalNotesService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 builder.Services.AddScoped<IPatientService, PatientService>();
 builder.Services.AddScoped<IJournalService, JournalService>();
+builder.Services.AddScoped<IEmergencyService, EmergencyService>();
 
 // Add SignalR for real-time communication
 builder.Services.AddScoped<ISignalRService, SignalRService>();

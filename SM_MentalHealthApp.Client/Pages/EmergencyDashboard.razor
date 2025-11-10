@@ -1,304 +1,519 @@
 @page "/emergency-dashboard"
-@inject HttpClient Http
-@inject NotificationService NotificationService
-@inject IAuthService AuthService
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
-@using System.Net.Http
+@using SM_MentalHealthApp.Client.Components.Grid
 @using Radzen
 @using Radzen.Blazor
+@inject IEmergencyService EmergencyService
+@inject NotificationService NotificationService
+@inject IAuthService AuthService
+@inject IJSRuntime JSRuntime
 @implements IDisposable
 
-<div class="emergency-dashboard">
-    <div class="emergency-header">
-        <h2>🚨 Emergency Dashboard</h2>
-        <p>Monitor and respond to patient emergency incidents</p>
-        <div class="emergency-stats">
-            <div class="stat-card critical">
-                <span class="stat-number">@criticalCount</span>
-                <span class="stat-label">Critical</span>
+<PageTitle>Emergency Dashboard</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2><i class="fas fa-exclamation-triangle me-2"></i>Emergency Dashboard</h2>
+                    <p class="text-muted mb-0">Monitor and respond to patient emergency incidents</p>
+                </div>
             </div>
-            <div class="stat-card high">
-                <span class="stat-number">@highCount</span>
-                <span class="stat-label">High</span>
-            </div>
-            <div class="stat-card total">
-                <span class="stat-number">@totalIncidents</span>
-                <span class="stat-label">Total</span>
-            </div>
+
+            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) // Doctor or Admin
+            {
+                <!-- Emergency Stats -->
+                <div class="emergency-stats mb-4">
+                    <div class="stat-card critical">
+                        <span class="stat-number">@criticalCount</span>
+                        <span class="stat-label">Critical</span>
+                    </div>
+                    <div class="stat-card high">
+                        <span class="stat-number">@highCount</span>
+                        <span class="stat-label">High</span>
+                    </div>
+                    <div class="stat-card total">
+                        <span class="stat-number">@totalIncidents</span>
+                        <span class="stat-label">Total</span>
+                    </div>
+                </div>
+
+                <!-- Controls -->
+                <div class="emergency-controls mb-4">
+                    <RadzenButton Text="🔄 Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" 
+                        Click="@RefreshIncidents" Disabled="@isLoading" />
+                    <div class="auto-refresh-indicator">
+                        <span class="refresh-icon">⚡</span>
+                        <span>Auto-refresh every 30s</span>
+                    </div>
+                </div>
+
+                <!-- Emergency Incidents Grid -->
+                <div class="incidents-section">
+                    <SMDataGrid TItem="EmergencyAlert" 
+                               Columns="_columns" 
+                               Actions="_actions" 
+                               ActionsWidth="150px"
+                               LoadItems="LoadIncidentsAsync" 
+                               @ref="_grid" 
+                               PageSize="10"
+                               OnRowExpandCallback="@OnRowExpand">
+                        <ExpansionTemplate Context="incident">
+                            @{
+                                var expandedIncident = expandedIncidents.ContainsKey(incident.Id) ? expandedIncidents[incident.Id] : incident;
+                            }
+                            <div class="p-3">
+                                <div class="row">
+                                    <div class="col-12">
+                                        <h6>Emergency Details</h6>
+                                        
+                                        <!-- Emergency Message -->
+                                        <div class="detail-section mb-3">
+                                            <h6>📝 Emergency Message</h6>
+                                            @if (!string.IsNullOrEmpty(expandedIncident.Message))
+                                            {
+                                                <div class="message-content">@expandedIncident.Message</div>
+                                            }
+                                            else
+                                            {
+                                                <div class="no-message">No message provided</div>
+                                            }
+                                        </div>
+                                        
+                                        <!-- Vital Signs -->
+                                        @if (expandedIncident.VitalSigns != null)
+                                        {
+                                            <div class="detail-section mb-3">
+                                                <h6>💓 Vital Signs</h6>
+                                                <div class="vitals-grid">
+                                                    @if (expandedIncident.VitalSigns.HeartRate.HasValue)
+                                                    {
+                                                        <div class="vital-card">
+                                                            <div class="vital-label">Heart Rate</div>
+                                                            <div class="vital-value @GetVitalStatus(expandedIncident.VitalSigns.HeartRate, "heartRate")">
+                                                                @expandedIncident.VitalSigns.HeartRate bpm
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(expandedIncident.VitalSigns.BloodPressure))
+                                                    {
+                                                        <div class="vital-card">
+                                                            <div class="vital-label">Blood Pressure</div>
+                                                            <div class="vital-value @GetVitalStatus(expandedIncident.VitalSigns.BloodPressure, "bloodPressure")">
+                                                                @expandedIncident.VitalSigns.BloodPressure
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                    @if (expandedIncident.VitalSigns.Temperature.HasValue)
+                                                    {
+                                                        <div class="vital-card">
+                                                            <div class="vital-label">Temperature</div>
+                                                            <div class="vital-value @GetVitalStatus(expandedIncident.VitalSigns.Temperature, "temperature")">
+                                                                @expandedIncident.VitalSigns.Temperature°F
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                    @if (expandedIncident.VitalSigns.OxygenSaturation.HasValue)
+                                                    {
+                                                        <div class="vital-card">
+                                                            <div class="vital-label">Oxygen Saturation</div>
+                                                            <div class="vital-value @GetVitalStatus(expandedIncident.VitalSigns.OxygenSaturation, "oxygenSaturation")">
+                                                                @expandedIncident.VitalSigns.OxygenSaturation%
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+                                        
+                                        <!-- Location Information -->
+                                        @if (expandedIncident.Location != null)
+                                        {
+                                            <div class="detail-section mb-3">
+                                                <h6>📍 Location Information</h6>
+                                                <div class="location-details">
+                                                    <div class="coordinates">
+                                                        <strong>Coordinates:</strong> @expandedIncident.Location.Latitude.ToString("F6"), @expandedIncident.Location.Longitude.ToString("F6")
+                                                    </div>
+                                                    @if (!string.IsNullOrEmpty(expandedIncident.Location.Address))
+                                                    {
+                                                        <div class="address">
+                                                            <strong>Address:</strong> @expandedIncident.Location.Address
+                                                        </div>
+                                                    }
+                                                    @if (expandedIncident.Location.Accuracy.HasValue)
+                                                    {
+                                                        <div class="accuracy">
+                                                            <strong>Accuracy:</strong> ±@expandedIncident.Location.Accuracy.Value.ToString("F1") meters
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </ExpansionTemplate>
+                    </SMDataGrid>
+                </div>
+            }
+            else
+            {
+                <div class="access-denied">
+                    <h3>Access Denied</h3>
+                    <p>You don't have permission to view emergency incidents.</p>
+                </div>
+            }
         </div>
     </div>
-
-    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) // Doctor or Admin
-    {
-        <div class="emergency-controls">
-                <button @onclick="RefreshIncidents" class="refresh-btn" disabled="@isLoading">
-                    @if (isLoading)
-                    {
-                        <span>🔄 Refreshing...</span>
-                    }
-                    else
-                    {
-                        <span>🔄 Manual Refresh</span>
-                    }
-                </button>
-                <div class="auto-refresh-indicator">
-                    <span class="refresh-icon">⚡</span>
-                    <span>Auto-refresh every 30s</span>
-                </div>
-        </div>
-
-        @if (isLoading)
-        {
-            <div class="loading-state">
-                <div class="loading-spinner"></div>
-                <p>Loading emergency incidents...</p>
-            </div>
-        }
-        else
-        {
-            <div class="incidents-container">
-                
-                @if (incidents.Any())
-                {
-                    <RadzenDataGrid Data="@incidents" TItem="EmergencyAlert" AllowPaging="true" PageSize="10"
-                    AllowSorting="true" AllowFiltering="true" FilterMode="FilterMode.Advanced" ShowPagingSummary="true"
-                    PagerHorizontalAlign="HorizontalAlign.Left" class="emergency-grid">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="EmergencyAlert" Property="EmergencyType" Title="Type" Width="120px"
-                        Filterable="true">
-                        <Template Context="incident">
-                            <div class="incident-type-cell">
-                                <span class="type-icon">@GetTypeIcon(incident.EmergencyType)</span>
-                                <span class="type-name">@incident.EmergencyType</span>
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="EmergencyAlert" Property="Severity" Title="Severity" Width="100px"
-                        Filterable="true">
-                        <Template Context="incident">
-                            <span class="severity-badge @incident.Severity.ToLower()">@incident.Severity</span>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="EmergencyAlert" Property="PatientName" Title="Patient" Width="200px"
-                        Filterable="true">
-                        <Template Context="incident">
-                            <div class="patient-info">
-                                <strong>@incident.PatientName</strong>
-                                <div class="patient-email">@incident.PatientEmail</div>
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-
-                    <RadzenDataGridColumn TItem="EmergencyAlert" Property="Timestamp" Title="Time" Width="150px"
-                        Filterable="true">
-                        <Template Context="incident">
-                            <div class="timestamp-cell">
-                                @incident.Timestamp.ToString("MMM dd, HH:mm")
-                                <div class="timestamp-date">@incident.Timestamp.ToString("yyyy")</div>
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="EmergencyAlert" Property="DeviceId" Title="Device" Width="120px"
-                        Filterable="true">
-                        <Template Context="incident">
-                            <span class="device-id">@incident.DeviceId</span>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="EmergencyAlert" Property="IsAcknowledged" Title="Status" Width="120px"
-                        Filterable="true">
-                        <Template Context="incident">
-                            @if (incident.IsAcknowledged)
-                            {
-                                <div class="acknowledged-status">
-                                    <span class="acknowledged-badge">✅ Acknowledged</span>
-                                    @if (incident.AcknowledgedAt.HasValue)
-                                    {
-                                        <div class="acknowledged-time">@incident.AcknowledgedAt.Value.ToString("MMM dd, HH:mm")</div>
-                                    }
-                                </div>
-                            }
-                            else
-                            {
-                                <span class="unacknowledged-badge">⚠️ Pending</span>
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
-
-
-                    <RadzenDataGridColumn TItem="EmergencyAlert" Property="Location" Title="Location" Width="150px"
-                        Filterable="false" Sortable="false">
-                        <Template Context="incident">
-                            @if (incident.Location != null)
-                            {
-                                <div class="location-cell">
-                                    <div class="coordinates">@incident.Location.Latitude.ToString("F4"),
-                                        @incident.Location.Longitude.ToString("F4")</div>
-                                    @if (!string.IsNullOrEmpty(incident.Location.Address))
-                                    {
-                                        <div class="address">@incident.Location.Address</div>
-                                    }
-                                </div>
-                            }
-                            else
-                            {
-                                <span class="no-location">No location</span>
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn TItem="EmergencyAlert" Property="Actions" Title="Actions" Width="150px"
-                        Sortable="false" Filterable="false">
-                        <Template Context="incident">
-                            <div class="incident-actions-cell">
-                                @if (!incident.IsAcknowledged)
-                                {
-                                    <RadzenButton Text="Acknowledge" Icon="check" ButtonStyle="ButtonStyle.Success"
-                                        Size="ButtonSize.Small" Click="@(() => AcknowledgeIncident(incident.Id))"
-                                        Disabled="@isProcessing" class="acknowledge-btn" />
-                                }
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-                    </Columns>
-                    <Template Context="incident">
-                        <div class="emergency-details-expanded">
-                            <div class="details-grid">
-                                <div class="detail-section">
-                                    <h4>📝 Emergency Message</h4>
-                                    @if (!string.IsNullOrEmpty(incident.Message))
-                                    {
-                                        <div class="message-content">@incident.Message</div>
-                                    }
-                                    else
-                                    {
-                                        <div class="no-message">No message provided</div>
-                                    }
-                                </div>
-                                
-                                <div class="detail-section">
-                                    <h4>💓 Vital Signs</h4>
-                                    @if (incident.VitalSigns != null)
-                                    {
-                                        <div class="vitals-grid">
-                                            @if (incident.VitalSigns.HeartRate.HasValue)
-                                            {
-                                                <div class="vital-card">
-                                                    <div class="vital-label">Heart Rate</div>
-                                                    <div class="vital-value @GetVitalStatus(incident.VitalSigns.HeartRate, "heartRate")">@incident.VitalSigns.HeartRate bpm</div>
-                                                </div>
-                                            }
-                                            @if (!string.IsNullOrEmpty(incident.VitalSigns.BloodPressure))
-                                            {
-                                                <div class="vital-card">
-                                                    <div class="vital-label">Blood Pressure</div>
-                                                    <div class="vital-value @GetVitalStatus(incident.VitalSigns.BloodPressure, "bloodPressure")">@incident.VitalSigns.BloodPressure</div>
-                                                </div>
-                                            }
-                                            @if (incident.VitalSigns.Temperature.HasValue)
-                                            {
-                                                <div class="vital-card">
-                                                    <div class="vital-label">Temperature</div>
-                                                    <div class="vital-value @GetVitalStatus(incident.VitalSigns.Temperature, "temperature")">@incident.VitalSigns.Temperature°F</div>
-                                                </div>
-                                            }
-                                            @if (incident.VitalSigns.OxygenSaturation.HasValue)
-                                            {
-                                                <div class="vital-card">
-                                                    <div class="vital-label">Oxygen Saturation</div>
-                                                    <div class="vital-value @GetVitalStatus(incident.VitalSigns.OxygenSaturation, "oxygenSaturation")">@incident.VitalSigns.OxygenSaturation%</div>
-                                                </div>
-                                            }
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div class="no-vitals">No vital signs data available</div>
-                                    }
-                                </div>
-                                
-                                <div class="detail-section">
-                                    <h4>📍 Location Information</h4>
-                                    @if (incident.Location != null)
-                                    {
-                                        <div class="location-details">
-                                            <div class="coordinates">
-                                                <strong>Coordinates:</strong> @incident.Location.Latitude.ToString("F6"), @incident.Location.Longitude.ToString("F6")
-                                            </div>
-                                            @if (!string.IsNullOrEmpty(incident.Location.Address))
-                                            {
-                                                <div class="address">
-                                                    <strong>Address:</strong> @incident.Location.Address
-                                                </div>
-                                            }
-                                            @if (incident.Location.Accuracy.HasValue)
-                                            {
-                                                <div class="accuracy">
-                                                    <strong>Accuracy:</strong> ±@incident.Location.Accuracy.Value.ToString("F1") meters
-                                                </div>
-                                            }
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div class="no-location">No location data available</div>
-                                    }
-                                </div>
-                            </div>
-                        </div>
-                    </Template>
-                </RadzenDataGrid>
-                }
-                else
-                {
-                    <div class="no-incidents">
-                        <div class="no-incidents-icon">🚫</div>
-                        <h3>No Emergency Incidents</h3>
-                        <p>No emergency incidents found matching your filters.</p>
-                    </div>
-                }
-            </div>
-        }
-    }
-    else
-    {
-        <div class="access-denied">
-            <h3>Access Denied</h3>
-            <p>You don't have permission to view emergency incidents.</p>
-        </div>
-    }
 </div>
 
 @code {
-        private List<EmergencyAlert> incidents = new();
-        private bool isLoading = true;
-        private bool isProcessing = false;
+    private SMDataGrid<EmergencyAlert>? _grid;
+    private List<EmergencyAlert> incidents = new();
+    private bool isLoading = false;
+    private bool isProcessing = false;
+    private System.Threading.Timer? _refreshTimer;
+    private Dictionary<int, EmergencyAlert> expandedIncidents = new();
 
-        private int criticalCount => incidents.Count(i => i.Severity == "Critical");
-        private int highCount => incidents.Count(i => i.Severity == "High");
-        private int totalIncidents => incidents.Count;
-        private System.Threading.Timer? _refreshTimer;
+    private List<SMDataGridColumn<EmergencyAlert>> _columns = new();
+    private List<SMDataGridActionButton<EmergencyAlert>> _actions = new();
+
+    private int criticalCount => incidents.Count(i => i.Severity == "Critical");
+    private int highCount => incidents.Count(i => i.Severity == "High");
+    private int totalIncidents => incidents.Count;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadIncidents();
+        InitializeColumns();
+        InitializeActions();
         StartAutoRefresh();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && _grid != null)
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void InitializeColumns()
+    {
+        _columns = new List<SMDataGridColumn<EmergencyAlert>>
+        {
+            new SMDataGridTemplateColumn<EmergencyAlert>
+            {
+                Property = nameof(EmergencyAlert.EmergencyType),
+                Title = "Type",
+                Width = "120px",
+                Template = incident => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.AddAttribute(1, "class", "incident-type-cell");
+                    builder.OpenElement(2, "span");
+                    builder.AddAttribute(3, "class", "type-icon");
+                    builder.AddContent(4, GetTypeIcon(incident.EmergencyType));
+                    builder.CloseElement();
+                    builder.OpenElement(5, "span");
+                    builder.AddAttribute(6, "class", "type-name");
+                    builder.AddContent(7, incident.EmergencyType);
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<EmergencyAlert>
+            {
+                Property = nameof(EmergencyAlert.Severity),
+                Title = "Severity",
+                Width = "100px",
+                Template = incident => builder =>
+                {
+                    builder.OpenElement(0, "span");
+                    builder.AddAttribute(1, "class", $"severity-badge {incident.Severity.ToLower()}");
+                    builder.AddContent(2, incident.Severity);
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<EmergencyAlert>
+            {
+                Property = nameof(EmergencyAlert.PatientName),
+                Title = "Patient",
+                Width = "200px",
+                Template = incident => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.AddAttribute(1, "class", "patient-info");
+                    builder.OpenElement(2, "strong");
+                    builder.AddContent(3, incident.PatientName);
+                    builder.CloseElement();
+                    builder.OpenElement(4, "div");
+                    builder.AddAttribute(5, "class", "patient-email");
+                    builder.AddContent(6, incident.PatientEmail);
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<EmergencyAlert>
+            {
+                Property = nameof(EmergencyAlert.Timestamp),
+                Title = "Time",
+                Width = "150px",
+                Template = incident => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.AddAttribute(1, "class", "timestamp-cell");
+                    builder.AddContent(2, incident.Timestamp.ToString("MMM dd, HH:mm"));
+                    builder.OpenElement(3, "div");
+                    builder.AddAttribute(4, "class", "timestamp-date");
+                    builder.AddContent(5, incident.Timestamp.ToString("yyyy"));
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridColumn<EmergencyAlert>
+            {
+                Property = nameof(EmergencyAlert.DeviceId),
+                Title = "Device",
+                Width = "120px"
+            },
+            new SMDataGridTemplateColumn<EmergencyAlert>
+            {
+                Property = nameof(EmergencyAlert.IsAcknowledged),
+                Title = "Status",
+                Width = "120px",
+                Template = incident => builder =>
+                {
+                    if (incident.IsAcknowledged)
+                    {
+                        builder.OpenElement(0, "div");
+                        builder.AddAttribute(1, "class", "acknowledged-status");
+                        builder.OpenElement(2, "span");
+                        builder.AddAttribute(3, "class", "acknowledged-badge");
+                        builder.AddContent(4, "✅ Acknowledged");
+                        builder.CloseElement();
+                        if (incident.AcknowledgedAt.HasValue)
+                        {
+                            builder.OpenElement(5, "div");
+                            builder.AddAttribute(6, "class", "acknowledged-time");
+                            builder.AddContent(7, incident.AcknowledgedAt.Value.ToString("MMM dd, HH:mm"));
+                            builder.CloseElement();
+                        }
+                        builder.CloseElement();
+                    }
+                    else
+                    {
+                        builder.OpenElement(0, "span");
+                        builder.AddAttribute(1, "class", "unacknowledged-badge");
+                        builder.AddContent(2, "⚠️ Pending");
+                        builder.CloseElement();
+                    }
+                }
+            },
+            new SMDataGridTemplateColumn<EmergencyAlert>
+            {
+                Property = nameof(EmergencyAlert.Location),
+                Title = "Location",
+                Width = "150px",
+                Template = incident => builder =>
+                {
+                    if (incident.Location != null)
+                    {
+                        builder.OpenElement(0, "div");
+                        builder.AddAttribute(1, "class", "location-cell");
+                        builder.OpenElement(2, "div");
+                        builder.AddAttribute(3, "class", "coordinates");
+                        builder.AddContent(4, $"{incident.Location.Latitude:F4}, {incident.Location.Longitude:F4}");
+                        builder.CloseElement();
+                        if (!string.IsNullOrEmpty(incident.Location.Address))
+                        {
+                            builder.OpenElement(5, "div");
+                            builder.AddAttribute(6, "class", "address");
+                            builder.AddContent(7, incident.Location.Address);
+                            builder.CloseElement();
+                        }
+                        builder.CloseElement();
+                    }
+                    else
+                    {
+                        builder.OpenElement(0, "span");
+                        builder.AddAttribute(1, "class", "no-location");
+                        builder.AddContent(2, "No location");
+                        builder.CloseElement();
+                    }
+                }
+            }
+        };
+    }
+
+    private void InitializeActions()
+    {
+        _actions = new List<SMDataGridActionButton<EmergencyAlert>>
+        {
+            new SMDataGridActionButton<EmergencyAlert>
+            {
+                Icon = "check",
+                ButtonStyle = ButtonStyle.Success,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                OnClick = async (incident, ct) => await AcknowledgeIncidentAsync(incident, ct),
+                Disabled = (incident) => incident.IsAcknowledged || isProcessing
+            }
+        };
+    }
+
+    private async Task<IEnumerable<EmergencyAlert>> LoadIncidentsAsync(CancellationToken ct)
+    {
+        try
+        {
+            isLoading = true;
+            StateHasChanged();
+
+            int? doctorId = null;
+            if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+            {
+                doctorId = AuthService.CurrentUser.Id;
+            }
+            else if (AuthService.CurrentUser?.RoleId == 3) // Admin
+            {
+                doctorId = AuthService.CurrentUser.Id; // Admin can see all via their ID
+            }
+
+            var loadedIncidents = await EmergencyService.ListAsync(doctorId, ct);
+            incidents = loadedIncidents?.ToList() ?? new List<EmergencyAlert>();
+            return incidents;
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load emergency incidents: {ex.Message}",
+                Duration = 6000
+            });
+            return new List<EmergencyAlert>();
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnRowExpand(EmergencyAlert incident)
+    {
+        try
+        {
+            if (!expandedIncidents.ContainsKey(incident.Id))
+            {
+                var fullIncident = await EmergencyService.GetAsync(incident.Id);
+                if (fullIncident != null)
+                {
+                    expandedIncidents[incident.Id] = fullIncident;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to load incident details: {ex.Message}",
+                Duration = 4000
+            });
+        }
+    }
+
+    private async Task AcknowledgeIncidentAsync(EmergencyAlert incident, CancellationToken ct)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm",
+            $"Are you sure you want to acknowledge this emergency incident?\n\n" +
+            $"Type: {incident.EmergencyType}\n" +
+            $"Severity: {incident.Severity}\n" +
+            $"Patient: {incident.PatientName}\n" +
+            $"Time: {incident.Timestamp:MMM dd, yyyy 'at' h:mm tt}");
+
+        if (!confirmed) return;
+
+        try
+        {
+            isProcessing = true;
+            StateHasChanged();
+
+            var doctorId = AuthService.CurrentUser?.Id ?? 0;
+            var success = await EmergencyService.AcknowledgeAsync(
+                incident.Id, 
+                doctorId, 
+                "Incident acknowledged", 
+                "Monitoring patient", 
+                ct);
+
+            if (success)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = "Incident acknowledged successfully",
+                    Duration = 4000
+                });
+
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
+            }
+            else
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Error",
+                    Detail = "Failed to acknowledge incident",
+                    Duration = 6000
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"Failed to acknowledge incident: {ex.Message}",
+                Duration = 6000
+            });
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshIncidents()
+    {
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
     }
 
     private void StartAutoRefresh()
     {
-        // Auto-refresh every 30 seconds
         _refreshTimer = new System.Threading.Timer(async _ =>
         {
             await InvokeAsync(async () =>
             {
-                await LoadIncidents();
-                StateHasChanged();
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
             });
         }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
@@ -308,147 +523,47 @@
         _refreshTimer?.Dispose();
     }
 
-    private async Task LoadIncidents()
+    private string GetTypeIcon(string emergencyType)
     {
-        try
+        return emergencyType switch
         {
-            isLoading = true;
-            StateHasChanged();
-
-            if (AuthService.CurrentUser?.RoleId == 2) // Doctor
-            {
-                incidents = await Http.GetFromJsonAsync<List<EmergencyAlert>>($"api/emergency/incidents/{AuthService.CurrentUser.Id}")
-                ?? new();
-            }
-            else if (AuthService.CurrentUser?.RoleId == 3) // Admin
-            {
-                // For admin, get all incidents (you might want to create a separate endpoint for this)
-                incidents = await Http.GetFromJsonAsync<List<EmergencyAlert>>($"api/emergency/incidents/{AuthService.CurrentUser.Id}")
-                ?? new();
-                }
-            }
-            catch (Exception ex)
-            {
-                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load emergency incidents: " + ex.Message);
-            }
-            finally
-            {
-                isLoading = false;
-                StateHasChanged();
-            }
-        }
-
-        private async Task RefreshIncidents()
-        {
-            await LoadIncidents();
-        }
-
-    private async Task AcknowledgeIncident(int incidentId)
-    {
-        try
-        {
-            isProcessing = true;
-            StateHasChanged();
-
-            var request = new
-            {
-                DoctorId = AuthService.CurrentUser?.Id ?? 0,
-                Response = "Incident acknowledged",
-                ActionTaken = "Monitoring patient"
-            };
-            var response = await Http.PostAsJsonAsync($"api/emergency/acknowledge/{incidentId}", request);
-
-            if (response.IsSuccessStatusCode)
-            {
-                NotificationService.Notify(NotificationSeverity.Success, "Success", "Incident acknowledged successfully");
-                await LoadIncidents(); // Refresh the list
-            }
-            else
-            {
-                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to acknowledge incident");
-            }
-        }
-        catch (Exception ex)
-        {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to acknowledge incident: " + ex.Message);
-        }
-        finally
-        {
-            isProcessing = false;
-            StateHasChanged();
-        }
-    }
-
-
-    private string GetSeverityClass(string severity)
-    {
-        return severity.ToLower() switch
-        {
-            "critical" => "severity-critical",
-            "high" => "severity-high",
-            "medium" => "severity-medium",
-            "low" => "severity-low",
-            _ => "severity-unknown"
+            "Fall" => "🦽",
+            "Cardiac" => "❤️",
+            "Panic Attack" => "😰",
+            "Seizure" => "⚡",
+            "Overdose" => "💊",
+            "Self Harm" => "⚠️",
+            _ => "🚨"
         };
     }
 
-        private string GetTypeIcon(string emergencyType)
+    private string GetVitalStatus(object value, string vitalType)
+    {
+        if (value == null) return "vital-normal";
+
+        try
         {
-            return emergencyType switch
+            return vitalType switch
             {
-                "Fall" => "🦽",
-                "Cardiac" => "❤️",
-                "Panic Attack" => "😰",
-                "Seizure" => "⚡",
-                "Overdose" => "💊",
-                "Self Harm" => "⚠️",
-                _ => "🚨"
+                "heartRate" when value is int hr => hr < 60 ? "vital-low" : hr > 100 ? "vital-high" : "vital-normal",
+                "bloodPressure" when value is string bp => "vital-normal",
+                "temperature" when value is double temp => temp < 97 ? "vital-low" : temp > 99.5 ? "vital-high" : "vital-normal",
+                "oxygenSaturation" when value is int spo2 => spo2 < 95 ? "vital-low" : "vital-normal",
+                _ => "vital-normal"
             };
         }
-
-
-        private string GetVitalStatus(object value, string vitalType)
+        catch
         {
-            if (value == null) return "vital-normal";
-
-            try
-            {
-                return vitalType switch
-                {
-                    "heartRate" when value is int hr => hr < 60 ? "vital-low" : hr > 100 ? "vital-high" : "vital-normal",
-                    "bloodPressure" when value is string bp => "vital-normal", // Simplified for now
-                    "temperature" when value is double temp => temp < 97 ? "vital-low" : temp > 99.5 ? "vital-high" : "vital-normal",
-                    "oxygenSaturation" when value is int spo2 => spo2 < 95 ? "vital-low" : "vital-normal",
-                    _ => "vital-normal"
-                };
-            }
-            catch
-            {
-                return "vital-normal";
-            }
+            return "vital-normal";
         }
+    }
 }
 
 <style>
-    .emergency-dashboard {
-        padding: 20px;
-        max-width: 1200px;
-        margin: 0 auto;
-    }
-
-    .emergency-header {
-        margin-bottom: 30px;
-    }
-
-    .emergency-header h2 {
-        color: #e74c3c;
-        margin-bottom: 10px;
-    }
-
     .emergency-stats {
         display: flex;
         gap: 20px;
-        margin-top: 20px;
+        margin-bottom: 20px;
     }
 
     .stat-card {
@@ -458,6 +573,7 @@
         text-align: center;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         min-width: 100px;
+        flex: 1;
     }
 
     .stat-card.critical {
@@ -488,88 +604,30 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 20px;
         padding: 15px;
         background: #f8f9fa;
         border-radius: 8px;
     }
 
-    .refresh-btn {
-        background: #3498db;
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
-        cursor: pointer;
+    .auto-refresh-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #27ae60;
+        font-size: 0.9em;
+        font-weight: 500;
     }
 
-        .refresh-btn:disabled {
-            background: #bdc3c7;
-            cursor: not-allowed;
-        }
-
-        .auto-refresh-indicator {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: #27ae60;
-            font-size: 0.9em;
-            font-weight: 500;
-        }
-
-        .refresh-icon {
-            animation: pulse 2s infinite;
-        }
-
-        @@keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-
-    .incidents-container {
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        overflow: hidden;
+    .refresh-icon {
+        animation: pulse 2s infinite;
     }
 
-    .emergency-grid {
-        border: none;
+    @@keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
     }
 
-    .emergency-grid .rz-datagrid-table {
-        border: none;
-    }
-
-    .emergency-grid .rz-datagrid-header {
-        background: #f8f9fa;
-        border-bottom: 2px solid #e9ecef;
-    }
-
-    .emergency-grid .rz-datagrid-header-cell {
-        background: #f8f9fa;
-        color: #495057;
-        font-weight: 600;
-        border-right: 1px solid #e9ecef;
-    }
-
-    .emergency-grid .rz-datagrid-row {
-        border-bottom: 1px solid #e9ecef;
-    }
-
-    .emergency-grid .rz-datagrid-row:hover {
-        background: #f8f9fa;
-    }
-
-    .emergency-grid .rz-datagrid-cell {
-        border-right: 1px solid #e9ecef;
-        padding: 12px 8px;
-        vertical-align: top;
-    }
-
-    /* Incident Type Cell */
     .incident-type-cell {
         display: flex;
         align-items: center;
@@ -585,7 +643,6 @@
         color: #2c3e50;
     }
 
-    /* Severity Badge */
     .severity-badge {
         padding: 4px 8px;
         border-radius: 4px;
@@ -615,7 +672,6 @@
         color: white;
     }
 
-    /* Patient Info */
     .patient-info strong {
         color: #2c3e50;
         font-weight: 600;
@@ -627,26 +683,6 @@
         margin-top: 2px;
     }
 
-    /* Message Cell */
-    .incident-message-cell {
-        background: #f8f9fa;
-        padding: 8px;
-        border-radius: 4px;
-        font-style: italic;
-        font-size: 0.9em;
-        max-width: 200px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .no-message {
-        color: #7f8c8d;
-        font-style: italic;
-        font-size: 0.85em;
-    }
-
-    /* Timestamp Cell */
     .timestamp-cell {
         font-size: 0.9em;
     }
@@ -656,17 +692,6 @@
         font-size: 0.8em;
     }
 
-    /* Device ID */
-    .device-id {
-        font-family: monospace;
-        font-size: 0.85em;
-        color: #495057;
-        background: #f8f9fa;
-        padding: 2px 6px;
-        border-radius: 3px;
-    }
-
-    /* Status Cell */
     .acknowledged-status {
         display: flex;
         flex-direction: column;
@@ -699,23 +724,6 @@
         display: inline-block;
     }
 
-    /* Vital Signs Cell */
-    .vital-signs-cell {
-        font-size: 0.8em;
-    }
-
-    .vital-item {
-        margin-bottom: 2px;
-        color: #495057;
-    }
-
-    .no-vitals {
-        color: #7f8c8d;
-        font-style: italic;
-        font-size: 0.8em;
-    }
-
-    /* Location Cell */
     .location-cell {
         font-size: 0.8em;
     }
@@ -737,182 +745,114 @@
         font-size: 0.8em;
     }
 
-    /* Actions Cell */
-    .incident-actions-cell {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-    }
-
-    .acknowledge-btn {
-        font-size: 0.8em;
-    }
-
-    .details-btn {
-        font-size: 0.8em;
-    }
-
-    .no-incidents {
-        text-align: center;
-        padding: 60px 20px;
-        color: #7f8c8d;
-    }
-
-    .no-incidents-icon {
-        font-size: 4em;
-        margin-bottom: 20px;
-    }
-
     .access-denied {
         text-align: center;
         padding: 60px 20px;
         color: #e74c3c;
     }
 
-    .loading-state {
+    .detail-section {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 15px;
+    }
+
+    .detail-section h6 {
+        margin: 0 0 15px 0;
+        color: #2c3e50;
+        font-size: 1.1em;
+        border-bottom: 2px solid #e9ecef;
+        padding-bottom: 8px;
+    }
+
+    .message-content {
+        background: #e3f2fd;
+        padding: 12px;
+        border-radius: 6px;
+        border-left: 4px solid #2196f3;
+        font-style: italic;
+        line-height: 1.5;
+    }
+
+    .no-message {
+        color: #7f8c8d;
+        font-style: italic;
         text-align: center;
-        padding: 60px 20px;
+        padding: 20px;
     }
 
-    .loading-spinner {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #3498db;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        animation: spin 1s linear infinite;
-        margin: 0 auto 20px;
+    .vitals-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
     }
 
-        @@keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
+    .vital-card {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 6px;
+        text-align: center;
+        border: 1px solid #e9ecef;
+    }
 
-            100% {
-                transform: rotate(360deg);
-            }
-        }
+    .vital-label {
+        font-size: 0.85em;
+        color: #6c757d;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
 
-        /* Expandable row styles */
-        .emergency-details-expanded {
-            padding: 20px;
-            background: #f8f9fa;
-            border-top: 1px solid #e9ecef;
-        }
+    .vital-value {
+        font-size: 1.1em;
+        font-weight: bold;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }
 
-        .details-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
+    .vital-normal {
+        background: #d4edda;
+        color: #155724;
+    }
 
-        .detail-section {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
+    .vital-high {
+        background: #f8d7da;
+        color: #721c24;
+    }
 
-        .detail-section h4 {
-            margin: 0 0 15px 0;
-            color: #2c3e50;
-            font-size: 1.1em;
-            border-bottom: 2px solid #e9ecef;
-            padding-bottom: 8px;
-        }
+    .vital-low {
+        background: #fff3cd;
+        color: #856404;
+    }
 
-        .message-content {
-            background: #e3f2fd;
-            padding: 12px;
-            border-radius: 6px;
-            border-left: 4px solid #2196f3;
-            font-style: italic;
-            line-height: 1.5;
-        }
+    .location-details {
+        line-height: 1.6;
+    }
 
-        .no-message, .no-vitals, .no-location {
-            color: #7f8c8d;
-            font-style: italic;
-            text-align: center;
-            padding: 20px;
-        }
+    .coordinates, .address, .accuracy {
+        margin-bottom: 8px;
+    }
 
+    .coordinates {
+        font-family: monospace;
+        background: #f8f9fa;
+        padding: 8px;
+        border-radius: 4px;
+    }
+
+    .address {
+        color: #495057;
+    }
+
+    .accuracy {
+        color: #6c757d;
+        font-size: 0.9em;
+    }
+
+    @@media (max-width: 768px) {
         .vitals-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
         }
-
-        .vital-card {
-            background: #f8f9fa;
-            padding: 10px;
-            border-radius: 6px;
-            text-align: center;
-            border: 1px solid #e9ecef;
-        }
-
-        .vital-label {
-            font-size: 0.85em;
-            color: #6c757d;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-
-        .vital-value {
-            font-size: 1.1em;
-            font-weight: bold;
-            padding: 4px 8px;
-            border-radius: 4px;
-        }
-
-        .vital-normal {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .vital-high {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .vital-low {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .location-details {
-            line-height: 1.6;
-        }
-
-        .coordinates, .address, .accuracy {
-            margin-bottom: 8px;
-        }
-
-        .coordinates {
-            font-family: monospace;
-            background: #f8f9fa;
-            padding: 8px;
-            border-radius: 4px;
-        }
-
-        .address {
-            color: #495057;
-        }
-
-        .accuracy {
-            color: #6c757d;
-            font-size: 0.9em;
-        }
-
-        /* Responsive design for expandable content */
-        @@media (max-width: 768px) {
-            .details-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .vitals-grid {
-                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            }
-        }
+    }
 </style>
