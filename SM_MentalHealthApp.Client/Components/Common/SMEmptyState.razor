@@ -1,0 +1,40 @@
+<div class="empty-state text-center p-5">
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <div class="empty-icon" style="font-size: 4rem; margin-bottom: 1rem;">@Icon</div>
+    }
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <h4>@Title</h4>
+    }
+    @if (!string.IsNullOrEmpty(Message))
+    {
+        <p class="text-muted">@Message</p>
+    }
+    @if (ActionButton != null)
+    {
+        <div class="mt-3">
+            @ActionButton
+        </div>
+    }
+</div>
+
+<style>
+    .empty-state {
+        padding: 60px 20px;
+        color: #6c757d;
+    }
+
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 20px;
+    }
+</style>
+
+@code {
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public RenderFragment? ActionButton { get; set; }
+}
+

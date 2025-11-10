@@ -2,6 +2,8 @@
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Client.Components.Grid
+@using SM_MentalHealthApp.Client.Components.Common
+@using SM_MentalHealthApp.Client.Helpers
 @using Radzen
 @using Radzen.Blazor
 @inject IEmergencyService EmergencyService
@@ -15,12 +17,9 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h2><i class="fas fa-exclamation-triangle me-2"></i>Emergency Dashboard</h2>
-                    <p class="text-muted mb-0">Monitor and respond to patient emergency incidents</p>
-                </div>
-            </div>
+            <SMPageHeader Title="Emergency Dashboard" 
+                         Icon="fas fa-exclamation-triangle" 
+                         Description="Monitor and respond to patient emergency incidents" />
 
             @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) // Doctor or Admin
             {
@@ -387,13 +386,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load emergency incidents: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to load emergency incidents: {ex.Message}");
             return new List<EmergencyAlert>();
         }
         finally
@@ -419,24 +412,18 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load incident details: {ex.Message}",
-                Duration = 4000
-            });
+            NotificationService.ShowError($"Failed to load incident details: {ex.Message}");
         }
     }
 
     private async Task AcknowledgeIncidentAsync(EmergencyAlert incident, CancellationToken ct)
     {
-        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm",
-            $"Are you sure you want to acknowledge this emergency incident?\n\n" +
-            $"Type: {incident.EmergencyType}\n" +
-            $"Severity: {incident.Severity}\n" +
-            $"Patient: {incident.PatientName}\n" +
-            $"Time: {incident.Timestamp:MMM dd, yyyy 'at' h:mm tt}");
+        var details = $"Type: {incident.EmergencyType}\n" +
+                     $"Severity: {incident.Severity}\n" +
+                     $"Patient: {incident.PatientName}\n" +
+                     $"Time: {incident.Timestamp:MMM dd, yyyy 'at' h:mm tt}";
+        
+        var confirmed = await JSRuntime.ConfirmDestructiveAsync("acknowledge this emergency incident", details, "emergency incident");
 
         if (!confirmed) return;
 
@@ -455,13 +442,7 @@
 
             if (success)
             {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Success",
-                    Detail = "Incident acknowledged successfully",
-                    Duration = 4000
-                });
+                NotificationService.ShowSuccess("Incident acknowledged successfully");
 
                 if (_grid != null)
                 {
@@ -470,24 +451,12 @@
             }
             else
             {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Error,
-                    Summary = "Error",
-                    Detail = "Failed to acknowledge incident",
-                    Duration = 6000
-                });
+                NotificationService.ShowError("Failed to acknowledge incident");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to acknowledge incident: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to acknowledge incident: {ex.Message}");
         }
         finally
         {

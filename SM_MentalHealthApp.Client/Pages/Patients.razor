@@ -7,6 +7,8 @@
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Client.Components.Grid
+@using SM_MentalHealthApp.Client.Components.Common
+@using SM_MentalHealthApp.Client.Helpers
 @using Radzen
 @using Radzen.Blazor
 @using System.Net.Http
@@ -715,13 +717,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load patients: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to load patients: {ex.Message}");
             return new List<User>();
         }
     }
@@ -744,13 +740,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load patient details: {ex.Message}",
-                Duration = 4000
-            });
+            NotificationService.ShowError($"Failed to load patient details: {ex.Message}");
         }
     }
 
@@ -804,13 +794,13 @@
             string.IsNullOrWhiteSpace(patientForm.LastName) || 
             string.IsNullOrWhiteSpace(patientForm.Email))
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Please fill in all required fields.");
+            NotificationService.ShowWarning("Please fill in all required fields.");
             return;
         }
 
         if (editingUser == null && string.IsNullOrWhiteSpace(patientForm.Password))
         {
-            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Password is required for new patients.");
+            NotificationService.ShowWarning("Password is required for new patients.");
             return;
         }
 
@@ -821,13 +811,7 @@
             if (editingUser == null)
             {
                 await PatientService.CreateAsync(patientForm);
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Success",
-                    Detail = "Patient added successfully!",
-                    Duration = 4000
-                });
+                NotificationService.ShowSuccess("Patient added successfully!");
                 if (_grid != null)
                 {
                     await _grid.RefreshAsync();
@@ -876,13 +860,7 @@
                 }
 
                 await PatientService.UpdateAsync(editingUser.Id, updateRequest);
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Success",
-                    Detail = "Patient updated successfully!",
-                    Duration = 4000
-                });
+                NotificationService.ShowSuccess("Patient updated successfully!");
                 if (_grid != null)
                 {
                     await _grid.RefreshAsync();
@@ -893,7 +871,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to save patient: " + ex.Message);
+            NotificationService.ShowError($"Failed to save patient: {ex.Message}");
         }
         finally
         {
@@ -927,13 +905,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load patient stats: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to load patient stats: {ex.Message}");
         }
     }
 
@@ -953,13 +925,7 @@
             isPerformingHealthCheck = true;
             StateHasChanged();
             
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Info,
-                Summary = "AI Health Check",
-                Detail = $"Analyzing {user.FirstName} {user.LastName}'s health status...",
-                Duration = 4000
-            });
+            NotificationService.ShowInfo($"Analyzing {user.FirstName} {user.LastName}'s health status...");
             
             var result = await PatientService.PerformAiHealthCheckAsync(user.Id, ct);
             
@@ -967,23 +933,11 @@
             {
                 if (result.Severity == "High")
                 {
-                    NotificationService.Notify(new NotificationMessage
-                    {
-                        Severity = NotificationSeverity.Warning,
-                        Summary = "AI Health Alert",
-                        Detail = $"⚠️ {result.Message} ({result.AlertsSent} doctors notified)",
-                        Duration = 6000
-                    });
+                    NotificationService.ShowWarning($"⚠️ {result.Message} ({result.AlertsSent} doctors notified)");
                 }
                 else
                 {
-                    NotificationService.Notify(new NotificationMessage
-                    {
-                        Severity = NotificationSeverity.Success,
-                        Summary = "AI Health Check",
-                        Detail = $"✅ {result.Message}",
-                        Duration = 4000
-                    });
+                    NotificationService.ShowSuccess($"✅ {result.Message}");
                 }
                 
                 Console.WriteLine($"AI Response for {user.FirstName}: {result.AiResponse}");
@@ -991,13 +945,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"AI Health Check failed: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"AI Health Check failed: {ex.Message}");
         }
         finally
         {
@@ -1013,13 +961,7 @@
         try
         {
             await PatientService.DeleteAsync(user.Id, ct);
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Success,
-                Summary = "Success",
-                Detail = "Patient deactivated successfully!",
-                Duration = 4000
-            });
+            NotificationService.ShowSuccess("Patient deactivated successfully!");
             if (_grid != null)
             {
                 await _grid.RefreshAsync();
@@ -1027,13 +969,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to deactivate patient: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to deactivate patient: {ex.Message}");
         }
     }
 
@@ -1054,13 +990,7 @@
                 MobilePhone = user.MobilePhone
             }, ct);
             
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Success,
-                Summary = "Success",
-                Detail = "Patient reactivated successfully!",
-                Duration = 4000
-            });
+            NotificationService.ShowSuccess("Patient reactivated successfully!");
             if (_grid != null)
             {
                 await _grid.RefreshAsync();
@@ -1068,13 +998,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to reactivate patient: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to reactivate patient: {ex.Message}");
         }
     }
 
@@ -1098,13 +1022,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load doctors: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to load doctors: {ex.Message}");
         }
     }
 
@@ -1139,13 +1057,7 @@
 
             if (response.IsSuccessStatusCode)
             {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Success",
-                    Detail = "Patient assigned to doctor successfully!",
-                    Duration = 4000
-                });
+                NotificationService.ShowSuccess("Patient assigned to doctor successfully!");
                 CloseAssignModal();
                 if (_grid != null)
                 {
@@ -1155,12 +1067,12 @@
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to assign patient: {errorContent}");
+                NotificationService.ShowError($"Failed to assign patient: {errorContent}");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Error assigning patient: {ex.Message}");
+            NotificationService.ShowError($"Error assigning patient: {ex.Message}");
         }
         finally
         {
@@ -1178,7 +1090,7 @@
         Console.WriteLine($"showUnassignConfirmation set to: {showUnassignConfirmation}");
         
         // Add a simple test to see if this method is being called
-        NotificationService.Notify(NotificationSeverity.Info, "Debug", $"ShowUnassignConfirmation called for {user.FirstName}");
+        NotificationService.ShowInfo($"ShowUnassignConfirmation called for {user.FirstName}");
         
         StateHasChanged();
     }
@@ -1210,13 +1122,7 @@
 
             if (response.IsSuccessStatusCode)
             {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Success",
-                    Detail = "Patient unassigned from you successfully!",
-                    Duration = 4000
-                });
+                NotificationService.ShowSuccess("Patient unassigned from you successfully!");
                 CloseUnassignConfirmation();
                 if (_grid != null)
                 {
@@ -1226,12 +1132,12 @@
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to unassign patient: {errorContent}");
+                NotificationService.ShowError($"Failed to unassign patient: {errorContent}");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Error unassigning patient: {ex.Message}");
+            NotificationService.ShowError($"Error unassigning patient: {ex.Message}");
         }
         finally
         {

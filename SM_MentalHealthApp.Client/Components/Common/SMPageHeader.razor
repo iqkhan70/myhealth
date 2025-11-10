@@ -1,0 +1,33 @@
+@using Radzen
+@using Radzen.Blazor
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <h2><i class="@Icon me-2"></i>@Title</h2>
+        }
+        else
+        {
+            <h2>@Title</h2>
+        }
+        @if (!string.IsNullOrEmpty(Description))
+        {
+            <p class="text-muted mb-0">@Description</p>
+        }
+    </div>
+    @if (ActionButton != null)
+    {
+        <div>
+            @ActionButton
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public RenderFragment? ActionButton { get; set; }
+}
+

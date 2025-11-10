@@ -2,6 +2,8 @@
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Client.Components.Grid
+@using SM_MentalHealthApp.Client.Components.Common
+@using SM_MentalHealthApp.Client.Helpers
 @using Radzen
 @using Radzen.Blazor
 @inject IClinicalNotesService ClinicalNotesService
@@ -15,11 +17,13 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2><i class="fas fa-stethoscope me-2"></i>Clinical Notes</h2>
-                <RadzenButton Icon="add" Text="Add Note" ButtonStyle="ButtonStyle.Success"
-                    Click="@(() => ShowAddNoteDialog())" />
-            </div>
+            <SMPageHeader Title="Clinical Notes" 
+                         Icon="fas fa-stethoscope">
+                <ActionButton>
+                    <RadzenButton Icon="add" Text="Add Note" ButtonStyle="ButtonStyle.Success"
+                        Click="@(() => ShowAddNoteDialog())" />
+                </ActionButton>
+            </SMPageHeader>
 
             <SMDataGrid TItem="ClinicalNoteDto" 
                        Columns="_columns" 
@@ -417,13 +421,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load clinical notes: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to load clinical notes: {ex.Message}");
             return new List<ClinicalNoteDto>();
         }
     }
@@ -504,13 +502,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load note details: {ex.Message}",
-                Duration = 4000
-            });
+            NotificationService.ShowError($"Failed to load note details: {ex.Message}");
         }
     }
 
@@ -524,13 +516,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load note details: {ex.Message}",
-                Duration = 4000
-            });
+            NotificationService.ShowError($"Failed to load note details: {ex.Message}");
         }
     }
 
@@ -547,13 +533,7 @@
                 {
                     await _grid.RefreshAsync();
                 }
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Success",
-                    Detail = "Clinical note created successfully!",
-                    Duration = 4000
-                });
+                NotificationService.ShowSuccess("Clinical note created successfully!");
             }
             else
             {
@@ -574,24 +554,12 @@
                 {
                     await _grid.RefreshAsync();
                 }
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Success",
-                    Detail = "Clinical note updated successfully!",
-                    Duration = 4000
-                });
+                NotificationService.ShowSuccess("Clinical note updated successfully!");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to save clinical note: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to save clinical note: {ex.Message}");
         }
     }
 
@@ -622,8 +590,10 @@
 
     private async Task DeleteNoteAsync(ClinicalNoteDto note, CancellationToken ct)
     {
-        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
-            $"Are you sure you want to delete the note '{note.Title}'?");
+        var confirmed = await JSRuntime.ConfirmDestructiveAsync(
+            "delete this clinical note",
+            $"Note: {note.Title}\nPatient: {note.PatientName}",
+            "clinical note");
         
         if (confirmed)
         {
@@ -634,23 +604,11 @@
                 {
                     await _grid.RefreshAsync();
                 }
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Success",
-                    Detail = "Clinical note deleted successfully!",
-                    Duration = 4000
-                });
+                NotificationService.ShowSuccess("Clinical note deleted successfully!");
             }
             catch (Exception ex)
             {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Error,
-                    Summary = "Error",
-                    Detail = $"Failed to delete clinical note: {ex.Message}",
-                    Duration = 6000
-                });
+                NotificationService.ShowError($"Failed to delete clinical note: {ex.Message}");
             }
         }
     }

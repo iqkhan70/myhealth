@@ -2,6 +2,8 @@
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Client.Components.Grid
+@using SM_MentalHealthApp.Client.Components.Common
+@using SM_MentalHealthApp.Client.Helpers
 @using Radzen
 @using Radzen.Blazor
 @using System.Linq
@@ -716,13 +718,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Error loading data: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Error loading data: {ex.Message}");
         }
     }
 
@@ -878,13 +874,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load appointments: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to load appointments: {ex.Message}");
             return new List<AppointmentDto>();
         }
     }
@@ -905,13 +895,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to load appointment details: {ex.Message}",
-                Duration = 4000
-            });
+            NotificationService.ShowError($"Failed to load appointment details: {ex.Message}");
         }
     }
 
@@ -979,13 +963,7 @@
         // Doctors can only edit their own appointments
         if (isDoctor && appointment.DoctorId != currentUser?.Id)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Warning,
-                Summary = "Access Denied",
-                Detail = "You can only edit your own appointments",
-                Duration = 4000
-            });
+            NotificationService.ShowWarning("You can only edit your own appointments");
             return;
         }
 
@@ -1109,13 +1087,7 @@
 
             if (response.IsSuccessStatusCode)
             {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Success,
-                    Summary = "Success",
-                    Detail = "Appointment saved successfully!",
-                    Duration = 4000
-                });
+                NotificationService.ShowSuccess("Appointment saved successfully!");
                 CloseDialog();
                 if (_grid != null)
                 {
@@ -1142,18 +1114,15 @@
         // Doctors can only cancel their own appointments
         if (isDoctor && appointment.DoctorId != currentUser?.Id)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Warning,
-                Summary = "Access Denied",
-                Detail = "You can only cancel your own appointments",
-                Duration = 4000
-            });
+            NotificationService.ShowWarning("You can only cancel your own appointments");
             return;
         }
 
-        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
-            $"Are you sure you want to cancel the appointment with {appointment.PatientName} on {appointment.AppointmentDateTime:MM/dd/yyyy}?");
+        var details = $"Patient: {appointment.PatientName}\n" +
+                     $"Date: {appointment.AppointmentDateTime:MM/dd/yyyy}\n" +
+                     $"Time: {appointment.AppointmentDateTime:hh:mm tt}";
+        
+        var confirmed = await JSRuntime.ConfirmDestructiveAsync("cancel this appointment", details, "appointment");
         
         if (!confirmed)
             return;
@@ -1161,13 +1130,7 @@
         try
         {
             await AppointmentService.CancelAsync(appointment.Id, ct);
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Success,
-                Summary = "Success",
-                Detail = "Appointment cancelled successfully!",
-                Duration = 4000
-            });
+            NotificationService.ShowSuccess("Appointment cancelled successfully!");
             if (_grid != null)
             {
                 await _grid.RefreshAsync();
@@ -1175,13 +1138,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"Failed to cancel appointment: {ex.Message}",
-                Duration = 6000
-            });
+            NotificationService.ShowError($"Failed to cancel appointment: {ex.Message}");
         }
     }
 

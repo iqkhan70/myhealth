@@ -1,6 +1,7 @@
 @page "/clinical-decision-support"
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components.Common
 @inject HttpClient Http
 @inject IAuthService AuthService
 @inject IPatientService PatientService
@@ -11,12 +12,9 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h2><i class="fas fa-brain me-2"></i>AI Clinical Decision Support</h2>
-                    <p class="text-muted mb-0">Get evidence-based recommendations for your diagnosis</p>
-                </div>
-            </div>
+            <SMPageHeader Title="AI Clinical Decision Support" 
+                         Icon="fas fa-brain" 
+                         Description="Get evidence-based recommendations for your diagnosis" />
 
             <!-- Clinical Decision Support Component -->
             <div class="clinical-decision-support-wrapper">
