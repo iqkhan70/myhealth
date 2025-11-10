@@ -390,6 +390,7 @@
             ButtonStyle = ButtonStyle.Info,
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
+            Tooltip = "View clinical note details",
             OnClick = async (row, ct) => await ViewNoteAsync(row, ct)
         });
 
@@ -399,6 +400,7 @@
             ButtonStyle = ButtonStyle.Success,
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
+            Tooltip = "Edit clinical note",
             OnClick = async (row, ct) => await EditNoteAsync(row, ct)
         });
 
@@ -408,6 +410,7 @@
             ButtonStyle = ButtonStyle.Danger,
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
+            Tooltip = "Delete clinical note",
             OnClick = async (row, ct) => await DeleteNoteAsync(row, ct)
         });
     }

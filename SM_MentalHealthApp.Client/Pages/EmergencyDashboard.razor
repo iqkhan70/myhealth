@@ -357,6 +357,7 @@
                 ButtonStyle = ButtonStyle.Success,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
+                Tooltip = "Acknowledge emergency incident",
                 OnClick = async (incident, ct) => await AcknowledgeIncidentAsync(incident, ct),
                 Disabled = (incident) => incident.IsAcknowledged || isProcessing
             }

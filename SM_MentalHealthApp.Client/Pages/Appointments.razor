@@ -837,6 +837,7 @@
             ButtonStyle = ButtonStyle.Light,
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
+            Tooltip = "Edit appointment",
             OnClick = async (row, ct) => await EditAppointmentAsync(row, ct)
         });
 
@@ -846,6 +847,7 @@
             ButtonStyle = ButtonStyle.Danger,
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
+            Tooltip = "Cancel appointment",
             OnClick = async (row, ct) => await CancelAppointmentAsync(row, ct),
             Disabled = (appointment) => appointment.Status != AppointmentStatus.Scheduled && appointment.Status != AppointmentStatus.Confirmed
         });

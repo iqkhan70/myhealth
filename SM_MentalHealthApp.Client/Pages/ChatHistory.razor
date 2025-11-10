@@ -175,6 +175,7 @@ new() { Property = nameof(ChatSession.Summary), Title = "Summary", Width = "300p
             ButtonStyle = ButtonStyle.Danger,
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
+            Tooltip = "Delete chat session",
             OnClick = async (row, ct) => await DeleteSessionAsync(row, ct),
             Disabled = (session) => !CanDeleteSession(session)
         });
