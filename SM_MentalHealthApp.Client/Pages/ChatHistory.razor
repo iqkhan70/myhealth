@@ -27,15 +27,19 @@
     }
 </style>
 
-<div class="container mt-4">
+<div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <h2>💬 Chat History</h2>
-            <p class="text-muted">View and search your conversation history with the AI assistant</p>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2><i class="fas fa-comments me-2"></i>Chat History</h2>
+                    <p class="text-muted mb-0">View and search your conversation history with the AI assistant</p>
+                </div>
+            </div>
 
-            <div class="row mb-3">
-                @if (currentUserRole == "Doctor" && patients != null && patients.Any())
-                {
+            @if (currentUserRole == "Doctor" && patients != null && patients.Any())
+            {
+                <div class="row mb-3">
                     <div class="col-md-6">
                         <label for="patientFilter" class="form-label">Filter by Patient:</label>
                         <div class="input-group">
@@ -56,14 +60,12 @@
                             }
                         </div>
                     </div>
-                }
-            </div>
-        </div>
-    </div>
+                </div>
+            }
 
-    <SMDataGrid TItem="ChatSession" Columns="_columns" Actions="_actions" ActionsWidth="120px"
-        LoadItems="ct => ChatHistoryService.ListAsync(selectedPatientId, ct)" @ref="_grid" PageSize="10"
-        OnRowExpandCallback="@OnRowExpand">
+            <SMDataGrid TItem="ChatSession" Columns="_columns" Actions="_actions" ActionsWidth="120px"
+                LoadItems="ct => ChatHistoryService.ListAsync(selectedPatientId, ct)" @ref="_grid" PageSize="10"
+                OnRowExpandCallback="@OnRowExpand">
         <ExpansionTemplate Context="session">
             @{
                 var expandedSession = expandedSessions.ContainsKey(session.Id) ? expandedSessions[session.Id] : session;
@@ -132,8 +134,10 @@
                     </div>
                 </div>
             </div>
-        </ExpansionTemplate>
-    </SMDataGrid>
+            </ExpansionTemplate>
+            </SMDataGrid>
+        </div>
+    </div>
 </div>
 
 @code {
