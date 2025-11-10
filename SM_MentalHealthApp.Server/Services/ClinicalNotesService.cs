@@ -10,7 +10,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<ClinicalNoteDto?> GetClinicalNoteByIdAsync(int id);
         Task<ClinicalNoteDto> CreateClinicalNoteAsync(CreateClinicalNoteRequest request, int doctorId);
         Task<ClinicalNoteDto?> UpdateClinicalNoteAsync(int id, UpdateClinicalNoteRequest request, int doctorId);
-        Task<bool> DeleteClinicalNoteAsync(int id, int doctorId);
+        Task<bool> DeleteClinicalNoteAsync(int id, int? doctorId);
         Task<List<ClinicalNoteDto>> SearchClinicalNotesAsync(string searchTerm, int? patientId = null, int? doctorId = null);
         Task<List<string>> GetNoteTypesAsync();
         Task<List<string>> GetPrioritiesAsync();
@@ -171,7 +171,7 @@ namespace SM_MentalHealthApp.Server.Services
             }
         }
 
-        public async Task<bool> DeleteClinicalNoteAsync(int id, int doctorId)
+        public async Task<bool> DeleteClinicalNoteAsync(int id, int? doctorId)
         {
             try
             {
@@ -179,17 +179,41 @@ namespace SM_MentalHealthApp.Server.Services
                     .FirstOrDefaultAsync(cn => cn.Id == id && cn.IsActive);
 
                 if (note == null)
+                {
+                    _logger.LogWarning("Clinical note {Id} not found or already inactive", id);
                     return false;
+                }
 
-                // Verify the doctor owns this note
-                if (note.DoctorId != doctorId)
-                    throw new UnauthorizedAccessException("You can only delete your own clinical notes");
+                _logger.LogInformation("Attempting to delete clinical note {Id}. Note DoctorId: {NoteDoctorId}, Requesting DoctorId: {RequestingDoctorId}", 
+                    id, note.DoctorId, doctorId);
+
+                // If doctorId is provided (not null), verify the doctor owns this note
+                // If doctorId is null (admin), allow deletion of any note
+                if (doctorId.HasValue)
+                {
+                    if (note.DoctorId != doctorId.Value)
+                    {
+                        _logger.LogWarning("Doctor {DoctorId} attempted to delete note {Id} owned by doctor {NoteDoctorId}", 
+                            doctorId.Value, id, note.DoctorId);
+                        throw new UnauthorizedAccessException("You can only delete your own clinical notes");
+                    }
+                    _logger.LogInformation("Doctor {DoctorId} is authorized to delete their own note {Id}", doctorId.Value, id);
+                }
+                else
+                {
+                    _logger.LogInformation("Admin user deleting note {Id} (no doctorId restriction)", id);
+                }
 
                 note.IsActive = false;
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("Clinical note deleted with ID: {Id}", id);
+                _logger.LogInformation("Clinical note deleted with ID: {Id} by user {UserId}", id, doctorId);
                 return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Re-throw authorization exceptions
+                throw;
             }
             catch (Exception ex)
             {

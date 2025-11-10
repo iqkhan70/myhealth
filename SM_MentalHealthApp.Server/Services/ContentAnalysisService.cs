@@ -297,6 +297,7 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 // Get journal entries (existing functionality)
+                // Note: Journal entries don't currently have ignore functionality
                 var recentEntries = await _context.JournalEntries
                     .Where(e => e.UserId == patientId)
                     .OrderByDescending(e => e.CreatedAt)
@@ -516,6 +517,98 @@ namespace SM_MentalHealthApp.Server.Services
                     context.AppendLine();
                 }
 
+                // Get recent chat sessions for the patient (excluding ignored sessions)
+                var recentChatSessions = await _context.ChatSessions
+                    .Where(s => s.PatientId == patientId && !s.IsIgnoredByDoctor)
+                    .OrderByDescending(s => s.LastActivityAt)
+                    .Take(5)
+                    .ToListAsync();
+
+                // Load recent messages for each session
+                if (recentChatSessions.Any())
+                {
+                    var sessionIds = recentChatSessions.Select(s => s.Id).ToList();
+                    var allMessages = await _context.ChatMessages
+                        .Where(m => sessionIds.Contains(m.SessionId))
+                        .ToListAsync();
+
+                    // Group messages by session, order by timestamp descending, take 10 most recent, then re-order chronologically
+                    var recentMessagesBySession = allMessages
+                        .GroupBy(m => m.SessionId)
+                        .ToDictionary(
+                            g => g.Key, 
+                            g => g.OrderByDescending(m => m.Timestamp)
+                                  .Take(10)
+                                  .OrderBy(m => m.Timestamp)
+                                  .ToList()
+                        );
+
+                    // Attach messages to sessions
+                    foreach (var session in recentChatSessions)
+                    {
+                        if (recentMessagesBySession.TryGetValue(session.Id, out var messages))
+                        {
+                            session.Messages = messages;
+                        }
+                        else
+                        {
+                            session.Messages = new List<ChatMessage>();
+                        }
+                    }
+                }
+
+                _logger.LogInformation("Found {ChatSessionCount} chat sessions for patient {PatientId} (after filtering ignored sessions)", recentChatSessions.Count, patientId);
+
+                if (recentChatSessions.Any())
+                {
+                    context.AppendLine("=== RECENT CHAT HISTORY ===");
+                    foreach (var session in recentChatSessions)
+                    {
+                        context.AppendLine($"Session: {session.CreatedAt:MM/dd/yyyy HH:mm} - {session.LastActivityAt:MM/dd/yyyy HH:mm}");
+                        context.AppendLine($"Messages: {session.MessageCount}");
+                        
+                        // Add session summary if available
+                        if (!string.IsNullOrEmpty(session.Summary))
+                        {
+                            context.AppendLine($"Summary: {session.Summary.Substring(0, Math.Min(300, session.Summary.Length))}...");
+                        }
+
+                        // Add key messages if available (focus on medical data and concerning content)
+                        if (session.Messages != null && session.Messages.Any())
+                        {
+                            var medicalMessages = session.Messages
+                                .Where(m => m.IsMedicalData || 
+                                           m.Content.ToLower().Contains("emergency") ||
+                                           m.Content.ToLower().Contains("critical") ||
+                                           m.Content.ToLower().Contains("urgent") ||
+                                           m.Content.ToLower().Contains("crisis") ||
+                                           m.Content.ToLower().Contains("concerning"))
+                                .Take(5)
+                                .ToList();
+
+                            if (medicalMessages.Any())
+                            {
+                                context.AppendLine("Key Messages:");
+                                foreach (var msg in medicalMessages)
+                                {
+                                    var rolePrefix = msg.Role switch
+                                    {
+                                        MessageRole.User => "Patient",
+                                        MessageRole.Assistant => "AI",
+                                        MessageRole.System => "System",
+                                        _ => "Unknown"
+                                    };
+                                    var content = msg.Content.Length > 200 
+                                        ? msg.Content.Substring(0, 200) + "..." 
+                                        : msg.Content;
+                                    context.AppendLine($"  [{msg.Timestamp:MM/dd/yyyy HH:mm}] {rolePrefix}: {content}");
+                                }
+                            }
+                        }
+                        context.AppendLine();
+                    }
+                }
+
                 // Add emergency trend analysis
                 if (recentEmergencies.Any())
                 {
@@ -564,12 +657,34 @@ namespace SM_MentalHealthApp.Server.Services
                 context.AppendLine($"=== USER QUESTION ===");
                 context.AppendLine(originalPrompt);
                 context.AppendLine();
-                context.AppendLine("INSTRUCTIONS FOR AI RESPONSE:");
-                context.AppendLine("RESPOND WITH THIS EXACT FORMAT:");
-                context.AppendLine("1. Start with: '🚨 CRITICAL EMERGENCY ALERT: [number] emergency incidents detected'");
-                context.AppendLine("2. List each emergency incident");
-                context.AppendLine("3. Then discuss other medical data");
-                context.AppendLine("4. Keep response under 200 words");
+                context.AppendLine("=== INSTRUCTIONS FOR AI HEALTH CHECK ANALYSIS ===");
+                context.AppendLine("You are a clinical AI assistant analyzing a patient's comprehensive health status. Provide a detailed analysis in the following format:");
+                context.AppendLine();
+                context.AppendLine("**Patient Medical Overview:**");
+                context.AppendLine("- Analyze the patient's CURRENT STATUS (stable, concerning, critical, etc.)");
+                context.AppendLine("- Summarize key medical findings from test results, vital signs, and medical data");
+                context.AppendLine("- Note any critical values, abnormal findings, or concerning patterns");
+                context.AppendLine();
+                context.AppendLine("**Recent Patient Activity:**");
+                context.AppendLine("- Review journal entries and mood patterns");
+                context.AppendLine("- Analyze chat history for concerning conversations or medical data");
+                context.AppendLine("- Note any clinical notes or observations");
+                context.AppendLine();
+                context.AppendLine("**Emergency Incidents (if any):**");
+                context.AppendLine("- If emergency incidents exist, start with: '🚨 CRITICAL EMERGENCY ALERT: [number] emergency incidents detected'");
+                context.AppendLine("- List each emergency with severity and status");
+                context.AppendLine("- Prioritize unacknowledged emergencies");
+                context.AppendLine();
+                context.AppendLine("**Clinical Assessment:**");
+                context.AppendLine("- Provide a professional assessment of the patient's overall health status");
+                context.AppendLine("- Identify any trends (improving, stable, deteriorating)");
+                context.AppendLine("- Highlight areas requiring attention or follow-up");
+                context.AppendLine();
+                context.AppendLine("**Recommendations:**");
+                context.AppendLine("- Suggest any immediate actions if critical issues are found");
+                context.AppendLine("- Recommend follow-up care or monitoring if needed");
+                context.AppendLine();
+                context.AppendLine("IMPORTANT: Be specific and reference actual data from the patient's records. If no concerning data is found, state that clearly. Keep the response comprehensive but concise (300-400 words).");
 
                 var result = context.ToString();
                 _logger.LogInformation("Enhanced context built for patient {PatientId}, length: {Length}", patientId, result.Length);

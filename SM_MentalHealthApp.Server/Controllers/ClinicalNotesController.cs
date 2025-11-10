@@ -8,7 +8,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     [ApiController]
     [ApiVersion("1.0")]
     [Route("api/[controller]")]
-    [Authorize(Roles = "Doctor")]
+    [Authorize(Roles = "Doctor,Admin")]
     public class ClinicalNotesController : BaseController
     {
         private readonly IClinicalNotesService _clinicalNotesService;
@@ -136,12 +136,35 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                // Get doctor ID from the authenticated user
-                var doctorId = GetCurrentUserId();
-                if (doctorId == null)
-                    return Unauthorized("Doctor ID not found");
+                // Get user ID and role from the authenticated user
+                var userId = GetCurrentUserId();
+                var userRole = GetCurrentRoleId();
+                
+                if (userId == null)
+                    return Unauthorized("User ID not found");
 
-                var deleted = await _clinicalNotesService.DeleteClinicalNoteAsync(id, doctorId.Value);
+                _logger.LogInformation("Delete request for clinical note {Id} by user {UserId} with role {RoleId}", id, userId, userRole);
+
+                // Admins can delete any note, doctors can only delete their own
+                int? doctorId = null;
+                if (userRole == Shared.Constants.Roles.Doctor)
+                {
+                    doctorId = userId.Value;
+                    _logger.LogInformation("User is a doctor, will only allow deletion of own notes. DoctorId: {DoctorId}", doctorId);
+                }
+                else if (userRole == Shared.Constants.Roles.Admin)
+                {
+                    _logger.LogInformation("User is an admin, will allow deletion of any note");
+                    // doctorId remains null for admins, allowing deletion of any note
+                }
+                else
+                {
+                    _logger.LogWarning("User {UserId} has unexpected role {RoleId}, treating as doctor for safety", userId, userRole);
+                    // For safety, if role is unexpected, treat as doctor (most restrictive)
+                    doctorId = userId.Value;
+                }
+
+                var deleted = await _clinicalNotesService.DeleteClinicalNoteAsync(id, doctorId);
                 if (!deleted)
                     return NotFound();
 
@@ -149,8 +172,8 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                _logger.LogWarning(ex, "Unauthorized access to clinical note: {Id}", id);
-                return Forbid(ex.Message);
+                _logger.LogWarning(ex, "Unauthorized access to clinical note: {Id}. Message: {Message}", id, ex.Message);
+                return StatusCode(403, ex.Message);
             }
             catch (Exception ex)
             {

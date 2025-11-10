@@ -109,12 +109,16 @@
                     <div style="display: flex; justify-content: center; align-items: center; gap: 5px;">
                         @foreach (var action in Actions)
                         {
-                            var disabled = (DisableActionsWhileLoading && _isLoading) || (action.Disabled?.Invoke(row) ??
-                            false);
-                            <RadzenButton Icon="@action.GetIcon(row)" ButtonStyle="@action.GetButtonStyle(row)" Variant="@action.Variant"
-                                Size="@action.Size" Disabled="@disabled"
-                                Click="@(async () => await InvokeRowActionAsync(action, row))" @onclick:stopPropagation="true"
-                                Title="@action.GetTooltip(row)" class="mr-1" />
+                            // Only render button if it's visible for this row
+                            if (action.IsVisible(row))
+                            {
+                                var disabled = (DisableActionsWhileLoading && _isLoading) || (action.Disabled?.Invoke(row) ??
+                                false);
+                                <RadzenButton Icon="@action.GetIcon(row)" ButtonStyle="@action.GetButtonStyle(row)" Variant="@action.Variant"
+                                    Size="@action.Size" Disabled="@disabled"
+                                    Click="@(async () => await InvokeRowActionAsync(action, row))" @onclick:stopPropagation="true"
+                                    Title="@action.GetTooltip(row)" class="mr-1" />
+                            }
                         }
                     </div>
                 </Template>

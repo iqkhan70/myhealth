@@ -13,6 +13,7 @@ public class SMDataGridActionButton<TItem>
     public Func<TItem, CancellationToken, Task>? OnClick { get; set; }
     public string? Policy { get; set; }
     public Func<TItem, bool>? Disabled { get; set; }
+    public Func<TItem, bool>? Visible { get; set; } // Conditionally show/hide button based on row data
     public string? Tooltip { get; set; }
     public Func<TItem, string>? TooltipFunc { get; set; } // Dynamic tooltip based on row data
 
@@ -22,5 +23,6 @@ public class SMDataGridActionButton<TItem>
     public string GetIcon(TItem item) => IconFunc?.Invoke(item) ?? Icon ?? string.Empty;
     public ButtonStyle GetButtonStyle(TItem item) => ButtonStyleFunc?.Invoke(item) ?? ButtonStyle;
     public string GetTooltip(TItem item) => TooltipFunc?.Invoke(item) ?? Tooltip ?? string.Empty;
+    public bool IsVisible(TItem item) => Visible?.Invoke(item) ?? true; // Default to visible if not specified
 }
 

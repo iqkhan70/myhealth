@@ -84,6 +84,36 @@
                             <p><strong>About Patient:</strong> @(expandedSession.Patient?.FullName ?? $"Patient {expandedSession.PatientId}")</p>
                         }
 
+                        @{
+                            var concernLevel = GetConcernLevel(expandedSession);
+                        }
+                        
+                        @if (concernLevel != "None")
+                        {
+                            <div class="alert @(concernLevel == "High" ? "alert-danger" : concernLevel == "Medium" ? "alert-warning" : "alert-info") mb-3">
+                                <h6>
+                                    @(concernLevel == "High" ? "⚠️ High Concern" : concernLevel == "Medium" ? "⚡ Medium Concern" : "ℹ️ Low Concern")
+                                </h6>
+                                <p>
+                                    This chat session contains @(concernLevel.ToLower()) concern indicators based on:
+                                    <ul class="mb-0">
+                                        @if (expandedSession.Messages?.Any(m => m.IsMedicalData) == true)
+                                        {
+                                            <li>Medical data present in messages</li>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedSession.Summary) && (expandedSession.Summary.ToLower().Contains("critical") || expandedSession.Summary.ToLower().Contains("urgent") || expandedSession.Summary.ToLower().Contains("concerning")))
+                                        {
+                                            <li>Concerning keywords in AI summary</li>
+                                        }
+                                        @if (expandedSession.Messages?.Any(m => !string.IsNullOrEmpty(m.Content) && (m.Content.ToLower().Contains("suicide") || m.Content.ToLower().Contains("self-harm") || m.Content.ToLower().Contains("emergency"))) == true)
+                                        {
+                                            <li>High-severity keywords detected</li>
+                                        }
+                                    </ul>
+                                </p>
+                            </div>
+                        }
+
                         @if (expandedSession.IsIgnoredByDoctor)
                         {
                             <div class="alert alert-warning mb-3">
@@ -160,37 +190,56 @@
     private string? currentUserRole;
     private Dictionary<int, ChatSession> expandedSessions = new Dictionary<int, ChatSession>();
 
-    private readonly List<SMDataGridColumn<ChatSession>> _columns =
-    [
-    new() { Property = nameof(ChatSession.PatientDisplayName), Title = "About Patient", Width = "200px" },
-new() { Property = nameof(ChatSession.UserDisplayName), Title = "Conducted By", Width = "150px" },
-new SMDataGridBadgeColumn<ChatSession>
-{
-Property = nameof(ChatSession.MessageCount),
-Title = "Messages",
-Width = "100px",
-TextAlign = TextAlign.Center,
-GetBadgeData = (session) => (session.MessageCount.ToString(), NotificationSeverity.Success, true)
-},
-new SMDataGridBadgeColumn<ChatSession>
-{
-Property = nameof(ChatSession.IsIgnoredByDoctor),
-Title = "AI Status",
-Width = "120px",
-TextAlign = TextAlign.Center,
-GetBadgeData = (session) => session.IsIgnoredByDoctor 
-    ? ("🚫 Ignored", NotificationSeverity.Warning, true)
-    : ("✅ Active", NotificationSeverity.Success, true)
-},
-new() { Property = nameof(ChatSession.CreatedAt), Title = "Created", Width = "150px" },
-new() { Property = nameof(ChatSession.LastActivityAt), Title = "Last Activity", Width = "150px" },
-new() { Property = nameof(ChatSession.Summary), Title = "Summary", Width = "300px" }
-    ];
+    private List<SMDataGridColumn<ChatSession>> _columns = new();
 
     private readonly List<SMDataGridActionButton<ChatSession>> _actions = [];
 
     protected override async Task OnInitializedAsync()
     {
+        // Initialize columns (must be done here to access instance methods)
+        _columns = new List<SMDataGridColumn<ChatSession>>
+        {
+            new() { Property = nameof(ChatSession.PatientDisplayName), Title = "About Patient", Width = "200px" },
+            new() { Property = nameof(ChatSession.UserDisplayName), Title = "Conducted By", Width = "150px" },
+            new SMDataGridBadgeColumn<ChatSession>
+            {
+                Property = nameof(ChatSession.MessageCount),
+                Title = "Messages",
+                Width = "100px",
+                TextAlign = TextAlign.Center,
+                GetBadgeData = (session) => (session.MessageCount.ToString(), NotificationSeverity.Success, true)
+            },
+            new SMDataGridBadgeColumn<ChatSession>
+            {
+                Property = nameof(ChatSession.IsIgnoredByDoctor),
+                Title = "AI Status",
+                Width = "120px",
+                TextAlign = TextAlign.Center,
+                GetBadgeData = (session) => session.IsIgnoredByDoctor 
+                    ? ("🚫 Ignored", NotificationSeverity.Warning, true)
+                    : ("✅ Active", NotificationSeverity.Success, true)
+            },
+            new SMDataGridBadgeColumn<ChatSession>
+            {
+                Property = nameof(ChatSession.Summary),
+                Title = "Concern Level",
+                Width = "130px",
+                TextAlign = TextAlign.Center,
+                GetBadgeData = (session) => {
+                    var concernLevel = GetConcernLevel(session);
+                    return concernLevel switch
+                    {
+                        "High" => ("⚠️ High", NotificationSeverity.Error, true),
+                        "Medium" => ("⚡ Medium", NotificationSeverity.Warning, true),
+                        "Low" => ("ℹ️ Low", NotificationSeverity.Info, true),
+                        _ => ("✅ None", NotificationSeverity.Success, true)
+                    };
+                }
+            },
+            new() { Property = nameof(ChatSession.CreatedAt), Title = "Created", Width = "150px" },
+            new() { Property = nameof(ChatSession.LastActivityAt), Title = "Last Activity", Width = "150px" }
+        };
+        
         await LoadUserInfo();
 
         // Add ignore/unignore button for doctors
@@ -324,6 +373,96 @@ new() { Property = nameof(ChatSession.Summary), Title = "Summary", Width = "300p
     private int GetCurrentUserId()
     {
         return AuthService.CurrentUser?.Id ?? 0;
+    }
+
+    /// <summary>
+    /// Determines the concern level of a chat session based on summary and messages
+    /// </summary>
+    private string GetConcernLevel(ChatSession session)
+    {
+        if (session == null) return "None";
+
+        var concernScore = 0;
+        var textToAnalyze = string.Empty;
+
+        // Check summary for concerning keywords (always available in list view)
+        if (!string.IsNullOrEmpty(session.Summary))
+        {
+            textToAnalyze += session.Summary.ToLower() + " ";
+        }
+
+        // Check messages if available (only loaded when row is expanded)
+        var hasMessages = session.Messages != null && session.Messages.Any();
+        if (hasMessages)
+        {
+            foreach (var message in session.Messages)
+            {
+                if (message.IsMedicalData)
+                {
+                    concernScore += 2; // Medical data is always a concern
+                }
+                
+                if (!string.IsNullOrEmpty(message.Content))
+                {
+                    textToAnalyze += message.Content.ToLower() + " ";
+                }
+            }
+        }
+        // If messages aren't loaded but we have a message count, we can still analyze the summary
+        // The summary should contain key information from the conversation
+
+        // High severity keywords
+        var highSeverityKeywords = new[]
+        {
+            "critical", "urgent", "immediate", "emergency", "severe", "concerning",
+            "high risk", "dangerous", "alarming", "serious", "crisis", "acute",
+            "suicide", "self-harm", "overdose", "chest pain", "difficulty breathing",
+            "heart attack", "stroke", "unacknowledged"
+        };
+
+        // Medium severity keywords
+        var mediumSeverityKeywords = new[]
+        {
+            "worry", "worried", "concerned", "anxious", "depressed", "stress",
+            "pain", "ache", "fever", "nausea", "dizziness", "fatigue",
+            "abnormal", "elevated", "high", "low", "irregular"
+        };
+
+        // Check for high severity keywords in the text (summary or messages)
+        foreach (var keyword in highSeverityKeywords)
+        {
+            if (textToAnalyze.Contains(keyword))
+            {
+                concernScore += 3;
+            }
+        }
+
+        // Check for medium severity keywords
+        foreach (var keyword in mediumSeverityKeywords)
+        {
+            if (textToAnalyze.Contains(keyword))
+            {
+                concernScore += 1;
+            }
+        }
+
+        // If we have a summary but no messages loaded, and the summary contains concerning keywords,
+        // we should still flag it appropriately
+        if (!hasMessages && !string.IsNullOrEmpty(session.Summary))
+        {
+            // The summary itself might indicate concern even without message details
+            // This ensures we catch concerns mentioned in the AI-generated summary
+        }
+
+        // Determine concern level
+        if (concernScore >= 5)
+            return "High";
+        else if (concernScore >= 2)
+            return "Medium";
+        else if (concernScore >= 1)
+            return "Low";
+        else
+            return "None";
     }
 
     private async Task ToggleIgnoreSessionAsync(ChatSession session, CancellationToken ct)

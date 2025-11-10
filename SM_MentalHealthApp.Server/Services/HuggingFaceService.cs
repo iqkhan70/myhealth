@@ -860,22 +860,32 @@ namespace SM_MentalHealthApp.Server.Services
                     // Generate a contextual response based on the enhanced context
                     var response = new StringBuilder();
 
-                    // Check for medical content in the context
+                    // Check for medical content in the context - expanded to include all section headers we use
                     bool hasMedicalContent = text.Contains("Blood Pressure") || text.Contains("Hemoglobin") || text.Contains("Triglycerides") ||
                                            text.Contains("CRITICAL VALUES") || text.Contains("ABNORMAL VALUES") || text.Contains("NORMAL VALUES") ||
                                            text.Contains("CURRENT MEDICAL STATUS") || text.Contains("LATEST TEST RESULTS") ||
                                            text.Contains("=== CURRENT MEDICAL STATUS") || text.Contains("=== HISTORICAL MEDICAL CONCERNS") ||
-                                           text.Contains("=== HEALTH TREND ANALYSIS");
+                                           text.Contains("=== HEALTH TREND ANALYSIS") ||
+                                           text.Contains("=== MEDICAL DATA SUMMARY") || text.Contains("=== RECENT CLINICAL NOTES") ||
+                                           text.Contains("=== RECENT CHAT HISTORY") || text.Contains("=== RECENT EMERGENCY INCIDENTS") ||
+                                           text.Contains("=== RECENT JOURNAL ENTRIES") || text.Contains("AI Health Check for Patient");
 
                     // Check for specific critical values
                     bool hasCriticalValues = text.Contains("180/110") || text.Contains("6.0") || text.Contains("700");
 
+                    // Also check if we have any of the section markers that indicate patient data is present
+                    bool hasPatientSections = text.Contains("=== RECENT") || text.Contains("=== MEDICAL") || 
+                                            text.Contains("=== EMERGENCY") || text.Contains("Session:") ||
+                                            text.Contains("Summary:") || text.Contains("Clinical Notes") ||
+                                            text.Contains("Journal Entries") || text.Contains("Chat History");
+
                     // Check if we have patient data or if this is a generic query
-                    bool hasPatientData = journalEntries.Any() || alerts.Any() || hasMedicalContent;
+                    bool hasPatientData = journalEntries.Any() || alerts.Any() || hasMedicalContent || hasPatientSections;
 
                     _logger.LogInformation("=== FALLBACK DETECTION RESULTS ===");
                     _logger.LogInformation("hasMedicalContent: {HasMedicalContent}", hasMedicalContent);
                     _logger.LogInformation("hasCriticalValues: {HasCriticalValues}", hasCriticalValues);
+                    _logger.LogInformation("hasPatientSections: {HasPatientSections}", hasPatientSections);
                     _logger.LogInformation("journalEntries.Count: {JournalCount}", journalEntries.Count);
                     _logger.LogInformation("alerts.Count: {AlertsCount}", alerts.Count);
                     _logger.LogInformation("hasPatientData: {HasPatientData}", hasPatientData);
@@ -985,44 +995,117 @@ namespace SM_MentalHealthApp.Server.Services
                     {
                         var questionLower = userQuestion.ToLower();
 
-                        if (questionLower.Contains("status") || questionLower.Contains("how is") || questionLower.Contains("condition"))
+                        // Check if this is a health check request
+                        bool isHealthCheck = questionLower.Contains("health check") || questionLower.Contains("ai health check") || 
+                                           questionLower.Contains("analyze") || questionLower.Contains("assessment");
+
+                        if (isHealthCheck || questionLower.Contains("status") || questionLower.Contains("how is") || questionLower.Contains("condition"))
                         {
-                            response.AppendLine("Based on the patient's recent activity and medical content:");
+                            // Generate comprehensive health check analysis
+                            response.AppendLine("**Patient Medical Overview:**");
 
                             // Check for critical medical values
                             var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:")).ToList();
                             var normalValues = alerts.Where(a => a.Contains("✅ NORMAL:") || a.Contains("NORMAL VALUES:")).ToList();
+                            var abnormalValues = alerts.Where(a => a.Contains("⚠️") || a.Contains("ABNORMAL VALUES:")).ToList();
 
                             if (criticalAlerts.Any())
                             {
-                                response.AppendLine("🚨 **CRITICAL MEDICAL EMERGENCY DETECTED!**");
-                                response.AppendLine("The patient has critical medical values that require IMMEDIATE medical attention:");
+                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
                                 foreach (var critical in criticalAlerts)
                                 {
                                     response.AppendLine($"- {critical}");
                                 }
-                                response.AppendLine();
-                                response.AppendLine("**URGENT ACTION REQUIRED:** Contact emergency services immediately!");
                             }
-                            else if (normalValues.Any() && alerts.Any(a => a.Contains("⚠️") && !a.Contains("CRITICAL")))
+                            else if (normalValues.Any() && !abnormalValues.Any())
                             {
-                                response.AppendLine("✅ **CURRENT STATUS: IMPROVED**");
-                                response.AppendLine("The patient's latest test results show normal values, indicating improvement from previous concerning results.");
-                                response.AppendLine("However, continued monitoring is essential due to previous abnormal values.");
+                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
                             }
-                            else if (alerts.Any())
+                            else if (abnormalValues.Any())
                             {
-                                response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED**");
-                                response.AppendLine("There are abnormal medical values that require attention and monitoring.");
+                                response.AppendLine("⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
+                                foreach (var abnormal in abnormalValues.Take(3))
+                                {
+                                    response.AppendLine($"- {abnormal}");
+                                }
                             }
                             else
                             {
-                                response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
                             }
 
+                            response.AppendLine();
+                            response.AppendLine("**Recent Patient Activity:**");
+                            
                             if (journalEntries.Any())
                             {
-                                response.AppendLine("The patient has been actively engaging with their health tracking.");
+                                foreach (var entry in journalEntries.Take(3))
+                                {
+                                    response.AppendLine($"- {entry}");
+                                }
+                            }
+                            else
+                            {
+                                response.AppendLine("- No recent journal entries found.");
+                            }
+
+                            // Check for chat history
+                            if (text.Contains("=== RECENT CHAT HISTORY ==="))
+                            {
+                                response.AppendLine();
+                                response.AppendLine("**Chat History:** Patient has been engaging in conversations with the AI assistant.");
+                            }
+
+                            // Check for clinical notes
+                            if (text.Contains("=== RECENT CLINICAL NOTES ==="))
+                            {
+                                response.AppendLine();
+                                response.AppendLine("**Clinical Notes:** Recent clinical documentation is available for review.");
+                            }
+
+                            // Check for emergency incidents
+                            if (text.Contains("=== RECENT EMERGENCY INCIDENTS ==="))
+                            {
+                                response.AppendLine();
+                                response.AppendLine("⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.");
+                            }
+
+                            response.AppendLine();
+                            response.AppendLine("**Clinical Assessment:**");
+                            
+                            if (criticalAlerts.Any())
+                            {
+                                response.AppendLine("The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.");
+                            }
+                            else if (abnormalValues.Any())
+                            {
+                                response.AppendLine("The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.");
+                            }
+                            else
+                            {
+                                response.AppendLine("The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.");
+                            }
+
+                            response.AppendLine();
+                            response.AppendLine("**Recommendations:**");
+                            
+                            if (criticalAlerts.Any())
+                            {
+                                response.AppendLine("- Immediate medical evaluation required");
+                                response.AppendLine("- Consider emergency department visit");
+                                response.AppendLine("- Notify assigned doctors immediately");
+                            }
+                            else if (abnormalValues.Any())
+                            {
+                                response.AppendLine("- Schedule follow-up appointment within 1-2 weeks");
+                                response.AppendLine("- Repeat laboratory tests as indicated");
+                                response.AppendLine("- Monitor patient closely for any changes");
+                            }
+                            else
+                            {
+                                response.AppendLine("- Continue current care plan");
+                                response.AppendLine("- Maintain routine follow-up schedule");
+                                response.AppendLine("- Encourage continued health tracking");
                             }
                         }
                         else if (questionLower.Contains("suggestions") || questionLower.Contains("approach") || questionLower.Contains("recommendations") || questionLower.Contains("what should"))
@@ -1104,10 +1187,134 @@ namespace SM_MentalHealthApp.Server.Services
 
                         return response.ToString().Trim();
                     }
+                    else
+                    {
+                        // No question extracted, but we have patient data - generate comprehensive health check
+                        _logger.LogInformation("No question extracted, but patient data detected. Generating comprehensive health check analysis.");
+                        
+                        // Generate comprehensive health check analysis
+                        response.AppendLine("**Patient Medical Overview:**");
+
+                        var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:")).ToList();
+                        var normalValues = alerts.Where(a => a.Contains("✅ NORMAL:") || a.Contains("NORMAL VALUES:")).ToList();
+                        var abnormalValues = alerts.Where(a => a.Contains("⚠️") || a.Contains("ABNORMAL VALUES:")).ToList();
+
+                        if (criticalAlerts.Any())
+                        {
+                            response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                            foreach (var critical in criticalAlerts)
+                            {
+                                response.AppendLine($"- {critical}");
+                            }
+                        }
+                        else if (normalValues.Any() && !abnormalValues.Any())
+                        {
+                            response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                        }
+                        else if (abnormalValues.Any())
+                        {
+                            response.AppendLine("⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
+                            foreach (var abnormal in abnormalValues.Take(3))
+                            {
+                                response.AppendLine($"- {abnormal}");
+                            }
+                        }
+                        else
+                        {
+                            response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                        }
+
+                        response.AppendLine();
+                        response.AppendLine("**Recent Patient Activity:**");
+                        
+                        if (journalEntries.Any())
+                        {
+                            foreach (var entry in journalEntries.Take(3))
+                            {
+                                response.AppendLine($"- {entry}");
+                            }
+                        }
+                        else
+                        {
+                            response.AppendLine("- No recent journal entries found.");
+                        }
+
+                        if (text.Contains("=== RECENT CHAT HISTORY ==="))
+                        {
+                            response.AppendLine();
+                            response.AppendLine("**Chat History:** Patient has been engaging in conversations with the AI assistant.");
+                        }
+
+                        if (text.Contains("=== RECENT CLINICAL NOTES ==="))
+                        {
+                            response.AppendLine();
+                            response.AppendLine("**Clinical Notes:** Recent clinical documentation is available for review.");
+                        }
+
+                        if (text.Contains("=== RECENT EMERGENCY INCIDENTS ==="))
+                        {
+                            response.AppendLine();
+                            response.AppendLine("⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.");
+                        }
+
+                        response.AppendLine();
+                        response.AppendLine("**Clinical Assessment:**");
+                        
+                        if (criticalAlerts.Any())
+                        {
+                            response.AppendLine("The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.");
+                        }
+                        else if (abnormalValues.Any())
+                        {
+                            response.AppendLine("The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.");
+                        }
+                        else
+                        {
+                            response.AppendLine("The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.");
+                        }
+
+                        response.AppendLine();
+                        response.AppendLine("**Recommendations:**");
+                        
+                        if (criticalAlerts.Any())
+                        {
+                            response.AppendLine("- Immediate medical evaluation required");
+                            response.AppendLine("- Consider emergency department visit");
+                            response.AppendLine("- Notify assigned doctors immediately");
+                        }
+                        else if (abnormalValues.Any())
+                        {
+                            response.AppendLine("- Schedule follow-up appointment within 1-2 weeks");
+                            response.AppendLine("- Repeat laboratory tests as indicated");
+                            response.AppendLine("- Monitor patient closely for any changes");
+                        }
+                        else
+                        {
+                            response.AppendLine("- Continue current care plan");
+                            response.AppendLine("- Maintain routine follow-up schedule");
+                            response.AppendLine("- Encourage continued health tracking");
+                        }
+
+                        return response.ToString().Trim();
+                    }
                 }
                 else
                 {
-                    // If knowledge file doesn't exist, return a basic response
+                    // If knowledge file doesn't exist, check if we have patient data and generate analysis
+                    bool hasPatientDataInContext = text.Contains("=== MEDICAL DATA SUMMARY ===") || 
+                                                   text.Contains("=== RECENT JOURNAL ENTRIES ===") || 
+                                                   text.Contains("=== RECENT CHAT HISTORY ===") ||
+                                                   text.Contains("=== RECENT CLINICAL NOTES ===") ||
+                                                   text.Contains("=== RECENT EMERGENCY INCIDENTS ===") ||
+                                                   text.Contains("AI Health Check for Patient");
+                    
+                    if (hasPatientDataInContext)
+                    {
+                        _logger.LogInformation("Knowledge file doesn't exist, but patient data detected. Generating health check analysis.");
+                        return ProcessEnhancedContextResponse(text);
+                    }
+                    
+                    // If knowledge file doesn't exist and no patient data, return a basic response
                     return "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
                 }
             }

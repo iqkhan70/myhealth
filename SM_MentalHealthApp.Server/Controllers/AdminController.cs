@@ -87,9 +87,19 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 // Build comprehensive context for AI analysis
                 var contentAnalysisService = HttpContext.RequestServices.GetRequiredService<IContentAnalysisService>();
-                var patientContext = await contentAnalysisService.BuildEnhancedContextAsync(patientId, $"AI Health Check for Patient {patient.FirstName} {patient.LastName}");
+                var originalPrompt = $"AI Health Check for Patient {patient.FirstName} {patient.LastName}";
+                _logger.LogInformation("Building context for patient {PatientId} with prompt: {Prompt}", patientId, originalPrompt);
+
+                var patientContext = await contentAnalysisService.BuildEnhancedContextAsync(patientId, originalPrompt);
 
                 _logger.LogInformation("Built context for patient {PatientId}, length: {ContextLength}", patientId, patientContext.Length);
+                _logger.LogInformation("Context preview (first 500 chars): {ContextPreview}", patientContext.Length > 500 ? patientContext.Substring(0, 500) : patientContext);
+
+                // Verify context contains patient data
+                if (string.IsNullOrWhiteSpace(patientContext) || patientContext == originalPrompt)
+                {
+                    _logger.LogWarning("Context appears to be empty or unchanged for patient {PatientId}. This may indicate no patient data is available.", patientId);
+                }
 
                 // Use HuggingFace service to analyze patient's current status
                 var huggingFaceService = HttpContext.RequestServices.GetRequiredService<HuggingFaceService>();
@@ -236,16 +246,21 @@ namespace SM_MentalHealthApp.Server.Controllers
                     {
                         // Look for context - if it's in a "recent activity" or historical section, be more lenient
                         int keywordIndex = response.IndexOf(keyword);
-                        int contextStart = Math.Max(0, keywordIndex - 150);
-                        string contextBefore = response.Substring(contextStart, Math.Min(150, keywordIndex));
+                        int contextStart = Math.Max(0, keywordIndex - 200);
+                        int contextEnd = Math.Min(response.Length, keywordIndex + 200);
+                        string contextBefore = response.Substring(contextStart, Math.Min(200, keywordIndex - contextStart));
+                        string contextAfter = response.Substring(keywordIndex, Math.Min(200, contextEnd - keywordIndex));
 
-                        // If keyword appears near "recent", "history", "past", "previous", it's likely historical
+                        // If keyword appears near "recent", "history", "past", "previous", "activity", or in date brackets, it's likely historical
                         bool isHistorical = contextBefore.Contains("recent") ||
                                           contextBefore.Contains("history") ||
                                           contextBefore.Contains("past") ||
                                           contextBefore.Contains("previous") ||
                                           contextBefore.Contains("activity") ||
-                                          contextBefore.Contains("[");
+                                          contextBefore.Contains("[") ||
+                                          contextAfter.Contains("recent activity") ||
+                                          contextAfter.Contains("patient activity") ||
+                                          (contextBefore.Contains("[") && contextBefore.Contains("/")); // Date format like [09/16/2025]
 
                         if (!isHistorical)
                         {
@@ -254,8 +269,34 @@ namespace SM_MentalHealthApp.Server.Controllers
                         }
                         else
                         {
-                            _logger.LogDebug("Critical keyword '{Keyword}' found but appears to be historical. Ignoring.", keyword);
+                            _logger.LogDebug("Critical keyword '{Keyword}' found but appears to be historical (context: '{Context}'). Ignoring.", keyword, contextBefore + "..." + contextAfter);
                         }
+                    }
+                }
+
+                // Also check for "crisis" in historical context (like "Mood: Crisis" in Recent Patient Activity)
+                if (response.Contains("crisis"))
+                {
+                    int crisisIndex = response.IndexOf("crisis");
+                    int contextStart = Math.Max(0, crisisIndex - 200);
+                    int contextEnd = Math.Min(response.Length, crisisIndex + 200);
+                    string contextBefore = response.Substring(contextStart, Math.Min(200, crisisIndex - contextStart));
+                    string contextAfter = response.Substring(crisisIndex, Math.Min(200, contextEnd - crisisIndex));
+
+                    // If "crisis" appears in "Recent Patient Activity" or near a date, it's historical
+                    bool isHistoricalCrisis = contextBefore.Contains("recent patient activity") ||
+                                             contextBefore.Contains("recent activity") ||
+                                             contextBefore.Contains("mood:") ||
+                                             (contextBefore.Contains("[") && contextBefore.Contains("/")); // Date format
+
+                    if (isHistoricalCrisis)
+                    {
+                        _logger.LogDebug("'Crisis' found in historical context (likely from journal entries). Ignoring for severity calculation.");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("'Crisis' found in current context despite stable status. Flagging as high severity.");
+                        return true;
                     }
                 }
 

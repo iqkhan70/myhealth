@@ -417,7 +417,24 @@
             Variant = Variant.Flat,
             Size = ButtonSize.Small,
             Tooltip = "Delete clinical note",
-            OnClick = async (row, ct) => await DeleteNoteAsync(row, ct)
+            OnClick = async (row, ct) => await DeleteNoteAsync(row, ct),
+            // Only show delete button if user is admin OR if user is doctor and owns this note
+            Visible = (note) => 
+            {
+                var currentUser = AuthService.CurrentUser;
+                if (currentUser == null) return false;
+                
+                // Admins can see delete button for all notes
+                if (currentUser.RoleId == Shared.Constants.Roles.Admin)
+                    return true;
+                
+                // Doctors can only see delete button for their own notes
+                if (currentUser.RoleId == Shared.Constants.Roles.Doctor)
+                    return note.DoctorId == currentUser.Id;
+                
+                // Other roles cannot delete
+                return false;
+            }
         });
     }
 

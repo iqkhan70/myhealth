@@ -375,6 +375,47 @@ namespace SM_MentalHealthApp.Server.Services
                     .OrderByDescending(s => s.LastActivityAt)
                     .ToListAsync();
 
+                // Pre-load a sample of recent messages for each session to help with concern detection
+                // This allows the client to analyze message content even when Messages collection isn't fully loaded
+                var sessionIds = sessions.Select(s => s.Id).ToList();
+                var recentMessagesBySession = await _context.ChatMessages
+                    .Where(m => sessionIds.Contains(m.SessionId))
+                    .GroupBy(m => m.SessionId)
+                    .Select(g => new
+                    {
+                        SessionId = g.Key,
+                        Messages = g.OrderByDescending(m => m.Timestamp)
+                            .Take(10)
+                            .Select(m => new { m.Content, m.IsMedicalData })
+                            .ToList()
+                    })
+                    .ToListAsync();
+
+                // Attach recent messages to sessions for concern detection
+                foreach (var session in sessions)
+                {
+                    var sessionMessages = recentMessagesBySession.FirstOrDefault(m => m.SessionId == session.Id);
+                    if (sessionMessages != null && sessionMessages.Messages.Any())
+                    {
+                        // Initialize Messages collection if null
+                        if (session.Messages == null)
+                        {
+                            session.Messages = new List<ChatMessage>();
+                        }
+
+                        // Add sample messages to help with concern detection
+                        // Note: We're creating lightweight ChatMessage objects just for concern analysis
+                        foreach (var msg in sessionMessages.Messages)
+                        {
+                            session.Messages.Add(new ChatMessage
+                            {
+                                Content = msg.Content ?? string.Empty,
+                                IsMedicalData = msg.IsMedicalData
+                            });
+                        }
+                    }
+                }
+
                 return sessions;
             }
             catch (Exception ex)
