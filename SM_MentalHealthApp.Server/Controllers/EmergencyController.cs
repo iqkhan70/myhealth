@@ -15,6 +15,7 @@ using System.Security.Claims;
 namespace SM_MentalHealthApp.Server.Controllers
 {
     [ApiController]
+    [ApiVersion("1.0")]
     [Route("api/[controller]")]
     [AllowAnonymous]
     public class EmergencyController : ControllerBase

@@ -5,6 +5,7 @@ using SM_MentalHealthApp.Shared;
 namespace SM_MentalHealthApp.Server.Controllers
 {
     [ApiController]
+    [ApiVersion("1.0")]
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {

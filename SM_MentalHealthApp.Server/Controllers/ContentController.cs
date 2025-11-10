@@ -8,6 +8,7 @@ using SM_MentalHealthApp.Server.Data;
 namespace SM_MentalHealthApp.Server.Controllers
 {
     [ApiController]
+    [ApiVersion("1.0")]
     [Route("api/[controller]")]
     public class ContentController : ControllerBase
     {

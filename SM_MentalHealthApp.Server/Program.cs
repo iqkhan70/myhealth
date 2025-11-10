@@ -1,5 +1,8 @@
 using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ApiExplorer;
+using Microsoft.AspNetCore.Mvc.Versioning;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
@@ -87,6 +90,25 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.WriteIndented = true;
     });
 
+// Add API Versioning
+builder.Services.AddApiVersioning(options =>
+{
+    options.DefaultApiVersion = new ApiVersion(1, 0);
+    options.AssumeDefaultVersionWhenUnspecified = true; // Backward compatible - existing clients work
+    options.ReportApiVersions = true; // Include version info in response headers
+    options.ApiVersionReader = ApiVersionReader.Combine(
+        new QueryStringApiVersionReader("api-version"),
+        new HeaderApiVersionReader("X-Version"),
+        new UrlSegmentApiVersionReader()
+    );
+});
+
+builder.Services.AddVersionedApiExplorer(options =>
+{
+    options.GroupNameFormat = "'v'VVV";
+    options.SubstituteApiVersionInUrl = true;
+});
+
 builder.Services.AddRazorPages();
 builder.Services.AddEndpointsApiExplorer();
 
@@ -94,6 +116,24 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
     options.CustomSchemaIds(type => type.FullName);
+    
+    // Add versioning support to Swagger
+    var provider = builder.Services.BuildServiceProvider()
+        .GetRequiredService<IApiVersionDescriptionProvider>();
+    
+    foreach (var description in provider.ApiVersionDescriptions)
+    {
+        options.SwaggerDoc(description.GroupName, new Microsoft.OpenApi.Models.OpenApiInfo
+        {
+            Title = "Mental Health App API",
+            Version = description.ApiVersion.ToString(),
+            Description = description.IsDeprecated 
+                ? "This API version has been deprecated." 
+                : "Current API version"
+        });
+    }
+    
+    options.DocInclusionPredicate((name, api) => true);
 });
 
 // Add SignalR for real-time communication
