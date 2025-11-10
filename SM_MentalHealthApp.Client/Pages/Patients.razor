@@ -399,6 +399,48 @@
     </div>
 }
 
+<!-- AI Health Check Results Dialog -->
+@if (showHealthCheckDialog && currentHealthCheckResult != null)
+{
+    <div class="modal-overlay health-check-modal-overlay" style="display: block !important; z-index: 9999 !important;">
+        <div class="modal-content health-check-modal-content">
+            <div class="modal-header health-check-modal-header">
+                <h3>🧠 AI Health Check Analysis</h3>
+                <button @onclick="CloseHealthCheckDialog" class="close-btn">✕</button>
+            </div>
+            
+            <div class="modal-body health-check-modal-body">
+                <div class="health-check-results">
+                    <div class="result-summary mb-3">
+                        <div class="severity-badge @(currentHealthCheckResult.Severity == "High" ? "severity-high" : currentHealthCheckResult.Severity == "Normal" ? "severity-normal" : "severity-low")">
+                            <strong>Severity: @currentHealthCheckResult.Severity</strong>
+                        </div>
+                        <p class="mt-2"><strong>Status:</strong> @currentHealthCheckResult.Message</p>
+                        @if (currentHealthCheckResult.AlertsSent > 0)
+                        {
+                            <p><strong>Alerts Sent:</strong> @currentHealthCheckResult.AlertsSent doctor(s) notified</p>
+                        }
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(currentHealthCheckResult.AiResponse))
+                    {
+                        <div class="ai-analysis-section">
+                            <h5>📊 AI Analysis Report</h5>
+                            <div class="ai-response-content">
+                                @((MarkupString)currentHealthCheckResult.AiResponse.Replace("\n", "<br/>"))
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            
+            <div class="modal-footer health-check-modal-footer">
+                <button @onclick="CloseHealthCheckDialog" class="btn btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
 <!-- Unassign Confirmation Modal -->
 @if (showUnassignConfirmation && selectedUser != null)
 {
@@ -451,10 +493,12 @@
     private bool showPatientStats = false;
     private bool showAssignModal = false;
     private bool showUnassignConfirmation = false;
+    private bool showHealthCheckDialog = false;
     private bool isSaving = false;
     private bool isAssigning = false;
     private bool isUnassigning = false;
     private bool isPerformingHealthCheck = false;
+    private AiHealthCheckResult? currentHealthCheckResult;
     private User? editingUser;
     private CreatePatientRequest patientForm = new();
     private List<User> availableDoctors = new();
@@ -942,34 +986,84 @@
 
     private async Task PerformAiHealthCheckAsync(User user, CancellationToken ct)
     {
-        if (user == null) return;
+        if (user == null)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "PerformAiHealthCheckAsync: user is null");
+            return;
+        }
         
         try
         {
+            await JSRuntime.InvokeVoidAsync("console.log", $"PerformAiHealthCheckAsync called for user: {user.Id} - {user.FirstName} {user.LastName}");
+            
             isPerformingHealthCheck = true;
             StateHasChanged();
             
             NotificationService.ShowInfo($"Analyzing {user.FirstName} {user.LastName}'s health status...");
             
+            await JSRuntime.InvokeVoidAsync("console.log", $"Calling API: api/admin/ai-health-check/{user.Id}");
             var result = await PatientService.PerformAiHealthCheckAsync(user.Id, ct);
             
-            if (result != null)
+            if (result == null)
             {
+                await JSRuntime.InvokeVoidAsync("console.error", "Result is null");
+                NotificationService.ShowError("AI Health Check returned no result. Please check server logs.");
+                return;
+            }
+            
+            await JSRuntime.InvokeVoidAsync("console.log", "Result received:", 
+                $"Success: {result.Success}, Severity: {result.Severity}, Message: {result.Message}, AlertsSent: {result.AlertsSent}");
+            
+            if (result.Success)
+            {
+                await JSRuntime.InvokeVoidAsync("console.log", "Showing notification for severity:", result.Severity);
+                
+                // Store result for viewing in a dialog
+                currentHealthCheckResult = result;
+                showHealthCheckDialog = true;
+                StateHasChanged();
+                
+                // Show brief notification
                 if (result.Severity == "High")
                 {
-                    NotificationService.ShowWarning($"⚠️ {result.Message} ({result.AlertsSent} doctors notified)");
+                    var warningMsg = $"⚠️ {result.Message}";
+                    await JSRuntime.InvokeVoidAsync("console.log", "Showing warning:", warningMsg);
+                    NotificationService.ShowWarning(warningMsg, 8000); // 8 seconds
+                }
+                else if (result.Severity == "Normal" || result.Severity == "Low")
+                {
+                    var successMsg = $"✅ {result.Message}";
+                    await JSRuntime.InvokeVoidAsync("console.log", "Showing success:", successMsg);
+                    NotificationService.ShowSuccess(successMsg, 6000); // 6 seconds
                 }
                 else
                 {
-                    NotificationService.ShowSuccess($"✅ {result.Message}");
+                    var infoMsg = $"ℹ️ {result.Message}";
+                    await JSRuntime.InvokeVoidAsync("console.log", "Showing info:", infoMsg);
+                    NotificationService.ShowInfo(infoMsg, 6000); // 6 seconds
                 }
-                
-                Console.WriteLine($"AI Response for {user.FirstName}: {result.AiResponse}");
             }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("console.error", "Result.Success is false:", result.Message);
+                NotificationService.ShowError($"AI Health Check failed: {result.Message}");
+                StateHasChanged();
+            }
+        }
+        catch (HttpRequestException httpEx)
+        {
+            var errorMsg = httpEx.Message;
+            if (httpEx.Data.Contains("StatusCode"))
+            {
+                errorMsg = $"HTTP Error: {httpEx.Data["StatusCode"]} - {errorMsg}";
+            }
+            NotificationService.ShowError($"AI Health Check failed: {errorMsg}");
+            await JSRuntime.InvokeVoidAsync("console.error", "AI Health Check HTTP Error:", httpEx);
         }
         catch (Exception ex)
         {
             NotificationService.ShowError($"AI Health Check failed: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("console.error", "AI Health Check Error:", ex.Message, ex.StackTrace);
         }
         finally
         {
@@ -1110,6 +1204,13 @@
     {
         showUnassignConfirmation = false;
         selectedUser = null;
+        StateHasChanged();
+    }
+
+    private void CloseHealthCheckDialog()
+    {
+        showHealthCheckDialog = false;
+        currentHealthCheckResult = null;
         StateHasChanged();
     }
 
@@ -1373,5 +1474,182 @@
     .meta-value {
         color: #333;
         margin-left: 10px;
+    }
+
+    .health-check-results {
+        padding: 10px;
+    }
+
+    .result-summary {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #007bff;
+    }
+
+    .severity-badge {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 4px;
+        font-size: 1.1em;
+        margin-bottom: 10px;
+    }
+
+    .severity-high {
+        background-color: #f8d7da;
+        color: #721c24;
+        border-left: 4px solid #dc3545;
+    }
+
+    .severity-normal {
+        background-color: #d4edda;
+        color: #155724;
+        border-left: 4px solid #28a745;
+    }
+
+    .severity-low {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        border-left: 4px solid #17a2b8;
+    }
+
+    .ai-analysis-section {
+        margin-top: 20px;
+        padding: 15px;
+        background: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+    }
+
+    .ai-analysis-section h5 {
+        margin-bottom: 15px;
+        color: #2c3e50;
+    }
+
+    .ai-response-content {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 4px;
+        border-left: 4px solid #007bff;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        line-height: 1.6;
+        font-size: 0.95em;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    /* Health Check Dialog Specific Styles */
+    .health-check-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        padding: 20px;
+        box-sizing: border-box;
+    }
+
+    .health-check-modal-content {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        max-width: 800px;
+        width: 100%;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .health-check-modal-header {
+        flex-shrink: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .health-check-modal-header h3 {
+        margin: 0;
+        color: #333;
+    }
+
+    .health-check-modal-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        min-height: 0;
+    }
+
+    .health-check-modal-footer {
+        flex-shrink: 0;
+        display: flex;
+        justify-content: flex-end;
+        padding: 15px 20px;
+        border-top: 1px solid #e0e0e0;
+        background: #f8f9fa;
+    }
+
+    .health-check-modal-footer .btn {
+        padding: 8px 20px;
+        font-size: 14px;
+    }
+
+    /* Ensure close button is always visible */
+    .health-check-modal-header .close-btn {
+        position: relative;
+        z-index: 10;
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #666;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .health-check-modal-header .close-btn:hover {
+        color: #333;
+        background-color: #f0f0f0;
+        border-radius: 4px;
+    }
+
+    /* Responsive adjustments */
+    @@media (max-height: 600px) {
+        .health-check-modal-content {
+            max-height: 95vh;
+        }
+
+        .health-check-modal-body {
+            padding: 15px;
+        }
+
+        .ai-response-content {
+            max-height: 250px;
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .health-check-modal-content {
+            max-width: 95%;
+            max-height: 95vh;
+        }
+
+        .health-check-modal-overlay {
+            padding: 10px;
+        }
     }
 </style>

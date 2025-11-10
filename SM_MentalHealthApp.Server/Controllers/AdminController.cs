@@ -57,7 +57,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Perform AI health check on a patient and send alert if severe
         /// </summary>
         [HttpPost("ai-health-check/{patientId}")]
-        public async Task<ActionResult> PerformAiHealthCheck(int patientId)
+        public async Task<ActionResult<AiHealthCheckResult>> PerformAiHealthCheck(int patientId)
         {
             try
             {
@@ -136,34 +136,43 @@ namespace SM_MentalHealthApp.Server.Controllers
                         }
                     }
 
-                    return Ok(new
+                    return Ok(new AiHealthCheckResult
                     {
-                        success = true,
-                        severity = "High",
-                        aiResponse = aiResponse,
-                        alertsSent = alertsSent,
-                        doctorsNotified = assignedDoctors.Count,
-                        message = $"AI detected high severity. {alertsSent} doctors notified."
+                        Success = true,
+                        Severity = "High",
+                        AiResponse = aiResponse,
+                        AlertsSent = alertsSent,
+                        DoctorsNotified = assignedDoctors.Count,
+                        Message = $"AI detected high severity. {alertsSent} doctors notified."
                     });
                 }
                 else
                 {
                     _logger.LogInformation("AI health check for patient {PatientId} shows normal status", patientId);
 
-                    return Ok(new
+                    return Ok(new AiHealthCheckResult
                     {
-                        success = true,
-                        severity = "Normal",
-                        aiResponse = aiResponse,
-                        alertsSent = 0,
-                        message = "AI health check shows normal status. No alerts sent."
+                        Success = true,
+                        Severity = "Normal",
+                        AiResponse = aiResponse,
+                        AlertsSent = 0,
+                        DoctorsNotified = 0,
+                        Message = "AI health check shows normal status. No alerts sent."
                     });
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error performing AI health check for patient {PatientId}", patientId);
-                return StatusCode(500, $"Error performing AI health check: {ex.Message}");
+                _logger.LogError(ex, "Error performing AI health check for patient {PatientId}: {Message}", patientId, ex.Message);
+                return StatusCode(500, new AiHealthCheckResult
+                {
+                    Success = false,
+                    Severity = "Error",
+                    Message = $"Error performing AI health check: {ex.Message}",
+                    AiResponse = string.Empty,
+                    AlertsSent = 0,
+                    DoctorsNotified = 0
+                });
             }
         }
 

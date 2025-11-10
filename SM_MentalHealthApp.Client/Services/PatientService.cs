@@ -63,8 +63,18 @@ public class PatientService : BaseService, IPatientService
     {
         AddAuthorizationHeader();
         var response = await _http.PostAsync($"api/admin/ai-health-check/{id}", null, ct);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<AiHealthCheckResult>(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(ct);
+            throw new HttpRequestException($"AI Health Check failed with status {response.StatusCode}: {errorContent}")
+            {
+                Data = { ["StatusCode"] = response.StatusCode }
+            };
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<AiHealthCheckResult>(ct);
+        return result;
     }
 
     public async Task<List<User>> GetDoctorsAsync(CancellationToken ct = default)
