@@ -764,14 +764,13 @@ namespace SM_MentalHealthApp.Server.Services
             _logger.LogInformation("Text contains '=== RECENT JOURNAL ENTRIES ===': {HasJournalEntries}", text.Contains("=== RECENT JOURNAL ENTRIES ==="));
             _logger.LogInformation("Text contains '=== USER QUESTION ===': {HasUserQuestion}", text.Contains("=== USER QUESTION ==="));
             _logger.LogInformation("Text contains 'Critical Values:': {HasCriticalValues}", text.Contains("Critical Values:"));
-            _logger.LogInformation("Text contains '6.0': {HasHemoglobin}", text.Contains("6.0"));
             _logger.LogInformation("Text contains 'Hemoglobin': {HasHemoglobinText}", text.Contains("Hemoglobin"));
             _logger.LogInformation("Text contains 'Doctor asks:': {HasDoctorAsks}", text.Contains("Doctor asks:"));
 
             // Show first 200 characters of text for debugging
             _logger.LogInformation("First 200 chars of text: {TextPreview}", text.Substring(0, Math.Min(200, text.Length)));
 
-            if (text.Contains("=== MEDICAL DATA SUMMARY ===") || text.Contains("=== RECENT JOURNAL ENTRIES ===") || text.Contains("=== USER QUESTION ===") || text.Contains("Critical Values:") || text.Contains("6.0") || text.Contains("Hemoglobin") || text.Contains("Doctor asks:") || text.Contains("**Medical Resource Information") || text.Contains("**Medical Facilities Search"))
+            if (text.Contains("=== MEDICAL DATA SUMMARY ===") || text.Contains("=== RECENT JOURNAL ENTRIES ===") || text.Contains("=== USER QUESTION ===") || text.Contains("Critical Values:") || text.Contains("Hemoglobin") || text.Contains("Doctor asks:") || text.Contains("**Medical Resource Information") || text.Contains("**Medical Facilities Search"))
             {
                 _logger.LogInformation("Processing enhanced context for medical data");
                 return await ProcessEnhancedContextResponseAsync(text);
@@ -856,8 +855,14 @@ namespace SM_MentalHealthApp.Server.Services
                                            text.Contains("=== RECENT CHAT HISTORY") || text.Contains("=== RECENT EMERGENCY INCIDENTS") ||
                                            text.Contains("=== RECENT JOURNAL ENTRIES") || text.Contains("AI Health Check for Patient");
 
-                    // Check for specific critical values
-                    bool hasCriticalValues = text.Contains("180/110") || text.Contains("6.0") || text.Contains("700");
+                    // Extract only patient data sections (exclude AI instructions)
+                    var patientDataText = ExtractPatientDataSections(text);
+
+                    // Check for specific critical values using database-driven pattern matching
+                    // Don't use loose string checks like Contains("6.0") as it matches "13.0" or "16.0"
+                    // Only check patient data, not AI instructions which contain example "CRITICAL" text
+                    bool hasCriticalValues = await _patternService.MatchesAnyPatternAsync(patientDataText) ||
+                                           await _keywordService.ContainsAnyKeywordAsync(patientDataText, "Critical");
 
                     // Also check if we have any of the section markers that indicate patient data is present
                     bool hasPatientSections = text.Contains("=== RECENT") || text.Contains("=== MEDICAL") ||
@@ -889,9 +894,12 @@ namespace SM_MentalHealthApp.Server.Services
                         return response.ToString().Trim();
                     }
 
-                    // Check for critical medical conditions - use both alerts and direct content detection
+                    // Check for critical medical conditions - use both alerts and database-driven detection
+                    // Don't use loose string checks like Contains("6.0") as it matches "13.0" or "16.0"
+                    // Only check patient data, not AI instructions which contain example "CRITICAL" text
                     bool hasCriticalConditions = alerts.Any(a => a.Contains("CRITICAL") || a.Contains("🚨")) ||
-                                               text.Contains("180/110") || text.Contains("6.0") || text.Contains("700");
+                                               await _patternService.MatchesAnyPatternAsync(patientDataText) ||
+                                               await _keywordService.ContainsAnyKeywordAsync(patientDataText, "Critical");
                     bool hasAbnormalConditions = alerts.Any(a => a.Contains("ABNORMAL") || a.Contains("⚠️"));
                     bool hasNormalConditions = alerts.Any(a => a.Contains("NORMAL") || a.Contains("✅"));
 
@@ -1757,42 +1765,81 @@ namespace SM_MentalHealthApp.Server.Services
             try
             {
                 _logger.LogInformation("ExtractCriticalValuesFromContext: Looking for critical values in context (length: {Length})", text.Length);
-                
+
                 // Look for "Critical Values Found:" section which contains the actual formatted critical values
                 var criticalStart = text.IndexOf("Critical Values Found:");
                 _logger.LogInformation("ExtractCriticalValuesFromContext: Found 'Critical Values Found:' at index {Index}", criticalStart);
-                
+
                 if (criticalStart >= 0)
                 {
                     // Find the end of this section (either next section or end of text)
                     var nextSection = text.IndexOf("\n\n", criticalStart);
                     var endOfText = text.Length;
                     var sectionEnd = nextSection > criticalStart ? nextSection : endOfText;
-                    
+
                     var section = text.Substring(criticalStart, sectionEnd - criticalStart);
                     _logger.LogInformation("ExtractCriticalValuesFromContext: Extracted section (length: {Length}): {Section}", section.Length, section.Substring(0, Math.Min(200, section.Length)));
-                    
+
                     // Extract lines that contain actual critical value data (lines with 🚨 emoji)
                     var lines = section.Split('\n')
                         .Where(l => l.Contains("🚨") && l.Trim().Length > 0)
                         .Select(l => l.Trim())
                         .ToList();
-                    
+
                     _logger.LogInformation("ExtractCriticalValuesFromContext: Found {Count} lines with 🚨 emoji", lines.Count);
-                    
+
                     if (lines.Any())
                     {
-                        // Format as bullet points
-                        var result = string.Join("\n", lines.Select(l => l.StartsWith("🚨") ? $"- {l}" : $"  {l}"));
+                        // Format as bullet points with double emoji for better visibility (matching AI Health Check format)
+                        var result = string.Join("\n", lines.Select(l =>
+                        {
+                            var trimmed = l.Trim();
+                            // If it already starts with 🚨, add another 🚨 for consistency with AI Health Check format
+                            if (trimmed.StartsWith("🚨"))
+                            {
+                                return $"- 🚨 {trimmed.Substring(2).TrimStart()}"; // Remove first 🚨 and add 🚨 🚨
+                            }
+                            return $"- 🚨 {trimmed}";
+                        }));
                         _logger.LogInformation("ExtractCriticalValuesFromContext: Returning formatted result: {Result}", result);
                         return result;
                     }
                 }
-                
+
+                // Also check for critical values in the CURRENT MEDICAL STATUS section
+                var statusStart = text.IndexOf("=== CURRENT MEDICAL STATUS ===");
+                if (statusStart >= 0)
+                {
+                    var statusEnd = text.IndexOf("\n\n", statusStart);
+                    if (statusEnd < 0) statusEnd = text.Length;
+
+                    var statusSection = text.Substring(statusStart, statusEnd - statusStart);
+                    var criticalLines = statusSection.Split('\n')
+                        .Where(l => l.Contains("🚨") && (l.Contains("CRITICAL:") || l.Contains("CRITICAL")))
+                        .Select(l => l.Trim())
+                        .Where(l => !l.Contains("CRITICAL MEDICAL VALUES DETECTED") && !l.Contains("CRITICAL VALUES DETECTED"))
+                        .ToList();
+
+                    if (criticalLines.Any())
+                    {
+                        var result = string.Join("\n", criticalLines.Select(l =>
+                        {
+                            var trimmed = l.Trim();
+                            if (trimmed.StartsWith("🚨"))
+                            {
+                                return $"- 🚨 {trimmed.Substring(2).TrimStart()}";
+                            }
+                            return $"- 🚨 {trimmed}";
+                        }));
+                        _logger.LogInformation("ExtractCriticalValuesFromContext: Found critical values in CURRENT MEDICAL STATUS section: {Result}", result);
+                        return result;
+                    }
+                }
+
                 // Fallback: Look for "🚨 **CRITICAL MEDICAL VALUES DETECTED** 🚨" section
                 var altStart = text.IndexOf("🚨 **CRITICAL MEDICAL VALUES DETECTED** 🚨");
                 _logger.LogInformation("ExtractCriticalValuesFromContext: Looking for alternative section, found at index {Index}", altStart);
-                
+
                 if (altStart >= 0)
                 {
                     var altEnd = text.IndexOf("\n\n", altStart);
@@ -1803,7 +1850,7 @@ namespace SM_MentalHealthApp.Server.Services
                             .Where(l => l.Contains("🚨") && !l.Contains("CRITICAL MEDICAL VALUES DETECTED"))
                             .Select(l => l.Trim())
                             .ToList();
-                        
+
                         if (lines.Any())
                         {
                             var result = string.Join("\n", lines.Select(l => $"- {l}"));
@@ -1812,7 +1859,7 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                     }
                 }
-                
+
                 _logger.LogWarning("ExtractCriticalValuesFromContext: No critical values found in context");
             }
             catch (Exception ex)
@@ -1821,6 +1868,76 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             return string.Empty;
+        }
+
+        /// <summary>
+        /// Extracts only the patient data sections from the context, excluding AI instructions
+        /// This prevents false positives from matching keywords in the instructions themselves
+        /// </summary>
+        private string ExtractPatientDataSections(string text)
+        {
+            try
+            {
+                var sections = new List<string>();
+
+                // Extract specific patient data sections
+                var sectionMarkers = new[]
+                {
+                    "=== RECENT JOURNAL ENTRIES ===",
+                    "=== MEDICAL DATA SUMMARY ===",
+                    "=== CURRENT MEDICAL STATUS ===",
+                    "=== HISTORICAL MEDICAL CONCERNS ===",
+                    "=== HEALTH TREND ANALYSIS ===",
+                    "=== RECENT CLINICAL NOTES ===",
+                    "=== RECENT CHAT HISTORY ===",
+                    "=== RECENT EMERGENCY INCIDENTS ===",
+                    "Recent Patient Activity:",
+                    "Current Test Results",
+                    "Latest Update:"
+                };
+
+                foreach (var marker in sectionMarkers)
+                {
+                    var index = text.IndexOf(marker);
+                    if (index >= 0)
+                    {
+                        // Find the end of this section (next section marker or end of text)
+                        var nextIndex = text.Length;
+                        foreach (var nextMarker in sectionMarkers)
+                        {
+                            if (nextMarker != marker)
+                            {
+                                var nextPos = text.IndexOf(nextMarker, index + marker.Length);
+                                if (nextPos > index && nextPos < nextIndex)
+                                {
+                                    nextIndex = nextPos;
+                                }
+                            }
+                        }
+
+                        // Also check for instruction sections that should be excluded
+                        var instructionStart = text.IndexOf("=== INSTRUCTIONS", index);
+                        if (instructionStart > index && instructionStart < nextIndex)
+                        {
+                            nextIndex = instructionStart;
+                        }
+
+                        var sectionLength = nextIndex - index;
+                        if (sectionLength > 0)
+                        {
+                            sections.Add(text.Substring(index, sectionLength));
+                        }
+                    }
+                }
+
+                return string.Join("\n", sections);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error extracting patient data sections");
+                // Fallback: return original text if extraction fails
+                return text;
+            }
         }
 
         private string ExtractProgressionSection(string text)
@@ -2217,25 +2334,32 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogInformation("Contains '🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**': {HasCritical}", text.Contains("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**"));
                 _logger.LogInformation("Contains 'STATUS: CRITICAL': {HasCritical}", text.Contains("STATUS: CRITICAL"));
 
-                // Check for critical values using database-driven patterns
-                var hasCriticalValuesFromPatterns = await _patternService.MatchesAnyPatternAsync(text);
+                // Extract only the patient data sections (exclude AI instructions which contain example "CRITICAL" text)
+                var patientDataText = ExtractPatientDataSections(text);
 
-                // Check for critical values using database-driven keywords
-                var hasCriticalValuesFromKeywords = await _keywordService.ContainsAnyKeywordAsync(text);
+                // Check for critical values using database-driven patterns (only in patient data, not instructions)
+                var hasCriticalValuesFromPatterns = await _patternService.MatchesAnyPatternAsync(patientDataText);
+
+                // Check for critical values using database-driven keywords (only from "Critical" category, not "Normal" or "Abnormal")
+                // Only check patient data sections, not AI instructions which contain example "CRITICAL" text
+                var hasCriticalValuesFromKeywords = await _keywordService.ContainsAnyKeywordAsync(patientDataText, "Critical");
 
                 _logger.LogInformation("Contains critical value pattern match: {HasMatch}", hasCriticalValuesFromPatterns);
-                _logger.LogInformation("Contains critical value keyword match: {HasMatch}", hasCriticalValuesFromKeywords);
+                _logger.LogInformation("Contains critical value keyword match (Critical category only): {HasMatch}", hasCriticalValuesFromKeywords);
 
                 // Check for critical values using database-driven detection (patterns + keywords)
+                // Only consider it critical if patterns match OR critical keywords match (not normal/abnormal keywords)
                 var hasCriticalValues = hasCriticalValuesFromPatterns || hasCriticalValuesFromKeywords;
 
                 _logger.LogInformation("Final hasCriticalValues: {HasCritical}", hasCriticalValues);
 
-                // Check for abnormal values using database-driven keywords
-                var hasAbnormalValues = await _keywordService.ContainsAnyKeywordAsync(text, "Abnormal");
+                // Check for abnormal values using database-driven keywords (only in patient data, not instructions)
+                var hasAbnormalValues = await _keywordService.ContainsAnyKeywordAsync(patientDataText, "Abnormal");
+                _logger.LogInformation("Contains abnormal value keyword match (Abnormal category only): {HasMatch}", hasAbnormalValues);
 
-                // Check for normal values using database-driven keywords
-                var hasNormalValues = await _keywordService.ContainsAnyKeywordAsync(text, "Normal");
+                // Check for normal values using database-driven keywords (only in patient data, not instructions)
+                var hasNormalValues = await _keywordService.ContainsAnyKeywordAsync(patientDataText, "Normal");
+                _logger.LogInformation("Contains normal value keyword match (Normal category only): {HasMatch}", hasNormalValues);
 
                 // Check for journal entries
                 var hasJournalEntries = text.Contains("=== RECENT JOURNAL ENTRIES ===");
@@ -2267,8 +2391,24 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else if (progressionSection.Contains("DETERIORATION NOTED"))
                                 {
-                                    response.AppendLine("⚠️ **DETERIORATION NOTED:** Current results show critical values where previous results were normal.");
-                                    response.AppendLine("Immediate attention may be required.");
+                                    response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+
+                                    // Extract actual critical values from context to show specific values
+                                    var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
+                                    if (!string.IsNullOrEmpty(criticalValuesFromContext))
+                                    {
+                                        response.AppendLine(criticalValuesFromContext);
+                                    }
+                                    else
+                                    {
+                                        response.AppendLine("- Critical medical values detected - review test results for details");
+                                    }
+
+                                    response.AppendLine();
+                                    response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                                    response.AppendLine("- These values indicate a medical emergency");
+                                    response.AppendLine("- Contact emergency services if symptoms worsen");
+                                    response.AppendLine("- Patient needs immediate medical evaluation");
                                 }
                                 else
                                 {
