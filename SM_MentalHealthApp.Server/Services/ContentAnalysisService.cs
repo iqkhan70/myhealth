@@ -33,17 +33,20 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly S3Service _s3Service;
         private readonly ILogger<ContentAnalysisService> _logger;
         private readonly ICriticalValuePatternService _patternService;
+        private readonly IAIInstructionService _instructionService;
 
         public ContentAnalysisService(
             JournalDbContext context,
             S3Service s3Service,
             ILogger<ContentAnalysisService> logger,
-            ICriticalValuePatternService patternService)
+            ICriticalValuePatternService patternService,
+            IAIInstructionService instructionService)
         {
             _context = context;
             _s3Service = s3Service;
             _logger = logger;
             _patternService = patternService;
+            _instructionService = instructionService;
         }
 
         public async Task<string> ExtractTextFromContentAsync(ContentItem content)
@@ -368,18 +371,21 @@ If you need general medical information without patient context, please switch t
                 if (recentClinicalNotes.Any())
                 {
                     context.AppendLine("=== RECENT CLINICAL NOTES ===");
+                    context.AppendLine("⚠️ IMPORTANT: Clinical notes are written by doctors and contain critical medical observations and assessments.");
+                    context.AppendLine("These notes should be given HIGH PRIORITY in your analysis, especially if they mention serious symptoms, concerns, or require monitoring.");
+                    context.AppendLine();
                     foreach (var note in recentClinicalNotes)
                     {
-                        context.AppendLine($"[{note.CreatedAt:MM/dd/yyyy}] {note.Title} ({note.NoteType})");
+                        context.AppendLine($"[{note.CreatedAt:MM/dd/yyyy}] {note.Title} ({note.NoteType}) - Priority: {note.Priority}");
                         if (!string.IsNullOrEmpty(note.Content))
                         {
-                            context.AppendLine($"Content: {note.Content.Substring(0, Math.Min(200, note.Content.Length))}...");
+                            // Include full content - don't truncate as clinical notes are critical
+                            context.AppendLine($"Content: {note.Content}");
                         }
                         if (!string.IsNullOrEmpty(note.Tags))
                         {
                             context.AppendLine($"Tags: {note.Tags}");
                         }
-                        context.AppendLine($"Priority: {note.Priority}");
                         context.AppendLine();
                     }
                 }
@@ -504,6 +510,9 @@ If you need general medical information without patient context, please switch t
                     _logger.LogWarning("Filtered out {FilteredCount} content analyses for patient {PatientId} (orphaned or ignored content)",
                         beforeFilterCount - allContentAnalyses.Count, patientId);
                 }
+
+                _logger.LogInformation("BuildEnhancedContextAsync: After filtering, {Count} content analyses remain for patient {PatientId}",
+                    allContentAnalyses.Count, patientId);
 
                 if (allContentAnalyses.Any())
                 {
@@ -685,6 +694,8 @@ If you need general medical information without patient context, please switch t
                         if (abnormalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
                         {
                             var abnormalValues = jsonElement.EnumerateArray().Select(x => x.GetString() ?? "").ToList();
+                            _logger.LogInformation("BuildEnhancedContextAsync: Adding abnormal values section for patient {PatientId}. ContentId: {ContentId}, AbnormalValues count: {Count}",
+                                patientId, latestAnalysis.ContentId, abnormalValues.Count);
                             context.AppendLine("⚠️ **ABNORMAL VALUES DETECTED IN LATEST RESULTS:**");
                             foreach (var av in abnormalValues)
                             {
@@ -921,42 +932,20 @@ If you need general medical information without patient context, please switch t
                 context.AppendLine("=== INSTRUCTIONS FOR AI HEALTH CHECK ANALYSIS ===");
                 context.AppendLine("You are a clinical AI assistant analyzing a patient's comprehensive health status. Provide a detailed analysis in the following format:");
                 context.AppendLine();
-                context.AppendLine("**CRITICAL PRIORITY:** If you see '🚨 CRITICAL MEDICAL VALUES DETECTED' or any critical values in the medical data, you MUST:");
-                context.AppendLine("- Start your response by highlighting these critical values IMMEDIATELY");
-                context.AppendLine("- State that the patient's status is CRITICAL or CONCERNING, NOT stable");
-                context.AppendLine("- Emphasize that immediate medical attention is required");
-                context.AppendLine("- Do NOT say the patient is stable if critical values are present");
-                context.AppendLine();
-                context.AppendLine("**Patient Medical Overview:**");
-                context.AppendLine("- FIRST: Check if there are any 🚨 CRITICAL VALUES in the medical data above");
-                context.AppendLine("- If critical values exist, state: '🚨 CRITICAL STATUS: Patient has critical medical values requiring immediate attention'");
-                context.AppendLine("- If no critical values but abnormal values exist, state: '⚠️ CONCERNING STATUS: Patient has abnormal values requiring monitoring'");
-                context.AppendLine("- Only state 'STABLE' if ALL values are normal and no concerning patterns are detected");
-                context.AppendLine("- Summarize key medical findings from test results, vital signs, and medical data");
-                context.AppendLine("- Reference specific values from the medical data (e.g., if hemoglobin is below 7 g/dL, it indicates severe anemia)");
-                context.AppendLine();
-                context.AppendLine("**Recent Patient Activity:**");
-                context.AppendLine("- Review journal entries and mood patterns");
-                context.AppendLine("- Analyze chat history for concerning conversations or medical data");
-                context.AppendLine("- Note any clinical notes or observations");
-                context.AppendLine();
-                context.AppendLine("**Emergency Incidents (if any):**");
-                context.AppendLine("- If emergency incidents exist, start with: '🚨 CRITICAL EMERGENCY ALERT: [number] unacknowledged emergency incidents detected'");
-                context.AppendLine("- List each emergency with severity (all are unacknowledged and require immediate attention)");
-                context.AppendLine("- Note: Only unacknowledged emergencies are included in this analysis");
-                context.AppendLine();
-                context.AppendLine("**Clinical Assessment:**");
-                context.AppendLine("- Provide a professional assessment of the patient's overall health status");
-                context.AppendLine("- If critical values are present, state clearly that the patient requires IMMEDIATE medical attention");
-                context.AppendLine("- Identify any trends (improving, stable, deteriorating)");
-                context.AppendLine("- Highlight areas requiring attention or follow-up");
-                context.AppendLine();
-                context.AppendLine("**Recommendations:**");
-                context.AppendLine("- If critical values are found, recommend IMMEDIATE medical evaluation and emergency department visit if necessary");
-                context.AppendLine("- Suggest any immediate actions if critical issues are found");
-                context.AppendLine("- Recommend follow-up care or monitoring if needed");
-                context.AppendLine();
-                context.AppendLine("IMPORTANT: Be specific and reference actual data from the patient's records. If critical values are present in the medical data, you MUST indicate the patient is NOT stable. Only state 'stable' if ALL medical values are normal. Keep the response comprehensive but concise (300-400 words).");
+
+                // Load instructions from database (data-driven)
+                var instructions = await _instructionService.BuildInstructionsAsync("HealthCheck");
+                if (!string.IsNullOrWhiteSpace(instructions))
+                {
+                    context.AppendLine(instructions);
+                }
+                else
+                {
+                    // Fallback if no instructions in database
+                    context.AppendLine("**Patient Medical Overview:**");
+                    context.AppendLine("- Review all available patient data");
+                    context.AppendLine("- Provide comprehensive health assessment");
+                }
 
                 var result = context.ToString();
                 return result;

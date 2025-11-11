@@ -33,6 +33,8 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<CriticalValueCategory> CriticalValueCategories { get; set; }
             public DbSet<CriticalValuePattern> CriticalValuePatterns { get; set; }
             public DbSet<CriticalValueKeyword> CriticalValueKeywords { get; set; }
+            public DbSet<AIInstructionCategory> AIInstructionCategories { get; set; }
+            public DbSet<AIInstruction> AIInstructions { get; set; }
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -273,6 +275,47 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.IsActive);
                         entity.HasIndex(e => e.IsIgnoredByDoctor);
                         entity.HasIndex(e => e.CreatedAt);
+                  });
+
+                  // Configure AIInstructionCategory entity
+                  modelBuilder.Entity<AIInstructionCategory>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.Property(e => e.Context).IsRequired().HasMaxLength(50).HasDefaultValue("HealthCheck");
+                        entity.Property(e => e.DisplayOrder).HasDefaultValue(0);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.Context);
+                        entity.HasIndex(e => e.DisplayOrder);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => new { e.Context, e.IsActive, e.DisplayOrder });
+                  });
+
+                  // Configure AIInstruction entity
+                  modelBuilder.Entity<AIInstruction>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Content).IsRequired().HasMaxLength(2000);
+                        entity.Property(e => e.Title).HasMaxLength(200);
+                        entity.Property(e => e.DisplayOrder).HasDefaultValue(0);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationship
+                        entity.HasOne(e => e.Category)
+                        .WithMany(c => c.Instructions)
+                        .HasForeignKey(e => e.CategoryId)
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.CategoryId);
+                        entity.HasIndex(e => e.DisplayOrder);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => new { e.CategoryId, e.IsActive, e.DisplayOrder });
                   });
 
                   // Configure ContentAlert entity

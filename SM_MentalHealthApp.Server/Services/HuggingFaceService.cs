@@ -1871,8 +1871,8 @@ namespace SM_MentalHealthApp.Server.Services
         }
 
         /// <summary>
-        /// Extracts only the patient data sections from the context, excluding AI instructions
-        /// This prevents false positives from matching keywords in the instructions themselves
+        /// Extracts only the patient data sections from the context, excluding AI instructions and status text
+        /// This prevents false positives from matching keywords in the instructions themselves or status summaries
         /// </summary>
         private string ExtractPatientDataSections(string text)
         {
@@ -1925,7 +1925,95 @@ namespace SM_MentalHealthApp.Server.Services
                         var sectionLength = nextIndex - index;
                         if (sectionLength > 0)
                         {
-                            sections.Add(text.Substring(index, sectionLength));
+                            var section = text.Substring(index, sectionLength);
+
+                            // For "=== CURRENT MEDICAL STATUS ===" section, exclude status summary text and header lines
+                            // Status text like "⚠️ **STATUS: CONCERNING - MONITORING REQUIRED**" contains emojis
+                            // that match keyword categories, causing false positives
+                            // Header lines like "⚠️ **ABNORMAL VALUES DETECTED IN LATEST RESULTS:**" also contain keywords
+                            if (marker == "=== CURRENT MEDICAL STATUS ===")
+                            {
+                                // Extract only the actual value lines (e.g., "🚨 CRITICAL: Blood Pressure...")
+                                // Exclude status summary lines and header lines (e.g., "⚠️ **STATUS: CONCERNING...", "⚠️ **ABNORMAL VALUES DETECTED...")
+                                var lines = section.Split('\n');
+                                var filteredLines = new List<string>();
+                                bool inStatusSummary = false;
+
+                                foreach (var line in lines)
+                                {
+                                    // Skip header lines that are just formatting (contain "**" and keywords like "DETECTED", "VALUES")
+                                    // These are not actual patient data, just section headers
+                                    if (line.Contains("**") && (line.Contains("DETECTED") || line.Contains("VALUES") ||
+                                        line.Contains("STATUS:") || line.Contains("CRITICAL VALUES") ||
+                                        line.Contains("ABNORMAL VALUES") || line.Contains("NORMAL VALUES")))
+                                    {
+                                        continue; // Skip header/summary lines
+                                    }
+
+                                    // Skip status summary lines (they contain "STATUS:" and are formatted summaries)
+                                    if (line.Contains("**STATUS:") || line.Contains("STATUS: CRITICAL") ||
+                                        line.Contains("STATUS: CONCERNING") || line.Contains("STATUS: STABLE"))
+                                    {
+                                        inStatusSummary = true;
+                                        continue; // Skip status summary lines
+                                    }
+
+                                    // If we hit a blank line after status summary, we're done with that section
+                                    if (inStatusSummary && string.IsNullOrWhiteSpace(line))
+                                    {
+                                        inStatusSummary = false;
+                                        continue;
+                                    }
+
+                                    // Include actual value lines (contain specific test results, not just status)
+                                    // These lines typically have format like "🚨 CRITICAL: Blood Pressure 190/100..." or "⚠️ HIGH: Blood Pressure..."
+                                    if (!inStatusSummary)
+                                    {
+                                        filteredLines.Add(line);
+                                    }
+                                }
+
+                                section = string.Join("\n", filteredLines);
+                            }
+
+                            // For "=== RECENT CLINICAL NOTES ===" section, exclude instruction text
+                            // Instruction text like "⚠️ IMPORTANT: Clinical notes are written by doctors..." contains emojis
+                            // that match keyword categories, causing false positives
+                            if (marker == "=== RECENT CLINICAL NOTES ===")
+                            {
+                                var lines = section.Split('\n');
+                                var filteredLines = new List<string>();
+                                bool skipInstructionLines = false;
+
+                                foreach (var line in lines)
+                                {
+                                    // Skip instruction lines that are just explanatory text (not actual patient data)
+                                    // These lines typically start with "⚠️ IMPORTANT:" or contain "HIGH PRIORITY" or "should be given"
+                                    if (line.Contains("⚠️ IMPORTANT:") || line.Contains("HIGH PRIORITY") ||
+                                        line.Contains("should be given") || line.Contains("contain critical medical observations"))
+                                    {
+                                        skipInstructionLines = true;
+                                        continue; // Skip instruction lines
+                                    }
+
+                                    // If we hit a blank line after instructions, we're done with that section
+                                    if (skipInstructionLines && string.IsNullOrWhiteSpace(line))
+                                    {
+                                        skipInstructionLines = false;
+                                        continue;
+                                    }
+
+                                    // Include actual clinical note data (date, title, content, etc.)
+                                    if (!skipInstructionLines)
+                                    {
+                                        filteredLines.Add(line);
+                                    }
+                                }
+
+                                section = string.Join("\n", filteredLines);
+                            }
+
+                            sections.Add(section);
                         }
                     }
                 }
@@ -2354,11 +2442,32 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogInformation("Final hasCriticalValues: {HasCritical}", hasCriticalValues);
 
                 // Check for abnormal values using database-driven keywords (only in patient data, not instructions)
-                var hasAbnormalValues = await _keywordService.ContainsAnyKeywordAsync(patientDataText, "Abnormal");
+                // Note: Status summary text (e.g., "⚠️ **STATUS: CONCERNING...") is excluded from patientDataText
+                // to prevent false positives from emoji keywords matching status summaries
+                var hasAbnormalValues = await _keywordService.ContainsAnyKeywordAsync(patientDataText ?? string.Empty, "Abnormal");
+
+                // Also check for "High Concern" and "Distress" keywords - these indicate concerning clinical note content
+                // Clinical notes often contain concerns like "anxiety", "serious symptoms", "heart problems" that are in these categories
+                // All keywords are database-driven - no hardcoded patterns
+                var hasHighConcern = await _keywordService.ContainsAnyKeywordAsync(patientDataText ?? string.Empty, "High Concern");
+                var hasDistress = await _keywordService.ContainsAnyKeywordAsync(patientDataText ?? string.Empty, "Distress");
+
+                // If any of these categories match, consider it abnormal/concerning
+                var hasAnyConcerns = hasAbnormalValues || hasHighConcern || hasDistress;
+
                 _logger.LogInformation("Contains abnormal value keyword match (Abnormal category only): {HasMatch}", hasAbnormalValues);
+                _logger.LogInformation("Contains high concern keyword match (High Concern category): {HasMatch}", hasHighConcern);
+                _logger.LogInformation("Contains distress keyword match (Distress category): {HasMatch}", hasDistress);
+                _logger.LogInformation("Final hasAnyConcerns (Abnormal OR High Concern OR Distress): {HasMatch}", hasAnyConcerns);
+                _logger.LogInformation("Patient data text length (for abnormal check): {Length}", patientDataText?.Length ?? 0);
+                if (hasAnyConcerns && !string.IsNullOrEmpty(patientDataText))
+                {
+                    _logger.LogInformation("Concern keyword match found. Sample of patient data text: {Sample}",
+                        patientDataText.Substring(0, Math.Min(500, patientDataText.Length)));
+                }
 
                 // Check for normal values using database-driven keywords (only in patient data, not instructions)
-                var hasNormalValues = await _keywordService.ContainsAnyKeywordAsync(patientDataText, "Normal");
+                var hasNormalValues = await _keywordService.ContainsAnyKeywordAsync(patientDataText ?? string.Empty, "Normal");
                 _logger.LogInformation("Contains normal value keyword match (Normal category only): {HasMatch}", hasNormalValues);
 
                 // Check for journal entries
@@ -2454,9 +2563,9 @@ namespace SM_MentalHealthApp.Server.Services
                                 response.AppendLine("- Patient needs immediate medical evaluation");
                             }
                         }
-                        else if (hasAbnormalValues)
+                        else if (hasAnyConcerns)
                         {
-                            response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values that require attention and monitoring.");
+                            response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations that require attention and monitoring.");
                         }
                         else if (hasNormalValues)
                         {
@@ -2616,9 +2725,9 @@ namespace SM_MentalHealthApp.Server.Services
                         response.AppendLine("- Contact emergency services if symptoms worsen");
                         response.AppendLine("- Patient needs immediate medical evaluation");
                     }
-                    else if (hasAbnormalValues)
+                    else if (hasAnyConcerns)
                     {
-                        response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values that require attention and monitoring.");
+                        response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations that require attention and monitoring.");
                     }
                     else if (hasNormalValues)
                     {

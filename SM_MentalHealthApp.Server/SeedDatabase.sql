@@ -50,7 +50,10 @@ ON DUPLICATE KEY UPDATE
     IsActive = VALUES(IsActive);
 
 -- Step 5: Seed Critical Value Categories and Patterns
--- Note: Run SeedCriticalValuePatterns.sql after running this script
+-- Note: Run SeedCriticalValuePatterns.sql and SeedCriticalValueKeywords.sql after running this script
+
+-- Step 6: Seed AI Instruction Categories and Instructions
+-- Note: Run SeedAIInstructions.sql after running this script to make AI instructions data-driven
 
 -- Step 5: Seed some sample Journal Entries
 INSERT INTO JournalEntries (UserId, EnteredByUserId, Text, AIResponse, Mood, CreatedAt) VALUES
