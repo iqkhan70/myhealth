@@ -386,7 +386,7 @@ If you need general medical information without patient context, please switch t
 
                 // Get journal entries (excluding ignored entries)
                 var recentEntries = await _context.JournalEntries
-                    .Where(e => e.UserId == patientId && !e.IsIgnoredByDoctor)
+                    .Where(e => e.UserId == patientId && e.IsActive && !e.IsIgnoredByDoctor)
                     .OrderByDescending(e => e.CreatedAt)
                     .Take(5)
                     .ToListAsync();
@@ -768,7 +768,7 @@ If you need general medical information without patient context, please switch t
                 try
                 {
                     recentChatSessions = await _context.ChatSessions
-                        .Where(s => s.PatientId == patientId && !s.IsIgnoredByDoctor)
+                        .Where(s => s.PatientId == patientId && s.IsActive && !s.IsIgnoredByDoctor)
                         .OrderByDescending(s => s.LastActivityAt)
                         .Take(5)
                         .ToListAsync();
@@ -783,7 +783,7 @@ If you need general medical information without patient context, please switch t
                         try
                         {
                             allMessages = await _context.ChatMessages
-                                .Where(m => sessionIds.Contains(m.SessionId))
+                                .Where(m => sessionIds.Contains(m.SessionId) && m.IsActive)
                                 .ToListAsync();
                         }
                         catch (InvalidOperationException ex) when (ex.Message.Contains("MessageType") || ex.Message.Contains("Cannot convert"))

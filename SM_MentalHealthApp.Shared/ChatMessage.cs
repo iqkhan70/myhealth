@@ -18,6 +18,8 @@ namespace SM_MentalHealthApp.Shared
 
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
+        public bool IsActive { get; set; } = true; // Soft delete flag
+
         public bool IsMedicalData { get; set; } = false;
 
         public MessageType MessageType { get; set; } = MessageType.Question;

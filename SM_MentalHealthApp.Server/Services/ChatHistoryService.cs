@@ -152,7 +152,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 var context = dbContext ?? _context;
                 var messages = await context.ChatMessages
-                    .Where(m => m.SessionId == sessionId)
+                    .Where(m => m.SessionId == sessionId && m.IsActive)
                     .OrderByDescending(m => m.Timestamp)
                     .Take(maxMessages)
                     .OrderBy(m => m.Timestamp) // Re-order chronologically for context
@@ -177,7 +177,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 var session = await context.ChatSessions
                     .Include(s => s.Patient)
-                    .FirstOrDefaultAsync(s => s.Id == sessionId);
+                    .FirstOrDefaultAsync(s => s.Id == sessionId && s.IsActive);
 
                 if (session == null)
                 {
@@ -265,15 +265,18 @@ namespace SM_MentalHealthApp.Server.Services
                 var cutoffDate = DateTime.UtcNow.AddDays(-30); // Keep messages for 30 days
                 var summaryCutoffDate = DateTime.UtcNow.AddDays(-90); // Keep summaries for 90 days
 
-                // Delete old messages
+                // Soft delete old messages (instead of hard delete)
                 var oldMessages = await _context.ChatMessages
-                    .Where(m => m.Timestamp < cutoffDate)
+                    .Where(m => m.Timestamp < cutoffDate && m.IsActive)
                     .ToListAsync();
 
                 if (oldMessages.Any())
                 {
-                    _context.ChatMessages.RemoveRange(oldMessages);
-                    _logger.LogInformation("Cleaned up {Count} old messages", oldMessages.Count);
+                    foreach (var message in oldMessages)
+                    {
+                        message.IsActive = false;
+                    }
+                    _logger.LogInformation("Soft deleted {Count} old messages", oldMessages.Count);
                 }
 
                 // Delete old sessions with no recent activity
@@ -315,11 +318,19 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                return await _context.ChatSessions
+                var session = await _context.ChatSessions
                     .Include(s => s.Patient)
                     .Include(s => s.User)
                     .Include(s => s.Messages.OrderBy(m => m.Timestamp))
                     .FirstOrDefaultAsync(s => s.Id == sessionId);
+
+                // Filter out soft-deleted messages
+                if (session != null && session.Messages != null)
+                {
+                    session.Messages = session.Messages.Where(m => m.IsActive).ToList();
+                }
+
+                return session;
             }
             catch (Exception ex)
             {
@@ -375,7 +386,9 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
+                // Only return active sessions
                 var sessions = await query
+                    .Where(s => s.IsActive)
                     .OrderByDescending(s => s.LastActivityAt)
                     .ToListAsync();
 
@@ -383,7 +396,7 @@ namespace SM_MentalHealthApp.Server.Services
                 // This allows the client to analyze message content even when Messages collection isn't fully loaded
                 var sessionIds = sessions.Select(s => s.Id).ToList();
                 var recentMessagesBySession = await _context.ChatMessages
-                    .Where(m => sessionIds.Contains(m.SessionId))
+                    .Where(m => sessionIds.Contains(m.SessionId) && m.IsActive)
                     .GroupBy(m => m.SessionId)
                     .Select(g => new
                     {
@@ -433,12 +446,15 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                var session = await _context.ChatSessions.FindAsync(sessionId);
+                var session = await _context.ChatSessions
+                    .FirstOrDefaultAsync(s => s.Id == sessionId && s.IsActive);
+
                 if (session != null)
                 {
-                    _context.ChatSessions.Remove(session);
+                    // Soft delete
+                    session.IsActive = false;
                     await _context.SaveChangesAsync();
-                    _logger.LogInformation("Session {SessionId} deleted successfully", sessionId);
+                    _logger.LogInformation("Session {SessionId} soft deleted successfully", sessionId);
                 }
             }
             catch (Exception ex)
@@ -462,6 +478,12 @@ namespace SM_MentalHealthApp.Server.Services
                     .Include(s => s.Patient)
                     .Include(s => s.User)
                     .FirstOrDefaultAsync(s => s.Id == sessionId);
+
+                // Filter out soft-deleted messages
+                if (session != null && session.Messages != null)
+                {
+                    session.Messages = session.Messages.Where(m => m.IsActive).ToList();
+                }
 
                 if (session == null || !session.Messages.Any())
                 {

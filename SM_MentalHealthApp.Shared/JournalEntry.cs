@@ -74,6 +74,8 @@ namespace SM_MentalHealthApp.Shared
         public string? Mood { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        public bool IsActive { get; set; } = true; // Soft delete flag
+
         // Doctor ignore functionality (for AI analysis exclusion)
         public bool IsIgnoredByDoctor { get; set; } = false;
         public int? IgnoredByDoctorId { get; set; }

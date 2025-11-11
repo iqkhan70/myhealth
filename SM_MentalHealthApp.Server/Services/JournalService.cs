@@ -77,7 +77,7 @@ namespace SM_MentalHealthApp.Server.Services
         public async Task<List<JournalEntry>> GetEntriesForUser(int userId)
         {
             return await _context.JournalEntries
-                .Where(e => e.UserId == userId)
+                .Where(e => e.UserId == userId && e.IsActive)
                 .OrderByDescending(e => e.CreatedAt)
                 .ToListAsync();
         }
@@ -86,7 +86,7 @@ namespace SM_MentalHealthApp.Server.Services
         {
             var cutoffDate = DateTime.UtcNow.AddDays(-days);
             return await _context.JournalEntries
-                .Where(e => e.UserId == userId && e.CreatedAt >= cutoffDate)
+                .Where(e => e.UserId == userId && e.IsActive && e.CreatedAt >= cutoffDate)
                 .OrderByDescending(e => e.CreatedAt)
                 .ToListAsync();
         }
@@ -95,7 +95,7 @@ namespace SM_MentalHealthApp.Server.Services
         {
             var cutoffDate = DateTime.UtcNow.AddDays(-days);
             return await _context.JournalEntries
-                .Where(e => e.UserId == userId && e.CreatedAt >= cutoffDate && !string.IsNullOrEmpty(e.Mood))
+                .Where(e => e.UserId == userId && e.IsActive && e.CreatedAt >= cutoffDate && !string.IsNullOrEmpty(e.Mood))
                 .GroupBy(e => e.Mood)
                 .ToDictionaryAsync(g => g.Key, g => g.Count());
         }
@@ -105,21 +105,22 @@ namespace SM_MentalHealthApp.Server.Services
             if (userId.HasValue)
             {
                 return await _context.JournalEntries
-                    .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == userId.Value);
+                    .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == userId.Value && e.IsActive);
             }
             return await _context.JournalEntries
-                .FirstOrDefaultAsync(e => e.Id == entryId);
+                .FirstOrDefaultAsync(e => e.Id == entryId && e.IsActive);
         }
 
         public async Task<bool> DeleteEntry(int entryId, int userId)
         {
             var entry = await _context.JournalEntries
-                .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == userId);
+                .FirstOrDefaultAsync(e => e.Id == entryId && e.UserId == userId && e.IsActive);
 
             if (entry == null)
                 return false;
 
-            _context.JournalEntries.Remove(entry);
+            // Soft delete
+            entry.IsActive = false;
             await _context.SaveChangesAsync();
             return true;
         }
@@ -161,7 +162,10 @@ namespace SM_MentalHealthApp.Server.Services
         // Legacy method for backward compatibility
         public async Task<List<JournalEntry>> GetEntries()
         {
-            return await _context.JournalEntries.OrderByDescending(e => e.CreatedAt).ToListAsync();
+            return await _context.JournalEntries
+                .Where(e => e.IsActive)
+                .OrderByDescending(e => e.CreatedAt)
+                .ToListAsync();
         }
 
         private MedicalJournalAnalysis AnalyzeMedicalContentInJournal(string text)

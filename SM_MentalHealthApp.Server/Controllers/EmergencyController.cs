@@ -507,6 +507,65 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
+        /// Gets a single emergency incident by ID
+        /// </summary>
+        [HttpGet("incident/{incidentId}")]
+        [Authorize(Roles = "Doctor,Admin")]
+        public async Task<ActionResult<global::SM_MentalHealthApp.Shared.EmergencyAlert>> GetEmergencyIncident(int incidentId)
+        {
+            try
+            {
+                var dbIncident = await _context.EmergencyIncidents
+                    .Include(ei => ei.Patient)
+                    .FirstOrDefaultAsync(ei => ei.Id == incidentId);
+
+                if (dbIncident == null)
+                {
+                    return NotFound();
+                }
+
+                var incident = new global::SM_MentalHealthApp.Shared.EmergencyAlert
+                {
+                    Id = dbIncident.Id,
+                    PatientId = dbIncident.PatientId,
+                    PatientName = $"{dbIncident.Patient.FirstName} {dbIncident.Patient.LastName}",
+                    PatientEmail = dbIncident.Patient.Email,
+                    EmergencyType = dbIncident.EmergencyType,
+                    Severity = dbIncident.Severity,
+                    Message = dbIncident.Message,
+                    Timestamp = dbIncident.Timestamp,
+                    DeviceId = dbIncident.DeviceId,
+                    IsAcknowledged = dbIncident.IsAcknowledged,
+                    AcknowledgedAt = dbIncident.AcknowledgedAt,
+                    AcknowledgedByDoctorId = dbIncident.DoctorId,
+                    DoctorResponse = dbIncident.DoctorResponse,
+                    ActionTaken = dbIncident.ActionTaken,
+                    Resolution = dbIncident.Resolution,
+                    ResolvedAt = dbIncident.ResolvedAt,
+                    VitalSigns = null,
+                    Location = null
+                };
+
+                // Populate VitalSigns and Location from JSON
+                if (!string.IsNullOrEmpty(dbIncident.VitalSignsJson))
+                {
+                    incident.VitalSigns = JsonSerializer.Deserialize<global::SM_MentalHealthApp.Shared.VitalSigns>(dbIncident.VitalSignsJson);
+                }
+                if (!string.IsNullOrEmpty(dbIncident.LocationJson))
+                {
+                    incident.Location = JsonSerializer.Deserialize<global::SM_MentalHealthApp.Shared.LocationData>(dbIncident.LocationJson);
+                }
+
+                return Ok(incident);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving emergency incident {IncidentId}", incidentId);
+                return StatusCode(500, "Internal server error retrieving incident");
+            }
+        }
+
+        /// <summary>
         /// Test endpoint to simulate emergency messages (for development/testing)
         /// </summary>
         [HttpPost("test-emergency")]

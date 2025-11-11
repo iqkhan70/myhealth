@@ -25,7 +25,7 @@ namespace SM_MentalHealthApp.Client.Services
         public async Task<EmergencyAlert?> GetAsync(int incidentId, CancellationToken ct = default)
         {
             AddAuthorizationHeader();
-            return await _http.GetFromJsonAsync<EmergencyAlert>($"api/emergency/incidents/{incidentId}", ct);
+            return await _http.GetFromJsonAsync<EmergencyAlert>($"api/emergency/incident/{incidentId}", ct);
         }
 
         public async Task<bool> AcknowledgeAsync(int incidentId, int doctorId, string response, string actionTaken, CancellationToken ct = default)

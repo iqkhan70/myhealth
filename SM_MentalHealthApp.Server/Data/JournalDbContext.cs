@@ -89,6 +89,7 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasKey(e => e.Id);
                         entity.Property(e => e.Text).IsRequired();
                         entity.Property(e => e.Mood).HasMaxLength(50);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
 
                         // Foreign key relationship to patient (User)
                         entity.HasOne(e => e.User)
@@ -141,6 +142,7 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasKey(e => e.Id);
                         entity.Property(e => e.Content).IsRequired().HasColumnType("TEXT");
                         entity.Property(e => e.Metadata).HasMaxLength(1000);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
                         entity.Property(e => e.Role).HasConversion<string>();
                         entity.Property(e => e.MessageType).HasConversion<string>();
 
