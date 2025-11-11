@@ -247,7 +247,7 @@
         {
             _actions.Add(new SMDataGridActionButton<ChatSession>
             {
-                IconFunc = (session) => session.IsIgnoredByDoctor ? "visibility" : "block",
+                IconFunc = (session) => session.IsIgnoredByDoctor ? "undo" : "block", // Use "undo" for unignore (distinct from "visibility" used for view)
                 ButtonStyleFunc = (session) => session.IsIgnoredByDoctor ? ButtonStyle.Info : ButtonStyle.Warning,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,

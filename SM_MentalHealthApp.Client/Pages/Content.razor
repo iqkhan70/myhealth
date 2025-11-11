@@ -155,7 +155,7 @@
 
                                     @if (AuthService.CurrentUser?.RoleId == 2) // Doctor can ignore/unignore
                                     {
-                                        <RadzenButton Icon="@(content.IsIgnoredByDoctor ? "visibility" : "block")" 
+                                        <RadzenButton Icon="@(content.IsIgnoredByDoctor ? "undo" : "block")" 
                                             ButtonStyle="@(content.IsIgnoredByDoctor ? ButtonStyle.Info : ButtonStyle.Warning)" 
                                             ButtonType="ButtonType.Button"
                                             Size="ButtonSize.Small" 

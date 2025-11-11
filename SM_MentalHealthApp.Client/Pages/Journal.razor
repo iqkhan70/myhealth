@@ -318,7 +318,7 @@
         {
             _actions.Add(new SMDataGridActionButton<JournalEntryDto>
             {
-                IconFunc = (entry) => entry.IsIgnoredByDoctor ? "visibility" : "block",
+                IconFunc = (entry) => entry.IsIgnoredByDoctor ? "undo" : "block", // Use "undo" for unignore (distinct from "visibility" used for view)
                 ButtonStyleFunc = (entry) => entry.IsIgnoredByDoctor ? ButtonStyle.Info : ButtonStyle.Warning,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
