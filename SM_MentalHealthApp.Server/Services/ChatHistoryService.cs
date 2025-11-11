@@ -24,15 +24,15 @@ namespace SM_MentalHealthApp.Server.Services
     public class ChatHistoryService : IChatHistoryService
     {
         private readonly JournalDbContext _context;
-        private readonly IServiceProvider _serviceProvider;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly ILogger<ChatHistoryService> _logger;
         private const int MAX_CONTEXT_MESSAGES = 20;
         private const int SUMMARY_THRESHOLD = 50;
 
-        public ChatHistoryService(JournalDbContext context, IServiceProvider serviceProvider, ILogger<ChatHistoryService> logger)
+        public ChatHistoryService(JournalDbContext context, IServiceScopeFactory serviceScopeFactory, ILogger<ChatHistoryService> logger)
         {
             _context = context;
-            _serviceProvider = serviceProvider;
+            _serviceScopeFactory = serviceScopeFactory;
             _logger = logger;
         }
 
@@ -449,7 +449,8 @@ namespace SM_MentalHealthApp.Server.Services
             try
             {
                 // Create a new DbContext instance for this background operation
-                using var scope = _serviceProvider.CreateScope();
+                // Use IServiceScopeFactory to create a scope that won't be disposed with the request
+                using var scope = _serviceScopeFactory.CreateScope();
                 var context = scope.ServiceProvider.GetRequiredService<JournalDbContext>();
 
                 var session = await context.ChatSessions

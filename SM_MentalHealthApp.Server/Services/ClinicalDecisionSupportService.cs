@@ -21,15 +21,18 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly ILogger<ClinicalDecisionSupportService> _logger;
         private readonly JournalDbContext _context;
         private readonly LlmClient _llmClient;
+        private readonly IContentAnalysisService _contentAnalysisService;
 
         public ClinicalDecisionSupportService(
             ILogger<ClinicalDecisionSupportService> logger,
             JournalDbContext context,
-            LlmClient llmClient)
+            LlmClient llmClient,
+            IContentAnalysisService contentAnalysisService)
         {
             _logger = logger;
             _context = context;
             _llmClient = llmClient;
+            _contentAnalysisService = contentAnalysisService;
         }
 
         public async Task<ClinicalRecommendation> GetRecommendationsAsync(string diagnosis, int patientId, int doctorId)
@@ -47,21 +50,24 @@ namespace SM_MentalHealthApp.Server.Services
                     throw new ArgumentException("Patient or doctor not found");
                 }
 
-                // Get recent patient data for context
+                // Get recent patient data for context (excluding ignored entries)
                 var recentJournalEntries = await _context.JournalEntries
-                    .Where(j => j.UserId == patientId)
+                    .Where(j => j.UserId == patientId && !j.IsIgnoredByDoctor)
                     .OrderByDescending(j => j.CreatedAt)
                     .Take(10)
                     .ToListAsync();
 
                 var recentMoodEntries = await _context.JournalEntries
-                    .Where(j => j.UserId == patientId && !string.IsNullOrEmpty(j.Mood))
+                    .Where(j => j.UserId == patientId && !j.IsIgnoredByDoctor && !string.IsNullOrEmpty(j.Mood))
                     .OrderByDescending(j => j.CreatedAt)
                     .Take(5)
                     .ToListAsync();
 
-                // Build context for AI
-                var patientContext = BuildPatientContext(patient, recentJournalEntries, recentMoodEntries);
+                // Get content analysis for medical data (excluding ignored content)
+                var contentAnalyses = await _contentAnalysisService.GetContentAnalysisForPatientAsync(patientId);
+
+                // Build context for AI (includes journal entries and content analysis)
+                var patientContext = await BuildPatientContextAsync(patient, recentJournalEntries, recentMoodEntries, contentAnalyses);
 
                 // Get AI recommendations
                 var recommendations = await GetAIRecommendations(diagnosis, patientContext);
@@ -330,7 +336,7 @@ Format your response as a clear, structured clinical recommendation.";
             }
         }
 
-        private string BuildPatientContext(User patient, List<JournalEntry> journalEntries, List<JournalEntry> moodEntries)
+        private async Task<string> BuildPatientContextAsync(User patient, List<JournalEntry> journalEntries, List<JournalEntry> moodEntries, List<SM_MentalHealthApp.Shared.ContentAnalysis> contentAnalyses)
         {
             var context = $@"
 Patient: {patient.FirstName} {patient.LastName}
@@ -344,6 +350,49 @@ Recent Journal Entries:
 Recent Mood Entries:
 {string.Join("\n", moodEntries.Take(3).Select(m => $"- {m.CreatedAt:yyyy-MM-dd}: {m.Mood}"))}
 ";
+
+            // Add content analysis (medical test results) if available
+            if (contentAnalyses != null && contentAnalyses.Any())
+            {
+                context += "\n=== MEDICAL TEST RESULTS / CONTENT ANALYSIS ===\n";
+
+                // Get the most recent analysis with critical values
+                var analysesWithCritical = contentAnalyses
+                    .Where(a => a.AnalysisResults != null && a.AnalysisResults.ContainsKey("CriticalValues"))
+                    .OrderByDescending(a => a.ProcessedAt)
+                    .ToList();
+
+                if (analysesWithCritical.Any())
+                {
+                    var mostRecent = analysesWithCritical.First();
+                    context += $"Latest Analysis: {mostRecent.ProcessedAt:yyyy-MM-dd HH:mm}\n";
+
+                    if (!string.IsNullOrEmpty(mostRecent.ExtractedText))
+                    {
+                        context += $"Test Results: {mostRecent.ExtractedText.Substring(0, Math.Min(300, mostRecent.ExtractedText.Length))}...\n";
+                    }
+
+                    // Add critical values if available
+                    if (mostRecent.AnalysisResults.ContainsKey("CriticalValues"))
+                    {
+                        var criticalValues = mostRecent.AnalysisResults["CriticalValues"];
+                        if (criticalValues != null)
+                        {
+                            context += $"Critical Values Detected: {criticalValues}\n";
+                        }
+                    }
+                }
+                else
+                {
+                    // Show latest analysis even if no critical values
+                    var latest = contentAnalyses.OrderByDescending(a => a.ProcessedAt).First();
+                    context += $"Latest Analysis: {latest.ProcessedAt:yyyy-MM-dd HH:mm}\n";
+                    if (!string.IsNullOrEmpty(latest.ExtractedText))
+                    {
+                        context += $"Test Results: {latest.ExtractedText.Substring(0, Math.Min(300, latest.ExtractedText.Length))}...\n";
+                    }
+                }
+            }
 
             return context;
         }

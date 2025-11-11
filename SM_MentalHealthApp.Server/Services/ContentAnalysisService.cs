@@ -95,12 +95,12 @@ namespace SM_MentalHealthApp.Server.Services
                 if (existingAnalysis != null)
                 {
                     // Use existing ExtractedText if available, otherwise extract fresh
-                    var checkText = !string.IsNullOrEmpty(existingAnalysis.ExtractedText) 
-                        ? existingAnalysis.ExtractedText 
+                    var checkText = !string.IsNullOrEmpty(existingAnalysis.ExtractedText)
+                        ? existingAnalysis.ExtractedText
                         : await ExtractTextFromContentAsync(content);
-                    
-                    bool hasCriticalInText = !string.IsNullOrEmpty(checkText) && 
-                        (checkText.Contains("Blood Pressure: 190") || 
+
+                    bool hasCriticalInText = !string.IsNullOrEmpty(checkText) &&
+                        (checkText.Contains("Blood Pressure: 190") ||
                          checkText.Contains("Blood Pressure: 18") ||
                          checkText.Contains("Hemoglobin: 6.0") ||
                          checkText.Contains("Hemoglobin: 6.") ||
@@ -109,10 +109,10 @@ namespace SM_MentalHealthApp.Server.Services
                          (checkText.Contains("Blood Pressure") && (checkText.Contains("190") || checkText.Contains("180"))) ||
                          (checkText.Contains("Hemoglobin") && checkText.Contains("6.0")) ||
                          (checkText.Contains("Triglycerides") && checkText.Contains("640")));
-                    
-                    bool hasCriticalInResults = existingAnalysis.AnalysisResults != null && 
+
+                    bool hasCriticalInResults = existingAnalysis.AnalysisResults != null &&
                                                existingAnalysis.AnalysisResults.ContainsKey("CriticalValues");
-                    
+
                     // If we have critical values in text but not in results, re-analyze
                     if (hasCriticalInText && !hasCriticalInResults)
                     {
@@ -219,9 +219,9 @@ namespace SM_MentalHealthApp.Server.Services
         {
             _logger.LogInformation("Getting content analysis for patient {PatientId}", patientId);
 
-            // First, let's check what content exists for this patient
+            // First, let's check what content exists for this patient (excluding ignored content)
             var patientContents = await _context.Contents
-                .Where(c => c.PatientId == patientId && c.IsActive)
+                .Where(c => c.PatientId == patientId && c.IsActive && !c.IsIgnoredByDoctor)
                 .ToListAsync();
 
             _logger.LogInformation("Found {ContentCount} active content items for patient {PatientId}", patientContents.Count, patientId);
@@ -233,9 +233,11 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             // Get already processed content analyses from database
+            // Only get analyses for content that exists, is active, and not ignored
             var contentIds = patientContents.Select(c => c.Id).ToList();
             var analyses = await _context.ContentAnalyses
-                .Where(ca => contentIds.Contains(ca.ContentId))
+                .Where(ca => contentIds.Contains(ca.ContentId) &&
+                           _context.Contents.Any(c => c.Id == ca.ContentId && c.IsActive && !c.IsIgnoredByDoctor))
                 .OrderByDescending(ca => ca.ProcessedAt)
                 .Take(10) // Limit to recent analyses
                 .ToListAsync();
@@ -253,7 +255,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 if (!string.IsNullOrEmpty(analysis.ExtractedText))
                 {
-                    bool hasCriticalInText = analysis.ExtractedText.Contains("Blood Pressure: 190") || 
+                    bool hasCriticalInText = analysis.ExtractedText.Contains("Blood Pressure: 190") ||
                                            analysis.ExtractedText.Contains("Blood Pressure: 18") ||
                                            analysis.ExtractedText.Contains("Hemoglobin: 6.0") ||
                                            analysis.ExtractedText.Contains("Hemoglobin: 6.") ||
@@ -262,23 +264,23 @@ namespace SM_MentalHealthApp.Server.Services
                                            (analysis.ExtractedText.Contains("Blood Pressure") && (analysis.ExtractedText.Contains("190") || analysis.ExtractedText.Contains("180"))) ||
                                            (analysis.ExtractedText.Contains("Hemoglobin") && analysis.ExtractedText.Contains("6.0")) ||
                                            (analysis.ExtractedText.Contains("Triglycerides") && analysis.ExtractedText.Contains("640"));
-                    
-                    bool hasCriticalInResults = analysis.AnalysisResults != null && 
+
+                    bool hasCriticalInResults = analysis.AnalysisResults != null &&
                                                analysis.AnalysisResults.ContainsKey("CriticalValues");
-                    
+
                     if (hasCriticalInText && !hasCriticalInResults)
                     {
                         var content = patientContents.FirstOrDefault(c => c.Id == analysis.ContentId);
                         if (content != null && !content.IsIgnoredByDoctor)
                         {
-                            _logger.LogWarning("Analysis {AnalysisId} for Content {ContentId} has critical values in ExtractedText but not in AnalysisResults. Will re-analyze.", 
+                            _logger.LogWarning("Analysis {AnalysisId} for Content {ContentId} has critical values in ExtractedText but not in AnalysisResults. Will re-analyze.",
                                 analysis.Id, analysis.ContentId);
                             analysesNeedingReAnalysis.Add(content);
                         }
                     }
                 }
             }
-            
+
             // Re-analyze content that needs it
             foreach (var content in analysesNeedingReAnalysis)
             {
@@ -406,7 +408,18 @@ If you need general medical information without patient context, please switch t
                     foreach (var entry in recentEntries)
                     {
                         context.AppendLine($"[{entry.CreatedAt:MM/dd/yyyy}] Mood: {entry.Mood}");
-                        context.AppendLine($"Entry: {entry.Text.Substring(0, Math.Min(200, entry.Text.Length))}...");
+                        // Only show first 200 chars of journal entry text (don't include full medical test results)
+                        var entryPreview = entry.Text?.Substring(0, Math.Min(200, entry.Text.Length)) ?? "";
+
+                        // Log if journal entry contains medical test data
+                        if (!string.IsNullOrEmpty(entry.Text) &&
+                            (entry.Text.Contains("Hemoglobin") || entry.Text.Contains("Blood Pressure") || entry.Text.Contains("Triglycerides")))
+                        {
+                            _logger.LogWarning("Journal entry {EntryId} for patient {PatientId} contains medical test data: {Preview}",
+                                entry.Id, patientId, entryPreview);
+                        }
+
+                        context.AppendLine($"Entry: {entryPreview}...");
                         context.AppendLine();
                     }
                 }
@@ -494,28 +507,67 @@ If you need general medical information without patient context, please switch t
 
                 // Get content analyses for medical data (excluding ignored content)
                 var allContentAnalyses = await GetContentAnalysisForPatientAsync(patientId);
-                
-                // Filter out analyses for content items that have been ignored by doctors
+
+                // Double-check: Filter out analyses for content items that don't exist, are inactive, or are ignored
+                var beforeFilterCount = allContentAnalyses.Count;
                 allContentAnalyses = allContentAnalyses
-                    .Where(ca => !_context.Contents.Any(c => c.Id == ca.ContentId && c.IsIgnoredByDoctor))
+                    .Where(ca => _context.Contents.Any(c => c.Id == ca.ContentId &&
+                                                           c.IsActive &&
+                                                           !c.IsIgnoredByDoctor &&
+                                                           c.PatientId == patientId))
                     .ToList();
+
+                if (beforeFilterCount != allContentAnalyses.Count)
+                {
+                    _logger.LogWarning("Filtered out {FilteredCount} content analyses for patient {PatientId} (orphaned or ignored content). Before: {Before}, After: {After}",
+                        beforeFilterCount - allContentAnalyses.Count, patientId, beforeFilterCount, allContentAnalyses.Count);
+                }
+
+                if (allContentAnalyses.Count == 0)
+                {
+                    _logger.LogInformation("No content analyses available for patient {PatientId} after filtering", patientId);
+                }
 
                 if (allContentAnalyses.Any())
                 {
+                    _logger.LogInformation("Using {Count} content analyses for patient {PatientId} context", allContentAnalyses.Count, patientId);
+
                     // Sort by date - most recent first
                     var sortedAnalyses = allContentAnalyses.OrderByDescending(a => a.ProcessedAt).ToList();
                     var latestAnalysis = sortedAnalyses.First();
+
+                    var hasHemoglobin = latestAnalysis.ExtractedText?.Contains("Hemoglobin: 6.0") ?? false;
+                    var hasCritical = latestAnalysis.AnalysisResults?.ContainsKey("CriticalValues") ?? false;
+                    _logger.LogInformation("Latest analysis for patient {PatientId}: ContentId={ContentId}, ProcessedAt={ProcessedAt}, HasCriticalValues={HasCritical}, HasHemoglobin6.0={HasHemoglobin}",
+                        patientId, latestAnalysis.ContentId, latestAnalysis.ProcessedAt, hasCritical, hasHemoglobin);
+
+                    // Log details about all analyses being used
+                    foreach (var analysis in sortedAnalyses.Take(5))
+                    {
+                        var analysisHasHemoglobin = analysis.ExtractedText?.Contains("Hemoglobin: 6.0") ?? false;
+                        var analysisHasCritical = analysis.AnalysisResults?.ContainsKey("CriticalValues") ?? false;
+                        var extractedTextPreview = analysis.ExtractedText?.Substring(0, Math.Min(150, analysis.ExtractedText.Length)) ?? "null";
+                        _logger.LogInformation("ContentAnalysis {AnalysisId} for ContentId {ContentId}: HasHemoglobin6.0={HasHemoglobin}, HasCriticalValues={HasCritical}, ProcessedAt={ProcessedAt}, ExtractedTextPreview={Preview}",
+                            analysis.Id, analysis.ContentId, analysisHasHemoglobin, analysisHasCritical, analysis.ProcessedAt, extractedTextPreview);
+
+                        // If this analysis contains "Hemoglobin: 6.0", log it as a warning
+                        if (analysisHasHemoglobin)
+                        {
+                            _logger.LogWarning("⚠️ ContentAnalysis {AnalysisId} contains 'Hemoglobin: 6.0' in ExtractedText. Full ExtractedText: {ExtractedText}",
+                                analysis.Id, analysis.ExtractedText);
+                        }
+                    }
 
                     // Find analyses with critical values in AnalysisResults (prioritize these)
                     var analysesWithCritical = sortedAnalyses
                         .Where(a => a.AnalysisResults != null && a.AnalysisResults.ContainsKey("CriticalValues"))
                         .OrderByDescending(a => a.ProcessedAt)
                         .ToList();
-                    
+
                     // Also check ExtractedText for critical values even if AnalysisResults doesn't have them
                     var analysesWithCriticalInText = sortedAnalyses
-                        .Where(a => !string.IsNullOrEmpty(a.ExtractedText) && 
-                                   (a.ExtractedText.Contains("Blood Pressure: 190") || 
+                        .Where(a => !string.IsNullOrEmpty(a.ExtractedText) &&
+                                   (a.ExtractedText.Contains("Blood Pressure: 190") ||
                                     a.ExtractedText.Contains("Blood Pressure: 18") ||
                                     a.ExtractedText.Contains("Hemoglobin: 6.0") ||
                                     a.ExtractedText.Contains("Hemoglobin: 6.") ||
@@ -539,14 +591,14 @@ If you need general medical information without patient context, please switch t
                         context.AppendLine();
                         context.AppendLine("🚨 **CRITICAL MEDICAL VALUES DETECTED** 🚨");
                         context.AppendLine($"Date: {mostRecentCritical.ProcessedAt:MM/dd/yyyy HH:mm}");
-                        
+
                         if (!string.IsNullOrEmpty(mostRecentCritical.ExtractedText))
                         {
                             context.AppendLine($"Test Results: {mostRecentCritical.ExtractedText}");
                         }
-                        
+
                         var criticalValuesElement = mostRecentCritical.AnalysisResults["CriticalValues"];
-                        
+
                         // Handle different deserialization formats
                         List<string> criticalValues = new List<string>();
                         if (criticalValuesElement is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
@@ -578,7 +630,7 @@ If you need general medical information without patient context, please switch t
                                 _logger.LogWarning(ex, "Failed to parse CriticalValues as JSON array");
                             }
                         }
-                        
+
                         if (criticalValues.Any())
                         {
                             context.AppendLine("Critical Values Found:");
@@ -599,6 +651,13 @@ If you need general medical information without patient context, please switch t
                     // Always show the latest analysis results
                     if (!string.IsNullOrEmpty(latestAnalysis.ExtractedText))
                     {
+                        // Log if ExtractedText contains "Hemoglobin: 6.0"
+                        if (latestAnalysis.ExtractedText.Contains("Hemoglobin: 6.0"))
+                        {
+                            _logger.LogWarning("LATEST ContentAnalysis {AnalysisId} ExtractedText contains 'Hemoglobin: 6.0': {ExtractedText}",
+                                latestAnalysis.Id, latestAnalysis.ExtractedText.Substring(0, Math.Min(200, latestAnalysis.ExtractedText.Length)));
+                        }
+
                         context.AppendLine($"Current Test Results (Latest): {latestAnalysis.ExtractedText}");
                         context.AppendLine();
                     }
@@ -607,6 +666,14 @@ If you need general medical information without patient context, please switch t
                     if (sortedAnalyses.Count > 1)
                     {
                         var previousAnalysis = sortedAnalyses[1];
+
+                        // Log if previous analysis contains "Hemoglobin: 6.0"
+                        if (!string.IsNullOrEmpty(previousAnalysis.ExtractedText) && previousAnalysis.ExtractedText.Contains("Hemoglobin: 6.0"))
+                        {
+                            _logger.LogWarning("PREVIOUS ContentAnalysis {AnalysisId} ExtractedText contains 'Hemoglobin: 6.0': {ExtractedText}",
+                                previousAnalysis.Id, previousAnalysis.ExtractedText.Substring(0, Math.Min(200, previousAnalysis.ExtractedText.Length)));
+                        }
+
                         context.AppendLine("=== PROGRESSION ANALYSIS ===");
                         context.AppendLine($"Previous Results ({previousAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}): {previousAnalysis.ExtractedText}");
                         context.AppendLine($"Current Results ({latestAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}): {latestAnalysis.ExtractedText}");
@@ -642,11 +709,11 @@ If you need general medical information without patient context, please switch t
                     var hasCriticalValues = latestAnalysis.AnalysisResults != null && latestAnalysis.AnalysisResults.ContainsKey("CriticalValues");
                     var hasAbnormalValues = latestAnalysis.AnalysisResults != null && latestAnalysis.AnalysisResults.ContainsKey("AbnormalValues");
                     var hasNormalValues = latestAnalysis.AnalysisResults != null && latestAnalysis.AnalysisResults.ContainsKey("NormalValues");
-                    
+
                     // Fallback: Check ExtractedText for critical values if AnalysisResults doesn't have them
                     if (!hasCriticalValues && !string.IsNullOrEmpty(latestAnalysis.ExtractedText))
                     {
-                        hasCriticalValues = latestAnalysis.ExtractedText.Contains("Blood Pressure: 190") || 
+                        hasCriticalValues = latestAnalysis.ExtractedText.Contains("Blood Pressure: 190") ||
                                           latestAnalysis.ExtractedText.Contains("Blood Pressure: 18") ||
                                           latestAnalysis.ExtractedText.Contains("Hemoglobin: 6.0") ||
                                           latestAnalysis.ExtractedText.Contains("Hemoglobin: 6.") ||
@@ -657,14 +724,14 @@ If you need general medical information without patient context, please switch t
                                           (latestAnalysis.ExtractedText.Contains("Triglycerides") && latestAnalysis.ExtractedText.Contains("640"));
                         if (hasCriticalValues)
                         {
-                            _logger.LogWarning("Critical values found in ExtractedText but not in AnalysisResults for ContentId {ContentId}. Using ExtractedText as fallback.", 
+                            _logger.LogWarning("Critical values found in ExtractedText but not in AnalysisResults for ContentId {ContentId}. Using ExtractedText as fallback.",
                                 latestAnalysis.ContentId);
                         }
                     }
 
                     // Always show status assessment, prioritizing critical values
                     context.AppendLine("=== CURRENT MEDICAL STATUS ===");
-                    
+
                     if (hasCriticalValues)
                     {
                         var criticalValuesElement = latestAnalysis.AnalysisResults["CriticalValues"];
@@ -720,7 +787,7 @@ If you need general medical information without patient context, please switch t
                         {
                             var extractedText = latestAnalysis.ExtractedText;
                             // Check for critical values in ExtractedText even if AnalysisResults is empty
-                            bool hasCriticalInText = extractedText.Contains("Blood Pressure: 190") || 
+                            bool hasCriticalInText = extractedText.Contains("Blood Pressure: 190") ||
                                                    extractedText.Contains("Blood Pressure: 18") ||
                                                    extractedText.Contains("Hemoglobin: 6.0") ||
                                                    extractedText.Contains("Hemoglobin: 6.") ||
@@ -729,7 +796,7 @@ If you need general medical information without patient context, please switch t
                                                    (extractedText.Contains("Blood Pressure") && (extractedText.Contains("190") || extractedText.Contains("180"))) ||
                                                    (extractedText.Contains("Hemoglobin") && extractedText.Contains("6.0")) ||
                                                    (extractedText.Contains("Triglycerides") && extractedText.Contains("640"));
-                            
+
                             if (hasCriticalInText)
                             {
                                 context.AppendLine("🚨 **CRITICAL VALUES DETECTED IN EXTRACTED TEXT:**");
@@ -788,7 +855,7 @@ If you need general medical information without patient context, please switch t
                     if (recentChatSessions.Any())
                     {
                         var sessionIds = recentChatSessions.Select(s => s.Id).ToList();
-                        
+
                         // Load messages with error handling for invalid MessageType enum values
                         List<ChatMessage> allMessages = new List<ChatMessage>();
                         try
@@ -809,7 +876,7 @@ If you need general medical information without patient context, please switch t
                         var recentMessagesBySession = allMessages
                             .GroupBy(m => m.SessionId)
                             .ToDictionary(
-                                g => g.Key, 
+                                g => g.Key,
                                 g => g.OrderByDescending(m => m.Timestamp)
                                       .Take(10)
                                       .OrderBy(m => m.Timestamp)
@@ -845,10 +912,17 @@ If you need general medical information without patient context, please switch t
                     {
                         context.AppendLine($"Session: {session.CreatedAt:MM/dd/yyyy HH:mm} - {session.LastActivityAt:MM/dd/yyyy HH:mm}");
                         context.AppendLine($"Messages: {session.MessageCount}");
-                        
+
                         // Add session summary if available
                         if (!string.IsNullOrEmpty(session.Summary))
                         {
+                            // Log if summary contains medical test data
+                            if (session.Summary.Contains("Hemoglobin") || session.Summary.Contains("Blood Pressure") || session.Summary.Contains("Triglycerides"))
+                            {
+                                _logger.LogWarning("Chat session {SessionId} summary for patient {PatientId} contains medical test data: {SummaryPreview}",
+                                    session.Id, patientId, session.Summary.Substring(0, Math.Min(200, session.Summary.Length)));
+                            }
+
                             context.AppendLine($"Summary: {session.Summary.Substring(0, Math.Min(300, session.Summary.Length))}...");
                         }
 
@@ -856,7 +930,7 @@ If you need general medical information without patient context, please switch t
                         if (session.Messages != null && session.Messages.Any())
                         {
                             var medicalMessages = session.Messages
-                                .Where(m => m.IsMedicalData || 
+                                .Where(m => m.IsMedicalData ||
                                            m.Content.ToLower().Contains("emergency") ||
                                            m.Content.ToLower().Contains("critical") ||
                                            m.Content.ToLower().Contains("urgent") ||
@@ -877,9 +951,17 @@ If you need general medical information without patient context, please switch t
                                         MessageRole.System => "System",
                                         _ => "Unknown"
                                     };
-                                    var content = msg.Content.Length > 200 
-                                        ? msg.Content.Substring(0, 200) + "..." 
+                                    var content = msg.Content.Length > 200
+                                        ? msg.Content.Substring(0, 200) + "..."
                                         : msg.Content;
+
+                                    // Log if chat message contains medical test data
+                                    if (msg.Content.Contains("Hemoglobin") || msg.Content.Contains("Blood Pressure") || msg.Content.Contains("Triglycerides"))
+                                    {
+                                        _logger.LogWarning("Chat message {MessageId} in session {SessionId} for patient {PatientId} contains medical test data: {Preview}",
+                                            msg.Id, session.Id, patientId, content);
+                                    }
+
                                     context.AppendLine($"  [{msg.Timestamp:MM/dd/yyyy HH:mm}] {rolePrefix}: {content}");
                                 }
                             }
@@ -951,7 +1033,7 @@ If you need general medical information without patient context, please switch t
                 context.AppendLine("- If no critical values but abnormal values exist, state: '⚠️ CONCERNING STATUS: Patient has abnormal values requiring monitoring'");
                 context.AppendLine("- Only state 'STABLE' if ALL values are normal and no concerning patterns are detected");
                 context.AppendLine("- Summarize key medical findings from test results, vital signs, and medical data");
-                context.AppendLine("- Reference specific values from the medical data (e.g., 'Hemoglobin: 6.0 g/dL is critically low')");
+                context.AppendLine("- Reference specific values from the medical data (e.g., if hemoglobin is below 7 g/dL, it indicates severe anemia)");
                 context.AppendLine();
                 context.AppendLine("**Recent Patient Activity:**");
                 context.AppendLine("- Review journal entries and mood patterns");
@@ -1296,7 +1378,7 @@ If you need general medical information without patient context, please switch t
         {
             // Normalize text - replace backslashes with spaces/newlines for better pattern matching
             var normalizedText = text.Replace("\\", " ").Replace("\r\n", " ").Replace("\n", " ");
-            
+
             // Look for test result patterns with more comprehensive patterns
             var testPatterns = new Dictionary<string, string>
             {
@@ -1507,11 +1589,13 @@ If you need general medical information without patient context, please switch t
 
                 var clinicalNotes = await clinicalNotesQuery.ToListAsync();
 
-                // Get content analyses for the same patients
+                // Get content analyses for the same patients (excluding analyses for ignored content)
                 var patientIds = clinicalNotes.Select(cn => cn.PatientId).Distinct().ToList();
                 var contentAnalyses = await _context.ContentAnalyses
                     .Include(ca => ca.Content)
-                    .Where(ca => patientIds.Contains(ca.Content.PatientId))
+                    .Where(ca => patientIds.Contains(ca.Content.PatientId) &&
+                                   ca.Content.IsActive &&
+                                   !ca.Content.IsIgnoredByDoctor)
                     .ToListAsync();
 
                 // Combine clinical notes and content analyses for AI analysis
