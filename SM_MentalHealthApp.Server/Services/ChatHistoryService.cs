@@ -40,27 +40,41 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                // Check if there's an active session for TODAY only
+                // Check if there's an active, non-ignored session for TODAY only
+                // If a session is ignored, we should create a new session for new messages
+                // This ensures that new messages after ignoring are not excluded from AI analysis
+                // IMPORTANT: If multiple non-ignored sessions exist for the same day, use the most recently active one
+                // This handles the case where Session1 was ignored, Session2 was created, then Session1 was unignored
+                // In that case, Session2 should continue to be used (it's the most recent)
                 var today = DateTime.UtcNow.Date;
                 var existingSession = await _context.ChatSessions
-                    .FirstOrDefaultAsync(s => s.UserId == userId &&
-                                            s.PatientId == patientId &&
-                                            s.IsActive &&
-                                            s.CreatedAt.Date == today);
+                    .Where(s => s.UserId == userId &&
+                               s.PatientId == patientId &&
+                               s.IsActive &&
+                               !s.IsIgnoredByDoctor && // Exclude ignored sessions
+                               s.CreatedAt.Date == today)
+                    .OrderByDescending(s => s.LastActivityAt) // Use most recently active session
+                    .ThenByDescending(s => s.CreatedAt) // If same activity time, use most recently created
+                    .FirstOrDefaultAsync();
 
                 if (existingSession != null)
                 {
-                    _logger.LogInformation("Found existing active session for today {SessionId} for user {UserId}, patient {PatientId}",
-                        existingSession.SessionId, userId, patientId);
+                    _logger.LogInformation("Found existing active, non-ignored session for today {SessionId} for user {UserId}, patient {PatientId} (LastActivity: {LastActivity})",
+                        existingSession.SessionId, userId, patientId, existingSession.LastActivityAt);
                     return existingSession;
                 }
 
-                // Deactivate any old sessions for this user/patient combination
-                var oldSessions = await _context.ChatSessions
-                    .Where(s => s.UserId == userId && s.PatientId == patientId && s.IsActive)
+                // Only deactivate sessions from PREVIOUS days (not today)
+                // IsActive should only be set to false for soft delete, not when creating a new session after ignoring
+                // Ignored sessions should remain active - they're just marked as ignored for AI analysis exclusion
+                var previousDaySessions = await _context.ChatSessions
+                    .Where(s => s.UserId == userId &&
+                               s.PatientId == patientId &&
+                               s.IsActive &&
+                               s.CreatedAt.Date < today) // Only sessions from previous days
                     .ToListAsync();
 
-                foreach (var oldSession in oldSessions)
+                foreach (var oldSession in previousDaySessions)
                 {
                     oldSession.IsActive = false;
 
@@ -386,11 +400,24 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
-                // Only return active sessions
+                // Return all active sessions (both ignored and non-ignored)
+                // IsActive = soft delete flag (only show active sessions)
+                // IsIgnoredByDoctor = doctor's choice to exclude from AI analysis, but still show in grid
+                // Show all sessions - don't group them, let each session be its own row
+                // The grouping was causing sessions to be hidden when they should be separate rows
                 var sessions = await query
-                    .Where(s => s.IsActive)
+                    .Where(s => s.IsActive) // Only show active sessions (soft delete filter)
+                                            // Note: IsIgnoredByDoctor is NOT filtered here - we show both ignored and non-ignored in the grid
+                                            // The ignore flag only affects AI analysis, not grid visibility
                     .OrderByDescending(s => s.LastActivityAt)
+                    .ThenByDescending(s => s.CreatedAt)
                     .ToListAsync();
+
+                _logger.LogInformation("GetUserSessionsAsync: Found {Count} active sessions for user {UserId}, patient {PatientId}. Sessions: {Sessions}",
+                    sessions.Count,
+                    userId,
+                    patientId,
+                    string.Join(", ", sessions.Select(s => $"Id={s.Id}, Created={s.CreatedAt:yyyy-MM-dd HH:mm}, Ignored={s.IsIgnoredByDoctor}, Messages={s.MessageCount}")));
 
                 // Pre-load a sample of recent messages for each session to help with concern detection
                 // This allows the client to analyze message content even when Messages collection isn't fully loaded
