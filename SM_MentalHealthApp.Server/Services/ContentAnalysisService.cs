@@ -410,15 +410,6 @@ If you need general medical information without patient context, please switch t
                         context.AppendLine($"[{entry.CreatedAt:MM/dd/yyyy}] Mood: {entry.Mood}");
                         // Only show first 200 chars of journal entry text (don't include full medical test results)
                         var entryPreview = entry.Text?.Substring(0, Math.Min(200, entry.Text.Length)) ?? "";
-
-                        // Log if journal entry contains medical test data
-                        if (!string.IsNullOrEmpty(entry.Text) &&
-                            (entry.Text.Contains("Hemoglobin") || entry.Text.Contains("Blood Pressure") || entry.Text.Contains("Triglycerides")))
-                        {
-                            _logger.LogWarning("Journal entry {EntryId} for patient {PatientId} contains medical test data: {Preview}",
-                                entry.Id, patientId, entryPreview);
-                        }
-
                         context.AppendLine($"Entry: {entryPreview}...");
                         context.AppendLine();
                     }
@@ -519,44 +510,17 @@ If you need general medical information without patient context, please switch t
 
                 if (beforeFilterCount != allContentAnalyses.Count)
                 {
-                    _logger.LogWarning("Filtered out {FilteredCount} content analyses for patient {PatientId} (orphaned or ignored content). Before: {Before}, After: {After}",
-                        beforeFilterCount - allContentAnalyses.Count, patientId, beforeFilterCount, allContentAnalyses.Count);
-                }
-
-                if (allContentAnalyses.Count == 0)
-                {
-                    _logger.LogInformation("No content analyses available for patient {PatientId} after filtering", patientId);
+                    _logger.LogWarning("Filtered out {FilteredCount} content analyses for patient {PatientId} (orphaned or ignored content)",
+                        beforeFilterCount - allContentAnalyses.Count, patientId);
                 }
 
                 if (allContentAnalyses.Any())
                 {
-                    _logger.LogInformation("Using {Count} content analyses for patient {PatientId} context", allContentAnalyses.Count, patientId);
 
                     // Sort by date - most recent first
                     var sortedAnalyses = allContentAnalyses.OrderByDescending(a => a.ProcessedAt).ToList();
                     var latestAnalysis = sortedAnalyses.First();
 
-                    var hasHemoglobin = latestAnalysis.ExtractedText?.Contains("Hemoglobin: 6.0") ?? false;
-                    var hasCritical = latestAnalysis.AnalysisResults?.ContainsKey("CriticalValues") ?? false;
-                    _logger.LogInformation("Latest analysis for patient {PatientId}: ContentId={ContentId}, ProcessedAt={ProcessedAt}, HasCriticalValues={HasCritical}, HasHemoglobin6.0={HasHemoglobin}",
-                        patientId, latestAnalysis.ContentId, latestAnalysis.ProcessedAt, hasCritical, hasHemoglobin);
-
-                    // Log details about all analyses being used
-                    foreach (var analysis in sortedAnalyses.Take(5))
-                    {
-                        var analysisHasHemoglobin = analysis.ExtractedText?.Contains("Hemoglobin: 6.0") ?? false;
-                        var analysisHasCritical = analysis.AnalysisResults?.ContainsKey("CriticalValues") ?? false;
-                        var extractedTextPreview = analysis.ExtractedText?.Substring(0, Math.Min(150, analysis.ExtractedText.Length)) ?? "null";
-                        _logger.LogInformation("ContentAnalysis {AnalysisId} for ContentId {ContentId}: HasHemoglobin6.0={HasHemoglobin}, HasCriticalValues={HasCritical}, ProcessedAt={ProcessedAt}, ExtractedTextPreview={Preview}",
-                            analysis.Id, analysis.ContentId, analysisHasHemoglobin, analysisHasCritical, analysis.ProcessedAt, extractedTextPreview);
-
-                        // If this analysis contains "Hemoglobin: 6.0", log it as a warning
-                        if (analysisHasHemoglobin)
-                        {
-                            _logger.LogWarning("⚠️ ContentAnalysis {AnalysisId} contains 'Hemoglobin: 6.0' in ExtractedText. Full ExtractedText: {ExtractedText}",
-                                analysis.Id, analysis.ExtractedText);
-                        }
-                    }
 
                     // Find analyses with critical values in AnalysisResults (prioritize these)
                     var analysesWithCritical = sortedAnalyses
@@ -651,13 +615,6 @@ If you need general medical information without patient context, please switch t
                     // Always show the latest analysis results
                     if (!string.IsNullOrEmpty(latestAnalysis.ExtractedText))
                     {
-                        // Log if ExtractedText contains "Hemoglobin: 6.0"
-                        if (latestAnalysis.ExtractedText.Contains("Hemoglobin: 6.0"))
-                        {
-                            _logger.LogWarning("LATEST ContentAnalysis {AnalysisId} ExtractedText contains 'Hemoglobin: 6.0': {ExtractedText}",
-                                latestAnalysis.Id, latestAnalysis.ExtractedText.Substring(0, Math.Min(200, latestAnalysis.ExtractedText.Length)));
-                        }
-
                         context.AppendLine($"Current Test Results (Latest): {latestAnalysis.ExtractedText}");
                         context.AppendLine();
                     }
@@ -666,14 +623,6 @@ If you need general medical information without patient context, please switch t
                     if (sortedAnalyses.Count > 1)
                     {
                         var previousAnalysis = sortedAnalyses[1];
-
-                        // Log if previous analysis contains "Hemoglobin: 6.0"
-                        if (!string.IsNullOrEmpty(previousAnalysis.ExtractedText) && previousAnalysis.ExtractedText.Contains("Hemoglobin: 6.0"))
-                        {
-                            _logger.LogWarning("PREVIOUS ContentAnalysis {AnalysisId} ExtractedText contains 'Hemoglobin: 6.0': {ExtractedText}",
-                                previousAnalysis.Id, previousAnalysis.ExtractedText.Substring(0, Math.Min(200, previousAnalysis.ExtractedText.Length)));
-                        }
-
                         context.AppendLine("=== PROGRESSION ANALYSIS ===");
                         context.AppendLine($"Previous Results ({previousAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}): {previousAnalysis.ExtractedText}");
                         context.AppendLine($"Current Results ({latestAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}): {latestAnalysis.ExtractedText}");
@@ -916,13 +865,6 @@ If you need general medical information without patient context, please switch t
                         // Add session summary if available
                         if (!string.IsNullOrEmpty(session.Summary))
                         {
-                            // Log if summary contains medical test data
-                            if (session.Summary.Contains("Hemoglobin") || session.Summary.Contains("Blood Pressure") || session.Summary.Contains("Triglycerides"))
-                            {
-                                _logger.LogWarning("Chat session {SessionId} summary for patient {PatientId} contains medical test data: {SummaryPreview}",
-                                    session.Id, patientId, session.Summary.Substring(0, Math.Min(200, session.Summary.Length)));
-                            }
-
                             context.AppendLine($"Summary: {session.Summary.Substring(0, Math.Min(300, session.Summary.Length))}...");
                         }
 
@@ -954,14 +896,6 @@ If you need general medical information without patient context, please switch t
                                     var content = msg.Content.Length > 200
                                         ? msg.Content.Substring(0, 200) + "..."
                                         : msg.Content;
-
-                                    // Log if chat message contains medical test data
-                                    if (msg.Content.Contains("Hemoglobin") || msg.Content.Contains("Blood Pressure") || msg.Content.Contains("Triglycerides"))
-                                    {
-                                        _logger.LogWarning("Chat message {MessageId} in session {SessionId} for patient {PatientId} contains medical test data: {Preview}",
-                                            msg.Id, session.Id, patientId, content);
-                                    }
-
                                     context.AppendLine($"  [{msg.Timestamp:MM/dd/yyyy HH:mm}] {rolePrefix}: {content}");
                                 }
                             }
