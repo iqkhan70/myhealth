@@ -32,6 +32,7 @@ namespace SM_MentalHealthApp.Server.Data
             // Critical value pattern system entities
             public DbSet<CriticalValueCategory> CriticalValueCategories { get; set; }
             public DbSet<CriticalValuePattern> CriticalValuePatterns { get; set; }
+            public DbSet<CriticalValueKeyword> CriticalValueKeywords { get; set; }
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -463,6 +464,27 @@ namespace SM_MentalHealthApp.Server.Data
                         // Indexes for performance
                         entity.HasIndex(e => e.CategoryId);
                         entity.HasIndex(e => e.IsActive);
+                  });
+
+                  // Configure CriticalValueKeyword entity
+                  modelBuilder.Entity<CriticalValueKeyword>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Keyword).IsRequired().HasMaxLength(500);
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationship
+                        entity.HasOne(e => e.Category)
+                        .WithMany()
+                        .HasForeignKey(e => e.CategoryId)
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.CategoryId);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.Keyword);
                   });
             }
       }

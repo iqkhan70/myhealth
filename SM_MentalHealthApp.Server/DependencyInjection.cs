@@ -130,6 +130,7 @@ public static class DependencyInjection
         services.AddScoped<IAppointmentService, AppointmentService>();
         services.AddScoped<IDocumentUploadService, DocumentUploadService>();
         services.AddScoped<ICriticalValuePatternService, CriticalValuePatternService>();
+        services.AddScoped<ICriticalValueKeywordService, CriticalValueKeywordService>();
 
         // AI & ML Services
         services.AddScoped<HuggingFaceService>();

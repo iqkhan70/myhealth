@@ -9,17 +9,20 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly string _apiKey;
         private readonly ILogger<HuggingFaceService> _logger;
         private readonly ICriticalValuePatternService _patternService;
+        private readonly ICriticalValueKeywordService _keywordService;
 
         public HuggingFaceService(
             HttpClient httpClient,
             IConfiguration config,
             ILogger<HuggingFaceService> logger,
-            ICriticalValuePatternService patternService)
+            ICriticalValuePatternService patternService,
+            ICriticalValueKeywordService keywordService)
         {
             _httpClient = httpClient;
             _apiKey = config["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("HuggingFace API key not found");
             _logger = logger;
             _patternService = patternService;
+            _keywordService = keywordService;
 
             _httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
@@ -47,7 +50,7 @@ namespace SM_MentalHealthApp.Server.Services
         private async Task<string> AnalyzeSentiment(string text)
         {
             // First, try keyword-based analysis for mental health context
-            var keywordMood = AnalyzeMentalHealthKeywords(text);
+            var keywordMood = await AnalyzeMentalHealthKeywordsAsync(text);
             if (keywordMood != "Neutral")
             {
                 return keywordMood;
@@ -93,52 +96,29 @@ namespace SM_MentalHealthApp.Server.Services
             catch (Exception)
             {
                 // If API fails, use keyword analysis
-                return AnalyzeMentalHealthKeywords(text);
+                return await AnalyzeMentalHealthKeywordsAsync(text);
             }
 
             return "Neutral";
         }
 
-        private string AnalyzeMentalHealthKeywords(string text)
+        private async Task<string> AnalyzeMentalHealthKeywordsAsync(string text)
         {
             var lowerText = text.ToLowerInvariant();
 
-            // High concern keywords (should override other classifications)
-            var highConcernKeywords = new[]
-            {
-                "really bad", "terrible", "awful", "horrible", "worst", "can't take it", "can't handle",
-                "suicidal", "want to die", "end it all", "not worth living", "hopeless", "desperate",
-                "crisis", "emergency", "urgent", "help me", "can't cope", "breaking down"
-            };
-
-            // Distress keywords
-            var distressKeywords = new[]
-            {
-                "bad", "not well", "struggling", "suffering", "pain", "hurt", "broken", "lost",
-                "confused", "overwhelmed", "stressed", "anxious", "worried", "scared", "frightened",
-                "depressed", "sad", "down", "low", "empty", "numb", "alone", "isolated"
-            };
-
-            // Positive keywords
-            var positiveKeywords = new[]
-            {
-                "good", "great", "wonderful", "amazing", "fantastic", "excellent", "happy", "joyful",
-                "grateful", "blessed", "lucky", "proud", "accomplished", "confident", "hopeful",
-                "better", "improving", "progress", "breakthrough", "success", "achievement"
-            };
-
-            // Check for high concern first
+            // High concern keywords (should override other classifications) - loaded from database
+            var highConcernKeywords = await _keywordService.GetKeywordsListByCategoryAsync("High Concern");
             foreach (var keyword in highConcernKeywords)
             {
-                if (lowerText.Contains(keyword))
+                if (lowerText.Contains(keyword.ToLowerInvariant()))
                 {
                     return "Crisis"; // New mood category for high concern
                 }
             }
 
-            // Count distress vs positive keywords
-            int distressCount = distressKeywords.Count(keyword => lowerText.Contains(keyword));
-            int positiveCount = positiveKeywords.Count(keyword => lowerText.Contains(keyword));
+            // Count distress vs positive keywords using database-driven keywords
+            int distressCount = await _keywordService.CountKeywordsInTextAsync(text, "Distress");
+            int positiveCount = await _keywordService.CountKeywordsInTextAsync(text, "Positive");
 
             if (distressCount > positiveCount && distressCount > 0)
             {
@@ -2170,30 +2150,22 @@ namespace SM_MentalHealthApp.Server.Services
                 // Check for critical values using database-driven patterns
                 var hasCriticalValuesFromPatterns = await _patternService.MatchesAnyPatternAsync(text);
 
-                _logger.LogInformation("Contains critical value pattern match: {HasMatch}", hasCriticalValuesFromPatterns);
+                // Check for critical values using database-driven keywords
+                var hasCriticalValuesFromKeywords = await _keywordService.ContainsAnyKeywordAsync(text);
 
-                // Check for critical values in multiple formats - be more aggressive in detection
-                // Also check for the actual critical value patterns from AnalysisResults
-                var hasCriticalValues = text.Contains("🚨 CRITICAL MEDICAL VALUES DETECTED") ||
-                                      text.Contains("CRITICAL VALUES DETECTED IN LATEST RESULTS") ||
-                                      text.Contains("STATUS: CRITICAL") ||
-                                      text.Contains("Critical Values:") ||
-                                      text.Contains("CRITICAL MEDICAL ALERT") ||
-                                      text.Contains("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**") ||
-                                      text.Contains("⚠️ **STATUS: CRITICAL") ||
-                                      text.Contains("🚨 CRITICAL: Severe Anemia") ||
-                                      text.Contains("🚨 CRITICAL: Extremely High Triglycerides") ||
-                                      text.Contains("🚨 CRITICAL: Hypertensive Crisis") ||
-                                      hasCriticalValuesFromPatterns;
+                _logger.LogInformation("Contains critical value pattern match: {HasMatch}", hasCriticalValuesFromPatterns);
+                _logger.LogInformation("Contains critical value keyword match: {HasMatch}", hasCriticalValuesFromKeywords);
+
+                // Check for critical values using database-driven detection (patterns + keywords)
+                var hasCriticalValues = hasCriticalValuesFromPatterns || hasCriticalValuesFromKeywords;
 
                 _logger.LogInformation("Final hasCriticalValues: {HasCritical}", hasCriticalValues);
-                var hasAbnormalValues = text.Contains("ABNORMAL VALUES DETECTED IN LATEST RESULTS") ||
-                                      text.Contains("STATUS: CONCERNING") ||
-                                      text.Contains("Abnormal Values:");
-                var hasNormalValues = text.Contains("NORMAL VALUES IN LATEST RESULTS") ||
-                                    text.Contains("STATUS: STABLE") ||
-                                    text.Contains("Normal Values:") ||
-                                    text.Contains("IMPROVEMENT NOTED");
+
+                // Check for abnormal values using database-driven keywords
+                var hasAbnormalValues = await _keywordService.ContainsAnyKeywordAsync(text, "Abnormal");
+
+                // Check for normal values using database-driven keywords
+                var hasNormalValues = await _keywordService.ContainsAnyKeywordAsync(text, "Normal");
 
                 // Check for journal entries
                 var hasJournalEntries = text.Contains("=== RECENT JOURNAL ENTRIES ===");
