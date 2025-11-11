@@ -404,7 +404,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Check if there are emergency incidents for this patient
                 var hasEmergencies = await _context.EmergencyIncidents
-                    .AnyAsync(e => e.PatientId == patientId);
+                    .AnyAsync(e => e.PatientId == patientId && !e.IsAcknowledged);
 
                 var contextBuilder = new System.Text.StringBuilder();
                 contextBuilder.AppendLine(basePrompt);

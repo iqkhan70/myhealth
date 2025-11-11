@@ -899,18 +899,11 @@ namespace SM_MentalHealthApp.Server.Services
                     {
                         response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention. ");
 
-                        // Add specific critical values found
-                        if (text.Contains("180/110"))
+                        // Extract actual critical values from context (from "Critical Values Found:" section)
+                        var criticalValuesSection = ExtractCriticalValuesFromContext(text);
+                        if (!string.IsNullOrEmpty(criticalValuesSection))
                         {
-                            response.AppendLine("- **Blood Pressure: 180/110** - This is a hypertensive crisis requiring immediate medical intervention.");
-                        }
-                        if (text.Contains("6.0"))
-                        {
-                            response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
-                        }
-                        if (text.Contains("700"))
-                        {
-                            response.AppendLine("- **Triglycerides: 700** - This is extremely high and requires immediate medical management.");
+                            response.AppendLine(criticalValuesSection);
                         }
 
                         response.AppendLine();
@@ -996,13 +989,12 @@ namespace SM_MentalHealthApp.Server.Services
                             var abnormalValues = alerts.Where(a => a.Contains("⚠️") || a.Contains("ABNORMAL VALUES:")).ToList();
 
                             // ALSO check the context text directly for critical values (more reliable)
+                            // Use database-driven pattern matching instead of loose string checks
                             bool hasCriticalInContext = text.Contains("🚨 CRITICAL MEDICAL VALUES DETECTED") ||
                                                        text.Contains("CRITICAL VALUES DETECTED IN LATEST RESULTS") ||
                                                        text.Contains("STATUS: CRITICAL") ||
                                                        text.Contains("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**") ||
-                                                       (text.Contains("Hemoglobin") && (text.Contains("6.0") || text.Contains("6 g/dL"))) ||
-                                                       (text.Contains("Blood Pressure") && (text.Contains("190") || text.Contains("180"))) ||
-                                                       (text.Contains("Triglycerides") && text.Contains("640"));
+                                                       text.Contains("Critical Values Found:");
 
                             // If critical values found in context OR alerts, prioritize them
                             if (criticalAlerts.Any() || hasCriticalInContext)
@@ -1015,20 +1007,13 @@ namespace SM_MentalHealthApp.Server.Services
                                         response.AppendLine($"- {critical}");
                                     }
                                 }
-                                // Extract critical values from context if not in alerts
+                                // Extract actual critical values from context if not in alerts
                                 if (hasCriticalInContext && !criticalAlerts.Any())
                                 {
-                                    if (text.Contains("Hemoglobin") && (text.Contains("6.0") || text.Contains("6 g/dL")))
+                                    var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
+                                    if (!string.IsNullOrEmpty(criticalValuesFromContext))
                                     {
-                                        response.AppendLine("- 🚨 CRITICAL: Severe Anemia - Hemoglobin 6.0 g/dL (Normal: 12-16 g/dL)");
-                                    }
-                                    if (text.Contains("Blood Pressure") && (text.Contains("190") || text.Contains("180")))
-                                    {
-                                        response.AppendLine("- 🚨 CRITICAL: Hypertensive Crisis - Blood Pressure 190/100 (Normal: <120/80)");
-                                    }
-                                    if (text.Contains("Triglycerides") && text.Contains("640"))
-                                    {
-                                        response.AppendLine("- 🚨 CRITICAL: Extremely High Triglycerides - 640 mg/dL (Normal: <150 mg/dL)");
+                                        response.AppendLine(criticalValuesFromContext);
                                     }
                                 }
                                 response.AppendLine();
@@ -1183,7 +1168,26 @@ namespace SM_MentalHealthApp.Server.Services
                             if (hasCriticalConditions)
                             {
                                 response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                                response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
+
+                                // Extract actual critical values from context
+                                var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
+                                if (!string.IsNullOrEmpty(criticalValuesFromContext))
+                                {
+                                    response.AppendLine(criticalValuesFromContext);
+                                }
+                                else
+                                {
+                                    // Fallback: extract from alerts if available
+                                    var localCriticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:") || a.Contains("CRITICAL:")).ToList();
+                                    if (localCriticalAlerts.Any())
+                                    {
+                                        foreach (var critical in localCriticalAlerts)
+                                        {
+                                            response.AppendLine($"- {critical}");
+                                        }
+                                    }
+                                }
+
                                 response.AppendLine();
                                 response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
                                 response.AppendLine("- These values indicate a medical emergency");
@@ -1224,9 +1228,7 @@ namespace SM_MentalHealthApp.Server.Services
                                                    text.Contains("CRITICAL VALUES DETECTED IN LATEST RESULTS") ||
                                                    text.Contains("STATUS: CRITICAL") ||
                                                    text.Contains("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**") ||
-                                                   (text.Contains("Hemoglobin") && (text.Contains("6.0") || text.Contains("6 g/dL"))) ||
-                                                   (text.Contains("Blood Pressure") && (text.Contains("190") || text.Contains("180"))) ||
-                                                   (text.Contains("Triglycerides") && text.Contains("640"));
+                                                   text.Contains("Critical Values Found:");
 
                         // If critical values found in context OR alerts, prioritize them
                         if (criticalAlerts.Any() || hasCriticalInContext)
@@ -1242,17 +1244,10 @@ namespace SM_MentalHealthApp.Server.Services
                             // Extract critical values from context if not in alerts
                             if (hasCriticalInContext && !criticalAlerts.Any())
                             {
-                                if (text.Contains("Hemoglobin") && (text.Contains("6.0") || text.Contains("6 g/dL")))
+                                var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
+                                if (!string.IsNullOrEmpty(criticalValuesFromContext))
                                 {
-                                    response.AppendLine("- 🚨 CRITICAL: Severe Anemia - Hemoglobin 6.0 g/dL (Normal: 12-16 g/dL)");
-                                }
-                                if (text.Contains("Blood Pressure") && (text.Contains("190") || text.Contains("180")))
-                                {
-                                    response.AppendLine("- 🚨 CRITICAL: Hypertensive Crisis - Blood Pressure 190/100 (Normal: <120/80)");
-                                }
-                                if (text.Contains("Triglycerides") && text.Contains("640"))
-                                {
-                                    response.AppendLine("- 🚨 CRITICAL: Extremely High Triglycerides - 640 mg/dL (Normal: <150 mg/dL)");
+                                    response.AppendLine(criticalValuesFromContext);
                                 }
                             }
                             response.AppendLine();
@@ -1753,6 +1748,81 @@ namespace SM_MentalHealthApp.Server.Services
             return string.Empty;
         }
 
+        /// <summary>
+        /// Extracts actual critical values from the context text (from "Critical Values Found:" section)
+        /// This ensures we report actual values, not hardcoded ones
+        /// </summary>
+        private string ExtractCriticalValuesFromContext(string text)
+        {
+            try
+            {
+                _logger.LogInformation("ExtractCriticalValuesFromContext: Looking for critical values in context (length: {Length})", text.Length);
+                
+                // Look for "Critical Values Found:" section which contains the actual formatted critical values
+                var criticalStart = text.IndexOf("Critical Values Found:");
+                _logger.LogInformation("ExtractCriticalValuesFromContext: Found 'Critical Values Found:' at index {Index}", criticalStart);
+                
+                if (criticalStart >= 0)
+                {
+                    // Find the end of this section (either next section or end of text)
+                    var nextSection = text.IndexOf("\n\n", criticalStart);
+                    var endOfText = text.Length;
+                    var sectionEnd = nextSection > criticalStart ? nextSection : endOfText;
+                    
+                    var section = text.Substring(criticalStart, sectionEnd - criticalStart);
+                    _logger.LogInformation("ExtractCriticalValuesFromContext: Extracted section (length: {Length}): {Section}", section.Length, section.Substring(0, Math.Min(200, section.Length)));
+                    
+                    // Extract lines that contain actual critical value data (lines with 🚨 emoji)
+                    var lines = section.Split('\n')
+                        .Where(l => l.Contains("🚨") && l.Trim().Length > 0)
+                        .Select(l => l.Trim())
+                        .ToList();
+                    
+                    _logger.LogInformation("ExtractCriticalValuesFromContext: Found {Count} lines with 🚨 emoji", lines.Count);
+                    
+                    if (lines.Any())
+                    {
+                        // Format as bullet points
+                        var result = string.Join("\n", lines.Select(l => l.StartsWith("🚨") ? $"- {l}" : $"  {l}"));
+                        _logger.LogInformation("ExtractCriticalValuesFromContext: Returning formatted result: {Result}", result);
+                        return result;
+                    }
+                }
+                
+                // Fallback: Look for "🚨 **CRITICAL MEDICAL VALUES DETECTED** 🚨" section
+                var altStart = text.IndexOf("🚨 **CRITICAL MEDICAL VALUES DETECTED** 🚨");
+                _logger.LogInformation("ExtractCriticalValuesFromContext: Looking for alternative section, found at index {Index}", altStart);
+                
+                if (altStart >= 0)
+                {
+                    var altEnd = text.IndexOf("\n\n", altStart);
+                    if (altEnd > altStart)
+                    {
+                        var section = text.Substring(altStart, altEnd - altStart);
+                        var lines = section.Split('\n')
+                            .Where(l => l.Contains("🚨") && !l.Contains("CRITICAL MEDICAL VALUES DETECTED"))
+                            .Select(l => l.Trim())
+                            .ToList();
+                        
+                        if (lines.Any())
+                        {
+                            var result = string.Join("\n", lines.Select(l => $"- {l}"));
+                            _logger.LogInformation("ExtractCriticalValuesFromContext: Returning alternative result: {Result}", result);
+                            return result;
+                        }
+                    }
+                }
+                
+                _logger.LogWarning("ExtractCriticalValuesFromContext: No critical values found in context");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error extracting critical values from context");
+            }
+
+            return string.Empty;
+        }
+
         private string ExtractProgressionSection(string text)
         {
             // Look for the progression analysis section specifically
@@ -2203,7 +2273,18 @@ namespace SM_MentalHealthApp.Server.Services
                                 else
                                 {
                                     response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                                    response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
+
+                                    // Extract actual critical values from context
+                                    var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
+                                    if (!string.IsNullOrEmpty(criticalValuesFromContext))
+                                    {
+                                        response.AppendLine(criticalValuesFromContext);
+                                    }
+                                    else
+                                    {
+                                        response.AppendLine("- Critical medical values detected - review test results for details");
+                                    }
+
                                     response.AppendLine();
                                     response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
                                     response.AppendLine("- These values indicate a medical emergency");
@@ -2214,7 +2295,18 @@ namespace SM_MentalHealthApp.Server.Services
                             else
                             {
                                 response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                                response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
+
+                                // Extract actual critical values from context
+                                var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
+                                if (!string.IsNullOrEmpty(criticalValuesFromContext))
+                                {
+                                    response.AppendLine(criticalValuesFromContext);
+                                }
+                                else
+                                {
+                                    response.AppendLine("- Critical medical values detected - review test results for details");
+                                }
+
                                 response.AppendLine();
                                 response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
                                 response.AppendLine("- These values indicate a medical emergency");
@@ -2275,12 +2367,17 @@ namespace SM_MentalHealthApp.Server.Services
                         if (hasMedicalData)
                         {
                             response.AppendLine("📊 **Latest Medical Data:**");
-                            response.AppendLine("- **Hemoglobin: 6.0 g/dL** (Critical - Normal: 12-16 g/dL)");
-                            response.AppendLine("- **Triglycerides: 640 mg/dL** (Critical - Normal: <150 mg/dL)");
-                            response.AppendLine();
-                            response.AppendLine("🚨 **Critical Values Detected:**");
-                            response.AppendLine("- Severe anemia requiring immediate medical attention");
-                            response.AppendLine("- Extremely high triglycerides requiring urgent management");
+
+                            // Extract actual critical values from context
+                            var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
+                            if (!string.IsNullOrEmpty(criticalValuesFromContext))
+                            {
+                                response.AppendLine(criticalValuesFromContext);
+                            }
+                            else
+                            {
+                                response.AppendLine("Medical data available - review test results for specific values");
+                            }
                         }
                         else
                         {
@@ -2306,7 +2403,7 @@ namespace SM_MentalHealthApp.Server.Services
                             response.AppendLine("2. **Hospital Admission**: Patient requires immediate hospitalization");
                             response.AppendLine("3. **Specialist Consultation**: Refer to hematologist for severe anemia");
                             response.AppendLine("4. **Continuous Monitoring**: Vital signs every 15 minutes");
-                            response.AppendLine("5. **Blood Transfusion**: Consider immediate blood transfusion for hemoglobin 6.0");
+                            response.AppendLine("5. **Blood Transfusion**: Consider immediate blood transfusion if hemoglobin is critically low");
                         }
                         else
                         {
@@ -2325,7 +2422,19 @@ namespace SM_MentalHealthApp.Server.Services
                         if (hasCriticalValues)
                         {
                             response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                            response.AppendLine("- **Hemoglobin: 6.0** - This indicates severe anemia requiring urgent medical attention.");
+
+                            // Extract actual critical values from context
+                            var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
+                            if (!string.IsNullOrEmpty(criticalValuesFromContext))
+                            {
+                                response.AppendLine(criticalValuesFromContext);
+                            }
+                            else
+                            {
+                                // No alerts available in this scope - just show generic message
+                                response.AppendLine("- Critical medical values detected - review test results for details");
+                            }
+
                             response.AppendLine();
                             response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
                             response.AppendLine("- These values indicate a medical emergency");
@@ -2348,8 +2457,19 @@ namespace SM_MentalHealthApp.Server.Services
                     if (hasCriticalValues)
                     {
                         response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                        response.AppendLine("- **Hemoglobin: 6.0 g/dL** (Critical - Normal: 12-16 g/dL)");
-                        response.AppendLine("- **Triglycerides: 640 mg/dL** (Critical - Normal: <150 mg/dL)");
+
+                        // Extract actual critical values from context
+                        var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
+                        if (!string.IsNullOrEmpty(criticalValuesFromContext))
+                        {
+                            response.AppendLine(criticalValuesFromContext);
+                        }
+                        else
+                        {
+                            // No alerts available in this scope - just show generic message
+                            response.AppendLine("- Critical medical values detected - review test results for details");
+                        }
+
                         response.AppendLine();
                         response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
                         response.AppendLine("- These values indicate a medical emergency");

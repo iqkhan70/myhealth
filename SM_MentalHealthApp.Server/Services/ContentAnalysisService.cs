@@ -405,9 +405,9 @@ If you need general medical information without patient context, please switch t
                     }
                 }
 
-                // Get emergency incidents for the patient
+                // Get emergency incidents for the patient (excluding acknowledged ones - they've been handled)
                 var recentEmergencies = await _context.EmergencyIncidents
-                    .Where(e => e.PatientId == patientId)
+                    .Where(e => e.PatientId == patientId && !e.IsAcknowledged)
                     .OrderByDescending(e => e.Timestamp)
                     .Take(3)
                     .ToListAsync();
@@ -435,7 +435,8 @@ If you need general medical information without patient context, please switch t
                                 context.AppendLine($"Vital Signs: Available but not parsed");
                             }
                         }
-                        context.AppendLine($"Status: {(emergency.IsAcknowledged ? "Acknowledged" : "Pending")}");
+                        // Note: All emergencies here are unacknowledged (filtered in query)
+                        context.AppendLine($"Status: Pending (requires immediate attention)");
 
                         // Add clinical significance for specific emergency types
                         switch (emergency.EmergencyType.ToLower())
@@ -884,15 +885,15 @@ If you need general medical information without patient context, please switch t
 
                     var criticalEmergencies = recentEmergencies.Count(e => e.Severity == "Critical");
                     var highEmergencies = recentEmergencies.Count(e => e.Severity == "High");
-                    var acknowledgedEmergencies = recentEmergencies.Count(e => e.IsAcknowledged);
 
+                    // Note: All emergencies in recentEmergencies are unacknowledged (filtered in query above)
                     if (criticalEmergencies > 0)
                     {
-                        context.AppendLine($"🚨 CRITICAL ALERT: {criticalEmergencies} critical emergency(ies) in recent history");
+                        context.AppendLine($"🚨 CRITICAL ALERT: {criticalEmergencies} unacknowledged critical emergency(ies) requiring immediate attention");
                     }
                     if (highEmergencies > 0)
                     {
-                        context.AppendLine($"⚠️ HIGH PRIORITY: {highEmergencies} high-severity emergency(ies) in recent history");
+                        context.AppendLine($"⚠️ HIGH PRIORITY: {highEmergencies} unacknowledged high-severity emergency(ies) requiring attention");
                     }
 
                     var emergencyTypes = recentEmergencies.GroupBy(e => e.EmergencyType)
@@ -904,19 +905,11 @@ If you need general medical information without patient context, please switch t
                     var fallIncidents = recentEmergencies.Where(e => e.EmergencyType.ToLower() == "fall").ToList();
                     if (fallIncidents.Any())
                     {
-                        context.AppendLine($"⚠️ FALL RISK ALERT: {fallIncidents.Count} fall incident(s) detected - this is a critical safety concern");
+                        context.AppendLine($"⚠️ FALL RISK ALERT: {fallIncidents.Count} unacknowledged fall incident(s) detected - this is a critical safety concern");
                         context.AppendLine("   - Falls are the leading cause of injury in elderly and at-risk patients");
                         context.AppendLine("   - Multiple falls may indicate declining mobility or medication issues");
                         context.AppendLine("   - Immediate fall risk assessment and prevention measures recommended");
                         context.AppendLine("   - Consider physical therapy, home safety evaluation, and medication review");
-                    }
-
-                    var responseRate = recentEmergencies.Count > 0 ? (double)acknowledgedEmergencies / recentEmergencies.Count * 100 : 100;
-                    context.AppendLine($"Response Rate: {responseRate:F1}% ({acknowledgedEmergencies}/{recentEmergencies.Count} acknowledged)");
-
-                    if (responseRate < 100)
-                    {
-                        context.AppendLine("⚠️ Some emergencies are still pending acknowledgment");
                     }
 
                     context.AppendLine();
@@ -948,9 +941,9 @@ If you need general medical information without patient context, please switch t
                 context.AppendLine("- Note any clinical notes or observations");
                 context.AppendLine();
                 context.AppendLine("**Emergency Incidents (if any):**");
-                context.AppendLine("- If emergency incidents exist, start with: '🚨 CRITICAL EMERGENCY ALERT: [number] emergency incidents detected'");
-                context.AppendLine("- List each emergency with severity and status");
-                context.AppendLine("- Prioritize unacknowledged emergencies");
+                context.AppendLine("- If emergency incidents exist, start with: '🚨 CRITICAL EMERGENCY ALERT: [number] unacknowledged emergency incidents detected'");
+                context.AppendLine("- List each emergency with severity (all are unacknowledged and require immediate attention)");
+                context.AppendLine("- Note: Only unacknowledged emergencies are included in this analysis");
                 context.AppendLine();
                 context.AppendLine("**Clinical Assessment:**");
                 context.AppendLine("- Provide a professional assessment of the patient's overall health status");
