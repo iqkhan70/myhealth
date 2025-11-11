@@ -10,8 +10,8 @@ namespace SM_MentalHealthApp.Server.Services
     {
         Task<ChatSession> GetOrCreateSessionAsync(int userId, int? patientId = null);
         Task<ChatMessage> AddMessageAsync(int sessionId, MessageRole role, string content, MessageType messageType = MessageType.Question, bool isMedicalData = false, string? metadata = null);
-        Task<List<ChatMessage>> GetRecentMessagesAsync(int sessionId, int maxMessages = 20);
-        Task<string> BuildConversationContextAsync(int sessionId);
+        Task<List<ChatMessage>> GetRecentMessagesAsync(int sessionId, int maxMessages = 20, JournalDbContext? dbContext = null);
+        Task<string> BuildConversationContextAsync(int sessionId, JournalDbContext? dbContext = null);
         Task UpdateSessionActivityAsync(int sessionId);
         Task CleanupExpiredDataAsync();
         Task<ChatSession?> GetSessionAsync(int sessionId);
@@ -146,11 +146,12 @@ namespace SM_MentalHealthApp.Server.Services
             }
         }
 
-        public async Task<List<ChatMessage>> GetRecentMessagesAsync(int sessionId, int maxMessages = 20)
+        public async Task<List<ChatMessage>> GetRecentMessagesAsync(int sessionId, int maxMessages = 20, JournalDbContext? dbContext = null)
         {
             try
             {
-                var messages = await _context.ChatMessages
+                var context = dbContext ?? _context;
+                var messages = await context.ChatMessages
                     .Where(m => m.SessionId == sessionId)
                     .OrderByDescending(m => m.Timestamp)
                     .Take(maxMessages)
@@ -167,11 +168,14 @@ namespace SM_MentalHealthApp.Server.Services
             }
         }
 
-        public async Task<string> BuildConversationContextAsync(int sessionId)
+        public async Task<string> BuildConversationContextAsync(int sessionId, JournalDbContext? dbContext = null)
         {
             try
             {
-                var session = await _context.ChatSessions
+                // Use provided context or fall back to injected context
+                var context = dbContext ?? _context;
+
+                var session = await context.ChatSessions
                     .Include(s => s.Patient)
                     .FirstOrDefaultAsync(s => s.Id == sessionId);
 
@@ -190,7 +194,7 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 // Add recent messages (filter out old medical alerts)
-                var recentMessages = await GetRecentMessagesAsync(sessionId, MAX_CONTEXT_MESSAGES);
+                var recentMessages = await GetRecentMessagesAsync(sessionId, MAX_CONTEXT_MESSAGES, context);
                 if (recentMessages.Any())
                 {
                     contextBuilder.Add("=== RECENT CONVERSATION ===\n");
@@ -221,9 +225,9 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
-                var context = string.Join("\n", contextBuilder);
-                _logger.LogInformation("Built conversation context for session {SessionId}, length: {Length}", sessionId, context.Length);
-                return context;
+                var conversationContext = string.Join("\n", contextBuilder);
+                _logger.LogInformation("Built conversation context for session {SessionId}, length: {Length}", sessionId, conversationContext.Length);
+                return conversationContext;
             }
             catch (Exception ex)
             {
@@ -472,8 +476,8 @@ namespace SM_MentalHealthApp.Server.Services
                     return;
                 }
 
-                // Build conversation context for summary
-                var conversationContext = await BuildConversationContextAsync(sessionId);
+                // Build conversation context for summary using the scoped context
+                var conversationContext = await BuildConversationContextAsync(sessionId, context);
 
                 // Create summary prompt
                 var summaryPrompt = $@"

@@ -29,6 +29,10 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<Appointment> Appointments { get; set; }
             public DbSet<DoctorAvailability> DoctorAvailabilities { get; set; }
 
+            // Critical value pattern system entities
+            public DbSet<CriticalValueCategory> CriticalValueCategories { get; set; }
+            public DbSet<CriticalValuePattern> CriticalValuePatterns { get; set; }
+
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
                   base.OnModelCreating(modelBuilder);
@@ -425,6 +429,40 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.DoctorId);
                         entity.HasIndex(e => e.Date);
                         entity.HasIndex(e => e.IsOutOfOffice);
+                  });
+
+                  // Configure CriticalValueCategory entity
+                  modelBuilder.Entity<CriticalValueCategory>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Name).IsRequired().HasMaxLength(255);
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.Name);
+                        entity.HasIndex(e => e.IsActive);
+                  });
+
+                  // Configure CriticalValuePattern entity
+                  modelBuilder.Entity<CriticalValuePattern>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Pattern).IsRequired().HasMaxLength(500);
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationship
+                        entity.HasOne(e => e.Category)
+                        .WithMany(c => c.Patterns)
+                        .HasForeignKey(e => e.CategoryId)
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.CategoryId);
+                        entity.HasIndex(e => e.IsActive);
                   });
             }
       }

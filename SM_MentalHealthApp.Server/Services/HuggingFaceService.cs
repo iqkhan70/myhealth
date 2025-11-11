@@ -8,12 +8,18 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly HttpClient _httpClient;
         private readonly string _apiKey;
         private readonly ILogger<HuggingFaceService> _logger;
+        private readonly ICriticalValuePatternService _patternService;
 
-        public HuggingFaceService(HttpClient httpClient, IConfiguration config, ILogger<HuggingFaceService> logger)
+        public HuggingFaceService(
+            HttpClient httpClient,
+            IConfiguration config,
+            ILogger<HuggingFaceService> logger,
+            ICriticalValuePatternService patternService)
         {
             _httpClient = httpClient;
             _apiKey = config["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("HuggingFace API key not found");
             _logger = logger;
+            _patternService = patternService;
 
             _httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
@@ -788,14 +794,14 @@ namespace SM_MentalHealthApp.Server.Services
             if (text.Contains("=== MEDICAL DATA SUMMARY ===") || text.Contains("=== RECENT JOURNAL ENTRIES ===") || text.Contains("=== USER QUESTION ===") || text.Contains("Critical Values:") || text.Contains("6.0") || text.Contains("Hemoglobin") || text.Contains("Doctor asks:") || text.Contains("**Medical Resource Information") || text.Contains("**Medical Facilities Search"))
             {
                 _logger.LogInformation("Processing enhanced context for medical data");
-                return ProcessEnhancedContextResponse(text);
+                return await ProcessEnhancedContextResponseAsync(text);
             }
 
             // Additional fallback: if text contains medical keywords, treat it as a medical question
             if (text.Contains("how is") || text.Contains("status") || text.Contains("suggestions") || text.Contains("snapshot") || text.Contains("results") || text.Contains("stats"))
             {
                 _logger.LogInformation("Detected medical question keywords, processing as medical question");
-                return ProcessEnhancedContextResponse(text);
+                return await ProcessEnhancedContextResponseAsync(text);
             }
 
             try
@@ -1379,7 +1385,7 @@ namespace SM_MentalHealthApp.Server.Services
                     if (hasPatientDataInContext)
                     {
                         _logger.LogInformation("Knowledge file doesn't exist, but patient data detected. Generating health check analysis.");
-                        return ProcessEnhancedContextResponse(text);
+                        return await ProcessEnhancedContextResponseAsync(text);
                     }
 
                     // If knowledge file doesn't exist and no patient data, return a basic response
@@ -2080,7 +2086,7 @@ namespace SM_MentalHealthApp.Server.Services
             return "I'd be happy to help you with that question. Could you provide more details?";
         }
 
-        private string ProcessEnhancedContextResponse(string text)
+        private async Task<string> ProcessEnhancedContextResponseAsync(string text)
         {
             try
             {
@@ -2160,21 +2166,11 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogInformation("Contains 'CRITICAL VALUES DETECTED IN LATEST RESULTS': {HasCritical}", text.Contains("CRITICAL VALUES DETECTED IN LATEST RESULTS"));
                 _logger.LogInformation("Contains '🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**': {HasCritical}", text.Contains("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**"));
                 _logger.LogInformation("Contains 'STATUS: CRITICAL': {HasCritical}", text.Contains("STATUS: CRITICAL"));
-                // Use regex to match exact critical patterns (not partial matches like "13.0" containing "6.0")
-                // Match "Hemoglobin: 6.0" but NOT "Hemoglobin: 13.0" or "Hemoglobin: 16.0"
-                // Use word boundaries or negative lookahead to ensure we match "6.0" as a complete value, not part of "13.0"
-                var hemoglobinCriticalPattern = @"Hemoglobin[:\s]+(6\.0(?![0-9])|6\s(?![0-9])|6\s*g/dL|6\s*g/|<7\.0|≤6\.0)";
-                var hasHemoglobinCritical = System.Text.RegularExpressions.Regex.IsMatch(text, hemoglobinCriticalPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-                var bloodPressureCriticalPattern = @"Blood\s*Pressure[:\s]+(19[0-9]|18[0-9]|180/11[0-9]|≥180)";
-                var hasBloodPressureCritical = System.Text.RegularExpressions.Regex.IsMatch(text, bloodPressureCriticalPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                // Check for critical values using database-driven patterns
+                var hasCriticalValuesFromPatterns = await _patternService.MatchesAnyPatternAsync(text);
 
-                var triglyceridesCriticalPattern = @"Triglycerides[:\s]+(64[0-9]|6[5-9][0-9]|7[0-9][0-9]|≥500)";
-                var hasTriglyceridesCritical = System.Text.RegularExpressions.Regex.IsMatch(text, triglyceridesCriticalPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-                _logger.LogInformation("Contains critical Hemoglobin pattern: {HasHemoglobin}", hasHemoglobinCritical);
-                _logger.LogInformation("Contains critical Blood Pressure pattern: {HasBP}", hasBloodPressureCritical);
-                _logger.LogInformation("Contains critical Triglycerides pattern: {HasTriglycerides}", hasTriglyceridesCritical);
+                _logger.LogInformation("Contains critical value pattern match: {HasMatch}", hasCriticalValuesFromPatterns);
 
                 // Check for critical values in multiple formats - be more aggressive in detection
                 // Also check for the actual critical value patterns from AnalysisResults
@@ -2188,9 +2184,7 @@ namespace SM_MentalHealthApp.Server.Services
                                       text.Contains("🚨 CRITICAL: Severe Anemia") ||
                                       text.Contains("🚨 CRITICAL: Extremely High Triglycerides") ||
                                       text.Contains("🚨 CRITICAL: Hypertensive Crisis") ||
-                                      hasHemoglobinCritical ||
-                                      hasBloodPressureCritical ||
-                                      hasTriglyceridesCritical;
+                                      hasCriticalValuesFromPatterns;
 
                 _logger.LogInformation("Final hasCriticalValues: {HasCritical}", hasCriticalValues);
                 var hasAbnormalValues = text.Contains("ABNORMAL VALUES DETECTED IN LATEST RESULTS") ||

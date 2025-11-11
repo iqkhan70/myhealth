@@ -32,12 +32,18 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly JournalDbContext _context;
         private readonly S3Service _s3Service;
         private readonly ILogger<ContentAnalysisService> _logger;
+        private readonly ICriticalValuePatternService _patternService;
 
-        public ContentAnalysisService(JournalDbContext context, S3Service s3Service, ILogger<ContentAnalysisService> logger)
+        public ContentAnalysisService(
+            JournalDbContext context,
+            S3Service s3Service,
+            ILogger<ContentAnalysisService> logger,
+            ICriticalValuePatternService patternService)
         {
             _context = context;
             _s3Service = s3Service;
             _logger = logger;
+            _patternService = patternService;
         }
 
         public async Task<string> ExtractTextFromContentAsync(ContentItem content)
@@ -100,15 +106,7 @@ namespace SM_MentalHealthApp.Server.Services
                         : await ExtractTextFromContentAsync(content);
 
                     bool hasCriticalInText = !string.IsNullOrEmpty(checkText) &&
-                        (checkText.Contains("Blood Pressure: 190") ||
-                         checkText.Contains("Blood Pressure: 18") ||
-                         checkText.Contains("Hemoglobin: 6.0") ||
-                         checkText.Contains("Hemoglobin: 6.") ||
-                         checkText.Contains("Triglycerides: 640") ||
-                         checkText.Contains("Triglycerides: 6") ||
-                         (checkText.Contains("Blood Pressure") && (checkText.Contains("190") || checkText.Contains("180"))) ||
-                         (checkText.Contains("Hemoglobin") && checkText.Contains("6.0")) ||
-                         (checkText.Contains("Triglycerides") && checkText.Contains("640")));
+                        await _patternService.MatchesAnyPatternAsync(checkText);
 
                     bool hasCriticalInResults = existingAnalysis.AnalysisResults != null &&
                                                existingAnalysis.AnalysisResults.ContainsKey("CriticalValues");
@@ -255,15 +253,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 if (!string.IsNullOrEmpty(analysis.ExtractedText))
                 {
-                    bool hasCriticalInText = analysis.ExtractedText.Contains("Blood Pressure: 190") ||
-                                           analysis.ExtractedText.Contains("Blood Pressure: 18") ||
-                                           analysis.ExtractedText.Contains("Hemoglobin: 6.0") ||
-                                           analysis.ExtractedText.Contains("Hemoglobin: 6.") ||
-                                           analysis.ExtractedText.Contains("Triglycerides: 640") ||
-                                           analysis.ExtractedText.Contains("Triglycerides: 6") ||
-                                           (analysis.ExtractedText.Contains("Blood Pressure") && (analysis.ExtractedText.Contains("190") || analysis.ExtractedText.Contains("180"))) ||
-                                           (analysis.ExtractedText.Contains("Hemoglobin") && analysis.ExtractedText.Contains("6.0")) ||
-                                           (analysis.ExtractedText.Contains("Triglycerides") && analysis.ExtractedText.Contains("640"));
+                    bool hasCriticalInText = await _patternService.MatchesAnyPatternAsync(analysis.ExtractedText);
 
                     bool hasCriticalInResults = analysis.AnalysisResults != null &&
                                                analysis.AnalysisResults.ContainsKey("CriticalValues");
@@ -529,20 +519,19 @@ If you need general medical information without patient context, please switch t
                         .ToList();
 
                     // Also check ExtractedText for critical values even if AnalysisResults doesn't have them
-                    var analysesWithCriticalInText = sortedAnalyses
-                        .Where(a => !string.IsNullOrEmpty(a.ExtractedText) &&
-                                   (a.ExtractedText.Contains("Blood Pressure: 190") ||
-                                    a.ExtractedText.Contains("Blood Pressure: 18") ||
-                                    a.ExtractedText.Contains("Hemoglobin: 6.0") ||
-                                    a.ExtractedText.Contains("Hemoglobin: 6.") ||
-                                    a.ExtractedText.Contains("Triglycerides: 640") ||
-                                    a.ExtractedText.Contains("Triglycerides: 6") ||
-                                    (a.ExtractedText.Contains("Blood Pressure") && (a.ExtractedText.Contains("190") || a.ExtractedText.Contains("180"))) ||
-                                    (a.ExtractedText.Contains("Hemoglobin") && a.ExtractedText.Contains("6.0")) ||
-                                    (a.ExtractedText.Contains("Triglycerides") && a.ExtractedText.Contains("640"))) &&
-                                   (a.AnalysisResults == null || !a.AnalysisResults.ContainsKey("CriticalValues")))
-                        .OrderByDescending(a => a.ProcessedAt)
-                        .ToList();
+                    var analysesWithCriticalInText = new List<SM_MentalHealthApp.Shared.ContentAnalysis>();
+                    foreach (var analysis in sortedAnalyses)
+                    {
+                        if (!string.IsNullOrEmpty(analysis.ExtractedText) &&
+                            (analysis.AnalysisResults == null || !analysis.AnalysisResults.ContainsKey("CriticalValues")))
+                        {
+                            if (await _patternService.MatchesAnyPatternAsync(analysis.ExtractedText))
+                            {
+                                analysesWithCriticalInText.Add(analysis);
+                            }
+                        }
+                    }
+                    analysesWithCriticalInText = analysesWithCriticalInText.OrderByDescending(a => a.ProcessedAt).ToList();
 
                     context.AppendLine("=== MEDICAL DATA SUMMARY ===");
                     context.AppendLine($"Latest Update: {latestAnalysis.ProcessedAt:MM/dd/yyyy HH:mm}");
@@ -662,15 +651,7 @@ If you need general medical information without patient context, please switch t
                     // Fallback: Check ExtractedText for critical values if AnalysisResults doesn't have them
                     if (!hasCriticalValues && !string.IsNullOrEmpty(latestAnalysis.ExtractedText))
                     {
-                        hasCriticalValues = latestAnalysis.ExtractedText.Contains("Blood Pressure: 190") ||
-                                          latestAnalysis.ExtractedText.Contains("Blood Pressure: 18") ||
-                                          latestAnalysis.ExtractedText.Contains("Hemoglobin: 6.0") ||
-                                          latestAnalysis.ExtractedText.Contains("Hemoglobin: 6.") ||
-                                          latestAnalysis.ExtractedText.Contains("Triglycerides: 640") ||
-                                          latestAnalysis.ExtractedText.Contains("Triglycerides: 6") ||
-                                          (latestAnalysis.ExtractedText.Contains("Blood Pressure") && (latestAnalysis.ExtractedText.Contains("190") || latestAnalysis.ExtractedText.Contains("180"))) ||
-                                          (latestAnalysis.ExtractedText.Contains("Hemoglobin") && latestAnalysis.ExtractedText.Contains("6.0")) ||
-                                          (latestAnalysis.ExtractedText.Contains("Triglycerides") && latestAnalysis.ExtractedText.Contains("640"));
+                        hasCriticalValues = await _patternService.MatchesAnyPatternAsync(latestAnalysis.ExtractedText);
                         if (hasCriticalValues)
                         {
                             _logger.LogWarning("Critical values found in ExtractedText but not in AnalysisResults for ContentId {ContentId}. Using ExtractedText as fallback.",
@@ -736,15 +717,7 @@ If you need general medical information without patient context, please switch t
                         {
                             var extractedText = latestAnalysis.ExtractedText;
                             // Check for critical values in ExtractedText even if AnalysisResults is empty
-                            bool hasCriticalInText = extractedText.Contains("Blood Pressure: 190") ||
-                                                   extractedText.Contains("Blood Pressure: 18") ||
-                                                   extractedText.Contains("Hemoglobin: 6.0") ||
-                                                   extractedText.Contains("Hemoglobin: 6.") ||
-                                                   extractedText.Contains("Triglycerides: 640") ||
-                                                   extractedText.Contains("Triglycerides: 6") ||
-                                                   (extractedText.Contains("Blood Pressure") && (extractedText.Contains("190") || extractedText.Contains("180"))) ||
-                                                   (extractedText.Contains("Hemoglobin") && extractedText.Contains("6.0")) ||
-                                                   (extractedText.Contains("Triglycerides") && extractedText.Contains("640"));
+                            bool hasCriticalInText = await _patternService.MatchesAnyPatternAsync(extractedText);
 
                             if (hasCriticalInText)
                             {

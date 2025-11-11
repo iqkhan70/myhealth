@@ -49,6 +49,9 @@ ON DUPLICATE KEY UPDATE
     AssignedAt = VALUES(AssignedAt),
     IsActive = VALUES(IsActive);
 
+-- Step 5: Seed Critical Value Categories and Patterns
+-- Note: Run SeedCriticalValuePatterns.sql after running this script
+
 -- Step 5: Seed some sample Journal Entries
 INSERT INTO JournalEntries (UserId, EnteredByUserId, Text, AIResponse, Mood, CreatedAt) VALUES
 (3, 3, 'Feeling anxious about work today. Had a difficult meeting with my manager.', 'It sounds like you had a challenging day at work. Anxiety about work situations is very common. Consider taking some deep breaths and maybe talking to someone you trust about your concerns.', 'Anxious', NOW() - INTERVAL 1 DAY),
