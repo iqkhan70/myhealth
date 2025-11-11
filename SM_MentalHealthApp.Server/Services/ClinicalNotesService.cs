@@ -11,6 +11,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<ClinicalNoteDto> CreateClinicalNoteAsync(CreateClinicalNoteRequest request, int doctorId);
         Task<ClinicalNoteDto?> UpdateClinicalNoteAsync(int id, UpdateClinicalNoteRequest request, int doctorId);
         Task<bool> DeleteClinicalNoteAsync(int id, int? doctorId);
+        Task<bool> ToggleIgnoreAsync(int noteId, int doctorId);
         Task<List<ClinicalNoteDto>> SearchClinicalNotesAsync(string searchTerm, int? patientId = null, int? doctorId = null);
         Task<List<string>> GetNoteTypesAsync();
         Task<List<string>> GetPrioritiesAsync();
@@ -301,6 +302,44 @@ namespace SM_MentalHealthApp.Server.Services
             }
         }
 
+        public async Task<bool> ToggleIgnoreAsync(int noteId, int doctorId)
+        {
+            try
+            {
+                var note = await _context.ClinicalNotes.FindAsync(noteId);
+                if (note == null)
+                {
+                    throw new ArgumentException("Clinical note not found");
+                }
+
+                // Toggle ignore status
+                if (note.IsIgnoredByDoctor)
+                {
+                    // Unignore
+                    note.IsIgnoredByDoctor = false;
+                    note.IgnoredByDoctorId = null;
+                    note.IgnoredAt = null;
+                    _logger.LogInformation("Clinical note {NoteId} unignored by doctor {DoctorId}", noteId, doctorId);
+                }
+                else
+                {
+                    // Ignore
+                    note.IsIgnoredByDoctor = true;
+                    note.IgnoredByDoctorId = doctorId;
+                    note.IgnoredAt = DateTime.UtcNow;
+                    _logger.LogInformation("Clinical note {NoteId} ignored by doctor {DoctorId}", noteId, doctorId);
+                }
+
+                await _context.SaveChangesAsync();
+                return note.IsIgnoredByDoctor;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling ignore status for clinical note {NoteId}", noteId);
+                throw;
+            }
+        }
+
         private static ClinicalNoteDto MapToDto(ClinicalNote note)
         {
             return new ClinicalNoteDto
@@ -317,7 +356,10 @@ namespace SM_MentalHealthApp.Server.Services
                 UpdatedAt = note.UpdatedAt,
                 Tags = note.Tags,
                 PatientName = note.Patient?.FullName ?? "Unknown",
-                DoctorName = note.Doctor?.FullName ?? "Unknown"
+                DoctorName = note.Doctor?.FullName ?? "Unknown",
+                IsIgnoredByDoctor = note.IsIgnoredByDoctor,
+                IgnoredByDoctorId = note.IgnoredByDoctorId,
+                IgnoredAt = note.IgnoredAt
             };
         }
     }

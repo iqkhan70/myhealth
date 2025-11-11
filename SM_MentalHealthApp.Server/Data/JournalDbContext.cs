@@ -245,6 +245,7 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Tags).HasMaxLength(500);
                         entity.Property(e => e.IsConfidential).HasDefaultValue(false);
                         entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.IsIgnoredByDoctor).HasDefaultValue(false);
                         entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
 
                         // Foreign key relationships
@@ -258,12 +259,19 @@ namespace SM_MentalHealthApp.Server.Data
                         .HasForeignKey(e => e.DoctorId)
                         .OnDelete(DeleteBehavior.Restrict);
 
+                        // Foreign key relationship for ignored by doctor
+                        entity.HasOne(e => e.IgnoredByDoctor)
+                        .WithMany()
+                        .HasForeignKey(e => e.IgnoredByDoctorId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
                         // Indexes for performance
                         entity.HasIndex(e => e.PatientId);
                         entity.HasIndex(e => e.DoctorId);
                         entity.HasIndex(e => e.NoteType);
                         entity.HasIndex(e => e.Priority);
                         entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.IsIgnoredByDoctor);
                         entity.HasIndex(e => e.CreatedAt);
                   });
 

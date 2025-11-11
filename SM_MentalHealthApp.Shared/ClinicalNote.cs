@@ -41,9 +41,15 @@ namespace SM_MentalHealthApp.Shared
         // Tags for better organization and search
         public string? Tags { get; set; } // Comma-separated tags like "diabetes,medication,urgent"
 
+        // Doctor ignore functionality - allows doctors to mark clinical notes as ignored for AI analysis
+        public bool IsIgnoredByDoctor { get; set; } = false;
+        public int? IgnoredByDoctorId { get; set; } // Which doctor marked this as ignored
+        public DateTime? IgnoredAt { get; set; } // When it was ignored
+
         // Navigation properties
         public User Patient { get; set; } = null!;
         public User Doctor { get; set; } = null!;
+        public User? IgnoredByDoctor { get; set; } // Navigation to the doctor who ignored it
     }
 
     /// <summary>
@@ -113,5 +119,8 @@ namespace SM_MentalHealthApp.Shared
         public string? Tags { get; set; }
         public string? PatientName { get; set; }
         public string? DoctorName { get; set; }
+        public bool IsIgnoredByDoctor { get; set; }
+        public int? IgnoredByDoctorId { get; set; }
+        public DateTime? IgnoredAt { get; set; }
     }
 }

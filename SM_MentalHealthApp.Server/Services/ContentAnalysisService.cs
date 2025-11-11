@@ -357,9 +357,9 @@ If you need general medical information without patient context, please switch t
 
                 var context = new StringBuilder();
 
-                // Get clinical notes for the patient
+                // Get clinical notes for the patient (excluding ignored notes)
                 var recentClinicalNotes = await _context.ClinicalNotes
-                    .Where(cn => cn.PatientId == patientId && cn.IsActive)
+                    .Where(cn => cn.PatientId == patientId && cn.IsActive && !cn.IsIgnoredByDoctor)
                     .OrderByDescending(cn => cn.CreatedAt)
                     .Take(5)
                     .ToListAsync();

@@ -272,5 +272,49 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        /// <summary>
+        /// Toggle ignore status for a clinical note (Doctor only)
+        /// </summary>
+        [HttpPost("{id}/toggle-ignore")]
+        [Authorize(Roles = "Doctor")]
+        public async Task<ActionResult> ToggleIgnoreNote(int id)
+        {
+            try
+            {
+                var doctorId = GetCurrentUserId();
+                if (!doctorId.HasValue)
+                {
+                    return Unauthorized("Doctor not authenticated");
+                }
+
+                var note = await _clinicalNotesService.GetClinicalNoteByIdAsync(id);
+                if (note == null)
+                {
+                    return NotFound("Clinical note not found");
+                }
+
+                // Verify doctor has access to this note (can only ignore own notes or notes for assigned patients)
+                // For now, allow doctors to ignore their own notes
+                if (note.DoctorId != doctorId.Value)
+                {
+                    return Forbid("You can only ignore your own clinical notes");
+                }
+
+                var isIgnored = await _clinicalNotesService.ToggleIgnoreAsync(id, doctorId.Value);
+                
+                // Reload note to get updated status
+                var updatedNote = await _clinicalNotesService.GetClinicalNoteByIdAsync(id);
+                return Ok(new { 
+                    message = isIgnored ? "Clinical note ignored" : "Clinical note unignored", 
+                    isIgnored = isIgnored 
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling ignore status for clinical note {NoteId}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
     }
 }

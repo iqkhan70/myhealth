@@ -53,6 +53,21 @@ public class ClinicalNotesService : BaseService, IClinicalNotesService
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<bool> ToggleIgnoreAsync(int id, CancellationToken ct = default)
+    {
+        AddAuthorizationHeader();
+        var response = await _http.PostAsync($"api/clinicalnotes/{id}/toggle-ignore", null, ct);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<ToggleIgnoreResponse>(ct);
+        return result?.IsIgnored ?? false;
+    }
+
+    private class ToggleIgnoreResponse
+    {
+        public bool IsIgnored { get; set; }
+        public string? Message { get; set; }
+    }
+
     public async Task<List<string>> GetNoteTypesAsync(CancellationToken ct = default)
     {
         AddAuthorizationHeader();

@@ -310,20 +310,6 @@
             },
             new SMDataGridTemplateColumn<ClinicalNoteDto>
             {
-                Property = nameof(ClinicalNoteDto.Content),
-                Title = "Content",
-                Width = "300px",
-                Template = note => builder =>
-                {
-                    builder.OpenElement(0, "div");
-                    builder.AddAttribute(1, "class", "note-content");
-                    var content = note.Content.Length > 100 ? note.Content.Substring(0, 100) + "..." : note.Content;
-                    builder.AddContent(2, content);
-                    builder.CloseElement();
-                }
-            },
-            new SMDataGridTemplateColumn<ClinicalNoteDto>
-            {
                 Property = nameof(ClinicalNoteDto.NoteType),
                 Title = "Type",
                 Width = "120px",
@@ -340,6 +326,16 @@
                     builder.AddContent(2, note.NoteType);
                     builder.CloseElement();
                 }
+            },
+            new SMDataGridBadgeColumn<ClinicalNoteDto>
+            {
+                Property = nameof(ClinicalNoteDto.IsIgnoredByDoctor),
+                Title = "AI Status",
+                Width = "120px",
+                TextAlign = TextAlign.Center,
+                GetBadgeData = (note) => note.IsIgnoredByDoctor 
+                    ? ("🚫 Ignored", NotificationSeverity.Warning, true)
+                    : ("✅ Active", NotificationSeverity.Success, true)
             },
             new SMDataGridTemplateColumn<ClinicalNoteDto>
             {
@@ -414,6 +410,23 @@
             Tooltip = "Edit clinical note",
             OnClick = async (row, ct) => await EditNoteAsync(row, ct)
         });
+
+        // Add ignore/unignore button for doctors
+        if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+        {
+            _actions.Add(new SMDataGridActionButton<ClinicalNoteDto>
+            {
+                IconFunc = (note) => note.IsIgnoredByDoctor ? "undo" : "block", // Use "undo" for unignore (distinct from "visibility" used for view)
+                ButtonStyleFunc = (note) => note.IsIgnoredByDoctor ? ButtonStyle.Info : ButtonStyle.Warning,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                TooltipFunc = (note) => note.IsIgnoredByDoctor 
+                    ? $"Unignore for AI analysis (Ignored on: {note.IgnoredAt?.ToString("MM/dd/yyyy HH:mm") ?? "Unknown"})" 
+                    : "Ignore for AI analysis - This will exclude this note from AI health check",
+                OnClick = async (row, ct) => await ToggleIgnoreNoteAsync(row, ct),
+                Disabled = (note) => note.DoctorId != GetCurrentUserId() // Only allow ignoring own notes
+            });
+        }
 
         _actions.Add(new SMDataGridActionButton<ClinicalNoteDto>
         {
@@ -744,6 +757,38 @@
             {
                 NotificationService.ShowError($"Failed to delete clinical note: {ex.Message}");
             }
+        }
+    }
+
+    private int GetCurrentUserId()
+    {
+        return AuthService.CurrentUser?.Id ?? 0;
+    }
+
+    private async Task ToggleIgnoreNoteAsync(ClinicalNoteDto note, CancellationToken ct)
+    {
+        try
+        {
+            var wasIgnored = note.IsIgnoredByDoctor;
+            var isIgnored = await ClinicalNotesService.ToggleIgnoreAsync(note.Id, ct);
+            
+            // Update the note in the grid
+            note.IsIgnoredByDoctor = isIgnored;
+            note.IgnoredByDoctorId = isIgnored ? GetCurrentUserId() : null;
+            note.IgnoredAt = isIgnored ? DateTime.UtcNow : null;
+            
+            NotificationService.ShowSuccess(isIgnored 
+                ? "Clinical note ignored. It will be excluded from AI health check analysis." 
+                : "Clinical note unignored. It will be included in AI health check analysis.");
+            
+            if (_grid != null)
+            {
+                await _grid.RefreshAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to toggle ignore status: {ex.Message}");
         }
     }
 }
