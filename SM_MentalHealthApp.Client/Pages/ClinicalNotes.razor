@@ -53,7 +53,7 @@
                                     <div class="meta-row">
                                         <span class="meta-label"><strong>Type:</strong></span>
                                         <span class="meta-value">
-                                            <span class="badge bg-primary">@expandedNote.NoteType</span>
+                                            <span class="badge @GetNoteTypeClass(expandedNote.NoteType)">@expandedNote.NoteType</span>
                                         </span>
                                     </div>
                                     <div class="meta-row">
@@ -166,8 +166,7 @@
 
                     <div class="form-actions">
                         <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseNoteDialog" />
-                        <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Success" ButtonType="ButtonType.Submit"
-                            Click="@SaveNote" />
+                        <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Success" ButtonType="ButtonType.Submit" />
                     </div>
                 </form>
             </div>
@@ -331,7 +330,7 @@
                 Template = note => builder =>
                 {
                     builder.OpenElement(0, "span");
-                    builder.AddAttribute(1, "class", "badge bg-primary");
+                    builder.AddAttribute(1, "class", $"badge {GetNoteTypeClass(note.NoteType)}");
                     builder.AddContent(2, note.NoteType);
                     builder.CloseElement();
                 }
@@ -670,15 +669,28 @@
         viewingNote = null;
     }
 
+    private string GetNoteTypeClass(string noteType)
+    {
+        return noteType.ToLower() switch
+        {
+            "emergency" => "bg-danger",      // Red for emergency
+            "treatment" => "bg-info",        // Blue for treatment
+            "assessment" => "bg-warning",    // Yellow/orange for assessment
+            "follow-up" => "bg-primary",     // Blue for follow-up
+            "general" => "bg-success",       // Green for general (normal)
+            _ => "bg-secondary"              // Gray for unknown types
+        };
+    }
+
     private string GetPriorityClass(string priority)
     {
         return priority.ToLower() switch
         {
-            "low" => "bg-secondary",
-            "normal" => "bg-primary",
-            "high" => "bg-warning",
-            "critical" => "bg-danger",
-            _ => "bg-secondary"
+            "low" => "bg-secondary",        // Gray for low
+            "normal" => "bg-success",        // Green for normal (changed from bg-primary)
+            "high" => "bg-warning",          // Yellow/orange for high
+            "critical" => "bg-danger",       // Red for critical
+            _ => "bg-secondary"              // Gray for unknown
         };
     }
 
