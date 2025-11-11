@@ -224,6 +224,18 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
             }
 
+            // Check for "MEDICAL CONCERNS DETECTED" first - this should override stable status
+            bool hasMedicalConcerns = response.Contains("medical concerns detected") ||
+                                     response.Contains("abnormal medical values") ||
+                                     response.Contains("concerning clinical observations");
+
+            // If medical concerns are detected, it's high severity regardless of other indicators
+            if (hasMedicalConcerns)
+            {
+                _logger.LogWarning("MEDICAL CONCERNS DETECTED found in AI response. Flagging as high severity.");
+                return true;
+            }
+
             // Check for explicit current status statements
             bool hasExplicitStableStatus = response.Contains("current status: stable") ||
                                           response.Contains("status: stable") ||
@@ -322,7 +334,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                 "critical", "urgent", "immediate", "emergency", "severe", "concerning",
                 "high risk", "dangerous", "alarming", "serious", "crisis", "acute",
                 "unacknowledged", "fall", "heart attack", "stroke", "suicide",
-                "self-harm", "overdose", "chest pain", "difficulty breathing"
+                "self-harm", "overdose", "chest pain", "difficulty breathing",
+                "medical concerns detected", "abnormal medical values", "concerning clinical observations",
+                "requires attention and monitoring", "requires monitoring", "needs monitoring"
             };
 
             var severityScore = 0;
