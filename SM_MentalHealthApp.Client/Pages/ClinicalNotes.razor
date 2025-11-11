@@ -329,8 +329,14 @@
                 Width = "120px",
                 Template = note => builder =>
                 {
+                    var noteTypeClass = GetNoteTypeClass(note.NoteType);
+                    // Debug: Log if follow-up is showing wrong color
+                    if (note.NoteType?.ToLower().Contains("follow") == true && noteTypeClass == "bg-danger")
+                    {
+                        System.Diagnostics.Debug.WriteLine($"WARNING: Follow-up note type '{note.NoteType}' is getting red color!");
+                    }
                     builder.OpenElement(0, "span");
-                    builder.AddAttribute(1, "class", $"badge {GetNoteTypeClass(note.NoteType)}");
+                    builder.AddAttribute(1, "class", $"badge {noteTypeClass}");
                     builder.AddContent(2, note.NoteType);
                     builder.CloseElement();
                 }
@@ -671,14 +677,36 @@
 
     private string GetNoteTypeClass(string noteType)
     {
-        return noteType.ToLower() switch
+        if (string.IsNullOrWhiteSpace(noteType))
+            return "bg-primary";
+            
+        var normalized = noteType.ToLower().Trim();
+        
+        // Remove any special characters that might interfere (except hyphen)
+        normalized = normalized.Replace("_", "-").Replace("  ", " ").Trim();
+        
+        // Explicitly check for follow-up variations FIRST (before emergency check)
+        // This ensures follow-up always gets blue, even if it contains the word "emergency" somehow
+        if (normalized.Contains("follow"))
         {
-            "emergency" => "bg-danger",      // Red for emergency
+            if (normalized == "follow-up" || normalized == "followup" || normalized == "follow up" || 
+                normalized.StartsWith("follow-up") || normalized.StartsWith("followup") || normalized.StartsWith("follow up"))
+            {
+                return "bg-info";  // Blue for follow-up (using bg-info instead of bg-primary to ensure it's blue)
+            }
+        }
+        
+        // Explicitly check for emergency (most critical)
+        if (normalized == "emergency" || normalized.StartsWith("emergency"))
+            return "bg-danger";  // Red
+        
+        // Check other types
+        return normalized switch
+        {
             "treatment" => "bg-info",        // Blue for treatment
             "assessment" => "bg-warning",    // Yellow/orange for assessment
-            "follow-up" => "bg-primary",     // Blue for follow-up
             "general" => "bg-success",       // Green for general (normal)
-            _ => "bg-secondary"              // Gray for unknown types
+            _ => "bg-info"                   // Default to blue (info) for unknown types
         };
     }
 
