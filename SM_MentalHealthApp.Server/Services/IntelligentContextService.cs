@@ -17,19 +17,25 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly HuggingFaceService _huggingFaceService;
         private readonly UserService _userService;
         private readonly HttpClient _httpClient;
+        private readonly IQuestionClassificationService _questionClassificationService;
+        private readonly IAIResponseTemplateService _templateService;
 
         public IntelligentContextService(
             ILogger<IntelligentContextService> logger,
             IContentAnalysisService contentAnalysisService,
             HuggingFaceService huggingFaceService,
             UserService userService,
-            HttpClient httpClient)
+            HttpClient httpClient,
+            IQuestionClassificationService questionClassificationService,
+            IAIResponseTemplateService templateService)
         {
             _logger = logger;
             _contentAnalysisService = contentAnalysisService;
             _huggingFaceService = huggingFaceService;
             _userService = userService;
             _httpClient = httpClient;
+            _questionClassificationService = questionClassificationService;
+            _templateService = templateService;
         }
 
         public async Task<string> ProcessQuestionAsync(string question, int patientId, int userId)
@@ -40,8 +46,8 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogInformation("Question: {Question}", question);
                 _logger.LogInformation("Patient ID: {PatientId}, User ID: {UserId}", patientId, userId);
 
-                // Step 1: Classify the question type
-                var questionType = ClassifyQuestion(question);
+                // Step 1: Classify the question type using database-driven service
+                var questionType = await _questionClassificationService.ClassifyQuestionAsync(question);
                 _logger.LogInformation("Question classified as: {QuestionType}", questionType);
 
                 switch (questionType)
@@ -56,7 +62,7 @@ namespace SM_MentalHealthApp.Server.Services
                         return await ProcessPatientRecommendationQuestion(question, patientId);
 
                     case QuestionType.NonPatientRelated:
-                        return ProcessNonPatientQuestion(question);
+                        return await ProcessNonPatientQuestion(question);
 
                     case QuestionType.GeneralMedical:
                         return await ProcessGeneralMedicalQuestion(question);
@@ -68,149 +74,25 @@ namespace SM_MentalHealthApp.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in intelligent context processing");
-                return "I apologize, but I encountered an error processing your question. Please try rephrasing it or contact support if the issue persists.";
+                var errorTemplate = await _templateService.FormatTemplateAsync("intelligent_context_error", null);
+                return !string.IsNullOrEmpty(errorTemplate)
+                    ? errorTemplate
+                    : "I apologize, but I encountered an error processing your question. Please try rephrasing it or contact support if the issue persists.";
             }
-        }
-
-        private QuestionType ClassifyQuestion(string question)
-        {
-            var questionLower = question.ToLower();
-
-            _logger.LogInformation("Classifying question: {Question}", questionLower);
-
-            // Non-patient related indicators
-            if (IsNonPatientQuestion(questionLower))
-            {
-                _logger.LogInformation("Detected non-patient related question");
-                return QuestionType.NonPatientRelated;
-            }
-
-            // Medical resource questions (hospitals, doctors, facilities)
-            if (IsMedicalResourceQuestion(questionLower))
-            {
-                _logger.LogInformation("Detected medical resource question");
-                return QuestionType.PatientMedicalResources;
-            }
-
-            // Medical status questions
-            if (IsMedicalStatusQuestion(questionLower))
-            {
-                _logger.LogInformation("Detected medical status question");
-                return QuestionType.PatientMedicalStatus;
-            }
-
-            // Medical recommendation questions
-            if (IsMedicalRecommendationQuestion(questionLower))
-            {
-                _logger.LogInformation("Detected medical recommendation question");
-                return QuestionType.PatientMedicalRecommendations;
-            }
-
-            // General medical questions
-            if (IsGeneralMedicalQuestion(questionLower))
-            {
-                _logger.LogInformation("Detected general medical question");
-                return QuestionType.GeneralMedical;
-            }
-
-            // Default to patient medical status
-            _logger.LogInformation("Defaulting to patient medical status question");
-            return QuestionType.PatientMedicalStatus;
-        }
-
-        private bool IsNonPatientQuestion(string question)
-        {
-            // Check for celebrity, entertainment, or completely unrelated topics
-            var nonPatientKeywords = new[]
-            {
-                "bollywood", "movie", "actor", "actress", "celebrity", "star", "film",
-                "salam khan", "salman khan", "shah rukh", "amir khan", "hritik",
-                "weather", "sports", "cricket", "football", "politics", "news",
-                "recipe", "cooking", "travel", "vacation", "hotel", "restaurant"
-            };
-
-            return nonPatientKeywords.Any(keyword => question.Contains(keyword));
-        }
-
-        private bool IsMedicalResourceQuestion(string question)
-        {
-            var resourceKeywords = new[]
-            {
-                "hospital", "clinic", "doctor", "specialist", "facility", "medical center",
-                "zip code", "near", "location", "address", "phone", "contact",
-                "emergency", "urgent care", "pharmacy", "lab", "imaging",
-                "recommended", "recommendation", "recommend", "suggest", "suggestion"
-            };
-
-            // Check for hospital + recommendation combination
-            if ((question.Contains("hospital") || question.Contains("hospitals")) && (question.Contains("recommend") || question.Contains("suggest")))
-            {
-                return true;
-            }
-
-            // Check for zip code + medical facility combination (including emergency)
-            if (question.Contains("zip code") && (question.Contains("hospital") || question.Contains("hospitals") || question.Contains("clinic") || question.Contains("facility") || question.Contains("emergency")))
-            {
-                return true;
-            }
-
-            // Check for emergency + location combination
-            if (question.Contains("emergency") && (question.Contains("near") || question.Contains("zip") || question.Contains("location")))
-            {
-                return true;
-            }
-
-            // Check for hospital + location combination
-            if ((question.Contains("hospital") || question.Contains("hospitals")) && (question.Contains("near") || question.Contains("zip") || question.Contains("location")))
-            {
-                return true;
-            }
-
-            return resourceKeywords.Any(keyword => question.Contains(keyword));
-        }
-
-        private bool IsMedicalStatusQuestion(string question)
-        {
-            var statusKeywords = new[]
-            {
-                "how is", "status", "doing", "condition", "health", "wellbeing",
-                "progress", "improvement", "worse", "better", "stable", "critical",
-                "hospitalization", "admitted", "discharge", "recovery", "treatment"
-            };
-
-            return statusKeywords.Any(keyword => question.Contains(keyword));
-        }
-
-        private bool IsMedicalRecommendationQuestion(string question)
-        {
-            var recommendationKeywords = new[]
-            {
-                "suggest", "recommend", "advice", "approach", "strategy", "plan",
-                "treatment", "therapy", "medication", "intervention", "next steps",
-                "what should", "how to", "attacking", "reduce", "prevent"
-            };
-
-            return recommendationKeywords.Any(keyword => question.Contains(keyword));
-        }
-
-        private bool IsGeneralMedicalQuestion(string question)
-        {
-            var generalKeywords = new[]
-            {
-                "what is", "explain", "define", "meaning", "symptoms", "causes",
-                "diagnosis", "treatment", "side effects", "complications"
-            };
-
-            return generalKeywords.Any(keyword => question.Contains(keyword));
         }
 
         private async Task<string> ProcessPatientMedicalQuestion(string question, int patientId)
         {
             _logger.LogInformation("Processing patient medical question with enhanced context");
 
-            // If no patient is selected, return a general response
+            // If no patient is selected, return a general response using template
             if (patientId <= 0)
             {
+                var template = await _templateService.FormatTemplateAsync("intelligent_context_no_patient_medical",
+                    new Dictionary<string, string> { { "QUESTION", question } });
+                if (!string.IsNullOrEmpty(template)) return template;
+
+                // Fallback
                 return $@"**General Medical Information Request**
 
 You're asking: ""{question}""
@@ -247,9 +129,14 @@ If you need general medical information without patient context, I recommend con
             var resourceQuery = BuildResourceSearchQuery(question, locationInfo);
             var webResults = await SearchWebAsync(resourceQuery);
 
-            // If no patient is selected, return just the web search results
+            // If no patient is selected, return just the web search results using template
             if (patientId <= 0)
             {
+                var template = await _templateService.FormatTemplateAsync("intelligent_context_no_patient_resources",
+                    new Dictionary<string, string> { { "WEB_RESULTS", webResults } });
+                if (!string.IsNullOrEmpty(template)) return template;
+
+                // Fallback
                 var response = new StringBuilder();
                 response.AppendLine("**Medical Resources Search**");
                 response.AppendLine();
@@ -264,7 +151,16 @@ If you need general medical information without patient context, I recommend con
             var patient = await _userService.GetUserByIdAsync(patientId);
             var patientInfo = patient != null ? $"Patient: {patient.FirstName} {patient.LastName} (ID: {patientId})" : $"Patient ID: {patientId}";
 
-            // Combine patient context with web search results
+            // Combine patient context with web search results using template
+            var combinedTemplate = await _templateService.FormatTemplateAsync("intelligent_context_patient_resources",
+                new Dictionary<string, string>
+                {
+                    { "PATIENT_INFO", patientInfo },
+                    { "WEB_RESULTS", webResults }
+                });
+            if (!string.IsNullOrEmpty(combinedTemplate)) return combinedTemplate;
+
+            // Fallback
             var combinedResponse = new StringBuilder();
             combinedResponse.AppendLine($"**Medical Resource Information for {patientInfo}:**");
             combinedResponse.AppendLine();
@@ -280,9 +176,14 @@ If you need general medical information without patient context, I recommend con
         {
             _logger.LogInformation("Processing patient recommendation question");
 
-            // If no patient is selected, return a general response
+            // If no patient is selected, return a general response using template
             if (patientId <= 0)
             {
+                var template = await _templateService.FormatTemplateAsync("intelligent_context_no_patient_recommendations",
+                    new Dictionary<string, string> { { "QUESTION", question } });
+                if (!string.IsNullOrEmpty(template)) return template;
+
+                // Fallback
                 return $@"**General Medical Recommendations Request**
 
 You're asking: ""{question}""
@@ -305,9 +206,14 @@ If you need general medical recommendations without patient context, I recommend
             return await _huggingFaceService.GenerateResponse(enhancedContext);
         }
 
-        private string ProcessNonPatientQuestion(string question)
+        private async Task<string> ProcessNonPatientQuestion(string question)
         {
             _logger.LogInformation("Processing non-patient related question");
+            var template = await _templateService.FormatTemplateAsync("intelligent_context_non_patient",
+                new Dictionary<string, string> { { "QUESTION", question } });
+            if (!string.IsNullOrEmpty(template)) return template;
+
+            // Fallback
             return $@"**Query Not Applicable to Patient Care**
 
 I understand you're asking about: ""{question}""
@@ -327,6 +233,11 @@ If you have a medical question related to patient care, I'd be happy to help wit
         private async Task<string> ProcessGeneralMedicalQuestion(string question)
         {
             _logger.LogInformation("Processing general medical question");
+            var template = await _templateService.FormatTemplateAsync("intelligent_context_general_medical",
+                new Dictionary<string, string> { { "QUESTION", question } });
+            if (!string.IsNullOrEmpty(template)) return template;
+
+            // Fallback
             return $@"**General Medical Information Request**
 
 You're asking: ""{question}""
@@ -438,7 +349,10 @@ If you need general medical information without patient context, I recommend con
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in web search");
-                return "Web search is currently unavailable. Please use standard search engines to find medical facilities.";
+                var errorTemplate = await _templateService.FormatTemplateAsync("intelligent_context_web_search_error", null);
+                return !string.IsNullOrEmpty(errorTemplate)
+                    ? errorTemplate
+                    : "Web search is currently unavailable. Please use standard search engines to find medical facilities.";
             }
         }
     }

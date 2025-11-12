@@ -15,6 +15,7 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly IGenericQuestionPatternService _genericQuestionPatternService;
         private readonly IMedicalThresholdService _thresholdService;
         private readonly EnhancedContextResponseService _enhancedContextResponseService;
+        private readonly ISectionMarkerService _sectionMarkerService;
 
         public HuggingFaceService(
             HttpClient httpClient,
@@ -26,7 +27,8 @@ namespace SM_MentalHealthApp.Server.Services
             IAIResponseTemplateService templateService,
             IGenericQuestionPatternService genericQuestionPatternService,
             IMedicalThresholdService thresholdService,
-            EnhancedContextResponseService enhancedContextResponseService)
+            EnhancedContextResponseService enhancedContextResponseService,
+            ISectionMarkerService sectionMarkerService)
         {
             _httpClient = httpClient;
             _apiKey = config["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("HuggingFace API key not found");
@@ -38,6 +40,7 @@ namespace SM_MentalHealthApp.Server.Services
             _genericQuestionPatternService = genericQuestionPatternService;
             _thresholdService = thresholdService;
             _enhancedContextResponseService = enhancedContextResponseService;
+            _sectionMarkerService = sectionMarkerService;
 
             _httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
@@ -547,11 +550,23 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
-                // Extract and analyze medical data for critical values
-                var medicalDataMatch = System.Text.RegularExpressions.Regex.Match(text, @"=== MEDICAL DATA SUMMARY ===(.*?)=== PROGRESSION ANALYSIS ===", System.Text.RegularExpressions.RegexOptions.Singleline);
-                if (medicalDataMatch.Success)
+                // Extract and analyze medical data for critical values using section markers
+                var medicalDataSection = await _sectionMarkerService.ExtractSectionAsync(text, "MEDICAL DATA SUMMARY");
+                if (!string.IsNullOrEmpty(medicalDataSection))
                 {
-                    var medicalData = medicalDataMatch.Groups[1].Value.Trim();
+                    // Extract just the content between markers (remove the marker itself)
+                    var medicalData = medicalDataSection;
+                    var markerIndex = medicalData.IndexOf("=== MEDICAL DATA SUMMARY ===", StringComparison.OrdinalIgnoreCase);
+                    if (markerIndex >= 0)
+                    {
+                        medicalData = medicalData.Substring(markerIndex + "=== MEDICAL DATA SUMMARY ===".Length).Trim();
+                        var progressionIndex = medicalData.IndexOf("=== PROGRESSION ANALYSIS ===", StringComparison.OrdinalIgnoreCase);
+                        if (progressionIndex >= 0)
+                        {
+                            medicalData = medicalData.Substring(0, progressionIndex).Trim();
+                        }
+                    }
+
                     if (!string.IsNullOrEmpty(medicalData))
                     {
                         var sectionHeader = await _templateService.FormatTemplateAsync("section_medical_data_analysis", null);
@@ -782,15 +797,15 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogInformation("GenerateResponse called with text preview: {TextPreview}",
                     text.Length > 500 ? text.Substring(0, 500) + "..." : text);
 
-                // Check if this is an emergency case and use hybrid approach
-                _logger.LogInformation("Checking for emergency incidents in text. Contains 'RECENT EMERGENCY INCIDENTS': {HasEmergency}, Contains 'Fall': {HasFall}",
-                    text.Contains("RECENT EMERGENCY INCIDENTS"), text.Contains("Fall"));
+                // Check if this is an emergency case and use hybrid approach using section markers
+                var hasEmergencyIncidents = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT EMERGENCY INCIDENTS");
+                var hasEmergency = text.Contains("EMERGENCY", StringComparison.OrdinalIgnoreCase);
+                var hasFall = text.Contains("Fall", StringComparison.OrdinalIgnoreCase);
 
-                // Also check for other emergency-related patterns
-                _logger.LogInformation("Additional checks - Contains 'EMERGENCY': {HasEmergency2}, Contains 'Fall - Critical': {HasFallCritical}",
-                    text.Contains("EMERGENCY"), text.Contains("Fall - Critical"));
+                _logger.LogInformation("Checking for emergency incidents. HasEmergencyIncidents: {HasEmergencyIncidents}, HasEmergency: {HasEmergency}, HasFall: {HasFall}",
+                    hasEmergencyIncidents, hasEmergency, hasFall);
 
-                if ((text.Contains("RECENT EMERGENCY INCIDENTS") || text.Contains("EMERGENCY")) && text.Contains("Fall"))
+                if ((hasEmergencyIncidents || hasEmergency) && hasFall)
                 {
                     _logger.LogInformation("Emergency case detected, using hybrid approach");
                     return await GenerateHybridEmergencyResponse(text);
@@ -803,9 +818,8 @@ namespace SM_MentalHealthApp.Server.Services
                 // Check knowledge base first (for generic mode or any mode)
                 // This allows data-driven responses instead of hardcoded ones
                 // BUT: Skip knowledge base for AI Health Check - these need full analysis, not generic responses
-                var isAiHealthCheck = text.Contains("AI Health Check for Patient") ||
-                                     text.Contains("=== INSTRUCTIONS FOR AI HEALTH CHECK ANALYSIS ===") ||
-                                     text.Contains("INSTRUCTIONS FOR AI HEALTH CHECK");
+                var isAiHealthCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "AI Health Check") ||
+                                     await _sectionMarkerService.ContainsSectionMarkerAsync(text, "INSTRUCTIONS FOR AI HEALTH CHECK");
 
                 if (!isAiHealthCheck)
                 {

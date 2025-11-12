@@ -136,6 +136,8 @@ public static class DependencyInjection
             services.AddScoped<IAIResponseTemplateService, AIResponseTemplateService>();
             services.AddScoped<IGenericQuestionPatternService, GenericQuestionPatternService>();
             services.AddScoped<IMedicalThresholdService, MedicalThresholdService>();
+            services.AddScoped<ISectionMarkerService, SectionMarkerService>();
+            services.AddScoped<IQuestionClassificationService, QuestionClassificationService>();
 
             // Response Handler System (refactored from HuggingFaceService)
             services.AddScoped<SM_MentalHealthApp.Server.Services.ResponseHandlers.ContextExtractor>();
