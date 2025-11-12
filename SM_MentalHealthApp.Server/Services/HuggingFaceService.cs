@@ -14,6 +14,7 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly IAIResponseTemplateService _templateService;
         private readonly IGenericQuestionPatternService _genericQuestionPatternService;
         private readonly IMedicalThresholdService _thresholdService;
+        private readonly EnhancedContextResponseService _enhancedContextResponseService;
 
         public HuggingFaceService(
             HttpClient httpClient,
@@ -24,7 +25,8 @@ namespace SM_MentalHealthApp.Server.Services
             IKnowledgeBaseService knowledgeBaseService,
             IAIResponseTemplateService templateService,
             IGenericQuestionPatternService genericQuestionPatternService,
-            IMedicalThresholdService thresholdService)
+            IMedicalThresholdService thresholdService,
+            EnhancedContextResponseService enhancedContextResponseService)
         {
             _httpClient = httpClient;
             _apiKey = config["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("HuggingFace API key not found");
@@ -35,6 +37,7 @@ namespace SM_MentalHealthApp.Server.Services
             _templateService = templateService;
             _genericQuestionPatternService = genericQuestionPatternService;
             _thresholdService = thresholdService;
+            _enhancedContextResponseService = enhancedContextResponseService;
 
             _httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
@@ -2802,6 +2805,16 @@ namespace SM_MentalHealthApp.Server.Services
 
         private async Task<string> ProcessEnhancedContextResponseAsync(string text)
         {
+            // Use the new refactored service instead of the massive if-else nightmare
+            // This replaces 700+ lines of nested conditionals with a clean handler pattern
+            return await _enhancedContextResponseService.ProcessAsync(text);
+        }
+
+        /* OLD CODE - REMOVED TO REDUCE FILE SIZE FROM 3,560 TO ~2,800 LINES
+        // This entire method has been replaced by EnhancedContextResponseService
+        // Keeping commented code for reference during migration - can be removed later
+        private async Task<string> ProcessEnhancedContextResponseAsync_OLD(string text)
+        {
             try
             {
                 _logger.LogInformation("Processing enhanced context response");
@@ -3546,6 +3559,7 @@ namespace SM_MentalHealthApp.Server.Services
                 return !string.IsNullOrEmpty(errorFallback) ? errorFallback : "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
             }
         }
+        */
 
         /// <summary>
         /// Determines if a message is a generic knowledge question (not a patient-specific concern)

@@ -137,6 +137,30 @@ public static class DependencyInjection
             services.AddScoped<IGenericQuestionPatternService, GenericQuestionPatternService>();
             services.AddScoped<IMedicalThresholdService, MedicalThresholdService>();
 
+            // Response Handler System (refactored from HuggingFaceService)
+            services.AddScoped<SM_MentalHealthApp.Server.Services.ResponseHandlers.ContextExtractor>();
+            services.AddScoped<SM_MentalHealthApp.Server.Services.ResponseHandlers.QuestionExtractor>();
+            services.AddScoped<SM_MentalHealthApp.Server.Services.ResponseHandlers.QuestionClassifier>();
+            services.AddScoped<SM_MentalHealthApp.Server.Services.ResponseHandlers.StatusResponseHandler>();
+            services.AddScoped<SM_MentalHealthApp.Server.Services.ResponseHandlers.StatisticsResponseHandler>();
+            services.AddScoped<SM_MentalHealthApp.Server.Services.ResponseHandlers.RecommendationsResponseHandler>();
+            services.AddScoped<SM_MentalHealthApp.Server.Services.ResponseHandlers.ConcernsResponseHandler>();
+            services.AddScoped<SM_MentalHealthApp.Server.Services.ResponseHandlers.OverviewResponseHandler>();
+            services.AddScoped<SM_MentalHealthApp.Server.Services.ResponseHandlers.ResponseHandlerFactory>(sp =>
+            {
+                var handlers = new List<SM_MentalHealthApp.Server.Services.ResponseHandlers.IResponseHandler>
+                {
+                    sp.GetRequiredService<SM_MentalHealthApp.Server.Services.ResponseHandlers.StatusResponseHandler>(),
+                    sp.GetRequiredService<SM_MentalHealthApp.Server.Services.ResponseHandlers.StatisticsResponseHandler>(),
+                    sp.GetRequiredService<SM_MentalHealthApp.Server.Services.ResponseHandlers.RecommendationsResponseHandler>(),
+                    sp.GetRequiredService<SM_MentalHealthApp.Server.Services.ResponseHandlers.ConcernsResponseHandler>(),
+                    sp.GetRequiredService<SM_MentalHealthApp.Server.Services.ResponseHandlers.OverviewResponseHandler>()
+                };
+                var logger = sp.GetRequiredService<ILogger<SM_MentalHealthApp.Server.Services.ResponseHandlers.ResponseHandlerFactory>>();
+                return new SM_MentalHealthApp.Server.Services.ResponseHandlers.ResponseHandlerFactory(handlers, logger);
+            });
+            services.AddScoped<EnhancedContextResponseService>();
+
         // AI & ML Services
         services.AddScoped<HuggingFaceService>();
         services.AddScoped<ConversationRepository>();
