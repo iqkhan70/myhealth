@@ -794,8 +794,66 @@ namespace SM_MentalHealthApp.Server.Services
             // Fallback: Use enhanced context to generate a meaningful response
             _logger.LogInformation("=== FALLBACK RESPONSE GENERATION ===");
             _logger.LogInformation("Enhanced context received: {Context}", text.Substring(0, Math.Min(500, text.Length)));
+            _logger.LogInformation("IsGenericMode: {IsGenericMode}", isGenericMode);
 
-            // Check if this is a role-based prompt with enhanced context
+            // IMPORTANT: In generic mode, do NOT route to patient analysis
+            // Generic questions should get factual answers, not patient status assessments
+            if (isGenericMode)
+            {
+                _logger.LogInformation("Generic mode detected - skipping patient analysis, using simple AI response");
+                // For generic mode, just use the AI model directly without patient context
+                // The knowledge base should have already been checked above
+                // If we get here, knowledge base didn't match, so use simple AI response
+                var simpleRequestBody = new
+                {
+                    inputs = text,
+                    parameters = new
+                    {
+                        max_new_tokens = 150,
+                        temperature = 0.7,
+                        do_sample = true,
+                        return_full_text = false
+                    }
+                };
+
+                var simpleJson = JsonSerializer.Serialize(simpleRequestBody);
+                var simpleContent = new StringContent(simpleJson, Encoding.UTF8, "application/json");
+
+                try
+                {
+                    var simpleResponse = await _httpClient.PostAsync(
+                        "https://api-inference.huggingface.co/models/microsoft/DialoGPT-small",
+                        simpleContent);
+
+                    if (simpleResponse.IsSuccessStatusCode)
+                    {
+                        var simpleResponseContent = await simpleResponse.Content.ReadAsStringAsync();
+                        var simpleResponseData = JsonSerializer.Deserialize<JsonElement[]>(simpleResponseContent);
+
+                        if (simpleResponseData.Length > 0)
+                        {
+                            var generatedText = simpleResponseData[0].GetProperty("generated_text").GetString() ?? "I understand. How can I help you today?";
+
+                            // Clean up the response
+                            if (generatedText.StartsWith(text))
+                            {
+                                generatedText = generatedText.Substring(text.Length).Trim();
+                            }
+
+                            return string.IsNullOrWhiteSpace(generatedText) ? "I understand. How can I help you today?" : generatedText;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error in generic mode AI response");
+                }
+
+                // Final fallback for generic mode
+                return "I understand your question. For specific medical information, please consult with your healthcare provider or use the patient chat feature for personalized analysis.";
+            }
+
+            // Check if this is a role-based prompt with enhanced context (only for non-generic mode)
             _logger.LogInformation("=== ENHANCED CONTEXT DETECTION ===");
             _logger.LogInformation("Text length: {TextLength}", text.Length);
             _logger.LogInformation("Text contains '=== MEDICAL DATA SUMMARY ===': {HasMedicalData}", text.Contains("=== MEDICAL DATA SUMMARY ==="));
@@ -808,16 +866,20 @@ namespace SM_MentalHealthApp.Server.Services
             // Show first 200 characters of text for debugging
             _logger.LogInformation("First 200 chars of text: {TextPreview}", text.Substring(0, Math.Min(200, text.Length)));
 
-            if (text.Contains("=== MEDICAL DATA SUMMARY ===") || text.Contains("=== RECENT JOURNAL ENTRIES ===") || text.Contains("=== USER QUESTION ===") || text.Contains("Critical Values:") || text.Contains("Hemoglobin") || text.Contains("Doctor asks:") || text.Contains("**Medical Resource Information") || text.Contains("**Medical Facilities Search"))
+            // Only route to patient analysis if we have actual patient context sections
+            // Don't route based on just medical keywords - that would catch generic questions too
+            if (text.Contains("=== MEDICAL DATA SUMMARY ===") || text.Contains("=== RECENT JOURNAL ENTRIES ===") || text.Contains("=== USER QUESTION ===") || text.Contains("=== RECENT CLINICAL NOTES ===") || text.Contains("Doctor asks:") || text.Contains("**Medical Resource Information") || text.Contains("**Medical Facilities Search"))
             {
                 _logger.LogInformation("Processing enhanced context for medical data");
                 return await ProcessEnhancedContextResponseAsync(text);
             }
 
-            // Additional fallback: if text contains medical keywords, treat it as a medical question
-            if (text.Contains("how is") || text.Contains("status") || text.Contains("suggestions") || text.Contains("snapshot") || text.Contains("results") || text.Contains("stats"))
+            // Additional fallback: if text contains patient-specific question patterns, treat it as a medical question
+            // But only if it's clearly a patient status question, not a general knowledge question
+            if ((text.Contains("how is") || text.Contains("status") || text.Contains("suggestions") || text.Contains("snapshot") || text.Contains("results") || text.Contains("stats"))
+                && (text.Contains("patient") || text.Contains("Patient") || text.Contains("=== CURRENT MEDICAL STATUS ===")))
             {
-                _logger.LogInformation("Detected medical question keywords, processing as medical question");
+                _logger.LogInformation("Detected patient-specific medical question keywords, processing as medical question");
                 return await ProcessEnhancedContextResponseAsync(text);
             }
 
@@ -2170,28 +2232,53 @@ namespace SM_MentalHealthApp.Server.Services
                 // Extract the user question - try multiple methods
                 var userQuestion = "";
 
-                // Method 1: Look for "=== USER QUESTION ===" section
+                // For AI Health Check, always use the prompt from "=== USER QUESTION ===" section
+                // Don't extract questions from chat history - those are not the health check question
+                var isAiHealthCheck = text.Contains("AI Health Check for Patient") ||
+                                     text.Contains("=== INSTRUCTIONS FOR AI HEALTH CHECK ANALYSIS ===");
+
+                // Method 1: Look for "=== USER QUESTION ===" section (this is the actual health check prompt)
                 var questionStart = text.IndexOf("=== USER QUESTION ===");
                 _logger.LogInformation("Question start index: {QuestionStart}", questionStart);
                 if (questionStart >= 0)
                 {
                     var questionEnd = text.IndexOf("\n", questionStart + 21);
+                    if (questionEnd < 0) questionEnd = text.IndexOf("===", questionStart + 21);
+                    if (questionEnd < 0) questionEnd = text.Length;
+
                     _logger.LogInformation("Question end index: {QuestionEnd}", questionEnd);
                     if (questionEnd > questionStart)
                     {
                         userQuestion = text.Substring(questionStart + 21, questionEnd - questionStart - 21).Trim();
                         _logger.LogInformation("Extracted from USER QUESTION section: '{UserQuestion}'", userQuestion);
+
+                        // For AI Health Check, ONLY use the question from USER QUESTION section, don't look elsewhere
+                        if (isAiHealthCheck)
+                        {
+                            _logger.LogInformation("AI Health Check detected - using only USER QUESTION section, ignoring chat history questions");
+                            // Don't proceed to Method 2 or 3 for AI Health Check
+                        }
                     }
                 }
 
                 // Method 2: If no question found, look for common question patterns in the text
-                if (string.IsNullOrEmpty(userQuestion))
+                // BUT: Skip generic knowledge questions from chat history - these are not the user question for AI Health Check
+                // IMPORTANT: For AI Health Check, skip Method 2 and 3 entirely - only use Method 1
+                if (string.IsNullOrEmpty(userQuestion) && !isAiHealthCheck)
                 {
                     var lines = text.Split('\n');
                     foreach (var line in lines)
                     {
                         var trimmedLine = line.Trim();
-                        // Only consider lines that look like actual questions (contain ? or start with question words)
+
+                        // Skip generic knowledge questions (these come from chat history, not the actual health check question)
+                        if (IsGenericKnowledgeQuestion(trimmedLine))
+                        {
+                            _logger.LogInformation("Skipping generic knowledge question from chat history: '{Question}'", trimmedLine);
+                            continue;
+                        }
+
+                        // Only consider lines that look like actual patient-specific questions (contain ? or start with question words)
                         if ((trimmedLine.Contains("how is") || trimmedLine.Contains("status") || trimmedLine.Contains("suggestions") ||
                             trimmedLine.Contains("snapshot") || trimmedLine.Contains("results") || trimmedLine.Contains("stats")) &&
                             (trimmedLine.Contains("?") || trimmedLine.StartsWith("how") || trimmedLine.StartsWith("what") || trimmedLine.StartsWith("where")))
@@ -2204,12 +2291,22 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 // Method 3: Look for the last line that looks like a question
-                if (string.IsNullOrEmpty(userQuestion))
+                // BUT: Skip generic knowledge questions from chat history
+                // IMPORTANT: For AI Health Check, skip Method 3 entirely - only use Method 1
+                if (string.IsNullOrEmpty(userQuestion) && !isAiHealthCheck)
                 {
                     var lines = text.Split('\n');
                     for (int i = lines.Length - 1; i >= 0; i--)
                     {
                         var trimmedLine = lines[i].Trim();
+
+                        // Skip generic knowledge questions (these come from chat history, not the actual health check question)
+                        if (IsGenericKnowledgeQuestion(trimmedLine))
+                        {
+                            _logger.LogInformation("Skipping generic knowledge question from chat history (Method 3): '{Question}'", trimmedLine);
+                            continue;
+                        }
+
                         // Only consider lines that look like actual questions and are not part of AI responses
                         if (trimmedLine.Contains("?") && trimmedLine.Length > 5 && trimmedLine.Length < 100 &&
                             !trimmedLine.StartsWith("**") && !trimmedLine.StartsWith("📊") && !trimmedLine.StartsWith("🚨") &&
@@ -2220,6 +2317,13 @@ namespace SM_MentalHealthApp.Server.Services
                             break;
                         }
                     }
+                }
+
+                // For AI Health Check, if we didn't find a question in Method 1, use the default prompt
+                if (isAiHealthCheck && string.IsNullOrEmpty(userQuestion))
+                {
+                    userQuestion = "AI Health Check for Patient";
+                    _logger.LogInformation("AI Health Check - using default prompt as user question: '{UserQuestion}'", userQuestion);
                 }
 
                 _logger.LogInformation("Extracted user question: '{UserQuestion}'", userQuestion);
@@ -2272,10 +2376,34 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogInformation("Contains distress keyword match (Distress category): {HasMatch}", hasDistress);
                 _logger.LogInformation("Final hasAnyConcerns (Abnormal OR High Concern OR Distress): {HasMatch}", hasAnyConcerns);
                 _logger.LogInformation("Patient data text length (for abnormal check): {Length}", patientDataText?.Length ?? 0);
+
+                // Log if clinical notes are present in patientDataText
+                if (!string.IsNullOrEmpty(patientDataText))
+                {
+                    var hasClinicalNotesInData = patientDataText.Contains("RECENT CLINICAL NOTES") || patientDataText.Contains("Content:");
+                    _logger.LogInformation("Clinical notes present in patientDataText: {HasNotes}", hasClinicalNotesInData);
+
+                    if (hasClinicalNotesInData)
+                    {
+                        // Extract a sample of clinical notes content for debugging
+                        var clinicalNotesStart = patientDataText.IndexOf("RECENT CLINICAL NOTES");
+                        if (clinicalNotesStart >= 0)
+                        {
+                            var clinicalNotesSample = patientDataText.Substring(clinicalNotesStart, Math.Min(500, patientDataText.Length - clinicalNotesStart));
+                            _logger.LogInformation("Clinical notes sample from patientDataText: {Sample}", clinicalNotesSample);
+                        }
+                    }
+                }
+
                 if (hasAnyConcerns && !string.IsNullOrEmpty(patientDataText))
                 {
                     _logger.LogInformation("Concern keyword match found. Sample of patient data text: {Sample}",
                         patientDataText.Substring(0, Math.Min(500, patientDataText.Length)));
+                }
+                else if (!hasAnyConcerns && !string.IsNullOrEmpty(patientDataText) && patientDataText.Contains("RECENT CLINICAL NOTES"))
+                {
+                    _logger.LogWarning("Clinical notes present but hasAnyConcerns is FALSE. This may indicate missing keywords in database. Patient data sample: {Sample}",
+                        patientDataText.Substring(0, Math.Min(1000, patientDataText.Length)));
                 }
 
                 // Check for normal values using database-driven keywords (only in patient data, not instructions)
@@ -2549,35 +2677,86 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                     else
                     {
-                        // Generic response for other questions
-                        response.AppendLine($"**Response to: \"{userQuestion}\"**");
-                        response.AppendLine();
-
-                        if (hasCriticalValues)
+                        // Generic response for other questions (including AI Health Check)
+                        // For AI Health Check, this is the main analysis path
+                        if (isAiHealthCheck)
                         {
-                            response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-
-                            // Extract actual critical values from context
-                            var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                            if (!string.IsNullOrEmpty(criticalValuesFromContext))
-                            {
-                                response.AppendLine(criticalValuesFromContext);
-                            }
-                            else
-                            {
-                                // No alerts available in this scope - just show generic message
-                                response.AppendLine("- Critical medical values detected - review test results for details");
-                            }
-
-                            response.AppendLine();
-                            response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                            response.AppendLine("- These values indicate a medical emergency");
-                            response.AppendLine("- Contact emergency services if symptoms worsen");
-                            response.AppendLine("- Patient needs immediate medical evaluation");
+                            response.AppendLine("**Patient Medical Overview:**");
                         }
                         else
                         {
-                            response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                            response.AppendLine($"**Response to: \"{userQuestion}\"**");
+                            response.AppendLine();
+                        }
+
+                        if (hasCriticalValues)
+                        {
+                            // Use database-driven template for critical alert
+                            var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
+                            var criticalAlertText = criticalValuesFromContext ?? "- Critical medical values detected - review test results for details";
+
+                            var template = await _templateService.FormatTemplateAsync("critical_alert", new Dictionary<string, string>
+                            {
+                                { "CRITICAL_VALUES", criticalAlertText }
+                            });
+
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                // Fallback
+                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                response.AppendLine(criticalAlertText);
+                                response.AppendLine();
+                                response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                                response.AppendLine("- These values indicate a medical emergency");
+                                response.AppendLine("- Contact emergency services if symptoms worsen");
+                                response.AppendLine("- Patient needs immediate medical evaluation");
+                            }
+                        }
+                        else if (hasAnyConcerns)
+                        {
+                            // Use database-driven template for concerns
+                            var template = await _templateService.FormatTemplateAsync("concerns_detected", new Dictionary<string, string>());
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                // Fallback
+                                response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations that require attention and monitoring.");
+                            }
+                        }
+                        else if (hasNormalValues)
+                        {
+                            // Use database-driven template for stable status
+                            var template = await _templateService.FormatTemplateAsync("stable_status", new Dictionary<string, string>());
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                // Fallback
+                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                            }
+                        }
+                        else
+                        {
+                            // Use database-driven template for status review
+                            var template = await _templateService.FormatTemplateAsync("status_review", new Dictionary<string, string>());
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                // Fallback
+                                response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                            }
                         }
                     }
                 }
@@ -2642,6 +2821,54 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogError(ex, "Error processing enhanced context response");
                 return "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
             }
+        }
+
+        /// <summary>
+        /// Determines if a message is a generic knowledge question (not a patient-specific concern)
+        /// Generic questions like "what are normal values of glucose?" should be excluded from AI Health Check analysis
+        /// </summary>
+        private bool IsGenericKnowledgeQuestion(string messageContent)
+        {
+            if (string.IsNullOrWhiteSpace(messageContent))
+                return false;
+
+            var lowerContent = messageContent.ToLower();
+
+            // Patterns that indicate generic knowledge questions (not patient concerns)
+            var genericQuestionPatterns = new[]
+            {
+                "what are normal",
+                "what are the normal",
+                "what is normal",
+                "what are critical",
+                "what are serious",
+                "what is a normal",
+                "what are typical",
+                "what is typical",
+                "normal values of",
+                "normal range of",
+                "normal levels of",
+                "what does",
+                "how does",
+                "explain",
+                "tell me about"
+            };
+
+            // Check if it's a question (contains ?) and matches generic patterns
+            bool isQuestion = lowerContent.Contains("?");
+            bool matchesGenericPattern = genericQuestionPatterns.Any(pattern => lowerContent.Contains(pattern));
+
+            // Also check if it's asking about general information (not patient-specific)
+            bool isGeneralInfo = lowerContent.Contains("in general") ||
+                                lowerContent.Contains("generally") ||
+                                (isQuestion && matchesGenericPattern &&
+                                 !lowerContent.Contains("my") &&
+                                 !lowerContent.Contains("patient") &&
+                                 !lowerContent.Contains("i have") &&
+                                 !lowerContent.Contains("i am") &&
+                                 !lowerContent.Contains("i feel"));
+
+            return isQuestion && (matchesGenericPattern || isGeneralInfo);
         }
     }
 }

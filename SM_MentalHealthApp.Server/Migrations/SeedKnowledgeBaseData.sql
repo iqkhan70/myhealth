@@ -45,6 +45,27 @@ SELECT
     NOW() AS CreatedAt
 WHERE NOT EXISTS (SELECT 1 FROM KnowledgeBaseEntries WHERE Title = 'Heart Rate Information');
 
+INSERT INTO KnowledgeBaseEntries (CategoryId, Title, Content, Keywords, Priority, UseAsDirectResponse, IsActive, CreatedAt)
+SELECT 
+    (SELECT Id FROM KnowledgeBaseCategories WHERE Name = 'General Health' LIMIT 1) AS CategoryId,
+    'Glucose (Blood Sugar) Information' AS Title,
+    'Normal blood glucose (blood sugar) levels vary depending on when you last ate:
+- **Fasting (before eating)**: 70-100 mg/dL (3.9-5.6 mmol/L) is considered normal
+- **After meals (2 hours)**: Less than 140 mg/dL (7.8 mmol/L) is considered normal
+- **Random glucose**: 70-140 mg/dL (3.9-7.8 mmol/L) is typically normal
+
+**High glucose (hyperglycemia)**: Fasting levels above 126 mg/dL (7.0 mmol/L) or random levels above 200 mg/dL (11.1 mmol/L) may indicate diabetes and require medical evaluation.
+
+**Low glucose (hypoglycemia)**: Levels below 70 mg/dL (3.9 mmol/L) can cause symptoms like shakiness, sweating, confusion, and require immediate treatment.
+
+If you have concerns about your blood glucose levels, please consult with your healthcare provider for proper evaluation and management.' AS Content,
+    'glucose,blood sugar,blood glucose,normal glucose,glucose levels,normal values of glucose,blood sugar levels,normal blood sugar' AS Keywords,
+    6 AS Priority,
+    TRUE AS UseAsDirectResponse,
+    TRUE AS IsActive,
+    NOW() AS CreatedAt
+WHERE NOT EXISTS (SELECT 1 FROM KnowledgeBaseEntries WHERE Title = 'Glucose (Blood Sugar) Information');
+
 -- Mental Health Entries
 INSERT INTO KnowledgeBaseEntries (CategoryId, Title, Content, Keywords, Priority, UseAsDirectResponse, IsActive, CreatedAt)
 SELECT 

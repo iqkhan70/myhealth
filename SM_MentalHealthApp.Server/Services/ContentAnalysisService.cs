@@ -854,6 +854,7 @@ If you need general medical information without patient context, please switch t
                         }
 
                         // Add key messages if available (focus on medical data and concerning content)
+                        // EXCLUDE generic knowledge questions (e.g., "what are normal values of...")
                         if (session.Messages != null && session.Messages.Any())
                         {
                             var medicalMessages = session.Messages
@@ -863,6 +864,8 @@ If you need general medical information without patient context, please switch t
                                            m.Content.ToLower().Contains("urgent") ||
                                            m.Content.ToLower().Contains("crisis") ||
                                            m.Content.ToLower().Contains("concerning"))
+                                // EXCLUDE generic knowledge questions that are not patient-specific concerns
+                                .Where(m => !IsGenericKnowledgeQuestion(m.Content))
                                 .Take(5)
                                 .ToList();
 
@@ -1602,5 +1605,54 @@ If you need general medical information without patient context, please switch t
             }
         }
 
+        /// <summary>
+        /// Determines if a message is a generic knowledge question (not a patient-specific concern)
+        /// Generic questions like "what are normal values of glucose?" should be excluded from AI Health Check context
+        /// </summary>
+        private bool IsGenericKnowledgeQuestion(string messageContent)
+        {
+            if (string.IsNullOrWhiteSpace(messageContent))
+                return false;
+
+            var lowerContent = messageContent.ToLower();
+
+            // Patterns that indicate generic knowledge questions (not patient concerns)
+            var genericQuestionPatterns = new[]
+            {
+                "what are normal",
+                "what are the normal",
+                "what is normal",
+                "what are critical",
+                "what are serious",
+                "what is a normal",
+                "what are typical",
+                "what is typical",
+                "normal values of",
+                "normal range of",
+                "normal levels of",
+                "what does",
+                "how does",
+                "explain",
+                "tell me about",
+                "what is",
+                "what are"
+            };
+
+            // Check if it's a question (contains ?) and matches generic patterns
+            bool isQuestion = lowerContent.Contains("?");
+            bool matchesGenericPattern = genericQuestionPatterns.Any(pattern => lowerContent.Contains(pattern));
+
+            // Also check if it's asking about general information (not patient-specific)
+            bool isGeneralInfo = lowerContent.Contains("in general") || 
+                                lowerContent.Contains("generally") ||
+                                (isQuestion && matchesGenericPattern && 
+                                 !lowerContent.Contains("my") && 
+                                 !lowerContent.Contains("patient") &&
+                                 !lowerContent.Contains("i have") &&
+                                 !lowerContent.Contains("i am") &&
+                                 !lowerContent.Contains("i feel"));
+
+            return isQuestion && (matchesGenericPattern || isGeneralInfo);
+        }
     }
 }
