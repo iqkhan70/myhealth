@@ -356,13 +356,25 @@
         {
             new SMDataGridActionButton<EmergencyAlert>
             {
-                Icon = "check",
-                ButtonStyle = ButtonStyle.Success,
+                IconFunc = (incident) => incident.IsAcknowledged ? "undo" : "check",
+                ButtonStyleFunc = (incident) => incident.IsAcknowledged ? ButtonStyle.Info : ButtonStyle.Success,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Acknowledge emergency incident",
-                OnClick = async (incident, ct) => await AcknowledgeIncidentAsync(incident, ct),
-                Disabled = (incident) => incident.IsAcknowledged || isProcessing
+                TooltipFunc = (incident) => incident.IsAcknowledged 
+                    ? $"Un-acknowledge emergency incident (Acknowledged on: {incident.AcknowledgedAt?.ToString("MM/dd/yyyy HH:mm") ?? "Unknown"})"
+                    : "Acknowledge emergency incident",
+                OnClick = async (incident, ct) => 
+                {
+                    if (incident.IsAcknowledged)
+                    {
+                        await UnacknowledgeIncidentAsync(incident, ct);
+                    }
+                    else
+                    {
+                        await AcknowledgeIncidentAsync(incident, ct);
+                    }
+                },
+                Disabled = (incident) => isProcessing
             }
         };
     }
@@ -461,6 +473,49 @@
         catch (Exception ex)
         {
             NotificationService.ShowError($"Failed to acknowledge incident: {ex.Message}");
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UnacknowledgeIncidentAsync(EmergencyAlert incident, CancellationToken ct)
+    {
+        var details = $"Type: {incident.EmergencyType}\n" +
+                     $"Severity: {incident.Severity}\n" +
+                     $"Patient: {incident.PatientName}\n" +
+                     $"Acknowledged: {incident.AcknowledgedAt?.ToString("MMM dd, yyyy 'at' h:mm tt")}";
+
+        var confirmed = await JSRuntime.ConfirmDestructiveAsync("un-acknowledge this emergency incident", details, "emergency incident");
+
+        if (!confirmed) return;
+
+        try
+        {
+            isProcessing = true;
+            StateHasChanged();
+
+            var success = await EmergencyService.UnacknowledgeAsync(incident.Id, ct);
+
+            if (success)
+            {
+                NotificationService.ShowSuccess("Incident un-acknowledged successfully. It will now be included in AI health checks.");
+
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
+            }
+            else
+            {
+                NotificationService.ShowError("Failed to un-acknowledge incident");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to un-acknowledge incident: {ex.Message}");
         }
         finally
         {

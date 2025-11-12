@@ -40,6 +40,13 @@ namespace SM_MentalHealthApp.Client.Services
             var httpResponse = await _http.PostAsJsonAsync($"api/emergency/acknowledge/{incidentId}", request, ct);
             return httpResponse.IsSuccessStatusCode;
         }
+
+        public async Task<bool> UnacknowledgeAsync(int incidentId, CancellationToken ct = default)
+        {
+            AddAuthorizationHeader();
+            var httpResponse = await _http.PostAsync($"api/emergency/unacknowledge/{incidentId}", null, ct);
+            return httpResponse.IsSuccessStatusCode;
+        }
     }
 }
 

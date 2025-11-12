@@ -614,6 +614,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Acknowledges an emergency incident
         /// </summary>
         [HttpPost("acknowledge/{incidentId}")]
+        [Authorize(Roles = "Doctor,Admin")]
         public async Task<ActionResult> AcknowledgeIncident(int incidentId, [FromBody] AcknowledgeRequest request)
         {
             try
@@ -641,6 +642,46 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 _logger.LogError(ex, "Error acknowledging incident {IncidentId}", incidentId);
                 return StatusCode(500, "Internal server error acknowledging incident");
+            }
+        }
+
+        /// <summary>
+        /// Un-acknowledges an emergency incident (allows doctors to reverse acknowledgment)
+        /// </summary>
+        [HttpPost("unacknowledge/{incidentId}")]
+        [Authorize(Roles = "Doctor,Admin")]
+        public async Task<ActionResult> UnacknowledgeIncident(int incidentId)
+        {
+            try
+            {
+                var incident = await _context.EmergencyIncidents.FindAsync(incidentId);
+                if (incident == null)
+                {
+                    return NotFound("Incident not found");
+                }
+
+                if (!incident.IsAcknowledged)
+                {
+                    return BadRequest("Incident is not acknowledged");
+                }
+
+                // Clear acknowledgment fields
+                incident.IsAcknowledged = false;
+                incident.AcknowledgedAt = null;
+                incident.DoctorId = null;
+                incident.DoctorResponse = null;
+                incident.ActionTaken = null;
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Emergency incident {IncidentId} un-acknowledged", incidentId);
+
+                return Ok(new { message = "Incident un-acknowledged successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error un-acknowledging incident {IncidentId}", incidentId);
+                return StatusCode(500, "Internal server error un-acknowledging incident");
             }
         }
 

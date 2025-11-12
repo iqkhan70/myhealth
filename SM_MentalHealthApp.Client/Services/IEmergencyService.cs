@@ -10,6 +10,7 @@ namespace SM_MentalHealthApp.Client.Services
         Task<IEnumerable<EmergencyAlert>> ListAsync(int? doctorId, CancellationToken ct = default);
         Task<EmergencyAlert?> GetAsync(int incidentId, CancellationToken ct = default);
         Task<bool> AcknowledgeAsync(int incidentId, int doctorId, string response, string actionTaken, CancellationToken ct = default);
+        Task<bool> UnacknowledgeAsync(int incidentId, CancellationToken ct = default);
     }
 }
 
