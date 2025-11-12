@@ -53,7 +53,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 // Fallback response if API fails - use template
                 var fallbackTemplate = await _templateService.FormatTemplateAsync("journal_fallback_neutral", null);
-                var fallbackMessage = !string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "I understand you're sharing your thoughts with me. Thank you for trusting me with your feelings.";
+                var fallbackMessage = !string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : await _templateService.FormatTemplateAsync("fallback_journal_neutral", null) ?? "I understand you're sharing your thoughts with me. Thank you for trusting me with your feelings.";
                 return (fallbackMessage, "Neutral");
             }
         }
@@ -204,7 +204,7 @@ namespace SM_MentalHealthApp.Server.Services
             var moodContext = await _templateService.FormatTemplateAsync(moodContextTemplateKey, null);
             if (string.IsNullOrEmpty(moodContext))
             {
-                moodContext = "The person is sharing their thoughts. Respond with empathy and understanding.";
+                moodContext = await _templateService.FormatTemplateAsync("fallback_mood_context", null) ?? "The person is sharing their thoughts. Respond with empathy and understanding.";
             }
 
             var baseTemplate = await _templateService.FormatTemplateAsync("journal_prompt_base", new Dictionary<string, string>
@@ -213,7 +213,14 @@ namespace SM_MentalHealthApp.Server.Services
                 { "MOOD_CONTEXT", moodContext }
             });
 
-            return !string.IsNullOrEmpty(baseTemplate) ? baseTemplate : $"You are a compassionate mental health companion. A person has written in their journal: \"{text}\"\n\n{moodContext}\n\nRespond with a brief, empathetic message (2-3 sentences) that acknowledges their feelings and provides gentle support. Be warm and encouraging.";
+            if (!string.IsNullOrEmpty(baseTemplate)) return baseTemplate;
+
+            var fallbackPrompt = await _templateService.FormatTemplateAsync("fallback_journal_prompt", new Dictionary<string, string>
+            {
+                { "JOURNAL_TEXT", text },
+                { "MOOD_CONTEXT", moodContext }
+            });
+            return !string.IsNullOrEmpty(fallbackPrompt) ? fallbackPrompt : $"You are a compassionate mental health companion. A person has written in their journal: \"{text}\"\n\n{moodContext}\n\nRespond with a brief, empathetic message (2-3 sentences) that acknowledges their feelings and provides gentle support. Be warm and encouraging.";
         }
 
         private async Task<string> CleanJournalResponseAsync(string response)
@@ -253,7 +260,10 @@ namespace SM_MentalHealthApp.Server.Services
             };
 
             var template = await _templateService.FormatTemplateAsync(templateKey, null);
-            return !string.IsNullOrEmpty(template) ? template : "Thank you for sharing your thoughts with me.";
+            if (!string.IsNullOrEmpty(template)) return template;
+
+            var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_journal_thanks", null);
+            return !string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "Thank you for sharing your thoughts with me.";
         }
 
         public async Task<(string response, string mood)> AnalyzeMedicalJournalEntry(string text, MedicalJournalAnalysis medicalAnalysis)
@@ -354,7 +364,14 @@ namespace SM_MentalHealthApp.Server.Services
                 { "MEDICAL_ANALYSIS", medicalAnalysisText }
             });
 
-            return !string.IsNullOrEmpty(baseTemplate) ? baseTemplate : $"You are a medical AI assistant analyzing a journal entry that contains medical data.\n\nJournal Entry: \"{text}\"\n\n{medicalAnalysisText}\n\nProvide a medical assessment that acknowledges the medical data presented, provides appropriate medical context and interpretation, gives clear recommendations based on the values, maintains a professional caring tone, and emphasizes the importance of professional medical consultation when appropriate.";
+            if (!string.IsNullOrEmpty(baseTemplate)) return baseTemplate;
+
+            var fallbackPrompt = await _templateService.FormatTemplateAsync("fallback_medical_journal_prompt", new Dictionary<string, string>
+            {
+                { "JOURNAL_TEXT", text },
+                { "MEDICAL_ANALYSIS", medicalAnalysisText }
+            });
+            return !string.IsNullOrEmpty(fallbackPrompt) ? fallbackPrompt : $"You are a medical AI assistant analyzing a journal entry that contains medical data.\n\nJournal Entry: \"{text}\"\n\n{medicalAnalysisText}\n\nProvide a medical assessment that acknowledges the medical data presented, provides appropriate medical context and interpretation, gives clear recommendations based on the values, maintains a professional caring tone, and emphasizes the importance of professional medical consultation when appropriate.";
         }
 
         private async Task<string> CleanMedicalJournalResponseAsync(string response)
@@ -495,7 +512,8 @@ namespace SM_MentalHealthApp.Server.Services
                         else
                         {
                             var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_previously_acknowledged", null);
-                            response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Previously Acknowledged Emergencies:**");
+                            var finalTemplate = !string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : await _templateService.FormatTemplateAsync("section_previously_acknowledged_fallback", null) ?? "**Previously Acknowledged Emergencies:**";
+                            response.AppendLine(finalTemplate);
                         }
                         response.AppendLine(acknowledgedDetailsText);
                         response.AppendLine();
@@ -538,7 +556,8 @@ namespace SM_MentalHealthApp.Server.Services
                         else
                         {
                             var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_medical_data_analysis", null);
-                            response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Medical Data Analysis:**");
+                            var finalTemplate = !string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : await _templateService.FormatTemplateAsync("section_medical_data_analysis_fallback", null) ?? "**Medical Data Analysis:**";
+                            response.AppendLine(finalTemplate);
                         }
 
                         // Check for critical medical values
@@ -613,7 +632,8 @@ namespace SM_MentalHealthApp.Server.Services
                         else
                         {
                             var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_medical_data_analysis", null);
-                            response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Medical Data Analysis:**");
+                            var finalTemplate = !string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : await _templateService.FormatTemplateAsync("section_medical_data_analysis_fallback", null) ?? "**Medical Data Analysis:**";
+                            response.AppendLine(finalTemplate);
                         }
 
                         var medicalDataTemplate = await _templateService.FormatTemplateAsync("emergency_medical_data", new Dictionary<string, string>
@@ -637,7 +657,10 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 _logger.LogError(ex, "Error generating emergency response");
                 var fallbackTemplate = await _templateService.FormatTemplateAsync("emergency_fallback", null);
-                return !string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "🚨 **CRITICAL EMERGENCY ALERT:** Emergency incidents detected requiring immediate attention!";
+                if (!string.IsNullOrEmpty(fallbackTemplate)) return fallbackTemplate;
+
+                var finalFallback = await _templateService.FormatTemplateAsync("fallback_emergency_alert", null);
+                return !string.IsNullOrEmpty(finalFallback) ? finalFallback : "🚨 **CRITICAL EMERGENCY ALERT:** Emergency incidents detected requiring immediate attention!";
             }
         }
 
@@ -805,7 +828,7 @@ namespace SM_MentalHealthApp.Server.Services
                     if (responseData.Length > 0)
                     {
                         var fallbackText = await _templateService.FormatTemplateAsync("fallback_generic", null);
-                        var defaultFallback = !string.IsNullOrEmpty(fallbackText) ? fallbackText : "I understand. How can I help you today?";
+                        var defaultFallback = !string.IsNullOrEmpty(fallbackText) ? fallbackText : await _templateService.FormatTemplateAsync("fallback_generic_response", null) ?? "I understand. How can I help you today?";
                         var generatedText = responseData[0].GetProperty("generated_text").GetString() ?? defaultFallback;
 
                         // Clean up the response - remove the original input if it's included
@@ -892,7 +915,8 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 // Final fallback for generic mode
-                return "I understand your question. For specific medical information, please consult with your healthcare provider or use the patient chat feature for personalized analysis.";
+                var genericFallback = await _templateService.FormatTemplateAsync("fallback_generic_mode", null);
+                return !string.IsNullOrEmpty(genericFallback) ? genericFallback : "I understand your question. For specific medical information, please consult with your healthcare provider or use the patient chat feature for personalized analysis.";
             }
 
             // Check if this is a role-based prompt with enhanced context (only for non-generic mode)
@@ -1027,7 +1051,10 @@ namespace SM_MentalHealthApp.Server.Services
                     {
                         // No patient selected or no data available - use template
                         var template = await _templateService.FormatTemplateAsync("fallback_no_patient_selected", null);
-                        return !string.IsNullOrEmpty(template) ? template : "⚠️ **No Patient Selected**\n\nTo provide personalized insights about a specific patient, please select a patient from the dropdown above.";
+                        if (!string.IsNullOrEmpty(template)) return template;
+
+                        var noPatientFallback = await _templateService.FormatTemplateAsync("no_patient_selected_fallback", null);
+                        return !string.IsNullOrEmpty(noPatientFallback) ? noPatientFallback : "⚠️ **No Patient Selected**\n\nTo provide personalized insights about a specific patient, please select a patient from the dropdown above.";
                     }
 
                     // Check for critical medical conditions - use both alerts and database-driven detection
@@ -1421,7 +1448,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**Clinical Assessment:**");
+                                var assessmentHeaderFallback = await _templateService.FormatTemplateAsync("section_clinical_assessment", null);
+                                response.AppendLine(!string.IsNullOrEmpty(assessmentHeaderFallback) ? assessmentHeaderFallback : "**Clinical Assessment:**");
                             }
 
                             if (criticalAlerts.Any())
@@ -1659,7 +1687,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**Clinical Assessment:**");
+                                var assessmentHeaderFallback = await _templateService.FormatTemplateAsync("section_clinical_assessment", null);
+                                response.AppendLine(!string.IsNullOrEmpty(assessmentHeaderFallback) ? assessmentHeaderFallback : "**Clinical Assessment:**");
                             }
 
                             var inResponseTemplate = await _templateService.FormatTemplateAsync("assessment_in_response", new Dictionary<string, string>
@@ -1740,7 +1769,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                                    var stableStatus = await _templateService.FormatTemplateAsync("stable_status", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(stableStatus) ? stableStatus : "✅ The patient appears to be stable with no immediate concerns detected.");
                                 }
                             }
 
@@ -1778,7 +1808,8 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("**Patient Medical Overview:**");
+                            var overviewHeaderFallback = await _templateService.FormatTemplateAsync("section_patient_overview", null);
+                            response.AppendLine(!string.IsNullOrEmpty(overviewHeaderFallback) ? overviewHeaderFallback : "**Patient Medical Overview:**");
                         }
 
                         var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:") || a.Contains("CRITICAL:")).ToList();
@@ -1837,7 +1868,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                var stableStatusFull = await _templateService.FormatTemplateAsync("stable_status", null);
+                                response.AppendLine(!string.IsNullOrEmpty(stableStatusFull) ? stableStatusFull : "✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
                             }
                         }
                         else if (abnormalValues.Any())
@@ -1853,7 +1885,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
+                                var abnormalDetected = await _templateService.FormatTemplateAsync("concerns_detected", null);
+                                response.AppendLine(!string.IsNullOrEmpty(abnormalDetected) ? abnormalDetected : "⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
                                 response.AppendLine(abnormalText);
                             }
                         }
@@ -1866,7 +1899,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                var stableStatusFull = await _templateService.FormatTemplateAsync("stable_status", null);
+                                response.AppendLine(!string.IsNullOrEmpty(stableStatusFull) ? stableStatusFull : "✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
                             }
                         }
 
@@ -1878,7 +1912,8 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("**Recent Patient Activity:**");
+                            var activityHeaderFallback = await _templateService.FormatTemplateAsync("section_recent_activity", null);
+                            response.AppendLine(!string.IsNullOrEmpty(activityHeaderFallback) ? activityHeaderFallback : "**Recent Patient Activity:**");
                         }
 
                         if (journalEntries.Any())
@@ -1963,7 +1998,8 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("**Clinical Assessment:**");
+                            var assessmentHeader = await _templateService.FormatTemplateAsync("section_clinical_assessment", null);
+                            response.AppendLine(!string.IsNullOrEmpty(assessmentHeader) ? assessmentHeader : "**Clinical Assessment:**");
                         }
 
                         if (criticalAlerts.Any())
@@ -1975,7 +2011,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.");
+                                var criticalIntervention = await _templateService.FormatTemplateAsync("assessment_critical_intervention", null);
+                                response.AppendLine(!string.IsNullOrEmpty(criticalIntervention) ? criticalIntervention : "The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.");
                             }
                         }
                         else if (abnormalValues.Any())
@@ -1987,7 +2024,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.");
+                                var abnormalMonitoring = await _templateService.FormatTemplateAsync("assessment_abnormal_monitoring", null);
+                                response.AppendLine(!string.IsNullOrEmpty(abnormalMonitoring) ? abnormalMonitoring : "The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.");
                             }
                         }
                         else
@@ -1999,7 +2037,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.");
+                                var stableCondition = await _templateService.FormatTemplateAsync("assessment_stable_condition", null);
+                                response.AppendLine(!string.IsNullOrEmpty(stableCondition) ? stableCondition : "The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.");
                             }
                         }
 
@@ -2011,7 +2050,8 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("**Recommendations:**");
+                            var recommendationsHeader = await _templateService.FormatTemplateAsync("section_recommendations", null);
+                            response.AppendLine(!string.IsNullOrEmpty(recommendationsHeader) ? recommendationsHeader : "**Recommendations:**");
                         }
 
                         if (criticalAlerts.Any())
@@ -2062,7 +2102,8 @@ namespace SM_MentalHealthApp.Server.Services
                     }
 
                     // If knowledge file doesn't exist and no patient data, return a basic response
-                    return "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
+                    var errorFallback = await _templateService.FormatTemplateAsync("fallback_patient_query", null);
+                    return !string.IsNullOrEmpty(errorFallback) ? errorFallback : "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
                 }
             }
             catch (Exception ex)
@@ -2071,7 +2112,8 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             // Final fallback
-            return "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
+            var finalFallback = await _templateService.FormatTemplateAsync("fallback_patient_query", null);
+            return !string.IsNullOrEmpty(finalFallback) ? finalFallback : "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
 
             // Legacy personalized prompt handling
             if (text.Contains("You are talking to") && text.Contains("Their recent mood patterns"))
@@ -2081,6 +2123,17 @@ namespace SM_MentalHealthApp.Server.Services
                 var moodPatterns = lines.FirstOrDefault(l => l.StartsWith("Their recent mood patterns"))?.Replace("Their recent mood patterns: ", "");
                 var latestEntry = lines.FirstOrDefault(l => l.StartsWith("Their latest journal entry"));
 
+                // Legacy prompt handling - use templates
+                var legacyTemplate = await _templateService.FormatTemplateAsync("legacy_personalized_greeting", new Dictionary<string, string>
+                {
+                    { "PATIENT_NAME", patientName ?? "" },
+                    { "MOOD_PATTERNS", moodPatterns?.ToLower() ?? "" },
+                    { "HAS_LATEST_ENTRY", latestEntry != null ? "true" : "false" }
+                });
+
+                if (!string.IsNullOrEmpty(legacyTemplate)) return legacyTemplate;
+
+                // Fallback to hardcoded if template not found
                 var response = $"Hello {patientName}! I can see from your recent patterns that you've been experiencing {moodPatterns?.ToLower()}. ";
 
                 if (latestEntry != null)
@@ -2127,7 +2180,10 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             var defaultTemplate = await _templateService.FormatTemplateAsync("fallback_default", null);
-            return !string.IsNullOrEmpty(defaultTemplate) ? defaultTemplate : "I'm here as your mental health companion to listen and support you. How are you feeling today?";
+            if (!string.IsNullOrEmpty(defaultTemplate)) return defaultTemplate;
+
+            var finalDefault = await _templateService.FormatTemplateAsync("fallback_default_response", null);
+            return !string.IsNullOrEmpty(finalDefault) ? finalDefault : "I'm here as your mental health companion to listen and support you. How are you feeling today?";
         }
 
         private async Task<string> HandlePatientPromptAsync(string text)
@@ -2917,7 +2973,8 @@ namespace SM_MentalHealthApp.Server.Services
 
                     if (questionLower.Contains("status") || questionLower.Contains("how is") || questionLower.Contains("doing"))
                     {
-                        response.AppendLine("**Patient Status Assessment:**");
+                        var statusHeader = await _templateService.FormatTemplateAsync("section_patient_status_assessment", null);
+                        response.AppendLine(!string.IsNullOrEmpty(statusHeader) ? statusHeader : "**Patient Status Assessment:**");
 
                         if (hasCriticalValues)
                         {
@@ -2927,8 +2984,16 @@ namespace SM_MentalHealthApp.Server.Services
                             {
                                 if (progressionSection.Contains("IMPROVEMENT NOTED"))
                                 {
-                                    response.AppendLine("✅ **IMPROVEMENT NOTED:** Previous results showed critical values, but current results show normal values.");
-                                    response.AppendLine("This indicates positive progress, though continued monitoring is recommended.");
+                                    var improvementTemplate = await _templateService.FormatTemplateAsync("improvement_noted", null);
+                                    if (!string.IsNullOrEmpty(improvementTemplate))
+                                    {
+                                        response.AppendLine(improvementTemplate);
+                                    }
+                                    else
+                                    {
+                                        response.AppendLine("✅ **IMPROVEMENT NOTED:** Previous results showed critical values, but current results show normal values.");
+                                        response.AppendLine("This indicates positive progress, though continued monitoring is recommended.");
+                                    }
                                 }
                                 else if (progressionSection.Contains("DETERIORATION NOTED"))
                                 {
@@ -3070,7 +3135,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 else
                                 {
                                     // Fallback
-                                    response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                    var stableStatusFull = await _templateService.FormatTemplateAsync("stable_status", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(stableStatusFull) ? stableStatusFull : "✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
                                 }
                             }
                         }
@@ -3124,7 +3190,8 @@ namespace SM_MentalHealthApp.Server.Services
                             {
                                 // Fallback - but use actual journal entries, not hardcoded examples
                                 response.AppendLine();
-                                response.AppendLine("**Recent Patient Activity:**");
+                                var activityHeader = await _templateService.FormatTemplateAsync("section_recent_activity", null);
+                                response.AppendLine(!string.IsNullOrEmpty(activityHeader) ? activityHeader : "**Recent Patient Activity:**");
                                 if (!string.IsNullOrEmpty(journalSection))
                                 {
                                     response.AppendLine(journalSection);
@@ -3139,11 +3206,13 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                     else if (questionLower.Contains("stats") || questionLower.Contains("statistics") || questionLower.Contains("data") || questionLower.Contains("snapshot") || questionLower.Contains("results"))
                     {
-                        response.AppendLine("**Patient Medical Statistics:**");
+                        var statsHeader = await _templateService.FormatTemplateAsync("section_patient_medical_statistics", null);
+                        response.AppendLine(!string.IsNullOrEmpty(statsHeader) ? statsHeader : "**Patient Medical Statistics:**");
 
                         if (hasMedicalData)
                         {
-                            response.AppendLine("📊 **Latest Medical Data:**");
+                            var latestDataHeader = await _templateService.FormatTemplateAsync("section_latest_medical_data", null);
+                            response.AppendLine(!string.IsNullOrEmpty(latestDataHeader) ? latestDataHeader : "📊 **Latest Medical Data:**");
 
                             // Extract actual critical values from context
                             var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
@@ -3153,41 +3222,70 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("Medical data available - review test results for specific values");
+                                var medicalDataAvailable = await _templateService.FormatTemplateAsync("medical_data_available", null);
+                                response.AppendLine(!string.IsNullOrEmpty(medicalDataAvailable) ? medicalDataAvailable : "Medical data available - review test results for specific values");
                             }
                         }
                         else
                         {
-                            response.AppendLine("📊 **No recent medical data available for statistical analysis.**");
+                            var noMedicalData = await _templateService.FormatTemplateAsync("no_medical_data_statistics", null);
+                            response.AppendLine(!string.IsNullOrEmpty(noMedicalData) ? noMedicalData : "📊 **No recent medical data available for statistical analysis.**");
                         }
 
                         if (hasJournalEntries)
                         {
                             response.AppendLine();
-                            response.AppendLine("**Mood Statistics:**");
-                            response.AppendLine("- Recent entries show mixed mood patterns");
-                            response.AppendLine("- Patient actively tracking health status");
+                            var moodStatsHeader = await _templateService.FormatTemplateAsync("section_mood_statistics", null);
+                            response.AppendLine(!string.IsNullOrEmpty(moodStatsHeader) ? moodStatsHeader : "**Mood Statistics:**");
+
+                            var moodStatsContent = await _templateService.FormatTemplateAsync("mood_statistics_content", null);
+                            if (!string.IsNullOrEmpty(moodStatsContent))
+                            {
+                                response.AppendLine(moodStatsContent);
+                            }
+                            else
+                            {
+                                response.AppendLine("- Recent entries show mixed mood patterns");
+                                response.AppendLine("- Patient actively tracking health status");
+                            }
                         }
                     }
                     else if (questionLower.Contains("suggestions") || questionLower.Contains("recommendations") || questionLower.Contains("approach") || questionLower.Contains("attacking") || questionLower.Contains("where should"))
                     {
-                        response.AppendLine("**Clinical Recommendations:**");
+                        var recommendationsHeader = await _templateService.FormatTemplateAsync("section_clinical_recommendations", null);
+                        response.AppendLine(!string.IsNullOrEmpty(recommendationsHeader) ? recommendationsHeader : "**Clinical Recommendations:**");
 
                         if (hasCriticalValues)
                         {
-                            response.AppendLine("🚨 **IMMEDIATE ACTIONS REQUIRED:**");
-                            response.AppendLine("1. **Emergency Medical Care**: Contact emergency services immediately");
-                            response.AppendLine("2. **Hospital Admission**: Patient requires immediate hospitalization");
-                            response.AppendLine("3. **Specialist Consultation**: Refer to hematologist for severe anemia");
-                            response.AppendLine("4. **Continuous Monitoring**: Vital signs every 15 minutes");
-                            response.AppendLine("5. **Blood Transfusion**: Consider immediate blood transfusion if hemoglobin is critically low");
+                            var criticalRecommendations = await _templateService.FormatTemplateAsync("recommendations_critical_detailed", null);
+                            if (!string.IsNullOrEmpty(criticalRecommendations))
+                            {
+                                response.AppendLine(criticalRecommendations);
+                            }
+                            else
+                            {
+                                response.AppendLine("🚨 **IMMEDIATE ACTIONS REQUIRED:**");
+                                response.AppendLine("1. **Emergency Medical Care**: Contact emergency services immediately");
+                                response.AppendLine("2. **Hospital Admission**: Patient requires immediate hospitalization");
+                                response.AppendLine("3. **Specialist Consultation**: Refer to hematologist for severe anemia");
+                                response.AppendLine("4. **Continuous Monitoring**: Vital signs every 15 minutes");
+                                response.AppendLine("5. **Blood Transfusion**: Consider immediate blood transfusion if hemoglobin is critically low");
+                            }
                         }
                         else
                         {
-                            response.AppendLine("📋 **General Recommendations:**");
-                            response.AppendLine("1. **Regular Monitoring**: Schedule routine follow-up appointments");
-                            response.AppendLine("2. **Lifestyle Modifications**: Dietary changes and exercise recommendations");
-                            response.AppendLine("3. **Medication Review**: Assess current medications and interactions");
+                            var generalRecommendations = await _templateService.FormatTemplateAsync("recommendations_general", null);
+                            if (!string.IsNullOrEmpty(generalRecommendations))
+                            {
+                                response.AppendLine(generalRecommendations);
+                            }
+                            else
+                            {
+                                response.AppendLine("📋 **General Recommendations:**");
+                                response.AppendLine("1. **Regular Monitoring**: Schedule routine follow-up appointments");
+                                response.AppendLine("2. **Lifestyle Modifications**: Dietary changes and exercise recommendations");
+                                response.AppendLine("3. **Medication Review**: Assess current medications and interactions");
+                            }
                         }
                     }
                     else
@@ -3196,11 +3294,13 @@ namespace SM_MentalHealthApp.Server.Services
                         // For AI Health Check, this is the main analysis path
                         if (isAiHealthCheck)
                         {
-                            response.AppendLine("**Patient Medical Overview:**");
+                            var overviewHeader = await _templateService.FormatTemplateAsync("section_patient_overview", null);
+                            response.AppendLine(!string.IsNullOrEmpty(overviewHeader) ? overviewHeader : "**Patient Medical Overview:**");
                         }
                         else
                         {
-                            response.AppendLine($"**Response to: \"{userQuestion}\"**");
+                            var responseHeader = await _templateService.FormatTemplateAsync("section_response_to_question", new Dictionary<string, string> { { "USER_QUESTION", userQuestion } });
+                            response.AppendLine(!string.IsNullOrEmpty(responseHeader) ? responseHeader : $"**Response to: \"{userQuestion}\"**");
                             response.AppendLine();
                         }
 
@@ -3263,7 +3363,8 @@ namespace SM_MentalHealthApp.Server.Services
                             else
                             {
                                 // Fallback
-                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                var stableStatusFull = await _templateService.FormatTemplateAsync("stable_status", null);
+                                response.AppendLine(!string.IsNullOrEmpty(stableStatusFull) ? stableStatusFull : "✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
                             }
                         }
                         else
@@ -3277,7 +3378,8 @@ namespace SM_MentalHealthApp.Server.Services
                             else
                             {
                                 // Fallback
-                                response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                                var stableStatus = await _templateService.FormatTemplateAsync("stable_status", null);
+                                response.AppendLine(!string.IsNullOrEmpty(stableStatus) ? stableStatus : "✅ The patient appears to be stable with no immediate concerns detected.");
                             }
                         }
                     }
@@ -3363,7 +3465,8 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("📊 **Current Status:** Patient appears stable with no immediate concerns.");
+                            var statusReview = await _templateService.FormatTemplateAsync("status_review", null);
+                            response.AppendLine(!string.IsNullOrEmpty(statusReview) ? statusReview : "📊 **Current Status:** Patient appears stable with no immediate concerns.");
                         }
                     }
 
@@ -3382,14 +3485,16 @@ namespace SM_MentalHealthApp.Server.Services
                         else
                         {
                             response.AppendLine();
-                            response.AppendLine("**Recent Patient Activity:**");
+                            var activityHeader = await _templateService.FormatTemplateAsync("section_recent_activity", null);
+                            response.AppendLine(!string.IsNullOrEmpty(activityHeader) ? activityHeader : "**Recent Patient Activity:**");
                             if (!string.IsNullOrEmpty(journalSection))
                             {
                                 response.AppendLine(journalSection);
                             }
                             else
                             {
-                                response.AppendLine("The patient has been actively engaging with their health tracking.");
+                                var patientTracking = await _templateService.FormatTemplateAsync("status_patient_tracking", null);
+                                response.AppendLine(!string.IsNullOrEmpty(patientTracking) ? patientTracking : "The patient has been actively engaging with their health tracking.");
                             }
                         }
                     }
@@ -3400,7 +3505,8 @@ namespace SM_MentalHealthApp.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing enhanced context response");
-                return "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
+                var errorFallback = await _templateService.FormatTemplateAsync("fallback_patient_query", null);
+                return !string.IsNullOrEmpty(errorFallback) ? errorFallback : "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
             }
         }
 
