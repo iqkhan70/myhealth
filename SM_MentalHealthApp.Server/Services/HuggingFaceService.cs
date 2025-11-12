@@ -48,8 +48,10 @@ namespace SM_MentalHealthApp.Server.Services
             }
             catch (Exception)
             {
-                // Fallback response if API fails
-                return ("I understand you're sharing your thoughts with me. Thank you for trusting me with your feelings.", "Neutral");
+                // Fallback response if API fails - use template
+                var fallbackTemplate = await _templateService.FormatTemplateAsync("journal_fallback_neutral", null);
+                var fallbackMessage = !string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "I understand you're sharing your thoughts with me. Thank you for trusting me with your feelings.";
+                return (fallbackMessage, "Neutral");
             }
         }
 
@@ -480,9 +482,17 @@ namespace SM_MentalHealthApp.Server.Services
                 if (acknowledgedCount > 0)
                 {
                     var acknowledgedDetailsText = string.Join("\n", acknowledgedDetails);
-                    if (unacknowledgedCount > 0)
+                    if (unacknowledgedCount > 0 && acknowledgedCount > 0)
                     {
-                        response.AppendLine("**Previously Acknowledged Emergencies:**");
+                        var sectionTemplate = await _templateService.FormatTemplateAsync("section_previously_acknowledged", null);
+                        if (!string.IsNullOrEmpty(sectionTemplate))
+                        {
+                            response.AppendLine(sectionTemplate);
+                        }
+                        else
+                        {
+                            response.AppendLine("**Previously Acknowledged Emergencies:**");
+                        }
                         response.AppendLine(acknowledgedDetailsText);
                         response.AppendLine();
                     }
@@ -516,7 +526,15 @@ namespace SM_MentalHealthApp.Server.Services
                     var medicalData = medicalDataMatch.Groups[1].Value.Trim();
                     if (!string.IsNullOrEmpty(medicalData))
                     {
-                        response.AppendLine("**Medical Data Analysis:**");
+                        var sectionHeader = await _templateService.FormatTemplateAsync("section_medical_data_analysis", null);
+                        if (!string.IsNullOrEmpty(sectionHeader))
+                        {
+                            response.AppendLine(sectionHeader);
+                        }
+                        else
+                        {
+                            response.AppendLine("**Medical Data Analysis:**");
+                        }
 
                         // Check for critical medical values
                         var criticalAlerts = new List<string>();
@@ -582,6 +600,16 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                         }
 
+                        var medicalDataSectionHeader = await _templateService.FormatTemplateAsync("section_medical_data_analysis", null);
+                        if (!string.IsNullOrEmpty(medicalDataSectionHeader))
+                        {
+                            response.AppendLine(medicalDataSectionHeader);
+                        }
+                        else
+                        {
+                            response.AppendLine("**Medical Data Analysis:**");
+                        }
+
                         var medicalDataTemplate = await _templateService.FormatTemplateAsync("emergency_medical_data", new Dictionary<string, string>
                         {
                             { "MEDICAL_DATA", medicalData }
@@ -589,6 +617,10 @@ namespace SM_MentalHealthApp.Server.Services
                         if (!string.IsNullOrEmpty(medicalDataTemplate))
                         {
                             response.AppendLine(medicalDataTemplate);
+                        }
+                        else
+                        {
+                            response.AppendLine(medicalData);
                         }
                     }
                 }
@@ -766,7 +798,9 @@ namespace SM_MentalHealthApp.Server.Services
 
                     if (responseData.Length > 0)
                     {
-                        var generatedText = responseData[0].GetProperty("generated_text").GetString() ?? "I understand. How can I help you today?";
+                        var fallbackText = await _templateService.FormatTemplateAsync("fallback_generic", null);
+                        var defaultFallback = !string.IsNullOrEmpty(fallbackText) ? fallbackText : "I understand. How can I help you today?";
+                        var generatedText = responseData[0].GetProperty("generated_text").GetString() ?? defaultFallback;
 
                         // Clean up the response - remove the original input if it's included
                         if (generatedText.StartsWith(text))
@@ -774,7 +808,9 @@ namespace SM_MentalHealthApp.Server.Services
                             generatedText = generatedText.Substring(text.Length).Trim();
                         }
 
-                        var finalResponse = string.IsNullOrWhiteSpace(generatedText) ? "I understand. How can I help you today?" : generatedText;
+                        var fallbackText2 = await _templateService.FormatTemplateAsync("fallback_generic", null);
+                        var defaultFallback2 = !string.IsNullOrEmpty(fallbackText2) ? fallbackText2 : "I understand. How can I help you today?";
+                        var finalResponse = string.IsNullOrWhiteSpace(generatedText) ? defaultFallback2 : generatedText;
                         return finalResponse;
                     }
                 }
@@ -828,7 +864,9 @@ namespace SM_MentalHealthApp.Server.Services
 
                         if (simpleResponseData.Length > 0)
                         {
-                            var generatedText = simpleResponseData[0].GetProperty("generated_text").GetString() ?? "I understand. How can I help you today?";
+                            var fallbackText3 = await _templateService.FormatTemplateAsync("fallback_generic", null);
+                            var defaultFallback3 = !string.IsNullOrEmpty(fallbackText3) ? fallbackText3 : "I understand. How can I help you today?";
+                            var generatedText = simpleResponseData[0].GetProperty("generated_text").GetString() ?? defaultFallback3;
 
                             // Clean up the response
                             if (generatedText.StartsWith(text))
@@ -836,7 +874,9 @@ namespace SM_MentalHealthApp.Server.Services
                                 generatedText = generatedText.Substring(text.Length).Trim();
                             }
 
-                            return string.IsNullOrWhiteSpace(generatedText) ? "I understand. How can I help you today?" : generatedText;
+                            var fallbackText4 = await _templateService.FormatTemplateAsync("fallback_generic", null);
+                            var defaultFallback4 = !string.IsNullOrEmpty(fallbackText4) ? fallbackText4 : "I understand. How can I help you today?";
+                            return string.IsNullOrWhiteSpace(generatedText) ? defaultFallback4 : generatedText;
                         }
                     }
                 }
@@ -995,62 +1035,142 @@ namespace SM_MentalHealthApp.Server.Services
 
                     if (hasCriticalConditions)
                     {
-                        response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention. ");
-
-                        // Extract actual critical values from context (from "Critical Values Found:" section)
                         var criticalValuesSection = ExtractCriticalValuesFromContext(text);
-                        if (!string.IsNullOrEmpty(criticalValuesSection))
-                        {
-                            response.AppendLine(criticalValuesSection);
-                        }
+                        var criticalAlertText = criticalValuesSection ?? "- Critical medical values detected - review test results for details";
 
-                        response.AppendLine();
-                        response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                        response.AppendLine("- These values indicate a medical emergency");
-                        response.AppendLine("- Contact emergency services if symptoms worsen");
-                        response.AppendLine("- Patient needs immediate medical evaluation");
+                        var template = await _templateService.FormatTemplateAsync("critical_alert", new Dictionary<string, string>
+                        {
+                            { "CRITICAL_VALUES", criticalAlertText }
+                        });
+
+                        if (!string.IsNullOrEmpty(template))
+                        {
+                            response.AppendLine(template);
+                        }
+                        else
+                        {
+                            response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention. ");
+                            response.AppendLine(criticalAlertText);
+                            response.AppendLine();
+                            response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                            response.AppendLine("- These values indicate a medical emergency");
+                            response.AppendLine("- Contact emergency services if symptoms worsen");
+                            response.AppendLine("- Patient needs immediate medical evaluation");
+                        }
                     }
                     else if (alerts.Any())
                     {
-                        response.AppendLine("🚨 **MEDICAL ALERTS DETECTED:**");
-                        foreach (var alert in alerts)
+                        var alertsText = string.Join("\n", alerts.Select(a => $"- {a}"));
+                        var alertsHeader = await _templateService.FormatTemplateAsync("status_medical_alerts_detected", null);
+                        if (!string.IsNullOrEmpty(alertsHeader))
                         {
-                            response.AppendLine($"- {alert}");
+                            response.AppendLine(alertsHeader);
                         }
+                        else
+                        {
+                            response.AppendLine("🚨 **MEDICAL ALERTS DETECTED:**");
+                        }
+                        response.AppendLine(alertsText);
                         response.AppendLine();
 
                         if (hasAbnormalConditions)
                         {
-                            response.AppendLine("**MEDICAL MONITORING NEEDED:** Abnormal values detected that require medical attention.");
+                            var template = await _templateService.FormatTemplateAsync("status_medical_monitoring_needed", null);
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                response.AppendLine("**MEDICAL MONITORING NEEDED:** Abnormal values detected that require medical attention.");
+                            }
                         }
                         else if (hasNormalConditions)
                         {
-                            response.AppendLine("**CURRENT STATUS:** Patient shows normal values, but previous concerning results require continued monitoring.");
+                            var template = await _templateService.FormatTemplateAsync("status_continued_monitoring", null);
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                response.AppendLine("**CURRENT STATUS:** Patient shows normal values, but previous concerning results require continued monitoring.");
+                            }
                         }
                     }
                     else if (hasMedicalContent)
                     {
-                        response.AppendLine("📊 **Medical Content Analysis:** I've reviewed the patient's medical content. ");
-
                         if (!hasCriticalValues)
                         {
-                            response.AppendLine("⚠️ **IMPORTANT:** While medical content was found, I was unable to detect specific critical values in the current analysis. ");
-                            response.AppendLine("Please ensure all test results are properly formatted and accessible for accurate medical assessment.");
+                            var template = await _templateService.FormatTemplateAsync("medical_content_warning", null);
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                var analysisTemplate = await _templateService.FormatTemplateAsync("medical_content_analysis", null);
+                                if (!string.IsNullOrEmpty(analysisTemplate))
+                                {
+                                    response.AppendLine(analysisTemplate);
+                                }
+                                else
+                                {
+                                    response.AppendLine("📊 **Medical Content Analysis:** I've reviewed the patient's medical content. ");
+                                }
+
+                                // Use medical_content_warning template which includes both messages
+                                var warningTemplate = await _templateService.FormatTemplateAsync("medical_content_warning", null);
+                                if (!string.IsNullOrEmpty(warningTemplate))
+                                {
+                                    response.AppendLine(warningTemplate);
+                                }
+                                else
+                                {
+                                    response.AppendLine("⚠️ **IMPORTANT:** While medical content was found, I was unable to detect specific critical values in the current analysis. ");
+                                    response.AppendLine("Please ensure all test results are properly formatted and accessible for accurate medical assessment.");
+                                }
+                            }
                         }
                         else
                         {
-                            response.AppendLine("Please ensure all critical values are properly addressed with appropriate medical care.");
+                            var template = await _templateService.FormatTemplateAsync("medical_content_critical_care", null);
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                response.AppendLine("Please ensure all critical values are properly addressed with appropriate medical care.");
+                            }
                         }
                     }
 
                     if (journalEntries.Any())
                     {
-                        response.AppendLine("📝 **Recent Patient Activity:**");
-                        foreach (var entry in journalEntries.Take(3)) // Show last 3 entries
+                        var journalSection = string.Join("\n", journalEntries.Take(3).Select(e => $"- {e}"));
+                        var sectionHeader = await _templateService.FormatTemplateAsync("section_recent_activity", null);
+                        var template = await _templateService.FormatTemplateAsync("recent_patient_activity", new Dictionary<string, string>
                         {
-                            response.AppendLine($"- {entry}");
+                            { "JOURNAL_ENTRIES", journalSection }
+                        });
+                        if (!string.IsNullOrEmpty(template))
+                        {
+                            response.AppendLine(template);
                         }
-                        response.AppendLine();
+                        else
+                        {
+                            if (!string.IsNullOrEmpty(sectionHeader))
+                            {
+                                response.AppendLine(sectionHeader);
+                            }
+                            else
+                            {
+                                response.AppendLine("📝 **Recent Patient Activity:**");
+                            }
+                            response.AppendLine(journalSection);
+                            response.AppendLine();
+                        }
                     }
 
                     // Extract the actual user question from the context
@@ -1079,7 +1199,15 @@ namespace SM_MentalHealthApp.Server.Services
                         if (isHealthCheck || questionLower.Contains("status") || questionLower.Contains("how is") || questionLower.Contains("condition"))
                         {
                             // Generate comprehensive health check analysis
-                            response.AppendLine("**Patient Medical Overview:**");
+                            var overviewHeader2 = await _templateService.FormatTemplateAsync("section_patient_overview", null);
+                            if (!string.IsNullOrEmpty(overviewHeader2))
+                            {
+                                response.AppendLine(overviewHeader2);
+                            }
+                            else
+                            {
+                                response.AppendLine("**Patient Medical Overview:**");
+                            }
 
                             // Check for critical medical values - MUST check context directly, not just alerts
                             var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:") || a.Contains("CRITICAL:")).ToList();
@@ -1097,100 +1225,217 @@ namespace SM_MentalHealthApp.Server.Services
                             // If critical values found in context OR alerts, prioritize them
                             if (criticalAlerts.Any() || hasCriticalInContext)
                             {
-                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                                if (criticalAlerts.Any())
+                                var criticalValuesText = criticalAlerts.Any()
+                                    ? string.Join("\n", criticalAlerts.Select(c => $"- {c}"))
+                                    : ExtractCriticalValuesFromContext(text);
+
+                                var criticalAlertText = criticalValuesText ?? "- Critical medical values detected - review test results for details";
+
+                                var template = await _templateService.FormatTemplateAsync("critical_alert", new Dictionary<string, string>
                                 {
-                                    foreach (var critical in criticalAlerts)
-                                    {
-                                        response.AppendLine($"- {critical}");
-                                    }
-                                }
-                                // Extract actual critical values from context if not in alerts
-                                if (hasCriticalInContext && !criticalAlerts.Any())
+                                    { "CRITICAL_VALUES", criticalAlertText }
+                                });
+
+                                if (!string.IsNullOrEmpty(template))
                                 {
-                                    var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                                    if (!string.IsNullOrEmpty(criticalValuesFromContext))
-                                    {
-                                        response.AppendLine(criticalValuesFromContext);
-                                    }
+                                    response.AppendLine(template);
                                 }
-                                response.AppendLine();
-                                response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                response.AppendLine("- These values indicate a medical emergency");
-                                response.AppendLine("- Contact emergency services if symptoms worsen");
-                                response.AppendLine("- Patient needs immediate medical evaluation");
+                                else
+                                {
+                                    response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                    response.AppendLine(criticalAlertText);
+                                    response.AppendLine();
+                                    response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                                    response.AppendLine("- These values indicate a medical emergency");
+                                    response.AppendLine("- Contact emergency services if symptoms worsen");
+                                    response.AppendLine("- Patient needs immediate medical evaluation");
+                                }
                             }
                             else if (normalValues.Any() && !abnormalValues.Any() && !hasCriticalInContext)
                             {
-                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                var template = await _templateService.FormatTemplateAsync("stable_status", null);
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                }
                             }
                             else if (abnormalValues.Any())
                             {
-                                response.AppendLine("⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
-                                foreach (var abnormal in abnormalValues.Take(3))
+                                var abnormalText = string.Join("\n", abnormalValues.Take(3).Select(a => $"- {a}"));
+                                var template = await _templateService.FormatTemplateAsync("concerns_detected", new Dictionary<string, string>
                                 {
-                                    response.AppendLine($"- {abnormal}");
+                                    { "ABNORMAL_VALUES", abnormalText }
+                                });
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
+                                    response.AppendLine(abnormalText);
                                 }
                             }
                             else
                             {
-                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                var template = await _templateService.FormatTemplateAsync("stable_status", null);
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                }
                             }
 
                             response.AppendLine();
-                            response.AppendLine("**Recent Patient Activity:**");
+                            var activityHeader = await _templateService.FormatTemplateAsync("section_recent_activity", null);
+                            if (!string.IsNullOrEmpty(activityHeader))
+                            {
+                                response.AppendLine(activityHeader);
+                            }
+                            else
+                            {
+                                response.AppendLine("**Recent Patient Activity:**");
+                            }
 
                             if (journalEntries.Any())
                             {
-                                foreach (var entry in journalEntries.Take(3))
+                                var journalSection = string.Join("\n", journalEntries.Take(3).Select(e => $"- {e}"));
+                                var template = await _templateService.FormatTemplateAsync("recent_patient_activity", new Dictionary<string, string>
                                 {
-                                    response.AppendLine($"- {entry}");
+                                    { "JOURNAL_ENTRIES", journalSection }
+                                });
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine(journalSection);
                                 }
                             }
                             else
                             {
-                                response.AppendLine("- No recent journal entries found.");
+                                var noEntriesTemplate = await _templateService.FormatTemplateAsync("status_no_journal_entries", null);
+                                if (!string.IsNullOrEmpty(noEntriesTemplate))
+                                {
+                                    response.AppendLine(noEntriesTemplate);
+                                }
+                                else
+                                {
+                                    response.AppendLine("- No recent journal entries found.");
+                                }
                             }
 
                             // Check for chat history
                             if (text.Contains("=== RECENT CHAT HISTORY ==="))
                             {
                                 response.AppendLine();
-                                response.AppendLine("**Chat History:** Patient has been engaging in conversations with the AI assistant.");
+                                var chatTemplate = await _templateService.FormatTemplateAsync("section_chat_history", null);
+                                if (!string.IsNullOrEmpty(chatTemplate))
+                                {
+                                    response.AppendLine(chatTemplate);
+                                }
+                                else
+                                {
+                                    response.AppendLine("**Chat History:** Patient has been engaging in conversations with the AI assistant.");
+                                }
                             }
 
                             // Check for clinical notes
                             if (text.Contains("=== RECENT CLINICAL NOTES ==="))
                             {
                                 response.AppendLine();
-                                response.AppendLine("**Clinical Notes:** Recent clinical documentation is available for review.");
+                                var notesTemplate = await _templateService.FormatTemplateAsync("section_clinical_notes", null);
+                                if (!string.IsNullOrEmpty(notesTemplate))
+                                {
+                                    response.AppendLine(notesTemplate);
+                                }
+                                else
+                                {
+                                    response.AppendLine("**Clinical Notes:** Recent clinical documentation is available for review.");
+                                }
                             }
 
                             // Check for emergency incidents
                             if (text.Contains("=== RECENT EMERGENCY INCIDENTS ==="))
                             {
                                 response.AppendLine();
-                                response.AppendLine("⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.");
+                                var emergencyTemplate = await _templateService.FormatTemplateAsync("section_emergency_incidents", null);
+                                if (!string.IsNullOrEmpty(emergencyTemplate))
+                                {
+                                    response.AppendLine(emergencyTemplate);
+                                }
+                                else
+                                {
+                                    response.AppendLine("⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.");
+                                }
                             }
 
                             response.AppendLine();
-                            response.AppendLine("**Clinical Assessment:**");
-
-                            if (criticalAlerts.Any())
+                            var assessmentHeader = await _templateService.FormatTemplateAsync("section_clinical_assessment", null);
+                            if (!string.IsNullOrEmpty(assessmentHeader))
                             {
-                                response.AppendLine("The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.");
-                            }
-                            else if (abnormalValues.Any())
-                            {
-                                response.AppendLine("The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.");
+                                response.AppendLine(assessmentHeader);
                             }
                             else
                             {
-                                response.AppendLine("The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.");
+                                response.AppendLine("**Clinical Assessment:**");
+                            }
+
+                            if (criticalAlerts.Any())
+                            {
+                                var template = await _templateService.FormatTemplateAsync("assessment_critical_intervention", null);
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.");
+                                }
+                            }
+                            else if (abnormalValues.Any())
+                            {
+                                var template = await _templateService.FormatTemplateAsync("assessment_abnormal_monitoring", null);
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.");
+                                }
+                            }
+                            else
+                            {
+                                var template = await _templateService.FormatTemplateAsync("assessment_stable_condition", null);
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.");
+                                }
                             }
 
                             response.AppendLine();
-                            response.AppendLine("**Recommendations:**");
+                            var recommendationsHeader = await _templateService.FormatTemplateAsync("section_recommendations", null);
+                            if (!string.IsNullOrEmpty(recommendationsHeader))
+                            {
+                                response.AppendLine(recommendationsHeader);
+                            }
+                            else
+                            {
+                                response.AppendLine("**Recommendations:**");
+                            }
 
                             if (criticalAlerts.Any())
                             {
@@ -1201,9 +1446,12 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("- Immediate medical evaluation required");
-                                    response.AppendLine("- Consider emergency department visit");
-                                    response.AppendLine("- Notify assigned doctors immediately");
+                                    var action1 = await _templateService.FormatTemplateAsync("action_immediate_evaluation", null);
+                                    var action2 = await _templateService.FormatTemplateAsync("action_emergency_department", null);
+                                    var action3 = await _templateService.FormatTemplateAsync("action_notify_doctors", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(action1) ? action1 : "- Immediate medical evaluation required");
+                                    response.AppendLine(!string.IsNullOrEmpty(action2) ? action2 : "- Consider emergency department visit");
+                                    response.AppendLine(!string.IsNullOrEmpty(action3) ? action3 : "- Notify assigned doctors immediately");
                                 }
                             }
                             else if (abnormalValues.Any())
@@ -1215,9 +1463,12 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("- Schedule follow-up appointment within 1-2 weeks");
-                                    response.AppendLine("- Repeat laboratory tests as indicated");
-                                    response.AppendLine("- Monitor patient closely for any changes");
+                                    var action1 = await _templateService.FormatTemplateAsync("action_followup_appointment", null);
+                                    var action2 = await _templateService.FormatTemplateAsync("action_repeat_tests", null);
+                                    var action3 = await _templateService.FormatTemplateAsync("action_monitor_patient", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(action1) ? action1 : "- Schedule follow-up appointment within 1-2 weeks");
+                                    response.AppendLine(!string.IsNullOrEmpty(action2) ? action2 : "- Repeat laboratory tests as indicated");
+                                    response.AppendLine(!string.IsNullOrEmpty(action3) ? action3 : "- Monitor patient closely for any changes");
                                 }
                             }
                             else
@@ -1229,15 +1480,26 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("- Continue current care plan");
-                                    response.AppendLine("- Maintain routine follow-up schedule");
-                                    response.AppendLine("- Encourage continued health tracking");
+                                    var action1 = await _templateService.FormatTemplateAsync("action_continue_care", null);
+                                    var action2 = await _templateService.FormatTemplateAsync("action_maintain_schedule", null);
+                                    var action3 = await _templateService.FormatTemplateAsync("action_encourage_tracking", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(action1) ? action1 : "- Continue current care plan");
+                                    response.AppendLine(!string.IsNullOrEmpty(action2) ? action2 : "- Maintain routine follow-up schedule");
+                                    response.AppendLine(!string.IsNullOrEmpty(action3) ? action3 : "- Encourage continued health tracking");
                                 }
                             }
                         }
                         else if (questionLower.Contains("suggestions") || questionLower.Contains("approach") || questionLower.Contains("recommendations") || questionLower.Contains("what should"))
                         {
-                            response.AppendLine("**Clinical Recommendations:**");
+                            var recommendationsHeader = await _templateService.FormatTemplateAsync("section_clinical_recommendations", null);
+                            if (!string.IsNullOrEmpty(recommendationsHeader))
+                            {
+                                response.AppendLine(recommendationsHeader);
+                            }
+                            else
+                            {
+                                response.AppendLine("**Clinical Recommendations:**");
+                            }
 
                             if (hasCriticalConditions)
                             {
@@ -1248,12 +1510,20 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("🚨 **IMMEDIATE ACTIONS REQUIRED:**");
-                                    response.AppendLine("1. **Emergency Medical Care**: Contact emergency services immediately");
-                                    response.AppendLine("2. **Hospital Admission**: Patient requires immediate hospitalization");
-                                    response.AppendLine("3. **Specialist Consultation**: Refer to appropriate specialist");
-                                    response.AppendLine("4. **Continuous Monitoring**: Vital signs every 15 minutes");
-                                    response.AppendLine("5. **Immediate Intervention**: Consider immediate medical intervention based on critical values");
+                                    var detailedTemplate = await _templateService.FormatTemplateAsync("recommendations_critical_detailed", null);
+                                    if (!string.IsNullOrEmpty(detailedTemplate))
+                                    {
+                                        response.AppendLine(detailedTemplate);
+                                    }
+                                    else
+                                    {
+                                        response.AppendLine("🚨 **IMMEDIATE ACTIONS REQUIRED:**");
+                                        response.AppendLine("1. **Emergency Medical Care**: Contact emergency services immediately");
+                                        response.AppendLine("2. **Hospital Admission**: Patient requires immediate hospitalization");
+                                        response.AppendLine("3. **Specialist Consultation**: Refer to appropriate specialist");
+                                        response.AppendLine("4. **Continuous Monitoring**: Vital signs every 15 minutes");
+                                        response.AppendLine("5. **Immediate Intervention**: Consider immediate medical intervention based on critical values");
+                                    }
                                 }
                             }
                             else if (hasAbnormalConditions)
@@ -1265,11 +1535,19 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("⚠️ **MEDICAL MANAGEMENT NEEDED:**");
-                                    response.AppendLine("1. **Primary Care Follow-up**: Schedule appointment within 24-48 hours");
-                                    response.AppendLine("2. **Laboratory Monitoring**: Repeat blood work in 1-2 weeks");
-                                    response.AppendLine("3. **Lifestyle Modifications**: Dietary changes and exercise recommendations");
-                                    response.AppendLine("4. **Medication Review**: Assess current medications and interactions");
+                                    var detailedTemplate = await _templateService.FormatTemplateAsync("recommendations_abnormal_detailed", null);
+                                    if (!string.IsNullOrEmpty(detailedTemplate))
+                                    {
+                                        response.AppendLine(detailedTemplate);
+                                    }
+                                    else
+                                    {
+                                        response.AppendLine("⚠️ **MEDICAL MANAGEMENT NEEDED:**");
+                                        response.AppendLine("1. **Primary Care Follow-up**: Schedule appointment within 24-48 hours");
+                                        response.AppendLine("2. **Laboratory Monitoring**: Repeat blood work in 1-2 weeks");
+                                        response.AppendLine("3. **Lifestyle Modifications**: Dietary changes and exercise recommendations");
+                                        response.AppendLine("4. **Medication Review**: Assess current medications and interactions");
+                                    }
                                 }
                             }
                             else
@@ -1281,77 +1559,164 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("✅ **CURRENT STATUS: STABLE**");
-                                    response.AppendLine("1. **Continue Current Care**: Maintain existing treatment plan");
-                                    response.AppendLine("2. **Regular Monitoring**: Schedule routine follow-up appointments");
-                                    response.AppendLine("3. **Preventive Care**: Focus on maintaining current health status");
+                                    var detailedTemplate = await _templateService.FormatTemplateAsync("recommendations_stable_detailed", null);
+                                    if (!string.IsNullOrEmpty(detailedTemplate))
+                                    {
+                                        response.AppendLine(detailedTemplate);
+                                    }
+                                    else
+                                    {
+                                        response.AppendLine("✅ **CURRENT STATUS: STABLE**");
+                                        response.AppendLine("1. **Continue Current Care**: Maintain existing treatment plan");
+                                        response.AppendLine("2. **Regular Monitoring**: Schedule routine follow-up appointments");
+                                        response.AppendLine("3. **Preventive Care**: Focus on maintaining current health status");
+                                    }
                                 }
                             }
                         }
                         else if (questionLower.Contains("areas of concern") || questionLower.Contains("concerns"))
                         {
-                            response.AppendLine("**Areas of Concern Analysis:**");
+                            var concernHeader = await _templateService.FormatTemplateAsync("section_areas_of_concern", null);
+                            if (!string.IsNullOrEmpty(concernHeader))
+                            {
+                                response.AppendLine(concernHeader);
+                            }
+                            else
+                            {
+                                response.AppendLine("**Areas of Concern Analysis:**");
+                            }
                             if (alerts.Any())
                             {
-                                response.AppendLine("🚨 **High Priority Concerns:**");
-                                foreach (var alert in alerts)
+                                var alertsText = string.Join("\n", alerts.Select(a => $"- {a}"));
+                                var template = await _templateService.FormatTemplateAsync("concerns_detected", new Dictionary<string, string>
                                 {
-                                    response.AppendLine($"- {alert}");
+                                    { "CONCERNS_LIST", alertsText }
+                                });
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("🚨 **High Priority Concerns:**");
+                                    response.AppendLine(alertsText);
                                 }
                             }
                             else
                             {
-                                response.AppendLine("✅ No immediate concerns detected in the current data.");
+                                var template = await _templateService.FormatTemplateAsync("stable_status", null);
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("✅ No immediate concerns detected in the current data.");
+                                }
                             }
                         }
                         else
                         {
                             // Generic response for other questions
-                            response.AppendLine("**Clinical Assessment:**");
-                            response.AppendLine($"In response to your question: \"{userQuestion}\"");
+                            var assessmentHeader = await _templateService.FormatTemplateAsync("section_clinical_assessment", null);
+                            if (!string.IsNullOrEmpty(assessmentHeader))
+                            {
+                                response.AppendLine(assessmentHeader);
+                            }
+                            else
+                            {
+                                response.AppendLine("**Clinical Assessment:**");
+                            }
+
+                            var inResponseTemplate = await _templateService.FormatTemplateAsync("assessment_in_response", new Dictionary<string, string>
+                            {
+                                { "USER_QUESTION", userQuestion }
+                            });
+                            if (!string.IsNullOrEmpty(inResponseTemplate))
+                            {
+                                response.AppendLine(inResponseTemplate);
+                            }
+                            else
+                            {
+                                response.AppendLine($"In response to your question: \"{userQuestion}\"");
+                            }
                             response.AppendLine();
 
                             if (hasCriticalConditions)
                             {
-                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-
-                                // Extract actual critical values from context
                                 var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                                if (!string.IsNullOrEmpty(criticalValuesFromContext))
-                                {
-                                    response.AppendLine(criticalValuesFromContext);
-                                }
-                                else
+                                if (string.IsNullOrEmpty(criticalValuesFromContext))
                                 {
                                     // Fallback: extract from alerts if available
                                     var localCriticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:") || a.Contains("CRITICAL:")).ToList();
                                     if (localCriticalAlerts.Any())
                                     {
-                                        foreach (var critical in localCriticalAlerts)
-                                        {
-                                            response.AppendLine($"- {critical}");
-                                        }
+                                        criticalValuesFromContext = string.Join("\n", localCriticalAlerts.Select(c => $"- {c}"));
                                     }
                                 }
 
-                                response.AppendLine();
-                                response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                response.AppendLine("- These values indicate a medical emergency");
-                                response.AppendLine("- Contact emergency services if symptoms worsen");
-                                response.AppendLine("- Patient needs immediate medical evaluation");
+                                var criticalAlertText = criticalValuesFromContext ?? "- Critical medical values detected - review test results for details";
+
+                                var template = await _templateService.FormatTemplateAsync("critical_alert", new Dictionary<string, string>
+                                {
+                                    { "CRITICAL_VALUES", criticalAlertText }
+                                });
+
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                    response.AppendLine(criticalAlertText);
+                                    response.AppendLine();
+                                    response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                                    response.AppendLine("- These values indicate a medical emergency");
+                                    response.AppendLine("- Contact emergency services if symptoms worsen");
+                                    response.AppendLine("- Patient needs immediate medical evaluation");
+                                }
                             }
                             else if (hasAbnormalConditions)
                             {
-                                response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values that require attention and monitoring.");
+                                var template = await _templateService.FormatTemplateAsync("concerns_detected", null);
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values that require attention and monitoring.");
+                                }
                             }
                             else
                             {
-                                response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                                var template = await _templateService.FormatTemplateAsync("stable_status", null);
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("✅ The patient appears to be stable with no immediate concerns detected.");
+                                }
                             }
 
                             if (journalEntries.Any())
                             {
-                                response.AppendLine("The patient has been actively engaging with their health tracking.");
+                                var journalSection = string.Join("\n", journalEntries.Take(3).Select(e => $"- {e}"));
+                                var template = await _templateService.FormatTemplateAsync("mood_statistics", new Dictionary<string, string>
+                                {
+                                    { "JOURNAL_ENTRIES", journalSection }
+                                });
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    response.AppendLine("The patient has been actively engaging with their health tracking.");
+                                }
                             }
                         }
 
@@ -1363,7 +1728,15 @@ namespace SM_MentalHealthApp.Server.Services
                         _logger.LogInformation("No question extracted, but patient data detected. Generating comprehensive health check analysis.");
 
                         // Generate comprehensive health check analysis
-                        response.AppendLine("**Patient Medical Overview:**");
+                        var overviewHeader = await _templateService.FormatTemplateAsync("section_patient_overview", null);
+                        if (!string.IsNullOrEmpty(overviewHeader))
+                        {
+                            response.AppendLine(overviewHeader);
+                        }
+                        else
+                        {
+                            response.AppendLine("**Patient Medical Overview:**");
+                        }
 
                         var criticalAlerts = alerts.Where(a => a.Contains("🚨 CRITICAL:") || a.Contains("CRITICAL VALUES:") || a.Contains("CRITICAL:")).ToList();
                         var normalValues = alerts.Where(a => a.Contains("✅ NORMAL:") || a.Contains("NORMAL VALUES:")).ToList();
@@ -1379,115 +1752,241 @@ namespace SM_MentalHealthApp.Server.Services
                         // If critical values found in context OR alerts, prioritize them
                         if (criticalAlerts.Any() || hasCriticalInContext)
                         {
-                            response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                            if (criticalAlerts.Any())
+                            var criticalValuesText = criticalAlerts.Any()
+                                ? string.Join("\n", criticalAlerts.Select(c => $"- {c}"))
+                                : ExtractCriticalValuesFromContext(text);
+
+                            var criticalAlertText = criticalValuesText ?? "- Critical medical values detected - review test results for details";
+
+                            var template = await _templateService.FormatTemplateAsync("critical_alert", new Dictionary<string, string>
                             {
-                                foreach (var critical in criticalAlerts)
-                                {
-                                    response.AppendLine($"- {critical}");
-                                }
-                            }
-                            // Extract critical values from context if not in alerts
-                            if (hasCriticalInContext && !criticalAlerts.Any())
+                                { "CRITICAL_VALUES", criticalAlertText }
+                            });
+
+                            if (!string.IsNullOrEmpty(template))
                             {
-                                var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                                if (!string.IsNullOrEmpty(criticalValuesFromContext))
-                                {
-                                    response.AppendLine(criticalValuesFromContext);
-                                }
+                                response.AppendLine(template);
                             }
-                            response.AppendLine();
-                            response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                            response.AppendLine("- These values indicate a medical emergency");
-                            response.AppendLine("- Contact emergency services if symptoms worsen");
-                            response.AppendLine("- Patient needs immediate medical evaluation");
+                            else
+                            {
+                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                response.AppendLine(criticalAlertText);
+                                response.AppendLine();
+                                response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                                response.AppendLine("- These values indicate a medical emergency");
+                                response.AppendLine("- Contact emergency services if symptoms worsen");
+                                response.AppendLine("- Patient needs immediate medical evaluation");
+                            }
                         }
                         else if (normalValues.Any() && !abnormalValues.Any() && !hasCriticalInContext)
                         {
-                            response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                            var template = await _templateService.FormatTemplateAsync("stable_status", null);
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                            }
                         }
                         else if (abnormalValues.Any())
                         {
-                            response.AppendLine("⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
-                            foreach (var abnormal in abnormalValues.Take(3))
+                            var abnormalText = string.Join("\n", abnormalValues.Take(3).Select(a => $"- {a}"));
+                            var template = await _templateService.FormatTemplateAsync("concerns_detected", new Dictionary<string, string>
                             {
-                                response.AppendLine($"- {abnormal}");
+                                { "ABNORMAL_VALUES", abnormalText }
+                            });
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                response.AppendLine("⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
+                                response.AppendLine(abnormalText);
                             }
                         }
                         else
                         {
-                            response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                            var template = await _templateService.FormatTemplateAsync("stable_status", null);
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                            }
                         }
 
                         response.AppendLine();
-                        response.AppendLine("**Recent Patient Activity:**");
+                        var activityHeader = await _templateService.FormatTemplateAsync("section_recent_activity", null);
+                        if (!string.IsNullOrEmpty(activityHeader))
+                        {
+                            response.AppendLine(activityHeader);
+                        }
+                        else
+                        {
+                            response.AppendLine("**Recent Patient Activity:**");
+                        }
 
                         if (journalEntries.Any())
                         {
-                            foreach (var entry in journalEntries.Take(3))
+                            var journalSection = string.Join("\n", journalEntries.Take(3).Select(e => $"- {e}"));
+                            var template = await _templateService.FormatTemplateAsync("recent_patient_activity", new Dictionary<string, string>
                             {
-                                response.AppendLine($"- {entry}");
+                                { "JOURNAL_ENTRIES", journalSection }
+                            });
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                response.AppendLine(journalSection);
                             }
                         }
                         else
                         {
-                            response.AppendLine("- No recent journal entries found.");
+                            var noEntriesTemplate = await _templateService.FormatTemplateAsync("status_no_journal_entries", null);
+                            if (!string.IsNullOrEmpty(noEntriesTemplate))
+                            {
+                                response.AppendLine(noEntriesTemplate);
+                            }
+                            else
+                            {
+                                response.AppendLine("- No recent journal entries found.");
+                            }
                         }
 
                         if (text.Contains("=== RECENT CHAT HISTORY ==="))
                         {
                             response.AppendLine();
-                            response.AppendLine("**Chat History:** Patient has been engaging in conversations with the AI assistant.");
+                            var chatTemplate = await _templateService.FormatTemplateAsync("section_chat_history", null);
+                            if (!string.IsNullOrEmpty(chatTemplate))
+                            {
+                                response.AppendLine(chatTemplate);
+                            }
+                            else
+                            {
+                                response.AppendLine("**Chat History:** Patient has been engaging in conversations with the AI assistant.");
+                            }
                         }
 
                         if (text.Contains("=== RECENT CLINICAL NOTES ==="))
                         {
                             response.AppendLine();
-                            response.AppendLine("**Clinical Notes:** Recent clinical documentation is available for review.");
+                            var notesTemplate = await _templateService.FormatTemplateAsync("section_clinical_notes", null);
+                            if (!string.IsNullOrEmpty(notesTemplate))
+                            {
+                                response.AppendLine(notesTemplate);
+                            }
+                            else
+                            {
+                                response.AppendLine("**Clinical Notes:** Recent clinical documentation is available for review.");
+                            }
                         }
 
                         if (text.Contains("=== RECENT EMERGENCY INCIDENTS ==="))
                         {
                             response.AppendLine();
-                            response.AppendLine("⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.");
+                            var emergencyTemplate = await _templateService.FormatTemplateAsync("section_emergency_incidents", null);
+                            if (!string.IsNullOrEmpty(emergencyTemplate))
+                            {
+                                response.AppendLine(emergencyTemplate);
+                            }
+                            else
+                            {
+                                response.AppendLine("⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.");
+                            }
                         }
 
                         response.AppendLine();
-                        response.AppendLine("**Clinical Assessment:**");
-
-                        if (criticalAlerts.Any())
+                        var assessmentHeader2 = await _templateService.FormatTemplateAsync("section_clinical_assessment", null);
+                        if (!string.IsNullOrEmpty(assessmentHeader2))
                         {
-                            response.AppendLine("The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.");
-                        }
-                        else if (abnormalValues.Any())
-                        {
-                            response.AppendLine("The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.");
+                            response.AppendLine(assessmentHeader2);
                         }
                         else
                         {
-                            response.AppendLine("The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.");
+                            response.AppendLine("**Clinical Assessment:**");
+                        }
+
+                        if (criticalAlerts.Any())
+                        {
+                            var template = await _templateService.FormatTemplateAsync("assessment_critical_intervention", null);
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                response.AppendLine("The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.");
+                            }
+                        }
+                        else if (abnormalValues.Any())
+                        {
+                            var template = await _templateService.FormatTemplateAsync("assessment_abnormal_monitoring", null);
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                response.AppendLine("The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.");
+                            }
+                        }
+                        else
+                        {
+                            var template = await _templateService.FormatTemplateAsync("assessment_stable_condition", null);
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                response.AppendLine("The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.");
+                            }
                         }
 
                         response.AppendLine();
-                        response.AppendLine("**Recommendations:**");
-
-                        if (criticalAlerts.Any())
+                        var recommendationsHeaderFinal = await _templateService.FormatTemplateAsync("section_recommendations", null);
+                        if (!string.IsNullOrEmpty(recommendationsHeaderFinal))
                         {
-                            response.AppendLine("- Immediate medical evaluation required");
-                            response.AppendLine("- Consider emergency department visit");
-                            response.AppendLine("- Notify assigned doctors immediately");
-                        }
-                        else if (abnormalValues.Any())
-                        {
-                            response.AppendLine("- Schedule follow-up appointment within 1-2 weeks");
-                            response.AppendLine("- Repeat laboratory tests as indicated");
-                            response.AppendLine("- Monitor patient closely for any changes");
+                            response.AppendLine(recommendationsHeaderFinal);
                         }
                         else
                         {
-                            response.AppendLine("- Continue current care plan");
-                            response.AppendLine("- Maintain routine follow-up schedule");
-                            response.AppendLine("- Encourage continued health tracking");
+                            response.AppendLine("**Recommendations:**");
+                        }
+
+                        if (criticalAlerts.Any())
+                        {
+                            var action1 = await _templateService.FormatTemplateAsync("action_immediate_evaluation", null);
+                            var action2 = await _templateService.FormatTemplateAsync("action_emergency_department", null);
+                            var action3 = await _templateService.FormatTemplateAsync("action_notify_doctors", null);
+                            response.AppendLine(!string.IsNullOrEmpty(action1) ? action1 : "- Immediate medical evaluation required");
+                            response.AppendLine(!string.IsNullOrEmpty(action2) ? action2 : "- Consider emergency department visit");
+                            response.AppendLine(!string.IsNullOrEmpty(action3) ? action3 : "- Notify assigned doctors immediately");
+                        }
+                        else if (abnormalValues.Any())
+                        {
+                            var action1 = await _templateService.FormatTemplateAsync("action_followup_appointment", null);
+                            var action2 = await _templateService.FormatTemplateAsync("action_repeat_tests", null);
+                            var action3 = await _templateService.FormatTemplateAsync("action_monitor_patient", null);
+                            response.AppendLine(!string.IsNullOrEmpty(action1) ? action1 : "- Schedule follow-up appointment within 1-2 weeks");
+                            response.AppendLine(!string.IsNullOrEmpty(action2) ? action2 : "- Repeat laboratory tests as indicated");
+                            response.AppendLine(!string.IsNullOrEmpty(action3) ? action3 : "- Monitor patient closely for any changes");
+                        }
+                        else
+                        {
+                            var action1 = await _templateService.FormatTemplateAsync("action_continue_care", null);
+                            var action2 = await _templateService.FormatTemplateAsync("action_maintain_schedule", null);
+                            var action3 = await _templateService.FormatTemplateAsync("action_encourage_tracking", null);
+                            response.AppendLine(!string.IsNullOrEmpty(action1) ? action1 : "- Continue current care plan");
+                            response.AppendLine(!string.IsNullOrEmpty(action2) ? action2 : "- Maintain routine follow-up schedule");
+                            response.AppendLine(!string.IsNullOrEmpty(action3) ? action3 : "- Encourage continued health tracking");
                         }
 
                         return response.ToString().Trim();

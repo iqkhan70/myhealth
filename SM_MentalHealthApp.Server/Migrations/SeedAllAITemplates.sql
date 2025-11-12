@@ -211,7 +211,69 @@ These values are concerning and should be monitored closely. Recommend follow-up
 ('recommendations_stable', 'Recommendations - Stable', '✅ **CURRENT STATUS: STABLE**
 1. **Continue Current Care**: Maintain existing treatment plan
 2. **Regular Monitoring**: Schedule routine follow-up appointments
-3. **Preventive Care**: Focus on maintaining current health status', 'Clinical recommendations for stable conditions', 10, TRUE, NOW())
+3. **Preventive Care**: Focus on maintaining current health status', 'Clinical recommendations for stable conditions', 10, TRUE, NOW()),
+
+-- Section Headers
+('section_patient_overview', 'Section - Patient Medical Overview', '**Patient Medical Overview:**', 'Header for patient medical overview section', 5, TRUE, NOW()),
+('section_recent_activity', 'Section - Recent Patient Activity', '**Recent Patient Activity:**', 'Header for recent patient activity section', 5, TRUE, NOW()),
+('section_clinical_assessment', 'Section - Clinical Assessment', '**Clinical Assessment:**', 'Header for clinical assessment section', 5, TRUE, NOW()),
+('section_recommendations', 'Section - Recommendations', '**Recommendations:**', 'Header for recommendations section', 5, TRUE, NOW()),
+('section_clinical_recommendations', 'Section - Clinical Recommendations', '**Clinical Recommendations:**', 'Header for clinical recommendations section', 5, TRUE, NOW()),
+('section_areas_of_concern', 'Section - Areas of Concern', '**Areas of Concern Analysis:**', 'Header for areas of concern section', 5, TRUE, NOW()),
+('section_chat_history', 'Section - Chat History', '**Chat History:** Patient has been engaging in conversations with the AI assistant.', 'Chat history section message', 5, TRUE, NOW()),
+('section_clinical_notes', 'Section - Clinical Notes', '**Clinical Notes:** Recent clinical documentation is available for review.', 'Clinical notes section message', 5, TRUE, NOW()),
+('section_emergency_incidents', 'Section - Emergency Incidents', '⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.', 'Emergency incidents section message', 5, TRUE, NOW()),
+('section_previously_acknowledged', 'Section - Previously Acknowledged', '**Previously Acknowledged Emergencies:**', 'Header for previously acknowledged emergencies', 5, TRUE, NOW()),
+('section_medical_data_analysis', 'Section - Medical Data Analysis', '**Medical Data Analysis:**', 'Header for medical data analysis section', 5, TRUE, NOW()),
+
+-- Status Messages
+('status_no_journal_entries', 'Status - No Journal Entries', '- No recent journal entries found.', 'Message when no journal entries are found', 5, TRUE, NOW()),
+('status_patient_tracking', 'Status - Patient Tracking', 'The patient has been actively engaging with their health tracking.', 'Message about patient engagement', 5, TRUE, NOW()),
+('status_medical_alerts_detected', 'Status - Medical Alerts Detected', '🚨 **MEDICAL ALERTS DETECTED:**', 'Header for medical alerts detected', 5, TRUE, NOW()),
+('status_medical_monitoring_needed', 'Status - Medical Monitoring Needed', '**MEDICAL MONITORING NEEDED:** Abnormal values detected that require medical attention.', 'Message about medical monitoring needed', 5, TRUE, NOW()),
+('status_continued_monitoring', 'Status - Continued Monitoring', '**CURRENT STATUS:** Patient shows normal values, but previous concerning results require continued monitoring.', 'Message about continued monitoring', 5, TRUE, NOW()),
+('status_high_priority_concerns', 'Status - High Priority Concerns', '🚨 **High Priority Concerns:**', 'Header for high priority concerns', 5, TRUE, NOW()),
+('status_no_concerns', 'Status - No Concerns', '✅ No immediate concerns detected in the current data.', 'Message when no concerns are detected', 5, TRUE, NOW()),
+
+-- Assessment Messages
+('assessment_critical_intervention', 'Assessment - Critical Intervention', 'The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.', 'Assessment message for critical values', 5, TRUE, NOW()),
+('assessment_abnormal_monitoring', 'Assessment - Abnormal Monitoring', 'The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.', 'Assessment message for abnormal values', 5, TRUE, NOW()),
+('assessment_stable_condition', 'Assessment - Stable Condition', 'The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.', 'Assessment message for stable condition', 5, TRUE, NOW()),
+('assessment_in_response', 'Assessment - In Response', 'In response to your question: "{USER_QUESTION}"', 'Assessment message prefix with user question', 5, TRUE, NOW()),
+
+-- Action Items
+('action_immediate_evaluation', 'Action - Immediate Evaluation', '- Immediate medical evaluation required', 'Action item for immediate evaluation', 5, TRUE, NOW()),
+('action_emergency_department', 'Action - Emergency Department', '- Consider emergency department visit', 'Action item for emergency department', 5, TRUE, NOW()),
+('action_notify_doctors', 'Action - Notify Doctors', '- Notify assigned doctors immediately', 'Action item for notifying doctors', 5, TRUE, NOW()),
+('action_followup_appointment', 'Action - Follow-up Appointment', '- Schedule follow-up appointment within 1-2 weeks', 'Action item for follow-up appointment', 5, TRUE, NOW()),
+('action_repeat_tests', 'Action - Repeat Tests', '- Repeat laboratory tests as indicated', 'Action item for repeating tests', 5, TRUE, NOW()),
+('action_monitor_patient', 'Action - Monitor Patient', '- Monitor patient closely for any changes', 'Action item for monitoring patient', 5, TRUE, NOW()),
+('action_continue_care', 'Action - Continue Care', '- Continue current care plan', 'Action item for continuing care', 5, TRUE, NOW()),
+('action_maintain_schedule', 'Action - Maintain Schedule', '- Maintain routine follow-up schedule', 'Action item for maintaining schedule', 5, TRUE, NOW()),
+('action_encourage_tracking', 'Action - Encourage Tracking', '- Encourage continued health tracking', 'Action item for encouraging tracking', 5, TRUE, NOW()),
+
+-- Medical Content Messages
+('medical_content_analysis', 'Medical Content - Analysis', '📊 **Medical Content Analysis:** I''ve reviewed the patient''s medical content. ', 'Message about medical content analysis', 5, TRUE, NOW()),
+('medical_content_warning', 'Medical Content - Warning', '⚠️ **IMPORTANT:** While medical content was found, I was unable to detect specific critical values in the current analysis. 
+Please ensure all test results are properly formatted and accessible for accurate medical assessment.', 'Warning about medical content detection', 5, TRUE, NOW()),
+('medical_content_critical_care', 'Medical Content - Critical Care', 'Please ensure all critical values are properly addressed with appropriate medical care.', 'Message about critical care', 5, TRUE, NOW()),
+
+-- Detailed Recommendation Blocks (for fallback when main template not found)
+('recommendations_critical_detailed', 'Recommendations - Critical Detailed', '🚨 **IMMEDIATE ACTIONS REQUIRED:**
+1. **Emergency Medical Care**: Contact emergency services immediately
+2. **Hospital Admission**: Patient requires immediate hospitalization
+3. **Specialist Consultation**: Refer to appropriate specialist
+4. **Continuous Monitoring**: Vital signs every 15 minutes
+5. **Immediate Intervention**: Consider immediate medical intervention based on critical values', 'Detailed critical recommendations fallback', 5, TRUE, NOW()),
+('recommendations_abnormal_detailed', 'Recommendations - Abnormal Detailed', '⚠️ **MEDICAL MANAGEMENT NEEDED:**
+1. **Primary Care Follow-up**: Schedule appointment within 24-48 hours
+2. **Laboratory Monitoring**: Repeat blood work in 1-2 weeks
+3. **Lifestyle Modifications**: Dietary changes and exercise recommendations
+4. **Medication Review**: Assess current medications and interactions', 'Detailed abnormal recommendations fallback', 5, TRUE, NOW()),
+('recommendations_stable_detailed', 'Recommendations - Stable Detailed', '✅ **CURRENT STATUS: STABLE**
+1. **Continue Current Care**: Maintain existing treatment plan
+2. **Regular Monitoring**: Schedule routine follow-up appointments
+3. **Preventive Care**: Focus on maintaining current health status', 'Detailed stable recommendations fallback', 5, TRUE, NOW())
 
 ON DUPLICATE KEY UPDATE 
     TemplateName = VALUES(TemplateName),
