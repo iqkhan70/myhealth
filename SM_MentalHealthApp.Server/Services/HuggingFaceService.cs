@@ -13,6 +13,7 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly IKnowledgeBaseService _knowledgeBaseService;
         private readonly IAIResponseTemplateService _templateService;
         private readonly IGenericQuestionPatternService _genericQuestionPatternService;
+        private readonly IMedicalThresholdService _thresholdService;
 
         public HuggingFaceService(
             HttpClient httpClient,
@@ -22,7 +23,8 @@ namespace SM_MentalHealthApp.Server.Services
             ICriticalValueKeywordService keywordService,
             IKnowledgeBaseService knowledgeBaseService,
             IAIResponseTemplateService templateService,
-            IGenericQuestionPatternService genericQuestionPatternService)
+            IGenericQuestionPatternService genericQuestionPatternService,
+            IMedicalThresholdService thresholdService)
         {
             _httpClient = httpClient;
             _apiKey = config["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("HuggingFace API key not found");
@@ -32,6 +34,7 @@ namespace SM_MentalHealthApp.Server.Services
             _knowledgeBaseService = knowledgeBaseService;
             _templateService = templateService;
             _genericQuestionPatternService = genericQuestionPatternService;
+            _thresholdService = thresholdService;
 
             _httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
@@ -563,94 +566,84 @@ namespace SM_MentalHealthApp.Server.Services
                         // Check for critical medical values
                         var criticalAlerts = new List<string>();
 
-                        // Check Blood Pressure (normal: <120/80, high: >140/90, critical: >180/110)
+                        // Check Blood Pressure using database-driven thresholds
                         var bpMatch = System.Text.RegularExpressions.Regex.Match(medicalData, @"Blood Pressure:\s*(\d+)/(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                         if (bpMatch.Success)
                         {
-                            var systolic = int.Parse(bpMatch.Groups[1].Value);
-                            var diastolic = int.Parse(bpMatch.Groups[2].Value);
+                            var systolic = double.Parse(bpMatch.Groups[1].Value);
+                            var diastolic = double.Parse(bpMatch.Groups[2].Value);
 
-                            if (systolic >= 180 || diastolic >= 110)
+                            var threshold = await _thresholdService.GetMatchingThresholdAsync("Blood Pressure", systolic, diastolic);
+                            if (threshold != null)
                             {
-                                var criticalBPTemplate = await _templateService.FormatTemplateAsync("alert_critical_blood_pressure", new Dictionary<string, string>
+                                var templateKey = threshold.SeverityLevel?.ToLowerInvariant() switch
                                 {
-                                    { "SYSTOLIC", systolic.ToString() },
-                                    { "DIASTOLIC", diastolic.ToString() }
-                                });
-                                var criticalBPAlert = !string.IsNullOrEmpty(criticalBPTemplate)
-                                    ? criticalBPTemplate
-                                    : $"🚨 **CRITICAL BLOOD PRESSURE**: {systolic}/{diastolic} - HYPERTENSIVE CRISIS! Immediate medical intervention required!";
-                                criticalAlerts.Add(criticalBPAlert);
-                            }
-                            else if (systolic >= 140 || diastolic >= 90)
-                            {
-                                var highBPTemplate = await _templateService.FormatTemplateAsync("alert_high_blood_pressure", new Dictionary<string, string>
+                                    "critical" => "alert_critical_blood_pressure",
+                                    "high" => "alert_high_blood_pressure",
+                                    _ => "alert_high_blood_pressure"
+                                };
+
+                                var alertTemplate = await _templateService.FormatTemplateAsync(templateKey, new Dictionary<string, string>
                                 {
-                                    { "SYSTOLIC", systolic.ToString() },
-                                    { "DIASTOLIC", diastolic.ToString() }
+                                    { "SYSTOLIC", systolic.ToString("F0") },
+                                    { "DIASTOLIC", diastolic.ToString("F0") }
                                 });
-                                var highBPAlert = !string.IsNullOrEmpty(highBPTemplate)
-                                    ? highBPTemplate
-                                    : $"⚠️ **HIGH BLOOD PRESSURE**: {systolic}/{diastolic} - Requires immediate attention";
-                                criticalAlerts.Add(highBPAlert);
+                                var alertMessage = !string.IsNullOrEmpty(alertTemplate)
+                                    ? alertTemplate
+                                    : $"🚨 **CRITICAL BLOOD PRESSURE**: {systolic:F0}/{diastolic:F0} - HYPERTENSIVE CRISIS! Immediate medical intervention required!";
+                                criticalAlerts.Add(alertMessage);
                             }
                         }
 
-                        // Check Hemoglobin (normal: 12-16 g/dL for men, 11-15 for women)
+                        // Check Hemoglobin using database-driven thresholds
                         var hbMatch = System.Text.RegularExpressions.Regex.Match(medicalData, @"Hemoglobin:\s*(\d+\.?\d*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                         if (hbMatch.Success)
                         {
                             var hemoglobin = double.Parse(hbMatch.Groups[1].Value);
-                            if (hemoglobin < 7.0)
+                            var threshold = await _thresholdService.GetMatchingThresholdAsync("Hemoglobin", hemoglobin);
+                            if (threshold != null)
                             {
-                                var criticalHemoglobinTemplate = await _templateService.FormatTemplateAsync("alert_critical_hemoglobin", new Dictionary<string, string>
+                                var templateKey = threshold.SeverityLevel?.ToLowerInvariant() switch
+                                {
+                                    "critical" => "alert_critical_hemoglobin",
+                                    "low" => "alert_low_hemoglobin",
+                                    _ => "alert_low_hemoglobin"
+                                };
+
+                                var alertTemplate = await _templateService.FormatTemplateAsync(templateKey, new Dictionary<string, string>
                                 {
                                     { "HEMOGLOBIN_VALUE", hemoglobin.ToString("F1") }
                                 });
-                                var criticalHemoglobinAlert = !string.IsNullOrEmpty(criticalHemoglobinTemplate)
-                                    ? criticalHemoglobinTemplate
-                                    : $"🚨 **CRITICAL HEMOGLOBIN**: {hemoglobin} g/dL - SEVERE ANEMIA! Blood transfusion may be required!";
-                                criticalAlerts.Add(criticalHemoglobinAlert);
-                            }
-                            else if (hemoglobin < 10.0)
-                            {
-                                var lowHemoglobinTemplate = await _templateService.FormatTemplateAsync("alert_low_hemoglobin", new Dictionary<string, string>
-                                {
-                                    { "HEMOGLOBIN_VALUE", hemoglobin.ToString("F1") }
-                                });
-                                var lowHemoglobinAlert = !string.IsNullOrEmpty(lowHemoglobinTemplate)
-                                    ? lowHemoglobinTemplate
-                                    : $"⚠️ **LOW HEMOGLOBIN**: {hemoglobin} g/dL - Moderate anemia, requires monitoring";
-                                criticalAlerts.Add(lowHemoglobinAlert);
+                                var alertMessage = !string.IsNullOrEmpty(alertTemplate)
+                                    ? alertTemplate
+                                    : $"🚨 **CRITICAL HEMOGLOBIN**: {hemoglobin:F1} g/dL - SEVERE ANEMIA! Blood transfusion may be required!";
+                                criticalAlerts.Add(alertMessage);
                             }
                         }
 
-                        // Check Triglycerides (normal: <150 mg/dL, high: >200, very high: >500)
+                        // Check Triglycerides using database-driven thresholds
                         var trigMatch = System.Text.RegularExpressions.Regex.Match(medicalData, @"Triglycerides:\s*(\d+\.?\d*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                         if (trigMatch.Success)
                         {
                             var triglycerides = double.Parse(trigMatch.Groups[1].Value);
-                            if (triglycerides >= 500)
+                            var threshold = await _thresholdService.GetMatchingThresholdAsync("Triglycerides", triglycerides);
+                            if (threshold != null)
                             {
-                                var criticalTriglyceridesTemplate = await _templateService.FormatTemplateAsync("alert_critical_triglycerides", new Dictionary<string, string>
+                                var templateKey = threshold.SeverityLevel?.ToLowerInvariant() switch
+                                {
+                                    "critical" => "alert_critical_triglycerides",
+                                    "high" => "alert_high_triglycerides",
+                                    _ => "alert_high_triglycerides"
+                                };
+
+                                var alertTemplate = await _templateService.FormatTemplateAsync(templateKey, new Dictionary<string, string>
                                 {
                                     { "TRIGLYCERIDES_VALUE", triglycerides.ToString("F1") }
                                 });
-                                var criticalTriglyceridesAlert = !string.IsNullOrEmpty(criticalTriglyceridesTemplate)
-                                    ? criticalTriglyceridesTemplate
-                                    : $"🚨 **CRITICAL TRIGLYCERIDES**: {triglycerides} mg/dL - EXTREMELY HIGH! Risk of pancreatitis!";
-                                criticalAlerts.Add(criticalTriglyceridesAlert);
-                            }
-                            else if (triglycerides >= 200)
-                            {
-                                var highTriglyceridesTemplate = await _templateService.FormatTemplateAsync("alert_high_triglycerides", new Dictionary<string, string>
-                                {
-                                    { "TRIGLYCERIDES_VALUE", triglycerides.ToString("F1") }
-                                });
-                                var highTriglyceridesAlert = !string.IsNullOrEmpty(highTriglyceridesTemplate)
-                                    ? highTriglyceridesTemplate
-                                    : $"⚠️ **HIGH TRIGLYCERIDES**: {triglycerides} mg/dL - Requires dietary intervention";
-                                criticalAlerts.Add(highTriglyceridesAlert);
+                                var alertMessage = !string.IsNullOrEmpty(alertTemplate)
+                                    ? alertTemplate
+                                    : $"🚨 **CRITICAL TRIGLYCERIDES**: {triglycerides:F1} mg/dL - EXTREMELY HIGH! Risk of pancreatitis!";
+                                criticalAlerts.Add(alertMessage);
                             }
                         }
 

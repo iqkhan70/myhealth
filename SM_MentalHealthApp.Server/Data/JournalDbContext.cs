@@ -45,6 +45,9 @@ namespace SM_MentalHealthApp.Server.Data
             
             // AI Response Template system entities
             public DbSet<AIResponseTemplate> AIResponseTemplates { get; set; }
+            
+            // Medical Threshold system entities
+            public DbSet<MedicalThreshold> MedicalThresholds { get; set; }
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -648,6 +651,30 @@ namespace SM_MentalHealthApp.Server.Data
                         // Indexes for performance
                         entity.HasIndex(e => e.IsActive);
                         entity.HasIndex(e => e.Priority);
+                        entity.HasIndex(e => new { e.IsActive, e.Priority });
+                  });
+
+                  // Configure MedicalThreshold entity
+                  modelBuilder.Entity<MedicalThreshold>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.ParameterName).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.Unit).HasMaxLength(50);
+                        entity.Property(e => e.SeverityLevel).HasMaxLength(50);
+                        entity.Property(e => e.ComparisonOperator).HasMaxLength(20);
+                        entity.Property(e => e.SecondaryParameterName).HasMaxLength(100);
+                        entity.Property(e => e.SecondaryComparisonOperator).HasMaxLength(20);
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.Property(e => e.Priority).HasDefaultValue(0);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.ParameterName);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.Priority);
+                        entity.HasIndex(e => e.SeverityLevel);
+                        entity.HasIndex(e => new { e.ParameterName, e.IsActive });
                         entity.HasIndex(e => new { e.IsActive, e.Priority });
                   });
             }
