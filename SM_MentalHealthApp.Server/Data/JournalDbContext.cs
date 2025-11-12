@@ -36,6 +36,9 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<AIInstructionCategory> AIInstructionCategories { get; set; }
             public DbSet<AIInstruction> AIInstructions { get; set; }
             
+            // Generic question pattern system entities
+            public DbSet<GenericQuestionPattern> GenericQuestionPatterns { get; set; }
+            
             // Knowledge base system entities
             public DbSet<KnowledgeBaseCategory> KnowledgeBaseCategories { get; set; }
             public DbSet<KnowledgeBaseEntry> KnowledgeBaseEntries { get; set; }
@@ -630,6 +633,22 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.CategoryId);
                         entity.HasIndex(e => e.IsActive);
                         entity.HasIndex(e => e.Keyword);
+                  });
+
+                  // Configure GenericQuestionPattern entity
+                  modelBuilder.Entity<GenericQuestionPattern>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Pattern).IsRequired().HasMaxLength(500);
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.Property(e => e.Priority).HasDefaultValue(0);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.Priority);
+                        entity.HasIndex(e => new { e.IsActive, e.Priority });
                   });
             }
       }

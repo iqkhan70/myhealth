@@ -12,6 +12,7 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly ICriticalValueKeywordService _keywordService;
         private readonly IKnowledgeBaseService _knowledgeBaseService;
         private readonly IAIResponseTemplateService _templateService;
+        private readonly IGenericQuestionPatternService _genericQuestionPatternService;
 
         public HuggingFaceService(
             HttpClient httpClient,
@@ -20,7 +21,8 @@ namespace SM_MentalHealthApp.Server.Services
             ICriticalValuePatternService patternService,
             ICriticalValueKeywordService keywordService,
             IKnowledgeBaseService knowledgeBaseService,
-            IAIResponseTemplateService templateService)
+            IAIResponseTemplateService templateService,
+            IGenericQuestionPatternService genericQuestionPatternService)
         {
             _httpClient = httpClient;
             _apiKey = config["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("HuggingFace API key not found");
@@ -29,6 +31,7 @@ namespace SM_MentalHealthApp.Server.Services
             _keywordService = keywordService;
             _knowledgeBaseService = knowledgeBaseService;
             _templateService = templateService;
+            _genericQuestionPatternService = genericQuestionPatternService;
 
             _httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
@@ -491,7 +494,8 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("**Previously Acknowledged Emergencies:**");
+                            var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_previously_acknowledged", null);
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Previously Acknowledged Emergencies:**");
                         }
                         response.AppendLine(acknowledgedDetailsText);
                         response.AppendLine();
@@ -533,7 +537,8 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("**Medical Data Analysis:**");
+                            var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_medical_data_analysis", null);
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Medical Data Analysis:**");
                         }
 
                         // Check for critical medical values
@@ -607,7 +612,8 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("**Medical Data Analysis:**");
+                            var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_medical_data_analysis", null);
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Medical Data Analysis:**");
                         }
 
                         var medicalDataTemplate = await _templateService.FormatTemplateAsync("emergency_medical_data", new Dictionary<string, string>
@@ -1049,13 +1055,20 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention. ");
+                            var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention. ");
                             response.AppendLine(criticalAlertText);
                             response.AppendLine();
-                            response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                            response.AppendLine("- These values indicate a medical emergency");
-                            response.AppendLine("- Contact emergency services if symptoms worsen");
-                            response.AppendLine("- Patient needs immediate medical evaluation");
+
+                            var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+
+                            var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
+                            var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
+                            var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
                         }
                     }
                     else if (alerts.Any())
@@ -1068,7 +1081,8 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("🚨 **MEDICAL ALERTS DETECTED:**");
+                            var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_medical_alerts_detected", null);
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "🚨 **MEDICAL ALERTS DETECTED:**");
                         }
                         response.AppendLine(alertsText);
                         response.AppendLine();
@@ -1082,7 +1096,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**MEDICAL MONITORING NEEDED:** Abnormal values detected that require medical attention.");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_medical_monitoring_needed", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**MEDICAL MONITORING NEEDED:** Abnormal values detected that require medical attention.");
                             }
                         }
                         else if (hasNormalConditions)
@@ -1094,7 +1109,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**CURRENT STATUS:** Patient shows normal values, but previous concerning results require continued monitoring.");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_continued_monitoring", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**CURRENT STATUS:** Patient shows normal values, but previous concerning results require continued monitoring.");
                             }
                         }
                     }
@@ -1116,7 +1132,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("📊 **Medical Content Analysis:** I've reviewed the patient's medical content. ");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_medical_content_analysis", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "📊 **Medical Content Analysis:** I've reviewed the patient's medical content. ");
                                 }
 
                                 // Use medical_content_warning template which includes both messages
@@ -1127,8 +1144,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("⚠️ **IMPORTANT:** While medical content was found, I was unable to detect specific critical values in the current analysis. ");
-                                    response.AppendLine("Please ensure all test results are properly formatted and accessible for accurate medical assessment.");
+                                    var fallbackWarning = await _templateService.FormatTemplateAsync("fallback_medical_content_important", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackWarning) ? fallbackWarning : "⚠️ **IMPORTANT:** While medical content was found, I was unable to detect specific critical values in the current analysis. \nPlease ensure all test results are properly formatted and accessible for accurate medical assessment.");
                                 }
                             }
                         }
@@ -1141,7 +1158,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("Please ensure all critical values are properly addressed with appropriate medical care.");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_medical_content_critical_care", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "Please ensure all critical values are properly addressed with appropriate medical care.");
                             }
                         }
                     }
@@ -1166,7 +1184,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("📝 **Recent Patient Activity:**");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_recent_activity_header", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "📝 **Recent Patient Activity:**");
                             }
                             response.AppendLine(journalSection);
                             response.AppendLine();
@@ -1206,7 +1225,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**Patient Medical Overview:**");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_patient_overview", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Patient Medical Overview:**");
                             }
 
                             // Check for critical medical values - MUST check context directly, not just alerts
@@ -1242,13 +1262,20 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                    var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
                                     response.AppendLine(criticalAlertText);
                                     response.AppendLine();
-                                    response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                    response.AppendLine("- These values indicate a medical emergency");
-                                    response.AppendLine("- Contact emergency services if symptoms worsen");
-                                    response.AppendLine("- Patient needs immediate medical evaluation");
+
+                                    var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+
+                                    var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
+                                    var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
+                                    var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
                                 }
                             }
                             else if (normalValues.Any() && !abnormalValues.Any() && !hasCriticalInContext)
@@ -1260,7 +1287,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_stable_status", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
                                 }
                             }
                             else if (abnormalValues.Any())
@@ -1276,7 +1304,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_abnormal_values", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.");
                                     response.AppendLine(abnormalText);
                                 }
                             }
@@ -1289,7 +1318,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_stable_status", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
                                 }
                             }
 
@@ -1301,7 +1331,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**Recent Patient Activity:**");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_recent_activity", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Recent Patient Activity:**");
                             }
 
                             if (journalEntries.Any())
@@ -1329,7 +1360,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("- No recent journal entries found.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_no_journal_entries", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "- No recent journal entries found.");
                                 }
                             }
 
@@ -1344,7 +1376,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("**Chat History:** Patient has been engaging in conversations with the AI assistant.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_chat_history", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Chat History:** Patient has been engaging in conversations with the AI assistant.");
                                 }
                             }
 
@@ -1359,7 +1392,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("**Clinical Notes:** Recent clinical documentation is available for review.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_clinical_notes", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Clinical Notes:** Recent clinical documentation is available for review.");
                                 }
                             }
 
@@ -1374,7 +1408,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_emergency_incidents", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.");
                                 }
                             }
 
@@ -1398,7 +1433,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_critical_intervention", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.");
                                 }
                             }
                             else if (abnormalValues.Any())
@@ -1410,7 +1446,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_abnormal_monitoring", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.");
                                 }
                             }
                             else
@@ -1422,7 +1459,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_stable_condition", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.");
                                 }
                             }
 
@@ -1434,7 +1472,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**Recommendations:**");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_recommendations", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Recommendations:**");
                             }
 
                             if (criticalAlerts.Any())
@@ -1498,7 +1537,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**Clinical Recommendations:**");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_recommendations", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Clinical Recommendations:**");
                             }
 
                             if (hasCriticalConditions)
@@ -1517,12 +1557,8 @@ namespace SM_MentalHealthApp.Server.Services
                                     }
                                     else
                                     {
-                                        response.AppendLine("🚨 **IMMEDIATE ACTIONS REQUIRED:**");
-                                        response.AppendLine("1. **Emergency Medical Care**: Contact emergency services immediately");
-                                        response.AppendLine("2. **Hospital Admission**: Patient requires immediate hospitalization");
-                                        response.AppendLine("3. **Specialist Consultation**: Refer to appropriate specialist");
-                                        response.AppendLine("4. **Continuous Monitoring**: Vital signs every 15 minutes");
-                                        response.AppendLine("5. **Immediate Intervention**: Consider immediate medical intervention based on critical values");
+                                        var fallbackDetailedTemplate = await _templateService.FormatTemplateAsync("recommendations_critical_detailed", null);
+                                        response.AppendLine(!string.IsNullOrEmpty(fallbackDetailedTemplate) ? fallbackDetailedTemplate : "🚨 **IMMEDIATE ACTIONS REQUIRED:**\n1. **Emergency Medical Care**: Contact emergency services immediately\n2. **Hospital Admission**: Patient requires immediate hospitalization\n3. **Specialist Consultation**: Refer to appropriate specialist\n4. **Continuous Monitoring**: Vital signs every 15 minutes\n5. **Immediate Intervention**: Consider immediate medical intervention based on critical values");
                                     }
                                 }
                             }
@@ -1542,11 +1578,8 @@ namespace SM_MentalHealthApp.Server.Services
                                     }
                                     else
                                     {
-                                        response.AppendLine("⚠️ **MEDICAL MANAGEMENT NEEDED:**");
-                                        response.AppendLine("1. **Primary Care Follow-up**: Schedule appointment within 24-48 hours");
-                                        response.AppendLine("2. **Laboratory Monitoring**: Repeat blood work in 1-2 weeks");
-                                        response.AppendLine("3. **Lifestyle Modifications**: Dietary changes and exercise recommendations");
-                                        response.AppendLine("4. **Medication Review**: Assess current medications and interactions");
+                                        var fallbackDetailedTemplate = await _templateService.FormatTemplateAsync("recommendations_abnormal_detailed", null);
+                                        response.AppendLine(!string.IsNullOrEmpty(fallbackDetailedTemplate) ? fallbackDetailedTemplate : "⚠️ **MEDICAL MANAGEMENT NEEDED:**\n1. **Primary Care Follow-up**: Schedule appointment within 24-48 hours\n2. **Laboratory Monitoring**: Repeat blood work in 1-2 weeks\n3. **Lifestyle Modifications**: Dietary changes and exercise recommendations\n4. **Medication Review**: Assess current medications and interactions");
                                     }
                                 }
                             }
@@ -1566,10 +1599,8 @@ namespace SM_MentalHealthApp.Server.Services
                                     }
                                     else
                                     {
-                                        response.AppendLine("✅ **CURRENT STATUS: STABLE**");
-                                        response.AppendLine("1. **Continue Current Care**: Maintain existing treatment plan");
-                                        response.AppendLine("2. **Regular Monitoring**: Schedule routine follow-up appointments");
-                                        response.AppendLine("3. **Preventive Care**: Focus on maintaining current health status");
+                                        var fallbackDetailedTemplate = await _templateService.FormatTemplateAsync("recommendations_stable_detailed", null);
+                                        response.AppendLine(!string.IsNullOrEmpty(fallbackDetailedTemplate) ? fallbackDetailedTemplate : "✅ **CURRENT STATUS: STABLE**\n1. **Continue Current Care**: Maintain existing treatment plan\n2. **Regular Monitoring**: Schedule routine follow-up appointments\n3. **Preventive Care**: Focus on maintaining current health status");
                                     }
                                 }
                             }
@@ -1583,7 +1614,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**Areas of Concern Analysis:**");
+                                var fallbackHeaderTemplate = await _templateService.FormatTemplateAsync("section_areas_of_concern", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackHeaderTemplate) ? fallbackHeaderTemplate : "**Areas of Concern Analysis:**");
                             }
                             if (alerts.Any())
                             {
@@ -1598,7 +1630,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("🚨 **High Priority Concerns:**");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("concerns_detected", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "🚨 **High Priority Concerns:**");
                                     response.AppendLine(alertsText);
                                 }
                             }
@@ -1611,7 +1644,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("✅ No immediate concerns detected in the current data.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("stable_status", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "✅ No immediate concerns detected in the current data.");
                                 }
                             }
                         }
@@ -1668,13 +1702,20 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                    var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
                                     response.AppendLine(criticalAlertText);
                                     response.AppendLine();
-                                    response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                    response.AppendLine("- These values indicate a medical emergency");
-                                    response.AppendLine("- Contact emergency services if symptoms worsen");
-                                    response.AppendLine("- Patient needs immediate medical evaluation");
+
+                                    var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+
+                                    var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
+                                    var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
+                                    var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
                                 }
                             }
                             else if (hasAbnormalConditions)
@@ -1686,7 +1727,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values that require attention and monitoring.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_medical_monitoring_needed", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values that require attention and monitoring.");
                                 }
                             }
                             else
@@ -1715,7 +1757,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("The patient has been actively engaging with their health tracking.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("status_patient_tracking", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "The patient has been actively engaging with their health tracking.");
                                 }
                             }
                         }
@@ -1769,13 +1812,20 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
                                 response.AppendLine(criticalAlertText);
                                 response.AppendLine();
-                                response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                response.AppendLine("- These values indicate a medical emergency");
-                                response.AppendLine("- Contact emergency services if symptoms worsen");
-                                response.AppendLine("- Patient needs immediate medical evaluation");
+
+                                var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+
+                                var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
+                                var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
+                                var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
                             }
                         }
                         else if (normalValues.Any() && !abnormalValues.Any() && !hasCriticalInContext)
@@ -1870,7 +1920,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**Chat History:** Patient has been engaging in conversations with the AI assistant.");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_chat_history", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Chat History:** Patient has been engaging in conversations with the AI assistant.");
                             }
                         }
 
@@ -1884,7 +1935,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("**Clinical Notes:** Recent clinical documentation is available for review.");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_clinical_notes", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Clinical Notes:** Recent clinical documentation is available for review.");
                             }
                         }
 
@@ -1898,7 +1950,8 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_emergency_incidents", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.");
                             }
                         }
 
@@ -2711,7 +2764,7 @@ namespace SM_MentalHealthApp.Server.Services
                         var trimmedLine = line.Trim();
 
                         // Skip generic knowledge questions (these come from chat history, not the actual health check question)
-                        if (IsGenericKnowledgeQuestion(trimmedLine))
+                        if (await IsGenericKnowledgeQuestionAsync(trimmedLine))
                         {
                             _logger.LogInformation("Skipping generic knowledge question from chat history: '{Question}'", trimmedLine);
                             continue;
@@ -2740,7 +2793,7 @@ namespace SM_MentalHealthApp.Server.Services
                         var trimmedLine = lines[i].Trim();
 
                         // Skip generic knowledge questions (these come from chat history, not the actual health check question)
-                        if (IsGenericKnowledgeQuestion(trimmedLine))
+                        if (await IsGenericKnowledgeQuestionAsync(trimmedLine))
                         {
                             _logger.LogInformation("Skipping generic knowledge question from chat history (Method 3): '{Question}'", trimmedLine);
                             continue;
@@ -2895,18 +2948,26 @@ namespace SM_MentalHealthApp.Server.Services
                                     else
                                     {
                                         // Fallback if template not found (should not happen once seeded)
-                                        response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                        var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
+                                        response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
                                         response.AppendLine(criticalAlertText);
                                         response.AppendLine();
-                                        response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                        response.AppendLine("- These values indicate a medical emergency");
-                                        response.AppendLine("- Contact emergency services if symptoms worsen");
-                                        response.AppendLine("- Patient needs immediate medical evaluation");
+
+                                        var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
+                                        response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+
+                                        var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
+                                        var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
+                                        var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
+                                        response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
+                                        response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
+                                        response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
                                     }
                                 }
                                 else
                                 {
-                                    response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                    var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
 
                                     // Extract actual critical values from context
                                     var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
@@ -2920,10 +2981,16 @@ namespace SM_MentalHealthApp.Server.Services
                                     }
 
                                     response.AppendLine();
-                                    response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                    response.AppendLine("- These values indicate a medical emergency");
-                                    response.AppendLine("- Contact emergency services if symptoms worsen");
-                                    response.AppendLine("- Patient needs immediate medical evaluation");
+
+                                    var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+
+                                    var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
+                                    var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
+                                    var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
                                 }
                             }
                             else
@@ -2944,13 +3011,20 @@ namespace SM_MentalHealthApp.Server.Services
                                 else
                                 {
                                     // Fallback if template not found
-                                    response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                    var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
                                     response.AppendLine(criticalAlertText);
                                     response.AppendLine();
-                                    response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                    response.AppendLine("- These values indicate a medical emergency");
-                                    response.AppendLine("- Contact emergency services if symptoms worsen");
-                                    response.AppendLine("- Patient needs immediate medical evaluation");
+
+                                    var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+
+                                    var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
+                                    var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
+                                    var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
                                 }
                             }
                         }
@@ -2965,7 +3039,8 @@ namespace SM_MentalHealthApp.Server.Services
                             else
                             {
                                 // Fallback if template not found
-                                response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations that require attention and monitoring.");
+                                var fallbackTemplate = await _templateService.FormatTemplateAsync("concerns_detected", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations that require attention and monitoring.");
                             }
                         }
                         else if (hasNormalValues)
@@ -3056,7 +3131,8 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else
                                 {
-                                    response.AppendLine("The patient has been actively engaging with their health tracking.");
+                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("status_patient_tracking", null);
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "The patient has been actively engaging with their health tracking.");
                                 }
                             }
                         }
@@ -3146,13 +3222,20 @@ namespace SM_MentalHealthApp.Server.Services
                             else
                             {
                                 // Fallback
-                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
                                 response.AppendLine(criticalAlertText);
                                 response.AppendLine();
-                                response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                response.AppendLine("- These values indicate a medical emergency");
-                                response.AppendLine("- Contact emergency services if symptoms worsen");
-                                response.AppendLine("- Patient needs immediate medical evaluation");
+
+                                var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+
+                                var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
+                                var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
+                                var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
                             }
                         }
                         else if (hasAnyConcerns)
@@ -3204,7 +3287,16 @@ namespace SM_MentalHealthApp.Server.Services
                     // No specific question detected, but we have medical data - provide comprehensive overview
                     _logger.LogInformation("No specific question detected, providing comprehensive medical overview");
 
-                    response.AppendLine("**Patient Medical Overview:**");
+                    var overviewHeader3 = await _templateService.FormatTemplateAsync("section_patient_overview", null);
+                    if (!string.IsNullOrEmpty(overviewHeader3))
+                    {
+                        response.AppendLine(overviewHeader3);
+                    }
+                    else
+                    {
+                        var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_patient_overview", null);
+                        response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Patient Medical Overview:**");
+                    }
 
                     if (hasCriticalValues)
                     {
@@ -3222,13 +3314,20 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                         else
                         {
-                            response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                            var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
                             response.AppendLine(criticalAlertText);
                             response.AppendLine();
-                            response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                            response.AppendLine("- These values indicate a medical emergency");
-                            response.AppendLine("- Contact emergency services if symptoms worsen");
-                            response.AppendLine("- Patient needs immediate medical evaluation");
+
+                            var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+
+                            var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
+                            var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
+                            var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
+                            response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
                         }
                     }
                     else if (hasAnyConcerns)
@@ -3309,48 +3408,9 @@ namespace SM_MentalHealthApp.Server.Services
         /// Determines if a message is a generic knowledge question (not a patient-specific concern)
         /// Generic questions like "what are normal values of glucose?" should be excluded from AI Health Check analysis
         /// </summary>
-        private bool IsGenericKnowledgeQuestion(string messageContent)
+        private async Task<bool> IsGenericKnowledgeQuestionAsync(string messageContent)
         {
-            if (string.IsNullOrWhiteSpace(messageContent))
-                return false;
-
-            var lowerContent = messageContent.ToLower();
-
-            // Patterns that indicate generic knowledge questions (not patient concerns)
-            var genericQuestionPatterns = new[]
-            {
-                "what are normal",
-                "what are the normal",
-                "what is normal",
-                "what are critical",
-                "what are serious",
-                "what is a normal",
-                "what are typical",
-                "what is typical",
-                "normal values of",
-                "normal range of",
-                "normal levels of",
-                "what does",
-                "how does",
-                "explain",
-                "tell me about"
-            };
-
-            // Check if it's a question (contains ?) and matches generic patterns
-            bool isQuestion = lowerContent.Contains("?");
-            bool matchesGenericPattern = genericQuestionPatterns.Any(pattern => lowerContent.Contains(pattern));
-
-            // Also check if it's asking about general information (not patient-specific)
-            bool isGeneralInfo = lowerContent.Contains("in general") ||
-                                lowerContent.Contains("generally") ||
-                                (isQuestion && matchesGenericPattern &&
-                                 !lowerContent.Contains("my") &&
-                                 !lowerContent.Contains("patient") &&
-                                 !lowerContent.Contains("i have") &&
-                                 !lowerContent.Contains("i am") &&
-                                 !lowerContent.Contains("i feel"));
-
-            return isQuestion && (matchesGenericPattern || isGeneralInfo);
+            return await _genericQuestionPatternService.IsGenericKnowledgeQuestionAsync(messageContent);
         }
     }
 }

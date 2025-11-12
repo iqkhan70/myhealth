@@ -273,7 +273,37 @@ Please ensure all test results are properly formatted and accessible for accurat
 ('recommendations_stable_detailed', 'Recommendations - Stable Detailed', '✅ **CURRENT STATUS: STABLE**
 1. **Continue Current Care**: Maintain existing treatment plan
 2. **Regular Monitoring**: Schedule routine follow-up appointments
-3. **Preventive Care**: Focus on maintaining current health status', 'Detailed stable recommendations fallback', 5, TRUE, NOW())
+3. **Preventive Care**: Focus on maintaining current health status', 'Detailed stable recommendations fallback', 5, TRUE, NOW()),
+
+-- Fallback Templates (for when primary templates fail)
+('fallback_critical_alert_header', 'Fallback - Critical Alert Header', '🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention. ', 'Fallback for critical alert header', 1, TRUE, NOW()),
+('fallback_immediate_attention', 'Fallback - Immediate Attention', '**IMMEDIATE MEDICAL ATTENTION REQUIRED:**', 'Fallback for immediate attention header', 1, TRUE, NOW()),
+('fallback_emergency_action1', 'Fallback - Emergency Action 1', '- These values indicate a medical emergency', 'Fallback for emergency action 1', 1, TRUE, NOW()),
+('fallback_emergency_action2', 'Fallback - Emergency Action 2', '- Contact emergency services if symptoms worsen', 'Fallback for emergency action 2', 1, TRUE, NOW()),
+('fallback_emergency_action3', 'Fallback - Emergency Action 3', '- Patient needs immediate medical evaluation', 'Fallback for emergency action 3', 1, TRUE, NOW()),
+('fallback_medical_alerts_detected', 'Fallback - Medical Alerts Detected', '🚨 **MEDICAL ALERTS DETECTED:**', 'Fallback for medical alerts detected header', 1, TRUE, NOW()),
+('fallback_medical_monitoring_needed', 'Fallback - Medical Monitoring Needed', '**MEDICAL MONITORING NEEDED:** Abnormal values detected that require medical attention.', 'Fallback for medical monitoring needed', 1, TRUE, NOW()),
+('fallback_continued_monitoring', 'Fallback - Continued Monitoring', '**CURRENT STATUS:** Patient shows normal values, but previous concerning results require continued monitoring.', 'Fallback for continued monitoring', 1, TRUE, NOW()),
+('fallback_medical_content_analysis', 'Fallback - Medical Content Analysis', '📊 **Medical Content Analysis:** I''ve reviewed the patient''s medical content. ', 'Fallback for medical content analysis', 1, TRUE, NOW()),
+('fallback_medical_content_important', 'Fallback - Medical Content Important', '⚠️ **IMPORTANT:** While medical content was found, I was unable to detect specific critical values in the current analysis. 
+Please ensure all test results are properly formatted and accessible for accurate medical assessment.', 'Fallback for medical content important warning', 1, TRUE, NOW()),
+('fallback_medical_content_critical_care', 'Fallback - Medical Content Critical Care', 'Please ensure all critical values are properly addressed with appropriate medical care.', 'Fallback for medical content critical care', 1, TRUE, NOW()),
+('fallback_recent_activity_header', 'Fallback - Recent Activity Header', '📝 **Recent Patient Activity:**', 'Fallback for recent activity header', 1, TRUE, NOW()),
+('fallback_patient_overview', 'Fallback - Patient Overview', '**Patient Medical Overview:**', 'Fallback for patient overview header', 1, TRUE, NOW()),
+('fallback_stable_status', 'Fallback - Stable Status', '✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.', 'Fallback for stable status', 1, TRUE, NOW()),
+('fallback_abnormal_values', 'Fallback - Abnormal Values', '⚠️ **ABNORMAL VALUES DETECTED:** Some test results are outside normal ranges and require monitoring.', 'Fallback for abnormal values', 1, TRUE, NOW()),
+('fallback_recent_activity', 'Fallback - Recent Activity', '**Recent Patient Activity:**', 'Fallback for recent activity', 1, TRUE, NOW()),
+('fallback_no_journal_entries', 'Fallback - No Journal Entries', '- No recent journal entries found.', 'Fallback for no journal entries', 1, TRUE, NOW()),
+('fallback_chat_history', 'Fallback - Chat History', '**Chat History:** Patient has been engaging in conversations with the AI assistant.', 'Fallback for chat history', 1, TRUE, NOW()),
+('fallback_clinical_notes', 'Fallback - Clinical Notes', '**Clinical Notes:** Recent clinical documentation is available for review.', 'Fallback for clinical notes', 1, TRUE, NOW()),
+('fallback_emergency_incidents', 'Fallback - Emergency Incidents', '⚠️ **EMERGENCY INCIDENTS:** Emergency incidents have been recorded. Please review the emergency dashboard for details.', 'Fallback for emergency incidents', 1, TRUE, NOW()),
+('fallback_clinical_assessment', 'Fallback - Clinical Assessment', '**Clinical Assessment:**', 'Fallback for clinical assessment header', 1, TRUE, NOW()),
+('fallback_critical_intervention', 'Fallback - Critical Intervention', 'The patient requires immediate medical attention due to critical values. Urgent intervention is necessary.', 'Fallback for critical intervention', 1, TRUE, NOW()),
+('fallback_abnormal_monitoring', 'Fallback - Abnormal Monitoring', 'The patient shows some abnormal values that require monitoring and follow-up care. Schedule a medical review.', 'Fallback for abnormal monitoring', 1, TRUE, NOW()),
+('fallback_stable_condition', 'Fallback - Stable Condition', 'The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.', 'Fallback for stable condition', 1, TRUE, NOW()),
+('fallback_recommendations', 'Fallback - Recommendations', '**Recommendations:**', 'Fallback for recommendations header', 1, TRUE, NOW()),
+('fallback_previously_acknowledged', 'Fallback - Previously Acknowledged', '**Previously Acknowledged Emergencies:**', 'Fallback for previously acknowledged header', 1, TRUE, NOW()),
+('fallback_medical_data_analysis', 'Fallback - Medical Data Analysis', '**Medical Data Analysis:**', 'Fallback for medical data analysis header', 1, TRUE, NOW())
 
 ON DUPLICATE KEY UPDATE 
     TemplateName = VALUES(TemplateName),

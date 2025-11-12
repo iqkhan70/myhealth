@@ -34,19 +34,22 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly ILogger<ContentAnalysisService> _logger;
         private readonly ICriticalValuePatternService _patternService;
         private readonly IAIInstructionService _instructionService;
+        private readonly IGenericQuestionPatternService _genericQuestionPatternService;
 
         public ContentAnalysisService(
             JournalDbContext context,
             S3Service s3Service,
             ILogger<ContentAnalysisService> logger,
             ICriticalValuePatternService patternService,
-            IAIInstructionService instructionService)
+            IAIInstructionService instructionService,
+            IGenericQuestionPatternService genericQuestionPatternService)
         {
             _context = context;
             _s3Service = s3Service;
             _logger = logger;
             _patternService = patternService;
             _instructionService = instructionService;
+            _genericQuestionPatternService = genericQuestionPatternService;
         }
 
         public async Task<string> ExtractTextFromContentAsync(ContentItem content)
@@ -857,17 +860,25 @@ If you need general medical information without patient context, please switch t
                         // EXCLUDE generic knowledge questions (e.g., "what are normal values of...")
                         if (session.Messages != null && session.Messages.Any())
                         {
-                            var medicalMessages = session.Messages
+                            var allMedicalMessages = session.Messages
                                 .Where(m => m.IsMedicalData ||
                                            m.Content.ToLower().Contains("emergency") ||
                                            m.Content.ToLower().Contains("critical") ||
                                            m.Content.ToLower().Contains("urgent") ||
                                            m.Content.ToLower().Contains("crisis") ||
                                            m.Content.ToLower().Contains("concerning"))
-                                // EXCLUDE generic knowledge questions that are not patient-specific concerns
-                                .Where(m => !IsGenericKnowledgeQuestion(m.Content))
-                                .Take(5)
                                 .ToList();
+
+                            // Filter out generic knowledge questions asynchronously
+                            var medicalMessages = new List<ChatMessage>();
+                            foreach (var msg in allMedicalMessages)
+                            {
+                                if (!await IsGenericKnowledgeQuestionAsync(msg.Content))
+                                {
+                                    medicalMessages.Add(msg);
+                                }
+                                if (medicalMessages.Count >= 5) break;
+                            }
 
                             if (medicalMessages.Any())
                             {
@@ -1609,50 +1620,9 @@ If you need general medical information without patient context, please switch t
         /// Determines if a message is a generic knowledge question (not a patient-specific concern)
         /// Generic questions like "what are normal values of glucose?" should be excluded from AI Health Check context
         /// </summary>
-        private bool IsGenericKnowledgeQuestion(string messageContent)
+        private async Task<bool> IsGenericKnowledgeQuestionAsync(string messageContent)
         {
-            if (string.IsNullOrWhiteSpace(messageContent))
-                return false;
-
-            var lowerContent = messageContent.ToLower();
-
-            // Patterns that indicate generic knowledge questions (not patient concerns)
-            var genericQuestionPatterns = new[]
-            {
-                "what are normal",
-                "what are the normal",
-                "what is normal",
-                "what are critical",
-                "what are serious",
-                "what is a normal",
-                "what are typical",
-                "what is typical",
-                "normal values of",
-                "normal range of",
-                "normal levels of",
-                "what does",
-                "how does",
-                "explain",
-                "tell me about",
-                "what is",
-                "what are"
-            };
-
-            // Check if it's a question (contains ?) and matches generic patterns
-            bool isQuestion = lowerContent.Contains("?");
-            bool matchesGenericPattern = genericQuestionPatterns.Any(pattern => lowerContent.Contains(pattern));
-
-            // Also check if it's asking about general information (not patient-specific)
-            bool isGeneralInfo = lowerContent.Contains("in general") || 
-                                lowerContent.Contains("generally") ||
-                                (isQuestion && matchesGenericPattern && 
-                                 !lowerContent.Contains("my") && 
-                                 !lowerContent.Contains("patient") &&
-                                 !lowerContent.Contains("i have") &&
-                                 !lowerContent.Contains("i am") &&
-                                 !lowerContent.Contains("i feel"));
-
-            return isQuestion && (matchesGenericPattern || isGeneralInfo);
+            return await _genericQuestionPatternService.IsGenericKnowledgeQuestionAsync(messageContent);
         }
     }
 }

@@ -134,6 +134,7 @@ public static class DependencyInjection
             services.AddScoped<IAIInstructionService, AIInstructionService>();
             services.AddScoped<IKnowledgeBaseService, KnowledgeBaseService>();
             services.AddScoped<IAIResponseTemplateService, AIResponseTemplateService>();
+            services.AddScoped<IGenericQuestionPatternService, GenericQuestionPatternService>();
 
         // AI & ML Services
         services.AddScoped<HuggingFaceService>();
