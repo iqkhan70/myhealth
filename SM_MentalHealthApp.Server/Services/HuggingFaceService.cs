@@ -572,11 +572,27 @@ namespace SM_MentalHealthApp.Server.Services
 
                             if (systolic >= 180 || diastolic >= 110)
                             {
-                                criticalAlerts.Add($"🚨 **CRITICAL BLOOD PRESSURE**: {systolic}/{diastolic} - HYPERTENSIVE CRISIS! Immediate medical intervention required!");
+                                var criticalBPTemplate = await _templateService.FormatTemplateAsync("alert_critical_blood_pressure", new Dictionary<string, string>
+                                {
+                                    { "SYSTOLIC", systolic.ToString() },
+                                    { "DIASTOLIC", diastolic.ToString() }
+                                });
+                                var criticalBPAlert = !string.IsNullOrEmpty(criticalBPTemplate)
+                                    ? criticalBPTemplate
+                                    : $"🚨 **CRITICAL BLOOD PRESSURE**: {systolic}/{diastolic} - HYPERTENSIVE CRISIS! Immediate medical intervention required!";
+                                criticalAlerts.Add(criticalBPAlert);
                             }
                             else if (systolic >= 140 || diastolic >= 90)
                             {
-                                criticalAlerts.Add($"⚠️ **HIGH BLOOD PRESSURE**: {systolic}/{diastolic} - Requires immediate attention");
+                                var highBPTemplate = await _templateService.FormatTemplateAsync("alert_high_blood_pressure", new Dictionary<string, string>
+                                {
+                                    { "SYSTOLIC", systolic.ToString() },
+                                    { "DIASTOLIC", diastolic.ToString() }
+                                });
+                                var highBPAlert = !string.IsNullOrEmpty(highBPTemplate)
+                                    ? highBPTemplate
+                                    : $"⚠️ **HIGH BLOOD PRESSURE**: {systolic}/{diastolic} - Requires immediate attention";
+                                criticalAlerts.Add(highBPAlert);
                             }
                         }
 
@@ -587,11 +603,25 @@ namespace SM_MentalHealthApp.Server.Services
                             var hemoglobin = double.Parse(hbMatch.Groups[1].Value);
                             if (hemoglobin < 7.0)
                             {
-                                criticalAlerts.Add($"🚨 **CRITICAL HEMOGLOBIN**: {hemoglobin} g/dL - SEVERE ANEMIA! Blood transfusion may be required!");
+                                var criticalHemoglobinTemplate = await _templateService.FormatTemplateAsync("alert_critical_hemoglobin", new Dictionary<string, string>
+                                {
+                                    { "HEMOGLOBIN_VALUE", hemoglobin.ToString("F1") }
+                                });
+                                var criticalHemoglobinAlert = !string.IsNullOrEmpty(criticalHemoglobinTemplate)
+                                    ? criticalHemoglobinTemplate
+                                    : $"🚨 **CRITICAL HEMOGLOBIN**: {hemoglobin} g/dL - SEVERE ANEMIA! Blood transfusion may be required!";
+                                criticalAlerts.Add(criticalHemoglobinAlert);
                             }
                             else if (hemoglobin < 10.0)
                             {
-                                criticalAlerts.Add($"⚠️ **LOW HEMOGLOBIN**: {hemoglobin} g/dL - Moderate anemia, requires monitoring");
+                                var lowHemoglobinTemplate = await _templateService.FormatTemplateAsync("alert_low_hemoglobin", new Dictionary<string, string>
+                                {
+                                    { "HEMOGLOBIN_VALUE", hemoglobin.ToString("F1") }
+                                });
+                                var lowHemoglobinAlert = !string.IsNullOrEmpty(lowHemoglobinTemplate)
+                                    ? lowHemoglobinTemplate
+                                    : $"⚠️ **LOW HEMOGLOBIN**: {hemoglobin} g/dL - Moderate anemia, requires monitoring";
+                                criticalAlerts.Add(lowHemoglobinAlert);
                             }
                         }
 
@@ -602,11 +632,25 @@ namespace SM_MentalHealthApp.Server.Services
                             var triglycerides = double.Parse(trigMatch.Groups[1].Value);
                             if (triglycerides >= 500)
                             {
-                                criticalAlerts.Add($"🚨 **CRITICAL TRIGLYCERIDES**: {triglycerides} mg/dL - EXTREMELY HIGH! Risk of pancreatitis!");
+                                var criticalTriglyceridesTemplate = await _templateService.FormatTemplateAsync("alert_critical_triglycerides", new Dictionary<string, string>
+                                {
+                                    { "TRIGLYCERIDES_VALUE", triglycerides.ToString("F1") }
+                                });
+                                var criticalTriglyceridesAlert = !string.IsNullOrEmpty(criticalTriglyceridesTemplate)
+                                    ? criticalTriglyceridesTemplate
+                                    : $"🚨 **CRITICAL TRIGLYCERIDES**: {triglycerides} mg/dL - EXTREMELY HIGH! Risk of pancreatitis!";
+                                criticalAlerts.Add(criticalTriglyceridesAlert);
                             }
                             else if (triglycerides >= 200)
                             {
-                                criticalAlerts.Add($"⚠️ **HIGH TRIGLYCERIDES**: {triglycerides} mg/dL - Requires dietary intervention");
+                                var highTriglyceridesTemplate = await _templateService.FormatTemplateAsync("alert_high_triglycerides", new Dictionary<string, string>
+                                {
+                                    { "TRIGLYCERIDES_VALUE", triglycerides.ToString("F1") }
+                                });
+                                var highTriglyceridesAlert = !string.IsNullOrEmpty(highTriglyceridesTemplate)
+                                    ? highTriglyceridesTemplate
+                                    : $"⚠️ **HIGH TRIGLYCERIDES**: {triglycerides} mg/dL - Requires dietary intervention";
+                                criticalAlerts.Add(highTriglyceridesAlert);
                             }
                         }
 

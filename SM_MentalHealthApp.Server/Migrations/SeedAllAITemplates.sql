@@ -303,7 +303,15 @@ Please ensure all test results are properly formatted and accessible for accurat
 ('fallback_stable_condition', 'Fallback - Stable Condition', 'The patient appears to be in stable condition with no immediate medical concerns. Continue routine monitoring and care.', 'Fallback for stable condition', 1, TRUE, NOW()),
 ('fallback_recommendations', 'Fallback - Recommendations', '**Recommendations:**', 'Fallback for recommendations header', 1, TRUE, NOW()),
 ('fallback_previously_acknowledged', 'Fallback - Previously Acknowledged', '**Previously Acknowledged Emergencies:**', 'Fallback for previously acknowledged header', 1, TRUE, NOW()),
-('fallback_medical_data_analysis', 'Fallback - Medical Data Analysis', '**Medical Data Analysis:**', 'Fallback for medical data analysis header', 1, TRUE, NOW())
+('fallback_medical_data_analysis', 'Fallback - Medical Data Analysis', '**Medical Data Analysis:**', 'Fallback for medical data analysis header', 1, TRUE, NOW()),
+
+-- Medical Alert Templates (for emergency response generation)
+('alert_critical_blood_pressure', 'Alert - Critical Blood Pressure', '🚨 **CRITICAL BLOOD PRESSURE**: {SYSTOLIC}/{DIASTOLIC} - HYPERTENSIVE CRISIS! Immediate medical intervention required!', 'Template for critical blood pressure alerts', 10, TRUE, NOW()),
+('alert_high_blood_pressure', 'Alert - High Blood Pressure', '⚠️ **HIGH BLOOD PRESSURE**: {SYSTOLIC}/{DIASTOLIC} - Requires immediate attention', 'Template for high blood pressure alerts', 8, TRUE, NOW()),
+('alert_critical_hemoglobin', 'Alert - Critical Hemoglobin', '🚨 **CRITICAL HEMOGLOBIN**: {HEMOGLOBIN_VALUE} g/dL - SEVERE ANEMIA! Blood transfusion may be required!', 'Template for critical hemoglobin alerts', 10, TRUE, NOW()),
+('alert_low_hemoglobin', 'Alert - Low Hemoglobin', '⚠️ **LOW HEMOGLOBIN**: {HEMOGLOBIN_VALUE} g/dL - Moderate anemia, requires monitoring', 'Template for low hemoglobin alerts', 8, TRUE, NOW()),
+('alert_critical_triglycerides', 'Alert - Critical Triglycerides', '🚨 **CRITICAL TRIGLYCERIDES**: {TRIGLYCERIDES_VALUE} mg/dL - EXTREMELY HIGH! Risk of pancreatitis!', 'Template for critical triglycerides alerts', 10, TRUE, NOW()),
+('alert_high_triglycerides', 'Alert - High Triglycerides', '⚠️ **HIGH TRIGLYCERIDES**: {TRIGLYCERIDES_VALUE} mg/dL - Requires dietary intervention', 'Template for high triglycerides alerts', 8, TRUE, NOW())
 
 ON DUPLICATE KEY UPDATE 
     TemplateName = VALUES(TemplateName),
