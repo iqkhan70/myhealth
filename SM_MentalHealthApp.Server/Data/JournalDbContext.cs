@@ -35,6 +35,13 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<CriticalValueKeyword> CriticalValueKeywords { get; set; }
             public DbSet<AIInstructionCategory> AIInstructionCategories { get; set; }
             public DbSet<AIInstruction> AIInstructions { get; set; }
+            
+            // Knowledge base system entities
+            public DbSet<KnowledgeBaseCategory> KnowledgeBaseCategories { get; set; }
+            public DbSet<KnowledgeBaseEntry> KnowledgeBaseEntries { get; set; }
+            
+            // AI Response Template system entities
+            public DbSet<AIResponseTemplate> AIResponseTemplates { get; set; }
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -316,6 +323,91 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.DisplayOrder);
                         entity.HasIndex(e => e.IsActive);
                         entity.HasIndex(e => new { e.CategoryId, e.IsActive, e.DisplayOrder });
+                  });
+
+                  // Configure KnowledgeBaseCategory entity
+                  modelBuilder.Entity<KnowledgeBaseCategory>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.Property(e => e.DisplayOrder).HasDefaultValue(0);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.Name);
+                        entity.HasIndex(e => e.DisplayOrder);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => new { e.IsActive, e.DisplayOrder });
+                  });
+
+                  // Configure KnowledgeBaseEntry entity
+                  modelBuilder.Entity<KnowledgeBaseEntry>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+                        entity.Property(e => e.Content).IsRequired().HasColumnType("TEXT");
+                        entity.Property(e => e.Keywords).HasMaxLength(1000);
+                        entity.Property(e => e.Priority).HasDefaultValue(0);
+                        entity.Property(e => e.UseAsDirectResponse).HasDefaultValue(true);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationship
+                        entity.HasOne(e => e.Category)
+                        .WithMany(c => c.Entries)
+                        .HasForeignKey(e => e.CategoryId)
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                        // Foreign key relationships for created/updated by
+                        entity.HasOne<User>()
+                        .WithMany()
+                        .HasForeignKey(e => e.CreatedByUserId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasOne<User>()
+                        .WithMany()
+                        .HasForeignKey(e => e.UpdatedByUserId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.CategoryId);
+                        entity.HasIndex(e => e.Priority);
+                        entity.HasIndex(e => e.IsActive);
+                        // Note: Index on Keywords removed - varchar(1000) exceeds MySQL key length limit
+                        // Keywords are still searchable via application-level filtering
+                        entity.HasIndex(e => new { e.CategoryId, e.IsActive, e.Priority });
+                  });
+
+                  // Configure AIResponseTemplate entity
+                  modelBuilder.Entity<AIResponseTemplate>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.TemplateKey).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.TemplateName).IsRequired().HasMaxLength(200);
+                        entity.Property(e => e.Content).IsRequired().HasColumnType("TEXT");
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.Property(e => e.Priority).HasDefaultValue(0);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationships for created/updated by
+                        entity.HasOne<User>()
+                        .WithMany()
+                        .HasForeignKey(e => e.CreatedByUserId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasOne<User>()
+                        .WithMany()
+                        .HasForeignKey(e => e.UpdatedByUserId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.TemplateKey).IsUnique();
+                        entity.HasIndex(e => e.Priority);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => new { e.IsActive, e.Priority });
                   });
 
                   // Configure ContentAlert entity

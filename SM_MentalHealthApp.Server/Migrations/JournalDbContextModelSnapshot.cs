@@ -295,6 +295,123 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.ToTable("AIInstructionCategories");
                 });
 
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.KnowledgeBaseCategory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<int>("DisplayOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive", "DisplayOrder");
+
+                    b.HasIndex("Name");
+
+                    b.ToTable("KnowledgeBaseCategories");
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.KnowledgeBaseEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Keywords")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<int>("Priority")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("UseAsDirectResponse")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("CategoryId", "IsActive", "Priority");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("IsActive");
+
+                    // Note: Index on Keywords removed - varchar(1000) exceeds MySQL key length limit
+
+                    b.HasIndex("Priority");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.ToTable("KnowledgeBaseEntries");
+                });
+
             modelBuilder.Entity("SM_MentalHealthApp.Shared.Appointment", b =>
                 {
                     b.Property<int>("Id")
@@ -1251,6 +1368,27 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Navigation("Category");
                 });
 
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.KnowledgeBaseEntry", b =>
+                {
+                    b.HasOne("SM_MentalHealthApp.Shared.KnowledgeBaseCategory", "Category")
+                        .WithMany("Entries")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SM_MentalHealthApp.Shared.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SM_MentalHealthApp.Shared.User", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Category");
+                });
+
             modelBuilder.Entity("SM_MentalHealthApp.Shared.Appointment", b =>
                 {
                     b.HasOne("SM_MentalHealthApp.Shared.User", "CreatedByUser")
@@ -1523,6 +1661,11 @@ namespace SM_MentalHealthApp.Server.Migrations
             modelBuilder.Entity("SM_MentalHealthApp.Shared.CriticalValueCategory", b =>
                 {
                     b.Navigation("Patterns");
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.KnowledgeBaseCategory", b =>
+                {
+                    b.Navigation("Entries");
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Shared.Role", b =>

@@ -129,9 +129,11 @@ public static class DependencyInjection
         services.AddScoped<IClinicalDecisionSupportService, ClinicalDecisionSupportService>();
         services.AddScoped<IAppointmentService, AppointmentService>();
         services.AddScoped<IDocumentUploadService, DocumentUploadService>();
-        services.AddScoped<ICriticalValuePatternService, CriticalValuePatternService>();
-        services.AddScoped<ICriticalValueKeywordService, CriticalValueKeywordService>();
-        services.AddScoped<IAIInstructionService, AIInstructionService>();
+            services.AddScoped<ICriticalValuePatternService, CriticalValuePatternService>();
+            services.AddScoped<ICriticalValueKeywordService, CriticalValueKeywordService>();
+            services.AddScoped<IAIInstructionService, AIInstructionService>();
+            services.AddScoped<IKnowledgeBaseService, KnowledgeBaseService>();
+            services.AddScoped<IAIResponseTemplateService, AIResponseTemplateService>();
 
         // AI & ML Services
         services.AddScoped<HuggingFaceService>();

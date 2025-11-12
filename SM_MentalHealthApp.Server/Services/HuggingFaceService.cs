@@ -10,19 +10,25 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly ILogger<HuggingFaceService> _logger;
         private readonly ICriticalValuePatternService _patternService;
         private readonly ICriticalValueKeywordService _keywordService;
+        private readonly IKnowledgeBaseService _knowledgeBaseService;
+        private readonly IAIResponseTemplateService _templateService;
 
         public HuggingFaceService(
             HttpClient httpClient,
             IConfiguration config,
             ILogger<HuggingFaceService> logger,
             ICriticalValuePatternService patternService,
-            ICriticalValueKeywordService keywordService)
+            ICriticalValueKeywordService keywordService,
+            IKnowledgeBaseService knowledgeBaseService,
+            IAIResponseTemplateService templateService)
         {
             _httpClient = httpClient;
             _apiKey = config["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("HuggingFace API key not found");
             _logger = logger;
             _patternService = patternService;
             _keywordService = keywordService;
+            _knowledgeBaseService = knowledgeBaseService;
+            _templateService = templateService;
 
             _httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
@@ -697,12 +703,44 @@ namespace SM_MentalHealthApp.Server.Services
                     _logger.LogInformation("No emergency case detected, using normal AI response");
                 }
 
-                // For generic mode, use a different model and approach
-                if (isGenericMode)
+                // Check knowledge base first (for generic mode or any mode)
+                // This allows data-driven responses instead of hardcoded ones
+                // BUT: Skip knowledge base for AI Health Check - these need full analysis, not generic responses
+                var isAiHealthCheck = text.Contains("AI Health Check for Patient") ||
+                                     text.Contains("=== INSTRUCTIONS FOR AI HEALTH CHECK ANALYSIS ===") ||
+                                     text.Contains("INSTRUCTIONS FOR AI HEALTH CHECK");
+
+                if (!isAiHealthCheck)
                 {
-                    return await GenerateGenericResponse(text);
+                    var userQuestion = ExtractUserQuestion(text);
+                    if (!string.IsNullOrWhiteSpace(userQuestion) && userQuestion.Length < 500) // Only check if question is reasonable length
+                    {
+                        var knowledgeBaseEntry = await _knowledgeBaseService.FindMatchingEntryAsync(userQuestion);
+                        if (knowledgeBaseEntry != null)
+                        {
+                            _logger.LogInformation("Using knowledge base entry {EntryId} - {Title} for question: {Question}",
+                                knowledgeBaseEntry.Id, knowledgeBaseEntry.Title, userQuestion);
+
+                            if (knowledgeBaseEntry.UseAsDirectResponse)
+                            {
+                                // Return the knowledge base content directly
+                                return knowledgeBaseEntry.Content;
+                            }
+                            else
+                            {
+                                // Use knowledge base content as context for AI
+                                text = $"{knowledgeBaseEntry.Content}\n\nUser question: {userQuestion}\n\nPlease provide a helpful response based on the above information.";
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("Skipping knowledge base lookup for AI Health Check - requires full analysis");
                 }
 
+                // For generic mode, use the same AI flow (no hardcoded responses)
+                // All responses should come from the AI service, not hardcoded text
                 var requestBody = new
                 {
                     inputs = text,
@@ -1697,7 +1735,35 @@ namespace SM_MentalHealthApp.Server.Services
 
         private string ExtractUserQuestion(string text)
         {
-            // Look for "user question:" pattern in the prompt template
+            // Look for "=== USER QUESTION ===" pattern first (for AI Health Check)
+            var userQuestionSectionPattern = "=== USER QUESTION ===";
+            var sectionIndex = text.IndexOf(userQuestionSectionPattern, StringComparison.OrdinalIgnoreCase);
+
+            if (sectionIndex >= 0)
+            {
+                var startIndex = sectionIndex + userQuestionSectionPattern.Length;
+                // Find the next section marker or end of text
+                var nextSection = text.IndexOf("===", startIndex);
+                var endIndex = text.IndexOf('\n', startIndex);
+
+                if (nextSection > startIndex && (endIndex < 0 || nextSection < endIndex))
+                {
+                    endIndex = nextSection;
+                }
+                else if (endIndex < 0)
+                {
+                    endIndex = text.Length;
+                }
+
+                var question = text.Substring(startIndex, endIndex - startIndex).Trim();
+                if (!string.IsNullOrWhiteSpace(question))
+                {
+                    _logger.LogInformation("ExtractUserQuestion - Extracted from USER QUESTION section: '{Question}'", question);
+                    return question;
+                }
+            }
+
+            // Look for "user question:" pattern in the prompt template (lowercase, for other prompts)
             var userQuestionPattern = "user question:";
             var index = text.IndexOf(userQuestionPattern, StringComparison.OrdinalIgnoreCase);
 
@@ -1708,13 +1774,16 @@ namespace SM_MentalHealthApp.Server.Services
                 if (endIndex < 0) endIndex = text.Length;
 
                 var question = text.Substring(startIndex, endIndex - startIndex).Trim();
-                _logger.LogInformation("ExtractUserQuestion - Extracted: '{Question}'", question);
-                return question;
+                if (!string.IsNullOrWhiteSpace(question))
+                {
+                    _logger.LogInformation("ExtractUserQuestion - Extracted from 'user question:' pattern: '{Question}'", question);
+                    return question;
+                }
             }
 
-            // Fallback: return the original text if no pattern found
-            _logger.LogInformation("ExtractUserQuestion - No pattern found, using original text");
-            return text;
+            // Fallback: return empty string if no pattern found (don't use entire context for knowledge base lookup)
+            _logger.LogInformation("ExtractUserQuestion - No pattern found, returning empty string to skip knowledge base lookup");
+            return string.Empty;
         }
 
         private string ExtractCriticalValuesSection(string text)
@@ -1865,6 +1934,35 @@ namespace SM_MentalHealthApp.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error extracting critical values from context");
+            }
+
+            return string.Empty;
+        }
+
+        private string ExtractJournalEntriesFromContext(string text)
+        {
+            try
+            {
+                // Look for "=== RECENT JOURNAL ENTRIES ===" section
+                var journalStart = text.IndexOf("=== RECENT JOURNAL ENTRIES ===");
+                if (journalStart >= 0)
+                {
+                    var journalEnd = text.IndexOf("===", journalStart + 30);
+                    if (journalEnd < 0) journalEnd = text.IndexOf("\n\n", journalStart);
+                    if (journalEnd < 0) journalEnd = text.Length;
+
+                    var section = text.Substring(journalStart, journalEnd - journalStart);
+                    var lines = section.Split('\n')
+                        .Where(l => l.Contains("[") && l.Contains("]") && (l.Contains("Mood:") || l.Contains("Entry:")))
+                        .Take(3)
+                        .ToList();
+
+                    return string.Join("\n", lines);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error extracting journal entries from context");
             }
 
             return string.Empty;
@@ -2054,292 +2152,6 @@ namespace SM_MentalHealthApp.Server.Services
             return string.Empty;
         }
 
-        private async Task<string> GenerateGenericResponse(string text)
-        {
-            try
-            {
-                // Extract the actual user question from the prompt template
-                var question = ExtractUserQuestion(text).ToLower().Trim();
-                _logger.LogInformation("GenerateGenericResponse - Processing question: '{Question}'", question);
-                _logger.LogInformation("GenerateGenericResponse - Question contains 'hospital': {ContainsHospital}", question.Contains("hospital"));
-                _logger.LogInformation("GenerateGenericResponse - Question contains 'near': {ContainsNear}", question.Contains("near"));
-                _logger.LogInformation("GenerateGenericResponse - Question contains 'zip code': {ContainsZipCode}", question.Contains("zip code"));
-                _logger.LogInformation("GenerateGenericResponse - Question contains 'stress': {ContainsStress}", question.Contains("stress"));
-
-                // Handle "who is" questions
-                if (question.Contains("who is"))
-                {
-                    if (question.Contains("salman khan"))
-                    {
-                        return "Salman Khan is a famous Bollywood actor, producer, and television personality from India. He's one of the most successful actors in Hindi cinema, known for films like 'Bajrangi Bhaijaan', 'Sultan', 'Tiger Zinda Hai', and many others. He's also known for his philanthropic work and hosting reality shows like 'Bigg Boss'.";
-                    }
-                    if (question.Contains("shah rukh khan"))
-                    {
-                        return "Shah Rukh Khan, often called 'SRK' or 'King Khan', is a famous Bollywood actor, film producer, and television personality. He's known as the 'King of Romance' and has starred in many successful films like 'Dilwale Dulhania Le Jayenge', 'My Name is Khan', 'Chennai Express', and others.";
-                    }
-                    if (question.Contains("amitabh bachchan"))
-                    {
-                        return "Amitabh Bachchan is a legendary Bollywood actor, film producer, and television host. He's often called the 'Shahenshah' (Emperor) of Bollywood and is known for films like 'Sholay', 'Deewar', 'Zanjeer', and many others. He's considered one of the greatest actors in Indian cinema.";
-                    }
-                    if (question.Contains("tom cruise"))
-                    {
-                        return "Tom Cruise is a famous American actor and producer known for action films like 'Top Gun', 'Mission: Impossible' series, 'Jerry Maguire', and 'Edge of Tomorrow'. He's one of the highest-paid actors in Hollywood.";
-                    }
-                    if (question.Contains("leonardo dicaprio"))
-                    {
-                        return "Leonardo DiCaprio is an American actor and environmental activist. He's known for films like 'Titanic', 'Inception', 'The Wolf of Wall Street', and 'The Revenant' (for which he won an Oscar). He's also known for his environmental activism.";
-                    }
-                }
-
-                // Handle "what is" questions
-                if (question.Contains("what is"))
-                {
-                    _logger.LogInformation("GenerateGenericResponse - Matched 'what is' question pattern");
-                    if (question.Contains("quantum computing"))
-                    {
-                        _logger.LogInformation("GenerateGenericResponse - Matched quantum computing");
-                        return "Quantum computing is a type of computation that uses quantum mechanical phenomena like superposition and entanglement to process information. Unlike classical computers that use bits (0 or 1), quantum computers use quantum bits (qubits) that can exist in multiple states simultaneously, potentially solving certain problems much faster than classical computers.";
-                    }
-                    if (question.Contains("artificial intelligence"))
-                    {
-                        _logger.LogInformation("GenerateGenericResponse - Matched artificial intelligence");
-                        return "Artificial Intelligence (AI) is a branch of computer science that aims to create machines capable of intelligent behavior. It includes machine learning, natural language processing, computer vision, and robotics. AI systems can learn, reason, and make decisions, and are used in various fields like healthcare, finance, and technology.";
-                    }
-                    if (question.Contains("blockchain"))
-                    {
-                        return "Blockchain is a distributed ledger technology that maintains a continuously growing list of records (blocks) linked and secured using cryptography. It's the technology behind cryptocurrencies like Bitcoin and enables secure, transparent, and tamper-proof record-keeping without a central authority.";
-                    }
-                }
-
-                // Handle specific medical topics with detailed information
-                if (question.Contains("anxiety"))
-                {
-                    return "**General Information About Anxiety Treatment:**\n\n" +
-                           "**Therapeutic Approaches:**\n" +
-                           "• **Cognitive Behavioral Therapy (CBT)** - Helps identify and change negative thought patterns\n" +
-                           "• **Exposure Therapy** - Gradually facing feared situations\n" +
-                           "• **Mindfulness and Meditation** - Techniques to stay present and reduce worry\n" +
-                           "• **Relaxation Techniques** - Deep breathing, progressive muscle relaxation\n\n" +
-                           "**Lifestyle Modifications:**\n" +
-                           "• Regular exercise (especially aerobic activities)\n" +
-                           "• Adequate sleep and consistent sleep schedule\n" +
-                           "• Balanced diet with limited caffeine and alcohol\n" +
-                           "• Stress management techniques\n" +
-                           "• Social support and maintaining relationships\n\n" +
-                           "**Professional Treatment Options:**\n" +
-                           "• Psychotherapy with licensed mental health professionals\n" +
-                           "• Medication (when appropriate, prescribed by healthcare providers)\n" +
-                           "• Support groups and peer counseling\n\n" +
-                           "**Important Note:** This is general educational information. For personalized treatment plans, please consult with qualified healthcare professionals who can assess your specific situation and provide appropriate care.";
-                }
-
-                if (question.Contains("depression"))
-                {
-                    return "**General Information About Depression Treatment:**\n\n" +
-                           "**Therapeutic Approaches:**\n" +
-                           "• **Cognitive Behavioral Therapy (CBT)** - Addresses negative thought patterns\n" +
-                           "• **Interpersonal Therapy** - Focuses on relationships and social functioning\n" +
-                           "• **Behavioral Activation** - Increasing engagement in positive activities\n" +
-                           "• **Mindfulness-Based Cognitive Therapy** - Combines CBT with mindfulness\n\n" +
-                           "**Lifestyle Interventions:**\n" +
-                           "• Regular physical exercise\n" +
-                           "• Maintaining a structured daily routine\n" +
-                           "• Social connection and support\n" +
-                           "• Healthy sleep hygiene\n" +
-                           "• Exposure to natural light\n\n" +
-                           "**Professional Treatment:**\n" +
-                           "• Individual or group psychotherapy\n" +
-                           "• Medication management (when appropriate)\n" +
-                           "• Hospitalization for severe cases\n\n" +
-                           "**Important Note:** This is general educational information. For personalized treatment plans, please consult with qualified healthcare professionals.";
-                }
-
-                if (question.Contains("stress") || question.Contains("stress management"))
-                {
-                    _logger.LogInformation("GenerateGenericResponse - Matched stress management pattern");
-                    return "**General Information About Stress Management:**\n\n" +
-                           "**Immediate Stress Relief Techniques:**\n" +
-                           "• Deep breathing exercises (4-7-8 breathing)\n" +
-                           "• Progressive muscle relaxation\n" +
-                           "• Quick meditation or mindfulness moments\n" +
-                           "• Physical activity (even a short walk)\n\n" +
-                           "**Long-term Stress Management:**\n" +
-                           "• Regular exercise routine\n" +
-                           "• Adequate sleep (7-9 hours)\n" +
-                           "• Healthy diet with minimal processed foods\n" +
-                           "• Time management and prioritization\n" +
-                           "• Social support and connection\n\n" +
-                           "**Professional Support:**\n" +
-                           "• Therapy or counseling\n" +
-                           "• Stress management programs\n" +
-                           "• Support groups\n\n" +
-                           "**Important Note:** This is general educational information. For personalized stress management strategies, please consult with qualified healthcare professionals.";
-                }
-
-                if (question.Contains("sleep") || question.Contains("insomnia"))
-                {
-                    return "**General Information About Sleep and Sleep Disorders:**\n\n" +
-                           "**Good Sleep Hygiene Practices:**\n" +
-                           "• Consistent sleep schedule (same bedtime and wake time)\n" +
-                           "• Create a comfortable sleep environment (cool, dark, quiet)\n" +
-                           "• Avoid screens 1 hour before bed\n" +
-                           "• Limit caffeine and alcohol, especially in the evening\n" +
-                           "• Regular exercise (but not right before bed)\n\n" +
-                           "**Relaxation Techniques for Sleep:**\n" +
-                           "• Deep breathing exercises\n" +
-                           "• Progressive muscle relaxation\n" +
-                           "• Meditation or guided imagery\n" +
-                           "• Reading or listening to calming music\n\n" +
-                           "**When to Seek Professional Help:**\n" +
-                           "• Persistent sleep problems lasting more than a few weeks\n" +
-                           "• Significant impact on daily functioning\n" +
-                           "• Loud snoring or breathing problems during sleep\n\n" +
-                           "**Important Note:** This is general educational information. For specific sleep concerns, please consult with qualified healthcare professionals.";
-                }
-
-                if (question.Contains("blood pressure") || question.Contains("hypertension"))
-                {
-                    return "**General Information About Blood Pressure:**\n\n" +
-                           "**What is Blood Pressure?**\n" +
-                           "Blood pressure is the force of blood pushing against artery walls. It's measured in millimeters of mercury (mmHg) with two numbers: systolic (when heart beats) over diastolic (when heart rests).\n\n" +
-                           "**Normal Blood Pressure Ranges:**\n" +
-                           "• Normal: Less than 120/80 mmHg\n" +
-                           "• Elevated: 120-129/<80 mmHg\n" +
-                           "• High Stage 1: 130-139/80-89 mmHg\n" +
-                           "• High Stage 2: 140/90 mmHg or higher\n" +
-                           "• Hypertensive Crisis: Higher than 180/120 mmHg\n\n" +
-                           "**Risk Factors for High Blood Pressure:**\n" +
-                           "• Age (risk increases with age)\n" +
-                           "• Family history\n" +
-                           "• Being overweight or obese\n" +
-                           "• Physical inactivity\n" +
-                           "• High sodium diet\n" +
-                           "• Excessive alcohol consumption\n" +
-                           "• Smoking\n" +
-                           "• Chronic stress\n\n" +
-                           "**Lifestyle Modifications:**\n" +
-                           "• Regular aerobic exercise\n" +
-                           "• DASH diet (low sodium, high fruits/vegetables)\n" +
-                           "• Weight management\n" +
-                           "• Limit alcohol and caffeine\n" +
-                           "• Stress management techniques\n" +
-                           "• Adequate sleep\n\n" +
-                           "**Important Note:** This is general educational information. For personalized blood pressure management, please consult with qualified healthcare professionals.";
-                }
-
-                // Handle emergency services questions (more specific than hospital)
-                if (question.Contains("emergency") || question.Contains("emergencies"))
-                {
-                    _logger.LogInformation("GenerateGenericResponse - Matched emergency services pattern");
-                    return "**Emergency Services Information:**\n\n" +
-                           "**For immediate emergencies:**\n" +
-                           "• Call 911 for life-threatening emergencies\n" +
-                           "• Go to the nearest emergency room\n" +
-                           "• Use emergency medical services (EMS)\n\n" +
-                           "**For non-life-threatening urgent care:**\n" +
-                           "• Visit urgent care centers\n" +
-                           "• Use walk-in clinics\n" +
-                           "• Contact your primary care physician\n\n" +
-                           "**Emergency preparedness:**\n" +
-                           "• Keep emergency contact numbers handy\n" +
-                           "• Know the location of nearest hospitals\n" +
-                           "• Have a first aid kit available\n\n" +
-                           "**Important:** For true medical emergencies, always call 911 or go to the nearest emergency room immediately.";
-                }
-
-                // Handle hospital/location questions
-                if (question.Contains("hospital") || (question.Contains("near") && question.Contains("zip code")) || question.Contains("66221"))
-                {
-                    _logger.LogInformation("GenerateGenericResponse - Matched hospital question pattern");
-                    return "Here are several hospitals near ZIP 66221 (Overland Park / Johnson County area) you might want to check out:\n\n" +
-                           "🏥 **Nearby Hospitals**\n\n" +
-                           "**Overland Park Regional Medical Center**\n" +
-                           "10500 Quivira Rd, Overland Park, KS\n" +
-                           "Acute care hospital with emergency services\n" +
-                           "HCA Midwest Health\n\n" +
-                           "**AdventHealth South Overland Park**\n" +
-                           "7820 W 165th St, Overland Park, KS\n" +
-                           "Has an emergency department\n" +
-                           "AdventHealth\n\n" +
-                           "**Menorah Medical Center**\n" +
-                           "5721 W 119th St, Overland Park, KS\n" +
-                           "Full-service hospital serving Leawood/Overland Park\n" +
-                           "HCA Midwest Health\n\n" +
-                           "**Saint Luke's South Hospital**\n" +
-                           "12300 Metcalf Ave, Overland Park, KS\n" +
-                           "Offers 24-hour emergency services\n" +
-                           "Saint Luke's Health System\n\n" +
-                           "**St. Joseph Medical Center**\n" +
-                           "Kansas City, MO (nearby)\n" +
-                           "Larger medical center in the KC area\n\n" +
-                           "**University Health / Truman Medical Center**\n" +
-                           "Kansas City, MO\n" +
-                           "Major hospital in Kansas City\n\n" +
-                           "**For immediate emergencies:** Call 911 or go to the nearest emergency room.\n" +
-                           "**For non-emergency care:** Contact these facilities directly or check with your insurance provider for coverage.";
-                }
-
-                // Handle general medical questions (but be more helpful)
-                if (question.Contains("medical") || question.Contains("medicine") || question.Contains("treatment"))
-                {
-                    return "I can provide general information about medical topics. What specific medical topic would you like to learn about? I can help with general health information, explain medical concepts, or provide educational resources.";
-                }
-
-                // Handle technology questions
-                if (question.Contains("programming") || question.Contains("coding") || question.Contains("software"))
-                {
-                    return "I'd be happy to help with programming and technology questions! I can assist with various programming languages, software development concepts, debugging, and best practices. What specific programming topic or problem would you like help with?";
-                }
-
-                // If no specific pattern matches, try HuggingFace API as fallback
-                var requestBody = new
-                {
-                    inputs = text,
-                    parameters = new
-                    {
-                        max_new_tokens = 150,
-                        temperature = 0.7,
-                        do_sample = true,
-                        return_full_text = false
-                    }
-                };
-
-                var json = JsonSerializer.Serialize(requestBody);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                // Use a reliable model
-                var response = await _httpClient.PostAsync(
-                    "https://api-inference.huggingface.co/models/gpt2",
-                    content);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var responseContent = await response.Content.ReadAsStringAsync();
-                    var responseData = JsonSerializer.Deserialize<JsonElement[]>(responseContent);
-
-                    if (responseData.Length > 0)
-                    {
-                        var generatedText = responseData[0].GetProperty("generated_text").GetString() ?? "I'd be happy to help you with that question. Could you provide more details?";
-
-                        // Clean up the response
-                        if (generatedText.StartsWith(text))
-                        {
-                            generatedText = generatedText.Substring(text.Length).Trim();
-                        }
-
-                        return string.IsNullOrWhiteSpace(generatedText) ? "I'd be happy to help you with that question. Could you provide more details?" : generatedText;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Fallback for generic responses
-                return "I'm here to help with any questions you have. Could you please rephrase your question or provide more details?";
-            }
-
-            // Final fallback
-            return "I'd be happy to help you with that question. Could you provide more details?";
-        }
 
         private async Task<string> ProcessEnhancedContextResponseAsync(string text)
         {
@@ -2500,24 +2312,30 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                                 else if (progressionSection.Contains("DETERIORATION NOTED"))
                                 {
-                                    response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-
-                                    // Extract actual critical values from context to show specific values
+                                    // Use database-driven template for critical alert
                                     var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                                    if (!string.IsNullOrEmpty(criticalValuesFromContext))
+                                    var criticalAlertText = criticalValuesFromContext ?? "- Critical medical values detected - review test results for details";
+
+                                    var template = await _templateService.FormatTemplateAsync("critical_alert_deterioration", new Dictionary<string, string>
                                     {
-                                        response.AppendLine(criticalValuesFromContext);
+                                        { "CRITICAL_VALUES", criticalAlertText }
+                                    });
+
+                                    if (!string.IsNullOrEmpty(template))
+                                    {
+                                        response.AppendLine(template);
                                     }
                                     else
                                     {
-                                        response.AppendLine("- Critical medical values detected - review test results for details");
+                                        // Fallback if template not found (should not happen once seeded)
+                                        response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                        response.AppendLine(criticalAlertText);
+                                        response.AppendLine();
+                                        response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                                        response.AppendLine("- These values indicate a medical emergency");
+                                        response.AppendLine("- Contact emergency services if symptoms worsen");
+                                        response.AppendLine("- Patient needs immediate medical evaluation");
                                     }
-
-                                    response.AppendLine();
-                                    response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                    response.AppendLine("- These values indicate a medical emergency");
-                                    response.AppendLine("- Contact emergency services if symptoms worsen");
-                                    response.AppendLine("- Patient needs immediate medical evaluation");
                                 }
                                 else
                                 {
@@ -2543,70 +2361,137 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                             else
                             {
-                                response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-
-                                // Extract actual critical values from context
+                                // Use database-driven template for critical alert
                                 var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                                if (!string.IsNullOrEmpty(criticalValuesFromContext))
+                                var criticalAlertText = criticalValuesFromContext ?? "- Critical medical values detected - review test results for details";
+
+                                var template = await _templateService.FormatTemplateAsync("critical_alert", new Dictionary<string, string>
                                 {
-                                    response.AppendLine(criticalValuesFromContext);
+                                    { "CRITICAL_VALUES", criticalAlertText }
+                                });
+
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
                                 }
                                 else
                                 {
-                                    response.AppendLine("- Critical medical values detected - review test results for details");
+                                    // Fallback if template not found
+                                    response.AppendLine("🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
+                                    response.AppendLine(criticalAlertText);
+                                    response.AppendLine();
+                                    response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
+                                    response.AppendLine("- These values indicate a medical emergency");
+                                    response.AppendLine("- Contact emergency services if symptoms worsen");
+                                    response.AppendLine("- Patient needs immediate medical evaluation");
                                 }
-
-                                response.AppendLine();
-                                response.AppendLine("**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-                                response.AppendLine("- These values indicate a medical emergency");
-                                response.AppendLine("- Contact emergency services if symptoms worsen");
-                                response.AppendLine("- Patient needs immediate medical evaluation");
                             }
                         }
                         else if (hasAnyConcerns)
                         {
-                            response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations that require attention and monitoring.");
+                            // Use database-driven template for concerns
+                            var template = await _templateService.FormatTemplateAsync("concerns_detected", new Dictionary<string, string>());
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                // Fallback if template not found
+                                response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations that require attention and monitoring.");
+                            }
                         }
                         else if (hasNormalValues)
                         {
                             // Check if this is showing improvement from previous critical values
                             if (text.Contains("IMPROVEMENT NOTED"))
                             {
-                                response.AppendLine("✅ **IMPROVEMENT NOTED:** Previous results showed critical values, but current results show normal values.");
-                                response.AppendLine("This indicates positive progress, though continued monitoring is recommended.");
-                            }
-                            else if (text.Contains("STATUS: STABLE"))
-                            {
-                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                var template = await _templateService.FormatTemplateAsync("improvement_noted", new Dictionary<string, string>());
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    // Fallback
+                                    response.AppendLine("✅ **IMPROVEMENT NOTED:** Previous results showed critical values, but current results show normal values.");
+                                    response.AppendLine("This indicates positive progress, though continued monitoring is recommended.");
+                                }
                             }
                             else
                             {
-                                response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                var template = await _templateService.FormatTemplateAsync("stable_status", new Dictionary<string, string>());
+                                if (!string.IsNullOrEmpty(template))
+                                {
+                                    response.AppendLine(template);
+                                }
+                                else
+                                {
+                                    // Fallback
+                                    response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
+                                }
                             }
                         }
                         else if (hasMedicalData)
                         {
-                            // Medical data exists but no structured values detected - warn about this
-                            response.AppendLine("⚠️ **WARNING:** Medical content was found, but critical values may not have been properly detected.");
-                            response.AppendLine("Please review the medical data manually to ensure no critical values are missed.");
-                            response.AppendLine();
-                            response.AppendLine("📊 **Status Review:** Based on available data, the patient appears to be stable with no immediate concerns detected.");
-                            response.AppendLine("However, please verify the medical content manually for accuracy.");
+                            // Use database-driven template for medical data warning
+                            var template = await _templateService.FormatTemplateAsync("medical_data_warning", new Dictionary<string, string>());
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                // Fallback
+                                response.AppendLine("⚠️ **WARNING:** Medical content was found, but critical values may not have been properly detected.");
+                                response.AppendLine("Please review the medical data manually to ensure no critical values are missed.");
+                                response.AppendLine();
+                                response.AppendLine("📊 **Status Review:** Based on available data, the patient appears to be stable with no immediate concerns detected.");
+                                response.AppendLine("However, please verify the medical content manually for accuracy.");
+                            }
                         }
                         else
                         {
-                            response.AppendLine("📊 **Status Review:** Based on available data, the patient appears to be stable with no immediate concerns detected.");
+                            // Use database-driven template for status review
+                            var template = await _templateService.FormatTemplateAsync("status_review", new Dictionary<string, string>());
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                // Fallback
+                                response.AppendLine("📊 **Status Review:** Based on available data, the patient appears to be stable with no immediate concerns detected.");
+                            }
                         }
 
                         if (hasJournalEntries)
                         {
-                            response.AppendLine();
-                            response.AppendLine("**Recent Patient Activity:**");
-                            response.AppendLine("- [09/16/2025] Mood: Crisis");
-                            response.AppendLine("- [09/16/2025] Mood: Neutral");
-                            response.AppendLine("- [09/16/2025] Mood: Neutral");
-                            response.AppendLine();
-                            response.AppendLine("The patient has been actively engaging with their health tracking.");
+                            // Extract actual journal entries from context (not hardcoded examples)
+                            var journalSection = ExtractJournalEntriesFromContext(text);
+                            var template = await _templateService.FormatTemplateAsync("recent_patient_activity", new Dictionary<string, string>
+                            {
+                                { "JOURNAL_ENTRIES", journalSection }
+                            });
+                            if (!string.IsNullOrEmpty(template))
+                            {
+                                response.AppendLine();
+                                response.AppendLine(template);
+                            }
+                            else
+                            {
+                                // Fallback - but use actual journal entries, not hardcoded examples
+                                response.AppendLine();
+                                response.AppendLine("**Recent Patient Activity:**");
+                                if (!string.IsNullOrEmpty(journalSection))
+                                {
+                                    response.AppendLine(journalSection);
+                                }
+                                else
+                                {
+                                    response.AppendLine("The patient has been actively engaging with their health tracking.");
+                                }
+                            }
                         }
                     }
                     else if (questionLower.Contains("stats") || questionLower.Contains("statistics") || questionLower.Contains("data") || questionLower.Contains("snapshot") || questionLower.Contains("results"))
