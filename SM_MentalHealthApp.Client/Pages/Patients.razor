@@ -404,89 +404,86 @@
 <!-- AI Health Check Results Dialog -->
 @if (showHealthCheckDialog && currentHealthCheckResult != null)
 {
-    <div class="modal-overlay health-check-modal-overlay" style="display: block !important; z-index: 9999 !important;">
-        <div class="modal-content health-check-modal-content">
-            <div class="modal-header health-check-modal-header">
-                <h3>🧠 AI Health Check Analysis</h3>
-                <button @onclick="CloseHealthCheckDialog" class="close-btn">✕</button>
-            </div>
-            
-            <div class="modal-body health-check-modal-body">
-                <div class="health-check-results">
-                    <div class="result-summary mb-3">
-                        <div class="severity-badge @(currentHealthCheckResult.Severity == "High" ? "severity-high" : currentHealthCheckResult.Severity == "Normal" ? "severity-normal" : "severity-low")">
-                            <strong>Severity: @currentHealthCheckResult.Severity</strong>
-                        </div>
-                        <p class="mt-2"><strong>Status:</strong> @currentHealthCheckResult.Message</p>
-                        @if (currentHealthCheckResult.AlertsSent > 0)
-                        {
-                            <p><strong>Alerts Sent:</strong> @currentHealthCheckResult.AlertsSent doctor(s) notified</p>
-                        }
+    <SMModal IsVisible="@showHealthCheckDialog" 
+             Title="🧠 AI Health Check Analysis" 
+             OnClose="CloseHealthCheckDialog"
+             Size="ExtraLarge">
+        <Body>
+            <div class="health-check-results">
+                <div class="result-summary mb-3">
+                    <div class="severity-badge @(currentHealthCheckResult.Severity == "High" ? "severity-high" : currentHealthCheckResult.Severity == "Normal" ? "severity-normal" : "severity-low")">
+                        <strong>Severity: @currentHealthCheckResult.Severity</strong>
                     </div>
-                    
-                    @if (!string.IsNullOrEmpty(currentHealthCheckResult.AiResponse))
+                    <p class="mt-2"><strong>Status:</strong> @currentHealthCheckResult.Message</p>
+                    @if (currentHealthCheckResult.AlertsSent > 0)
                     {
-                        <div class="ai-analysis-section">
-                            <h5>📊 AI Analysis Report</h5>
-                            <div class="ai-response-content">
-                                @((MarkupString)currentHealthCheckResult.AiResponse.Replace("\n", "<br/>"))
-                            </div>
-                        </div>
-                    }
-
-                    @if (currentHealthCheckResult.SeveritySources != null && currentHealthCheckResult.SeveritySources.Any())
-                    {
-                        <div class="severity-sources-section mt-4">
-                            <h5>🔍 Sources Contributing to Severity Assessment</h5>
-                            <p class="text-muted small mb-3">The following items were analyzed and contributed to the severity assessment. You can review them or mark them as not applicable if the patient's condition has improved.</p>
-                            
-                            <div class="alert alert-info small mb-3">
-                                <strong>Found @currentHealthCheckResult.SeveritySources.Count source(s)</strong> that contributed to this assessment.
-                            </div>
-                            
-                            @foreach (var source in currentHealthCheckResult.SeveritySources)
-                            {
-                                <div class="source-item mb-3 p-3 border border-danger rounded" style="background-color: #fff5f5;">
-                                    <div class="d-flex justify-content-between align-items-start">
-                                        <div class="flex-grow-1">
-                                            <div class="d-flex align-items-center mb-2">
-                                                <span class="badge @GetSourceTypeBadgeClass(source.SourceType) me-2">
-                                                    @GetSourceTypeIcon(source.SourceType) @source.SourceType
-                                                </span>
-                                                <strong>@source.SourceTitle</strong>
-                                                <span class="text-muted ms-2 small">@source.SourceDate.ToString("MM/dd/yyyy")</span>
-                                            </div>
-                                            <p class="mb-1 small text-muted">@source.SourcePreview</p>
-                                            @if (!string.IsNullOrEmpty(source.ContributionReason))
-                                            {
-                                                <p class="mb-0 small"><strong>Reason:</strong> <span class="text-info">@source.ContributionReason</span></p>
-                                            }
-                                        </div>
-                                        <div class="ms-3 d-flex flex-column gap-2">
-                                            <RadzenButton Text="View" 
-                                                         ButtonStyle="ButtonStyle.Info" 
-                                                         Size="ButtonSize.Small"
-                                                         Variant="Variant.Flat"
-                                                         Click="@(() => NavigateToSource(source))" />
-                                            <RadzenButton Text="Mark as Not Applicable" 
-                                                         ButtonStyle="ButtonStyle.Warning" 
-                                                         Size="ButtonSize.Small"
-                                                         Variant="Variant.Flat"
-                                                         Click="@(() => MarkSourceAsIgnored(source))" />
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                        </div>
+                        <p><strong>Alerts Sent:</strong> @currentHealthCheckResult.AlertsSent doctor(s) notified</p>
                     }
                 </div>
+                
+                @if (!string.IsNullOrEmpty(currentHealthCheckResult.AiResponse))
+                {
+                    <div class="ai-analysis-section">
+                        <h5>📊 AI Analysis Report</h5>
+                        <div class="ai-response-content">
+                            @((MarkupString)currentHealthCheckResult.AiResponse.Replace("\n", "<br/>"))
+                        </div>
+                    </div>
+                }
+
+                @if (currentHealthCheckResult.SeveritySources != null && currentHealthCheckResult.SeveritySources.Any())
+                {
+                    <div class="severity-sources-section mt-4">
+                        <h5>🔍 Sources Contributing to Severity Assessment</h5>
+                        <p class="text-muted small mb-3">The following items were analyzed and contributed to the severity assessment. You can review them or mark them as not applicable if the patient's condition has improved.</p>
+                        
+                        <div class="alert alert-info small mb-3">
+                            <strong>Found @currentHealthCheckResult.SeveritySources.Count source(s)</strong> that contributed to this assessment.
+                        </div>
+                        
+                        @foreach (var source in currentHealthCheckResult.SeveritySources)
+                        {
+                            <div class="source-item mb-3 p-3 border border-danger rounded" style="background-color: #fff5f5;">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <span class="badge @GetSourceTypeBadgeClass(source.SourceType) me-2">
+                                                @GetSourceTypeIcon(source.SourceType) @source.SourceType
+                                            </span>
+                                            <strong>@source.SourceTitle</strong>
+                                            <span class="text-muted ms-2 small">@source.SourceDate.ToString("MM/dd/yyyy")</span>
+                                        </div>
+                                        <p class="mb-1 small text-muted">@source.SourcePreview</p>
+                                        @if (!string.IsNullOrEmpty(source.ContributionReason))
+                                        {
+                                            <p class="mb-0 small"><strong>Reason:</strong> <span class="text-info">@source.ContributionReason</span></p>
+                                        }
+                                    </div>
+                                    <div class="ms-3 d-flex flex-column gap-2">
+                                        <RadzenButton Text="View" 
+                                                     ButtonStyle="ButtonStyle.Info" 
+                                                     Size="ButtonSize.Small"
+                                                     Variant="Variant.Flat"
+                                                     Click="@(() => NavigateToSource(source))" />
+                                        <RadzenButton Text="Mark as Not Applicable" 
+                                                     ButtonStyle="ButtonStyle.Warning" 
+                                                     Size="ButtonSize.Small"
+                                                     Variant="Variant.Flat"
+                                                     Click="@(() => MarkSourceAsIgnored(source))" />
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
             </div>
-            
-            <div class="modal-footer health-check-modal-footer">
-                <button @onclick="CloseHealthCheckDialog" class="btn btn-primary">Close</button>
-            </div>
-        </div>
-    </div>
+        </Body>
+        <Footer>
+            <RadzenButton Text="Close" 
+                         ButtonStyle="ButtonStyle.Primary" 
+                         Click="CloseHealthCheckDialog" />
+        </Footer>
+    </SMModal>
 }
 
 <!-- Unassign Confirmation Modal -->
@@ -1341,11 +1338,11 @@
         }
     }
 
-    private void CloseHealthCheckDialog()
+    private async Task CloseHealthCheckDialog()
     {
         showHealthCheckDialog = false;
         currentHealthCheckResult = null;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ConfirmUnassignPatient()
@@ -1673,117 +1670,5 @@
         overflow-y: auto;
     }
 
-    /* Health Check Dialog Specific Styles */
-    .health-check-modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 9999;
-        padding: 20px;
-        box-sizing: border-box;
-    }
-
-    .health-check-modal-content {
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        max-width: 800px;
-        width: 100%;
-        max-height: 90vh;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        position: relative;
-    }
-
-    .health-check-modal-header {
-        flex-shrink: 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px;
-        border-bottom: 1px solid #e0e0e0;
-    }
-
-    .health-check-modal-header h3 {
-        margin: 0;
-        color: #333;
-    }
-
-    .health-check-modal-body {
-        flex: 1;
-        overflow-y: auto;
-        padding: 20px;
-        min-height: 0;
-    }
-
-    .health-check-modal-footer {
-        flex-shrink: 0;
-        display: flex;
-        justify-content: flex-end;
-        padding: 15px 20px;
-        border-top: 1px solid #e0e0e0;
-        background: #f8f9fa;
-    }
-
-    .health-check-modal-footer .btn {
-        padding: 8px 20px;
-        font-size: 14px;
-    }
-
-    /* Ensure close button is always visible */
-    .health-check-modal-header .close-btn {
-        position: relative;
-        z-index: 10;
-        background: none;
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        color: #666;
-        padding: 0;
-        width: 30px;
-        height: 30px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-    }
-
-    .health-check-modal-header .close-btn:hover {
-        color: #333;
-        background-color: #f0f0f0;
-        border-radius: 4px;
-    }
-
-    /* Responsive adjustments */
-    @@media (max-height: 600px) {
-        .health-check-modal-content {
-            max-height: 95vh;
-        }
-
-        .health-check-modal-body {
-            padding: 15px;
-        }
-
-        .ai-response-content {
-            max-height: 250px;
-        }
-    }
-
-    @@media (max-width: 768px) {
-        .health-check-modal-content {
-            max-width: 95%;
-            max-height: 95vh;
-        }
-
-        .health-check-modal-overlay {
-            padding: 10px;
-        }
-    }
+    /* Health Check Results Styles (content inside SMModal) */
 </style>
