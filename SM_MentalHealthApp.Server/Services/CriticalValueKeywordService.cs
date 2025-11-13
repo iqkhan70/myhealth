@@ -44,6 +44,9 @@ namespace SM_MentalHealthApp.Server.Services
 
                 _cachedKeywords = keywords;
                 _cacheExpiry = DateTime.UtcNow.Add(CacheDuration);
+                
+                _logger.LogInformation("Loaded {Count} active keywords from database. Cache expires at {Expiry}", 
+                    keywords.Count, _cacheExpiry);
 
                 return keywords;
             }
@@ -53,14 +56,27 @@ namespace SM_MentalHealthApp.Server.Services
                 return new List<CriticalValueKeyword>();
             }
         }
+        
+        /// <summary>
+        /// Clears the keyword cache - useful after seeding new keywords
+        /// </summary>
+        public static void ClearCache()
+        {
+            _cachedKeywords = null;
+            _cacheExpiry = DateTime.MinValue;
+        }
 
         public async Task<List<CriticalValueKeyword>> GetKeywordsByCategoryAsync(string categoryName)
         {
             var allKeywords = await GetActiveKeywordsAsync();
-            return allKeywords
+            var categoryKeywords = allKeywords
                 .Where(k => k.Category != null && 
                            k.Category.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase))
                 .ToList();
+            
+            _logger.LogDebug("Found {Count} keywords for category '{CategoryName}'", categoryKeywords.Count, categoryName);
+            
+            return categoryKeywords;
         }
 
         public async Task<bool> ContainsAnyKeywordAsync(string text, string? categoryName = null)
@@ -72,13 +88,21 @@ namespace SM_MentalHealthApp.Server.Services
                 ? await GetKeywordsByCategoryAsync(categoryName)
                 : await GetActiveKeywordsAsync();
 
+            if (keywords == null || !keywords.Any())
+            {
+                _logger.LogWarning("No keywords found for category: {CategoryName}", categoryName ?? "ALL");
+                return false;
+            }
+
             var lowerText = text.ToLowerInvariant();
             
             foreach (var keyword in keywords)
             {
+                var keywordLower = keyword.Keyword.ToLowerInvariant();
                 // Case-insensitive contains check
-                if (lowerText.Contains(keyword.Keyword.ToLowerInvariant()))
+                if (lowerText.Contains(keywordLower))
                 {
+                    _logger.LogDebug("Keyword match found: '{Keyword}' in category '{Category}'", keyword.Keyword, categoryName ?? "ALL");
                     return true;
                 }
             }

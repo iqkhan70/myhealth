@@ -35,16 +35,36 @@ namespace SM_MentalHealthApp.Server.Services.ResponseHandlers
 
             // Extract patient data sections (exclude AI instructions)
             context.PatientDataText = await ExtractPatientDataSectionsAsync(text);
+            
+            _logger.LogInformation("Extracted patient data text length: {Length}", context.PatientDataText?.Length ?? 0);
+            _logger.LogInformation("Patient data text preview: {Preview}", 
+                context.PatientDataText?.Length > 200 ? context.PatientDataText.Substring(0, 200) : context.PatientDataText);
 
             // Check for critical values
             context.HasCriticalValues = await _patternService.MatchesAnyPatternAsync(context.PatientDataText) ||
                                        await _keywordService.ContainsAnyKeywordAsync(context.PatientDataText, "Critical");
+            _logger.LogInformation("HasCriticalValues: {HasCritical}", context.HasCriticalValues);
 
             // Check for abnormal values
             context.HasAbnormalValues = await _keywordService.ContainsAnyKeywordAsync(context.PatientDataText, "Abnormal");
             var hasHighConcern = await _keywordService.ContainsAnyKeywordAsync(context.PatientDataText, "High Concern");
             var hasDistress = await _keywordService.ContainsAnyKeywordAsync(context.PatientDataText, "Distress");
             context.HasAnyConcerns = context.HasAbnormalValues || hasHighConcern || hasDistress;
+            
+            _logger.LogInformation("HasAbnormalValues: {HasAbnormal}, HasHighConcern: {HasHighConcern}, HasDistress: {HasDistress}, HasAnyConcerns: {HasAnyConcerns}",
+                context.HasAbnormalValues, hasHighConcern, hasDistress, context.HasAnyConcerns);
+            
+            // Debug: Check if clinical notes section exists and what keywords might match
+            if (!string.IsNullOrEmpty(context.PatientDataText) && context.PatientDataText.Contains("RECENT CLINICAL NOTES", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogInformation("Clinical notes detected in patient data. Checking for specific keywords...");
+                var testKeywords = new[] { "serious symptoms", "anxiety", "high blood pressure", "heart problems", "risk of", "more test" };
+                foreach (var testKeyword in testKeywords)
+                {
+                    var found = context.PatientDataText.ToLowerInvariant().Contains(testKeyword.ToLowerInvariant());
+                    _logger.LogInformation("Keyword '{Keyword}' found in patient data: {Found}", testKeyword, found);
+                }
+            }
 
             // Check for normal values
             context.HasNormalValues = await _keywordService.ContainsAnyKeywordAsync(context.PatientDataText, "Normal");

@@ -70,20 +70,34 @@ namespace SM_MentalHealthApp.Server.Services
             if (index < 0) return null;
 
             // Find the end of this section (next section marker or end of text)
+            // For clinical notes, we want to include all content until the next major section
             var nextIndex = text.Length;
+            var searchStart = index + marker.Length;
+            
             foreach (var nextMarker in markers)
             {
-                if (nextMarker != marker)
+                if (nextMarker != marker && !nextMarker.Contains(markerType, StringComparison.OrdinalIgnoreCase))
                 {
-                    var nextPos = text.IndexOf(nextMarker, index + marker.Length, StringComparison.OrdinalIgnoreCase);
+                    // Only look for markers that come after this one
+                    var nextPos = text.IndexOf(nextMarker, searchStart, StringComparison.OrdinalIgnoreCase);
                     if (nextPos > index && nextPos < nextIndex)
                     {
+                        // For clinical notes, make sure we don't cut off too early
+                        // If the next marker is very close (within 50 chars), it might be a false match
+                        if (markerType.Contains("CLINICAL NOTES") && (nextPos - searchStart) < 50)
+                        {
+                            continue; // Skip this marker, it's too close
+                        }
                         nextIndex = nextPos;
                     }
                 }
             }
 
-            return text.Substring(index, nextIndex - index);
+            var extracted = text.Substring(index, nextIndex - index);
+            _logger.LogDebug("Extracted section '{MarkerType}': {Length} chars (from index {Start} to {End})", 
+                markerType, extracted.Length, index, nextIndex);
+            
+            return extracted;
         }
 
         private List<string> GetHardcodedSectionMarkers()
@@ -107,7 +121,17 @@ namespace SM_MentalHealthApp.Server.Services
                 "**Medical Resource Information",
                 "**Medical Facilities Search",
                 "Doctor asks:",
-                "Patient asks:"
+                "Patient asks:",
+                // Additional markers for emergency and data detection
+                "Fall",
+                "Session:",
+                "Summary:",
+                "Clinical Notes",
+                "Journal Entries",
+                "Chat History",
+                "MOOD PATTERNS (Last 30 days):",
+                "RECENT JOURNAL ENTRIES (Last 14 days):",
+                "AI Health Check for Patient"
             };
         }
     }

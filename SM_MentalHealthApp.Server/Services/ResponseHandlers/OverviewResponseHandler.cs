@@ -28,18 +28,23 @@ namespace SM_MentalHealthApp.Server.Services.ResponseHandlers
                 fallbackKey: "fallback_patient_overview",
                 hardcodedFallback: "**Patient Medical Overview:**");
 
-            // Handle based on context
+            // Handle based on context - prioritize concerns over normal values
+            // IMPORTANT: Check concerns BEFORE normal values to avoid false "STABLE" status
             if (context.HasCriticalValues)
             {
                 await HandleCriticalOverview(response, context);
             }
             else if (context.HasAnyConcerns)
             {
+                // HasAnyConcerns includes: HasAbnormalValues OR hasHighConcern OR hasDistress
+                // This catches clinical notes with "serious symptoms", "anxiety", "high blood pressure", etc.
                 await AppendTemplateAsync(response, "concerns_detected",
                     hardcodedFallback: "⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations.");
             }
-            else if (context.HasNormalValues)
+            else if (context.HasNormalValues && !context.HasAnyConcerns)
             {
+                // Only show stable if we have normal values AND no concerns
+                // This prevents showing "STABLE" when there are concerns that weren't detected
                 await AppendTemplateAsync(response, "stable_status",
                     hardcodedFallback: "✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
             }

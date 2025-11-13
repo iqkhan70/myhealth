@@ -50,7 +50,7 @@ namespace SM_MentalHealthApp.Server.Services
             }
         }
 
-        public async Task<string> FormatTemplateAsync(string templateKey, Dictionary<string, string> placeholders)
+        public async Task<string> FormatTemplateAsync(string templateKey, Dictionary<string, string>? placeholders)
         {
             try
             {
@@ -64,9 +64,12 @@ namespace SM_MentalHealthApp.Server.Services
                 var result = template.Content;
 
                 // Replace placeholders like {CRITICAL_VALUES}, {STATUS}, etc.
-                foreach (var placeholder in placeholders)
+                if (placeholders != null)
                 {
-                    result = result.Replace($"{{{placeholder.Key}}}", placeholder.Value ?? string.Empty);
+                    foreach (var placeholder in placeholders)
+                    {
+                        result = result.Replace($"{{{placeholder.Key}}}", placeholder.Value ?? string.Empty);
+                    }
                 }
 
                 // Remove any unreplaced placeholders (optional - you might want to keep them for debugging)

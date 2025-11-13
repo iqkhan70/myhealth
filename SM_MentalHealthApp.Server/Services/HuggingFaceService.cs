@@ -800,7 +800,7 @@ namespace SM_MentalHealthApp.Server.Services
                 // Check if this is an emergency case and use hybrid approach using section markers
                 var hasEmergencyIncidents = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT EMERGENCY INCIDENTS");
                 var hasEmergency = text.Contains("EMERGENCY", StringComparison.OrdinalIgnoreCase);
-                var hasFall = text.Contains("Fall", StringComparison.OrdinalIgnoreCase);
+                var hasFall = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Fall");
 
                 _logger.LogInformation("Checking for emergency incidents. HasEmergencyIncidents: {HasEmergencyIncidents}, HasEmergency: {HasEmergency}, HasFall: {HasFall}",
                     hasEmergencyIncidents, hasEmergency, hasFall);
@@ -996,8 +996,9 @@ namespace SM_MentalHealthApp.Server.Services
 
             // Additional fallback: if text contains patient-specific question patterns, treat it as a medical question
             // But only if it's clearly a patient status question, not a general knowledge question
-            if ((text.Contains("how is") || text.Contains("status") || text.Contains("suggestions") || text.Contains("snapshot") || text.Contains("results") || text.Contains("stats"))
-                && (text.Contains("patient") || text.Contains("Patient") || text.Contains("=== CURRENT MEDICAL STATUS ===")))
+            var hasCurrentStatus = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "CURRENT MEDICAL STATUS");
+            if ((text.Contains("how is", StringComparison.OrdinalIgnoreCase) || text.Contains("status", StringComparison.OrdinalIgnoreCase) || text.Contains("suggestions", StringComparison.OrdinalIgnoreCase) || text.Contains("snapshot", StringComparison.OrdinalIgnoreCase) || text.Contains("results", StringComparison.OrdinalIgnoreCase) || text.Contains("stats", StringComparison.OrdinalIgnoreCase))
+                && (text.Contains("patient", StringComparison.OrdinalIgnoreCase) || hasCurrentStatus))
             {
                 _logger.LogInformation("Detected patient-specific medical question keywords, processing as medical question");
                 return await ProcessEnhancedContextResponseAsync(text);
@@ -1065,15 +1066,28 @@ namespace SM_MentalHealthApp.Server.Services
                     // Generate a contextual response based on the enhanced context
                     var response = new StringBuilder();
 
-                    // Check for medical content in the context - expanded to include all section headers we use
-                    bool hasMedicalContent = text.Contains("Blood Pressure") || text.Contains("Hemoglobin") || text.Contains("Triglycerides") ||
-                                           text.Contains("CRITICAL VALUES") || text.Contains("ABNORMAL VALUES") || text.Contains("NORMAL VALUES") ||
-                                           text.Contains("CURRENT MEDICAL STATUS") || text.Contains("LATEST TEST RESULTS") ||
-                                           text.Contains("=== CURRENT MEDICAL STATUS") || text.Contains("=== HISTORICAL MEDICAL CONCERNS") ||
-                                           text.Contains("=== HEALTH TREND ANALYSIS") ||
-                                           text.Contains("=== MEDICAL DATA SUMMARY") || text.Contains("=== RECENT CLINICAL NOTES") ||
-                                           text.Contains("=== RECENT CHAT HISTORY") || text.Contains("=== RECENT EMERGENCY INCIDENTS") ||
-                                           text.Contains("=== RECENT JOURNAL ENTRIES") || text.Contains("AI Health Check for Patient");
+                    // Check for medical content in the context using section markers and medical parameter names
+                    var hasCurrentStatusMarker = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "CURRENT MEDICAL STATUS");
+                    var hasHistoricalConcerns = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "HISTORICAL MEDICAL CONCERNS");
+                    var hasHealthTrend = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "HEALTH TREND ANALYSIS");
+                    var hasMedicalDataSummary = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "MEDICAL DATA SUMMARY");
+                    var hasRecentClinical = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT CLINICAL NOTES");
+                    var hasRecentChat = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT CHAT HISTORY");
+                    var hasRecentEmergency = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT EMERGENCY INCIDENTS");
+                    var hasRecentJournal = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT JOURNAL ENTRIES");
+                    var hasAiHealthCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "AI Health Check");
+
+                    bool hasMedicalContent = text.Contains("Blood Pressure", StringComparison.OrdinalIgnoreCase) ||
+                                           text.Contains("Hemoglobin", StringComparison.OrdinalIgnoreCase) ||
+                                           text.Contains("Triglycerides", StringComparison.OrdinalIgnoreCase) ||
+                                           text.Contains("CRITICAL VALUES", StringComparison.OrdinalIgnoreCase) ||
+                                           text.Contains("ABNORMAL VALUES", StringComparison.OrdinalIgnoreCase) ||
+                                           text.Contains("NORMAL VALUES", StringComparison.OrdinalIgnoreCase) ||
+                                           text.Contains("CURRENT MEDICAL STATUS", StringComparison.OrdinalIgnoreCase) ||
+                                           text.Contains("LATEST TEST RESULTS", StringComparison.OrdinalIgnoreCase) ||
+                                           hasCurrentStatusMarker || hasHistoricalConcerns || hasHealthTrend ||
+                                           hasMedicalDataSummary || hasRecentClinical || hasRecentChat ||
+                                           hasRecentEmergency || hasRecentJournal || hasAiHealthCheck;
 
                     // Extract only patient data sections (exclude AI instructions)
                     var patientDataText = ExtractPatientDataSections(text);

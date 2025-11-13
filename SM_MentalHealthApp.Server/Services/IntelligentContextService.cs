@@ -75,9 +75,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 _logger.LogError(ex, "Error in intelligent context processing");
                 var errorTemplate = await _templateService.FormatTemplateAsync("intelligent_context_error", null);
-                return !string.IsNullOrEmpty(errorTemplate)
-                    ? errorTemplate
-                    : "I apologize, but I encountered an error processing your question. Please try rephrasing it or contact support if the issue persists.";
+                return errorTemplate ?? "I apologize, but I encountered an error processing your question. Please try rephrasing it or contact support if the issue persists.";
             }
         }
 
@@ -90,24 +88,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 var template = await _templateService.FormatTemplateAsync("intelligent_context_no_patient_medical",
                     new Dictionary<string, string> { { "QUESTION", question } });
-                if (!string.IsNullOrEmpty(template)) return template;
-
-                // Fallback
-                return $@"**General Medical Information Request**
-
-You're asking: ""{question}""
-
-To provide personalized medical insights, please:
-1. **Select a specific patient** from the dropdown above
-2. **Ask your question in the context of that patient's care**
-
-This will allow me to provide:
-- Patient-specific medical assessments
-- Personalized treatment recommendations
-- Context-aware clinical guidance
-- Integration with the patient's medical history and current data
-
-If you need general medical information without patient context, I recommend consulting medical literature or professional medical resources.";
+                return template ?? "Please select a patient to get personalized medical insights.";
             }
 
             // Use the HuggingFace service for medical questions
@@ -134,17 +115,7 @@ If you need general medical information without patient context, I recommend con
             {
                 var template = await _templateService.FormatTemplateAsync("intelligent_context_no_patient_resources",
                     new Dictionary<string, string> { { "WEB_RESULTS", webResults } });
-                if (!string.IsNullOrEmpty(template)) return template;
-
-                // Fallback
-                var response = new StringBuilder();
-                response.AppendLine("**Medical Resources Search**");
-                response.AppendLine();
-                response.AppendLine("To provide personalized medical facility recommendations, please select a specific patient first.");
-                response.AppendLine();
-                response.AppendLine("=== GENERAL MEDICAL RESOURCES ===");
-                response.AppendLine(webResults);
-                return response.ToString();
+                return template ?? $"**Medical Resources Search**\n\nTo provide personalized medical facility recommendations, please select a specific patient first.\n\n=== GENERAL MEDICAL RESOURCES ===\n{webResults}";
             }
 
             // Get patient information for context
@@ -158,18 +129,7 @@ If you need general medical information without patient context, I recommend con
                     { "PATIENT_INFO", patientInfo },
                     { "WEB_RESULTS", webResults }
                 });
-            if (!string.IsNullOrEmpty(combinedTemplate)) return combinedTemplate;
-
-            // Fallback
-            var combinedResponse = new StringBuilder();
-            combinedResponse.AppendLine($"**Medical Resource Information for {patientInfo}:**");
-            combinedResponse.AppendLine();
-            combinedResponse.AppendLine(webResults);
-            combinedResponse.AppendLine();
-            combinedResponse.AppendLine("---");
-            combinedResponse.AppendLine("Please note: This information is for guidance only. Always verify details with the medical facility directly.");
-
-            return combinedResponse.ToString();
+            return combinedTemplate ?? $"**Medical Resource Information for {patientInfo}:**\n\n{webResults}\n\n---\nPlease note: This information is for guidance only. Always verify details with the medical facility directly.";
         }
 
         private async Task<string> ProcessPatientRecommendationQuestion(string question, int patientId)
@@ -181,24 +141,7 @@ If you need general medical information without patient context, I recommend con
             {
                 var template = await _templateService.FormatTemplateAsync("intelligent_context_no_patient_recommendations",
                     new Dictionary<string, string> { { "QUESTION", question } });
-                if (!string.IsNullOrEmpty(template)) return template;
-
-                // Fallback
-                return $@"**General Medical Recommendations Request**
-
-You're asking: ""{question}""
-
-To provide personalized medical recommendations, please:
-1. **Select a specific patient** from the dropdown above
-2. **Ask your question in the context of that patient's care**
-
-This will allow me to provide:
-- Patient-specific treatment recommendations
-- Personalized care approaches
-- Context-aware clinical guidance
-- Integration with the patient's medical history and current data
-
-If you need general medical recommendations without patient context, I recommend consulting medical literature or professional medical resources.";
+                return template ?? "Please select a patient to get personalized medical recommendations.";
             }
 
             // Use the HuggingFace service for recommendation questions
@@ -211,23 +154,7 @@ If you need general medical recommendations without patient context, I recommend
             _logger.LogInformation("Processing non-patient related question");
             var template = await _templateService.FormatTemplateAsync("intelligent_context_non_patient",
                 new Dictionary<string, string> { { "QUESTION", question } });
-            if (!string.IsNullOrEmpty(template)) return template;
-
-            // Fallback
-            return $@"**Query Not Applicable to Patient Care**
-
-I understand you're asking about: ""{question}""
-
-However, this question appears to be unrelated to patient care or medical practice. As a clinical AI assistant, I'm designed to help with:
-
-- Patient medical assessments and status updates
-- Clinical recommendations and treatment approaches  
-- Medical resource identification and referrals
-- Healthcare provider decision support
-
-For questions about entertainment, celebrities, or other non-medical topics, please use a general-purpose AI assistant or search engine.
-
-If you have a medical question related to patient care, I'd be happy to help with that instead.";
+            return template ?? "This question appears to be unrelated to patient care. As a clinical AI assistant, I'm designed to help with patient medical assessments, clinical recommendations, and healthcare provider decision support.";
         }
 
         private async Task<string> ProcessGeneralMedicalQuestion(string question)
@@ -235,25 +162,7 @@ If you have a medical question related to patient care, I'd be happy to help wit
             _logger.LogInformation("Processing general medical question");
             var template = await _templateService.FormatTemplateAsync("intelligent_context_general_medical",
                 new Dictionary<string, string> { { "QUESTION", question } });
-            if (!string.IsNullOrEmpty(template)) return template;
-
-            // Fallback
-            return $@"**General Medical Information Request**
-
-You're asking: ""{question}""
-
-While I can provide general medical information, for the most accurate and personalized guidance, please:
-
-1. **Select a specific patient** from the dropdown above
-2. **Ask your question in the context of that patient's care**
-
-This will allow me to provide:
-- Patient-specific medical assessments
-- Personalized treatment recommendations
-- Context-aware clinical guidance
-- Integration with the patient's medical history and current data
-
-If you need general medical information without patient context, I recommend consulting medical literature or professional medical resources.";
+            return template ?? "For the most accurate and personalized guidance, please select a specific patient and ask your question in the context of that patient's care.";
         }
 
         private string ExtractLocationInfo(string question)
@@ -350,9 +259,7 @@ If you need general medical information without patient context, I recommend con
             {
                 _logger.LogError(ex, "Error in web search");
                 var errorTemplate = await _templateService.FormatTemplateAsync("intelligent_context_web_search_error", null);
-                return !string.IsNullOrEmpty(errorTemplate)
-                    ? errorTemplate
-                    : "Web search is currently unavailable. Please use standard search engines to find medical facilities.";
+                return errorTemplate ?? "Web search is currently unavailable. Please use standard search engines to find medical facilities.";
             }
         }
     }
