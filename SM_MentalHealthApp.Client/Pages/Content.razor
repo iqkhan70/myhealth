@@ -6,7 +6,12 @@
 @using Microsoft.JSInterop
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components.Grid
+@using SM_MentalHealthApp.Client.Components.Common
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components
+@using Radzen
+@using Radzen.Blazor
 
 <div class="content-page">
     <div class="content-header">
@@ -42,146 +47,10 @@
 
         <!-- Content Grid -->
         <div class="content-grid">
-            @if (isLoading)
+            @if (_columns.Any())
             {
-                <div class="loading-state">
-                    <div class="loading-spinner"></div>
-                    <p>Loading content...</p>
-                </div>
-            }
-            else if (contents.Any())
-            {
-                <RadzenDataGrid Data="@contents" TItem="ContentItemDto" AllowPaging="true" PageSize="10" AllowSorting="true"
-                    FilterMode="FilterMode.Advanced" ShowPagingSummary="true" EmptyText="No content found" AllowFiltering="true"
-                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" ShowFilterRow="true"
-                    ShowFilterRowButtons="true">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="ContentItemDto" Property="Title" Title="Title" Width="200px"
-                            Filterable="true">
-                            <Template Context="content">
-                                <div>
-                                    <strong>@content.Title</strong>
-                                    <br />
-                                    <small class="text-muted">@content.Description</small>
-                                </div>
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="ContentItemDto" Property="PatientId" Title="Patient" Width="150px"
-                            Filterable="true">
-                            <Template Context="content">
-                                <div>
-                                    <strong>Patient #@content.PatientId</strong>
-                                    <br />
-                                    <small class="text-muted">ID: @content.PatientId</small>
-                                </div>
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="ContentItemDto" Property="OriginalFileName" Title="File" Width="150px"
-                            Filterable="true">
-                            <Template Context="content">
-                                <div>
-                                    <i class="@GetFileIcon(GetContentTypeName(content.ContentTypeModelId))"></i>
-                                    @content.OriginalFileName
-                                    <br />
-                                    <small class="text-muted">@FormatFileSize(content.FileSizeBytes)</small>
-                                </div>
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="ContentItemDto" Property="ContentTypeId" Title="Type" Width="100px" Filterable="true">
-                            <Template Context="content">
-        <span class="content-type-badge @GetTypeClass(GetContentTypeName(content.ContentTypeModelId))">
-            @GetContentTypeName(content.ContentTypeModelId)
-        </span>
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="ContentItemDto" Property="IsIgnoredByDoctor" Title="AI Status" Width="130px" Filterable="true" Sortable="true">
-                            <Template Context="content">
-                                @if (content.IsIgnoredByDoctor)
-                                {
-                                    <span class="badge bg-warning text-dark" title="This content is ignored and will be excluded from AI health check analysis">
-                                        🚫 Ignored
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-success" title="This content is active and will be included in AI health check analysis">
-                                        ✅ Active
-                                    </span>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="ContentItemDto" Property="CreatedAt" Title="Added" Width="120px"
-                            Filterable="true">
-                            <Template Context="content">
-                                @content.CreatedAt.ToString("MMM dd, yyyy")
-                                <br />
-                                <small class="text-muted">@content.CreatedAt.ToString("HH:mm")</small>
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="ContentItemDto" Property="AddedByUserId" Title="Added By" Width="120px"
-                            Filterable="true">
-                            <Template Context="content">
-                                @if (content.AddedByUserId.HasValue)
-                                {
-                                    <div>
-                                        <strong>User #@content.AddedByUserId</strong>
-                                        <br />
-                                        <small class="text-muted">ID: @content.AddedByUserId</small>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">Self</span>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-
-                        <RadzenDataGridColumn TItem="ContentItemDto" Property="Actions" Title="Actions" Width="200px"
-                            Sortable="false" Filterable="false">
-                            <Template Context="content">
-                                <div class="action-buttons">
-                                    <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Info"
-                                        ButtonType="ButtonType.Button" Size="ButtonSize.Small"
-                                        Click="@(async () => await ViewContent(content))" Title="View/Download" />
-
-                                    <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Success" ButtonType="ButtonType.Button"
-                                        Size="ButtonSize.Small" Click="@(() => EditContent(content))" Title="Edit" />
-
-                                    @if (AuthService.CurrentUser?.RoleId == 2) // Doctor can ignore/unignore
-                                    {
-                                        <RadzenButton Icon="@(content.IsIgnoredByDoctor ? "undo" : "block")" 
-                                            ButtonStyle="@(content.IsIgnoredByDoctor ? ButtonStyle.Info : ButtonStyle.Warning)" 
-                                            ButtonType="ButtonType.Button"
-                                            Size="ButtonSize.Small" 
-                                            Click="@(async () => await ToggleIgnoreContentAsync(content))"
-                                            Title="@(content.IsIgnoredByDoctor ? "Unignore for AI analysis" : "Ignore for AI analysis")" />
-                                    }
-
-                                    @if (AuthService.CurrentUser?.RoleId == 3) // Only admin can delete
-                                    {
-                                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" ButtonType="ButtonType.Button"
-                                            Size="ButtonSize.Small" Click="@(async () => await DeleteContent(content))"
-                                            Title="Delete" />
-                                    }
-                                </div>
-                            </Template>
-                        </RadzenDataGridColumn>
-                    </Columns>
-                </RadzenDataGrid>
-            }
-            else
-            {
-                <div class="empty-state">
-                    <div class="empty-icon">📁</div>
-                    <h4>No content found</h4>
-                    <p>Add your first content to get started!</p>
-                </div>
+                <SMDataGrid TItem="ContentItemDto" Columns="_columns" Actions="_actions" ActionsWidth="200px"
+                    LoadItems="LoadContentItems" PageSize="10" @ref="_grid" AutoLoad="true" />
             }
         </div>
     }
@@ -190,103 +59,96 @@
 <!-- Add/Edit Content Modal -->
 @if (showContentForm)
 {
-    <div class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>@GetFormTitle()</h3>
-                <button @onclick="CloseContentForm" class="close-btn">✕</button>
+    <SMModal IsVisible="@showContentForm" 
+             Title="@GetFormTitle()" 
+             OnClose="CloseContentForm"
+             Size="Medium">
+    <Body>
+        <form @onsubmit="@SaveContent" @onsubmit:preventDefault="true">
+            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3)
+            {
+                <div class="form-group">
+                    <label class="form-label @GetPatientLabelClass()">Select Patient: <span class="required-asterisk">*</span></label>
+                    <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
+                        @bind-Value="contentForm.PatientId" AllowFiltering="true"
+                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a patient..."
+                        Style="width: 100%" 
+                        @onchange="@(() => { showPatientError = false; StateHasChanged(); })" />
+                </div>
+            }
+            else if (AuthService.CurrentUser?.RoleId == 1)
+            {
+                <div class="form-group">
+                    <div class="patient-info-display">
+                        <i class="fas fa-user"></i>
+                        <span>Uploading content for: <strong>@(AuthService.CurrentUser?.FirstName) @(AuthService.CurrentUser?.LastName)</strong></span>
+                    </div>
+                </div>
+            }
+
+            <div class="form-group">
+                <label class="form-label @GetTitleLabelClass()">Title: <span class="required-asterisk">*</span></label>
+                <RadzenTextBox @bind-Value="contentForm.Title" Placeholder="Enter content title..."
+                    Style="width: 100%" 
+                    @onchange="@(() => { showTitleError = false; StateHasChanged(); })" />
             </div>
 
-            <div class="modal-body">
-                <form @onsubmit="@SaveContent" @onsubmit:preventDefault="true">
-
-                    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3)
+            <div class="form-group">
+                <label class="form-label">Description: <span class="optional-text">(Optional)</span></label>
+                <div class="description-container">
+                    <RadzenTextArea @bind-Value="contentForm.Description" Placeholder="Enter content description (optional)... You can leave this empty or clear it anytime."
+                        Style="width: 100%; height: 80px;" />
+                    @if (!string.IsNullOrWhiteSpace(contentForm.Description))
                     {
-                        <div class="form-group">
-                            <label class="form-label @GetPatientLabelClass()">Select Patient: <span class="required-asterisk">*</span></label>
-                            <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
-                                @bind-Value="contentForm.PatientId" AllowFiltering="true"
-                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a patient..."
-                                Style="width: 100%" 
-                                @onchange="@(() => { showPatientError = false; StateHasChanged(); })" />
-                        </div>
+                        <button type="button" class="clear-description-btn" @onclick="ClearDescription" title="Clear description">
+                            <i class="fas fa-times"></i>
+                        </button>
                     }
-                    else if (AuthService.CurrentUser?.RoleId == 1)
-                    {
-                        <div class="form-group">
-                            <div class="patient-info-display">
-                                <i class="fas fa-user"></i>
-                                <span>Uploading content for: <strong>@(AuthService.CurrentUser?.FirstName) @(AuthService.CurrentUser?.LastName)</strong></span>
-                            </div>
-                        </div>
-                    }
-
-                    <div class="form-group">
-                        <label class="form-label @GetTitleLabelClass()">Title: <span class="required-asterisk">*</span></label>
-                        <RadzenTextBox @bind-Value="contentForm.Title" Placeholder="Enter content title..."
-                            Style="width: 100%" 
-                            @onchange="@(() => { showTitleError = false; StateHasChanged(); })" />
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Description: <span class="optional-text">(Optional)</span></label>
-                        <div class="description-container">
-                            <RadzenTextArea @bind-Value="contentForm.Description" Placeholder="Enter content description (optional)... You can leave this empty or clear it anytime."
-                                Style="width: 100%; height: 80px;" />
-                            @if (!string.IsNullOrWhiteSpace(contentForm.Description))
-                            {
-                                <button type="button" class="clear-description-btn" @onclick="ClearDescription" title="Clear description">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            }
-                        </div>
-                    </div>
-
-                    @if (editingContent == null)
-                    {
-                        <div class="form-group">
-                            <label class="form-label @GetFileLabelClass()">File: <span class="required-asterisk">*</span></label>
-                            <div class="file-selection-container">
-                                <InputFile OnChange="@OnFileSelected" accept="*/*" class="@GetFileInputClass()" />
-                                @if (selectedFile != null)
-                                {
-                                    <button type="button" class="clear-file-btn" @onclick="ClearSelectedFile" title="Clear selected file">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                }
-                            </div>
-                            @if (selectedFile == null)
-                            {
-                                <div class="file-input-hint">
-                                    <i class="fas fa-info-circle"></i>
-                                    Please select a file to upload
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="file-selected-info">
-                                    <i class="fas fa-check-circle text-success"></i>
-                                    Selected: @selectedFile.Name (@(selectedFile.Size / 1024) KB)
-                                </div>
-                            }
-                        </div>
-                    }
-
-                    <div class="form-actions">
-                        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseContentForm" />
-                        <RadzenButton Text="@(editingContent == null ? "Upload" : "Save")" ButtonStyle="ButtonStyle.Primary"
-                            ButtonType="ButtonType.Submit" Disabled="@isSaving" Click="@SaveContent" />
-                    </div>
-                </form>
+                </div>
             </div>
-        </div>
-    </div>
+
+            @if (editingContent == null)
+            {
+                <div class="form-group">
+                    <label class="form-label @GetFileLabelClass()">File: <span class="required-asterisk">*</span></label>
+                    <div class="file-selection-container">
+                        <InputFile OnChange="@OnFileSelected" accept="*/*" class="@GetFileInputClass()" />
+                        @if (selectedFile != null)
+                        {
+                            <button type="button" class="clear-file-btn" @onclick="ClearSelectedFile" title="Clear selected file">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        }
+                    </div>
+                    @if (selectedFile == null)
+                    {
+                        <div class="file-input-hint">
+                            <i class="fas fa-info-circle"></i>
+                            Please select a file to upload
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="file-selected-info">
+                            <i class="fas fa-check-circle text-success"></i>
+                            Selected: @selectedFile.Name (@(selectedFile.Size / 1024) KB)
+                        </div>
+                    }
+                </div>
+            }
+        </form>
+    </Body>
+    <Footer>
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseContentForm" />
+        <RadzenButton Text="@(editingContent == null ? "Upload" : "Save")" ButtonStyle="ButtonStyle.Primary"
+            ButtonType="ButtonType.Submit" Disabled="@isSaving" Click="@SaveContent" />
+    </Footer>
+    </SMModal>
 }
 
 @code {
-    private List<ContentItemDto> contents = new();
+    private SMDataGrid<ContentItemDto>? _grid;
     private List<User> patients = new();
-    private bool isLoading = true;
     private bool showContentForm = false;
     private bool isSaving = false;
     private ContentItem? editingContent = null;
@@ -298,19 +160,21 @@
     private bool showTitleError = false;
     private bool showFileError = false;
 
+    private List<SMDataGridColumn<ContentItemDto>> _columns = new();
+    private readonly List<SMDataGridActionButton<ContentItemDto>> _actions = [];
+
     protected override async Task OnInitializedAsync()
     {
         await AuthService.InitializeAsync();
-        await LoadData();
+        await LoadPatients();
+        InitializeColumns();
+        InitializeActions();
     }
 
-    private async Task LoadData()
+    private async Task LoadPatients()
     {
         try
         {
-            isLoading = true;
-            StateHasChanged();
-
             // Load patients based on user role
             if (AuthService.CurrentUser?.RoleId == 2) // Doctor - only assigned patients
             {
@@ -323,37 +187,243 @@
                 var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
                 patients = patientsResponse ?? new();
             }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load patients: " + ex.Message);
+        }
+    }
+
+    private async Task<IEnumerable<ContentItemDto>> LoadContentItems(CancellationToken ct)
+    {
+        try
+        {
+            // Ensure patients are loaded for doctors before loading content
+            if ((AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) && !patients.Any())
+            {
+                await LoadPatients();
+            }
 
             // Load content based on user role
             if (AuthService.CurrentUser?.RoleId == 1) // Patient
             {
                 var response = await Http.GetFromJsonAsync<List<ContentItemDto>>($"api/content/patient/{AuthService.CurrentUser.Id}");
-                contents = response ?? new();
+                return response ?? new List<ContentItemDto>();
             }
             else if (AuthService.CurrentUser?.RoleId == 2) // Doctor
             {
                 // Load content only for assigned patients
                 var assignedPatientIds = patients.Select(p => p.Id).ToList();
+                if (!assignedPatientIds.Any())
+                {
+                    return new List<ContentItemDto>();
+                }
                 var allContentResponse = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
-                contents = allContentResponse?.Where(c => assignedPatientIds.Contains(c.PatientId)).ToList() ?? new();
+                return allContentResponse?.Where(c => assignedPatientIds.Contains(c.PatientId)).ToList() ?? new List<ContentItemDto>();
             }
             else if (AuthService.CurrentUser?.RoleId == 3) // Admin
             {
                 var response = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
-                contents = response ?? new();
+                return response ?? new List<ContentItemDto>();
             }
-
-            isLoading = false;
-            StateHasChanged();
         }
         catch (Exception ex)
         {
-            isLoading = false;
             NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load content: " + ex.Message);
+        }
+        return new List<ContentItemDto>();
+    }
+
+    private void InitializeColumns()
+    {
+        _columns = new List<SMDataGridColumn<ContentItemDto>>
+        {
+            new SMDataGridTemplateColumn<ContentItemDto>
+            {
+                Property = nameof(ContentItemDto.Title),
+                Title = "Title",
+                Width = "200px",
+                Template = content => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.OpenElement(1, "strong");
+                    builder.AddContent(2, content.Title);
+                    builder.CloseElement();
+                    builder.OpenElement(3, "br");
+                    builder.CloseElement();
+                    builder.OpenElement(4, "small");
+                    builder.AddAttribute(5, "class", "text-muted");
+                    builder.AddContent(6, content.Description);
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<ContentItemDto>
+            {
+                Property = nameof(ContentItemDto.PatientId),
+                Title = "Patient",
+                Width = "150px",
+                Template = content => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.OpenElement(1, "strong");
+                    builder.AddContent(2, $"Patient #{content.PatientId}");
+                    builder.CloseElement();
+                    builder.OpenElement(3, "br");
+                    builder.CloseElement();
+                    builder.OpenElement(4, "small");
+                    builder.AddAttribute(5, "class", "text-muted");
+                    builder.AddContent(6, $"ID: {content.PatientId}");
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<ContentItemDto>
+            {
+                Property = nameof(ContentItemDto.OriginalFileName),
+                Title = "File",
+                Width = "150px",
+                Template = content => builder =>
+                {
+                    builder.OpenElement(0, "div");
+                    builder.OpenElement(1, "i");
+                    builder.AddAttribute(2, "class", GetFileIcon(GetContentTypeName(content.ContentTypeModelId)));
+                    builder.CloseElement();
+                    builder.AddContent(3, " ");
+                    builder.AddContent(4, content.OriginalFileName);
+                    builder.OpenElement(5, "br");
+                    builder.CloseElement();
+                    builder.OpenElement(6, "small");
+                    builder.AddAttribute(7, "class", "text-muted");
+                    builder.AddContent(8, FormatFileSize(content.FileSizeBytes));
+                    builder.CloseElement();
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<ContentItemDto>
+            {
+                Property = nameof(ContentItemDto.ContentTypeModelId),
+                Title = "Type",
+                Width = "100px",
+                Template = content => builder =>
+                {
+                    builder.OpenElement(0, "span");
+                    builder.AddAttribute(1, "class", $"content-type-badge {GetTypeClass(GetContentTypeName(content.ContentTypeModelId))}");
+                    builder.AddContent(2, GetContentTypeName(content.ContentTypeModelId));
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridBadgeColumn<ContentItemDto>
+            {
+                Property = nameof(ContentItemDto.IsIgnoredByDoctor),
+                Title = "AI Status",
+                Width = "130px",
+                GetBadgeData = content => content.IsIgnoredByDoctor
+                    ? ("🚫 Ignored", NotificationSeverity.Warning, true)
+                    : ("✅ Active", NotificationSeverity.Success, true)
+            },
+            new SMDataGridTemplateColumn<ContentItemDto>
+            {
+                Property = nameof(ContentItemDto.CreatedAt),
+                Title = "Added",
+                Width = "120px",
+                Template = content => builder =>
+                {
+                    builder.AddContent(0, content.CreatedAt.ToString("MMM dd, yyyy"));
+                    builder.OpenElement(1, "br");
+                    builder.CloseElement();
+                    builder.OpenElement(2, "small");
+                    builder.AddAttribute(3, "class", "text-muted");
+                    builder.AddContent(4, content.CreatedAt.ToString("HH:mm"));
+                    builder.CloseElement();
+                }
+            },
+            new SMDataGridTemplateColumn<ContentItemDto>
+            {
+                Property = nameof(ContentItemDto.AddedByUserId),
+                Title = "Added By",
+                Width = "120px",
+                Template = content => builder =>
+                {
+                    if (content.AddedByUserId.HasValue)
+                    {
+                        builder.OpenElement(0, "div");
+                        builder.OpenElement(1, "strong");
+                        builder.AddContent(2, $"User #{content.AddedByUserId}");
+                        builder.CloseElement();
+                        builder.OpenElement(3, "br");
+                        builder.CloseElement();
+                        builder.OpenElement(4, "small");
+                        builder.AddAttribute(5, "class", "text-muted");
+                        builder.AddContent(6, $"ID: {content.AddedByUserId}");
+                        builder.CloseElement();
+                        builder.CloseElement();
+                    }
+                    else
+                    {
+                        builder.OpenElement(0, "span");
+                        builder.AddAttribute(1, "class", "text-muted");
+                        builder.AddContent(2, "Self");
+                        builder.CloseElement();
+                    }
+                }
+            }
+        };
+    }
+
+
+    private void InitializeActions()
+    {
+        _actions.Add(new SMDataGridActionButton<ContentItemDto>
+        {
+            Icon = "visibility",
+            ButtonStyle = ButtonStyle.Info,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            Tooltip = "View/Download",
+            OnClick = async (row, ct) => await ViewContent(row)
+        });
+
+        _actions.Add(new SMDataGridActionButton<ContentItemDto>
+        {
+            Icon = "edit",
+            ButtonStyle = ButtonStyle.Success,
+            Variant = Variant.Flat,
+            Size = ButtonSize.Small,
+            Tooltip = "Edit",
+            OnClick = async (row, ct) => await EditContent(row)
+        });
+
+        if (AuthService.CurrentUser?.RoleId == 2) // Doctor can ignore/unignore
+        {
+            _actions.Add(new SMDataGridActionButton<ContentItemDto>
+            {
+                IconFunc = content => content.IsIgnoredByDoctor ? "undo" : "block",
+                ButtonStyleFunc = content => content.IsIgnoredByDoctor ? ButtonStyle.Info : ButtonStyle.Warning,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                TooltipFunc = content => content.IsIgnoredByDoctor 
+                    ? "Unignore for AI analysis" 
+                    : "Ignore for AI analysis",
+                OnClick = async (row, ct) => await ToggleIgnoreContentAsync(row)
+            });
+        }
+
+        if (AuthService.CurrentUser?.RoleId == 3) // Only admin can delete
+        {
+            _actions.Add(new SMDataGridActionButton<ContentItemDto>
+            {
+                Icon = "delete",
+                ButtonStyle = ButtonStyle.Danger,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Delete",
+                OnClick = async (row, ct) => await DeleteContent(row)
+            });
         }
     }
 
-    private void ShowAddContentForm()
+    private async Task ShowAddContentForm()
     {
         editingContent = null;
         contentForm = new ContentForm();
@@ -368,9 +438,10 @@
         showFileError = false;
         
         showContentForm = true;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private void EditContent(ContentItemDto content)
+    private async Task EditContent(ContentItemDto content)
     {
         editingContent = new ContentItem
         {
@@ -387,6 +458,7 @@
             Description = content.Description
         };
         showContentForm = true;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task SaveContent()
@@ -465,7 +537,7 @@
                 if (response.IsSuccessStatusCode)
                 {
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Content uploaded successfully!");
-                    await LoadData();
+                    if (_grid != null) await _grid.RefreshAsync();
                     CloseContentForm();
                 }
                 else
@@ -497,7 +569,7 @@
                 if (response.IsSuccessStatusCode)
                 {
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Content updated successfully!");
-                    await LoadData();
+                    if (_grid != null) await _grid.RefreshAsync();
                     CloseContentForm();
                 }
                 else
@@ -563,17 +635,8 @@
                 var message = result.TryGetProperty("message", out var msgProp) ? msgProp.GetString() : string.Empty;
                 var isIgnored = message?.Contains("ignored") == true && !message.Contains("unignored");
                 
-                // Reload data to get updated ignore status from server (this will get the actual state)
-                await LoadData();
-                
-                // Find the updated content item in the reloaded list
-                var updatedContent = contents.FirstOrDefault(c => c.Id == content.Id);
-                if (updatedContent != null)
-                {
-                    content.IsIgnoredByDoctor = updatedContent.IsIgnoredByDoctor;
-                    content.IgnoredByDoctorId = updatedContent.IgnoredByDoctorId;
-                    content.IgnoredAt = updatedContent.IgnoredAt;
-                }
+                // Reload data to get updated ignore status from server
+                if (_grid != null) await _grid.RefreshAsync();
                 
                 NotificationService.Notify(NotificationSeverity.Success, "Success", 
                     isIgnored 
@@ -604,7 +667,7 @@
                 if (response.IsSuccessStatusCode)
                 {
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Content deleted successfully!");
-                    await LoadData();
+                    if (_grid != null) await _grid.RefreshAsync();
                 }
                 else
                 {
@@ -676,12 +739,17 @@
         return showFileError ? "form-label validation-error" : "form-label";
     }
 
-    private void CloseContentForm()
+    private async Task CloseContentForm()
     {
         showContentForm = false;
         editingContent = null;
         contentForm = new ContentForm();
         selectedFile = null;
+        // Clear validation errors
+        showPatientError = false;
+        showTitleError = false;
+        showFileError = false;
+        await InvokeAsync(StateHasChanged);
     }
 
     private string GetFileIcon(string typeName)
@@ -783,48 +851,6 @@
         margin-top: 20px;
     }
 
-    .loading-state {
-        text-align: center;
-        padding: 40px;
-    }
-
-    .loading-spinner {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #007bff;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        animation: spin 1s linear infinite;
-        margin: 0 auto 20px;
-    }
-
-    @@keyframes spin {
-        0% {
-            transform: rotate(0deg);
-        }
-
-        100% {
-            transform: rotate(360deg);
-        }
-    }
-
-    .empty-state {
-        text-align: center;
-        padding: 60px 20px;
-        color: #6c757d;
-    }
-
-    .empty-icon {
-        font-size: 48px;
-        margin-bottom: 20px;
-    }
-
-    .action-buttons {
-        display: flex;
-        gap: 5px;
-        flex-wrap: wrap;
-    }
-
     .content-type-badge {
         padding: 4px 8px;
         border-radius: 12px;
@@ -861,49 +887,6 @@
     .text-muted {
         color: #6c757d;
         font-size: 12px;
-    }
-
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-    }
-
-    .modal-content {
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        max-width: 600px;
-        width: 90%;
-        max-height: 90vh;
-        overflow-y: auto;
-    }
-
-    .modal-header {
-        padding: 20px;
-        border-bottom: 1px solid #dee2e6;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .modal-body {
-        padding: 20px;
-    }
-
-    .close-btn {
-        background: none;
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        color: #6c757d;
     }
 
     .form-group {
@@ -949,13 +932,6 @@
         font-size: 12px;
         font-weight: normal;
         font-style: italic;
-    }
-
-    .form-actions {
-        display: flex;
-        gap: 10px;
-        justify-content: flex-end;
-        margin-top: 20px;
     }
 
     .required-asterisk {
@@ -1123,3 +1099,4 @@
         transform: scale(0.95);
     }
 </style>
+
