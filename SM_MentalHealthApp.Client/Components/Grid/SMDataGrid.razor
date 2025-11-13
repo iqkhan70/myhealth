@@ -9,7 +9,19 @@
     <RadzenAlert AlertStyle="AlertStyle.Danger" Icon="error" Text="@_errorMessage" Style="margin-bottom: 1rem;" />
 }
 
-<RadzenDataGrid TItem="TItem" 
+@if (_isLoading)
+{
+    <RadzenProgressBarLinear ShowValue="false" Mode="ProgressBarMode.Indeterminate" Style="margin-bottom: 1rem; height: 4px;" />
+}
+
+<div style="position: relative;">
+    @if (_isLoading)
+    {
+        <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255, 255, 255, 0.7); z-index: 10; display: flex; align-items: center; justify-content: center; pointer-events: none;">
+            <RadzenProgressBarCircular Mode="ProgressBarMode.Indeterminate" Style="width: 50px; height: 50px;" />
+        </div>
+    }
+    <RadzenDataGrid TItem="TItem" 
     Data="@(UseServerSidePagination ? null : _items)"
     Count="@(UseServerSidePagination ? _totalCount : _items.Count)"
     LoadData="@(UseServerSidePagination ? LoadData : null)" 
@@ -133,6 +145,7 @@
         }
     </Template>
 </RadzenDataGrid>
+</div>
 
 @code {
     private List<TItem> _items = new();
