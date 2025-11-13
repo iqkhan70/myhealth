@@ -278,6 +278,23 @@ namespace SM_MentalHealthApp.Server.Controllers
                     }
                 }
 
+                // Chat sessions with concerning content contribute
+                if (source.SourceType == "ChatSession")
+                {
+                    // Check if chat session has concerning keywords
+                    if (matchingKeywords.Any())
+                    {
+                        contributionReasons.Add("Chat session contains concerning content");
+                        shouldInclude = true;
+                    }
+                    else if (shouldIncludeAllSources)
+                    {
+                        // For high severity, include chat sessions that may have contributed
+                        contributionReasons.Add("Chat session included in analysis");
+                        shouldInclude = true;
+                    }
+                }
+
                 // For High severity, include sources that were analyzed and may have contributed
                 // This ensures we show sources that the AI considered, even if they don't match keywords exactly
                 if (shouldIncludeAllSources && !shouldInclude)
@@ -288,7 +305,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                         contributionReasons.Add("Content with alerts included in analysis");
                         shouldInclude = true;
                     }
-                    else if (source.SourceType == "ClinicalNote" || source.SourceType == "JournalEntry")
+                    else if (source.SourceType == "ClinicalNote" || source.SourceType == "JournalEntry" || source.SourceType == "ChatSession")
                     {
                         // Check if mentioned in AI response
                         var keyPhrases = ExtractKeyPhrases(source.SourceContent);
@@ -326,6 +343,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                         "ClinicalNote" => $"/clinical-notes",
                         "Content" => $"/content",
                         "Emergency" => $"/emergencies",
+                        "ChatSession" => $"/chat-history",
                         _ => ""
                     };
 

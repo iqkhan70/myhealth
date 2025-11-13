@@ -1266,6 +1266,7 @@
             "ClinicalNote" => "📋",
             "Content" => "📄",
             "Emergency" => "🚨",
+            "ChatSession" => "💬",
             _ => "📌"
         };
     }
@@ -1306,6 +1307,7 @@
                 "ClinicalNote" => $"api/clinical-notes/{source.SourceId}/toggle-ignore",
                 "Content" => $"api/content/{source.SourceId}/toggle-ignore",
                 "Emergency" => $"api/emergency/{source.SourceId}/acknowledge", // Acknowledge instead of ignore
+                "ChatSession" => $"api/chat-history/session/{source.SourceId}/toggle-ignore",
                 _ => null
             };
 

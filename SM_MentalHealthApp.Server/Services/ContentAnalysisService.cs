@@ -1128,6 +1128,109 @@ If you need general medical information without patient context, please switch t
                     }
                 }
 
+                // Get recent chat sessions and track them
+                List<ChatSession> recentChatSessions = new List<ChatSession>();
+                try
+                {
+                    recentChatSessions = await _context.ChatSessions
+                        .Where(s => s.PatientId == patientId && s.IsActive && !s.IsIgnoredByDoctor)
+                        .OrderByDescending(s => s.LastActivityAt)
+                        .Take(5)
+                        .ToListAsync();
+
+                    // Load recent messages for each session
+                    if (recentChatSessions.Any())
+                    {
+                        var sessionIds = recentChatSessions.Select(s => s.Id).ToList();
+
+                        // Load messages with error handling for invalid MessageType enum values
+                        List<ChatMessage> allMessages = new List<ChatMessage>();
+                        try
+                        {
+                            allMessages = await _context.ChatMessages
+                                .Where(m => sessionIds.Contains(m.SessionId) && m.IsActive)
+                                .ToListAsync();
+                        }
+                        catch (InvalidOperationException ex) when (ex.Message.Contains("MessageType") || ex.Message.Contains("Cannot convert"))
+                        {
+                            _logger.LogWarning(ex, "Error loading chat messages due to invalid MessageType values. Skipping chat messages but continuing with context building.");
+                            allMessages = new List<ChatMessage>();
+                        }
+
+                        // Group messages by session, order by timestamp descending, take 10 most recent, then re-order chronologically
+                        var recentMessagesBySession = allMessages
+                            .GroupBy(m => m.SessionId)
+                            .ToDictionary(
+                                g => g.Key,
+                                g => g.OrderByDescending(m => m.Timestamp)
+                                      .Take(10)
+                                      .OrderBy(m => m.Timestamp)
+                                      .ToList()
+                            );
+
+                        // Attach messages to sessions
+                        foreach (var session in recentChatSessions)
+                        {
+                            if (recentMessagesBySession.TryGetValue(session.Id, out var messages))
+                            {
+                                session.Messages = messages;
+                            }
+                            else
+                            {
+                                session.Messages = new List<ChatMessage>();
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error loading chat history for patient {PatientId}. Continuing context building without chat history.", patientId);
+                    recentChatSessions = new List<ChatSession>();
+                }
+
+                if (recentChatSessions.Any())
+                {
+                    context.AppendLine("=== RECENT CHAT HISTORY ===");
+                    foreach (var session in recentChatSessions)
+                    {
+                        context.AppendLine($"Session: {session.CreatedAt:MM/dd/yyyy HH:mm} - {session.LastActivityAt:MM/dd/yyyy HH:mm}");
+                        if (!string.IsNullOrEmpty(session.Summary))
+                        {
+                            context.AppendLine($"Summary: {session.Summary}");
+                        }
+                        
+                        // Combine all messages from the session for source content
+                        var sessionContent = new StringBuilder();
+                        if (session.Messages != null && session.Messages.Any())
+                        {
+                            foreach (var message in session.Messages.OrderBy(m => m.Timestamp))
+                            {
+                                var rolePrefix = message.Role switch
+                                {
+                                    MessageRole.User => "User",
+                                    MessageRole.Assistant => "AI",
+                                    MessageRole.System => "System",
+                                    _ => "Unknown"
+                                };
+                                sessionContent.AppendLine($"{rolePrefix}: {message.Content}");
+                            }
+                        }
+                        
+                        context.AppendLine(sessionContent.ToString());
+                        context.AppendLine();
+
+                        // Track the chat session as a source
+                        sources.Add(new SeveritySourceMetadata
+                        {
+                            SourceType = "ChatSession",
+                            SourceId = session.Id,
+                            SourceTitle = $"Chat Session - {session.CreatedAt:MM/dd/yyyy}",
+                            SourceContent = sessionContent.ToString(),
+                            SourceDate = session.LastActivityAt
+                        });
+                    }
+                }
+
                 // Add the rest of the context (instructions, etc.)
                 context.AppendLine($"=== USER QUESTION ===");
                 context.AppendLine(originalPrompt);
