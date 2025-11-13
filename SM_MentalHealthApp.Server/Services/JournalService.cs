@@ -77,6 +77,8 @@ namespace SM_MentalHealthApp.Server.Services
         public async Task<List<JournalEntry>> GetEntriesForUser(int userId)
         {
             return await _context.JournalEntries
+                .Include(e => e.EnteredByUser) // Include who entered the entry (doctor or patient)
+                .Include(e => e.User) // Include the patient
                 .Where(e => e.UserId == userId && e.IsActive)
                 .OrderByDescending(e => e.CreatedAt)
                 .ToListAsync();

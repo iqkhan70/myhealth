@@ -194,6 +194,7 @@
     private List<User> assignedPatients = new();
     private int selectedPatientId = 0;
     private Dictionary<int, User> doctorCache = new();
+    private Dictionary<int, User> patientCache = new(); // Cache for patient names
     private Dictionary<int, JournalEntryDto> expandedEntries = new();
     private SMDataGrid<JournalEntryDto>? _grid;
     private RadzenTextArea? entryTextAreaRef;
@@ -405,6 +406,9 @@
             // Load doctor information for entries that were entered by doctors
             await LoadDoctorInformation(entries);
             
+            // Load patient information for entries entered by patients (or if we need the patient name)
+            await LoadPatientInformation(entries, targetUserId);
+            
             // Convert to DTOs
             var dtos = entries.Select(entry => new JournalEntryDto
             {
@@ -414,7 +418,13 @@
                 Mood = entry.Mood,
                 CreatedAt = entry.CreatedAt,
                 EnteredByUserId = entry.EnteredByUserId,
-                EnteredByName = entry.EnteredByUserId.HasValue ? GetDoctorName(entry.EnteredByUserId) : "Self Entry",
+                EnteredByName = entry.EnteredByUserId.HasValue 
+                    ? (entry.EnteredByUser != null 
+                        ? $"{entry.EnteredByUser.FirstName} {entry.EnteredByUser.LastName}"
+                        : GetDoctorName(entry.EnteredByUserId))
+                    : (entry.User != null 
+                        ? $"{entry.User.FirstName} {entry.User.LastName}"
+                        : GetPatientName(entry.UserId)),
                 IsIgnoredByDoctor = entry.IsIgnoredByDoctor,
                 IgnoredByDoctorId = entry.IgnoredByDoctorId,
                 IgnoredAt = entry.IgnoredAt
@@ -433,11 +443,20 @@
     {
         try
         {
+            // First, check if entries already have EnteredByUser loaded from backend
+            foreach (var entry in entries.Where(e => e.EnteredByUserId.HasValue))
+            {
+                if (entry.EnteredByUser != null && !doctorCache.ContainsKey(entry.EnteredByUserId!.Value))
+                {
+                    doctorCache[entry.EnteredByUserId.Value] = entry.EnteredByUser;
+                }
+            }
+
+            // Then load any missing doctors via API
             var doctorIds = entries
-                .Where(e => e.EnteredByUserId.HasValue)
+                .Where(e => e.EnteredByUserId.HasValue && !doctorCache.ContainsKey(e.EnteredByUserId!.Value))
                 .Select(e => e.EnteredByUserId!.Value)
                 .Distinct()
-                .Where(id => !doctorCache.ContainsKey(id))
                 .ToList();
 
             foreach (var doctorId in doctorIds)
@@ -460,24 +479,12 @@
             {
                 doctorCache[doctorId] = doctor;
             }
-            else
-            {
-                doctorCache[doctorId] = new User 
-                { 
-                    Id = doctorId, 
-                    FirstName = "Unknown", 
-                    LastName = "Doctor" 
-                };
-            }
+            // Don't set "Unknown Doctor" in cache - let GetDoctorName handle it
         }
         catch (Exception)
         {
-            doctorCache[doctorId] = new User 
-            { 
-                Id = doctorId, 
-                FirstName = "Unknown", 
-                LastName = "Doctor" 
-            };
+            // Don't set "Unknown Doctor" in cache - let GetDoctorName handle it
+            // This way we can retry loading later if needed
         }
     }
 
@@ -564,6 +571,50 @@
         return baseClass;
     }
 
+    private async Task LoadPatientInformation(IEnumerable<JournalEntry> entries, int targetUserId)
+    {
+        try
+        {
+            // First, check if entries already have User loaded from backend
+            var firstEntry = entries.FirstOrDefault();
+            if (firstEntry?.User != null && !patientCache.ContainsKey(targetUserId))
+            {
+                patientCache[targetUserId] = firstEntry.User;
+            }
+            
+            // If patient is not in cache, load it
+            if (!patientCache.ContainsKey(targetUserId))
+            {
+                var patient = await Http.GetFromJsonAsync<User>($"api/user/{targetUserId}");
+                if (patient != null)
+                {
+                    patientCache[targetUserId] = patient;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Silently handle errors
+        }
+    }
+
+    private string GetPatientName(int patientId)
+    {
+        if (patientCache.ContainsKey(patientId))
+        {
+            var patient = patientCache[patientId];
+            return $"{patient.FirstName} {patient.LastName}";
+        }
+        
+        // Fallback: if we're viewing our own entries, use current user name
+        if (AuthService.CurrentUser != null && AuthService.CurrentUser.Id == patientId)
+        {
+            return $"{AuthService.CurrentUser.FirstName} {AuthService.CurrentUser.LastName}";
+        }
+        
+        return "Patient";
+    }
+
     private string GetDoctorName(int? doctorId)
     {
         if (!doctorId.HasValue) return "Unknown Doctor";
@@ -571,10 +622,10 @@
         if (doctorCache.ContainsKey(doctorId.Value))
         {
             var doctor = doctorCache[doctorId.Value];
-            return $"Dr. {doctor.FirstName} {doctor.LastName}";
+            return $"{doctor.FirstName} {doctor.LastName}";
         }
         
-        return "Entered by Doctor";
+        return "Unknown Doctor";
     }
 
     private string GetMoodClass(string mood)
