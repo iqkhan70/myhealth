@@ -6,10 +6,13 @@
 @using SM_MentalHealthApp.Shared
 @using Radzen
 @using Radzen.Blazor
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
 @inject HttpClient Http
 @inject NotificationService NotificationService
 @inject IAuthService AuthService
 @inject IJournalService JournalService
+@inject IJSRuntime JSRuntime
 
 <PageTitle>Health Journal</PageTitle>
 
@@ -57,7 +60,9 @@
                     }
 
                     <div class="mb-3">
-                        <RadzenTextArea @bind-Value="entryText" 
+                        <RadzenTextArea Value="@entryText" 
+                                        ValueChanged="@OnEntryTextChanged"
+                                        @ref="entryTextAreaRef"
                                         Placeholder="@(AuthService.CurrentUser?.RoleId == 2 ? "Enter journal entry for the selected patient..." : "How are you feeling today? What's on your mind?")" 
                                         Rows="5"
                                         Style="width: 100%;" />
@@ -191,6 +196,7 @@
     private Dictionary<int, User> doctorCache = new();
     private Dictionary<int, JournalEntryDto> expandedEntries = new();
     private SMDataGrid<JournalEntryDto>? _grid;
+    private RadzenTextArea? entryTextAreaRef;
 
     // Helper class for grid
     public class JournalEntryDto
@@ -222,6 +228,48 @@
         
         InitializeColumns();
         InitializeActions();
+    }
+
+    private DotNetObjectReference<Journal>? objRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            objRef = DotNetObjectReference.Create(this);
+            // Wait a bit for the RadzenTextArea to render, then attach listener
+            await Task.Delay(200);
+            // Attach input event listener to the underlying textarea element
+            var attached = await JSRuntime.InvokeAsync<bool>("attachJournalInputListener", objRef);
+            // If not attached, try again after a short delay
+            if (!attached)
+            {
+                await Task.Delay(300);
+                await JSRuntime.InvokeVoidAsync("attachJournalInputListener", objRef);
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task UpdateEntryText(string value)
+    {
+        entryText = value ?? string.Empty;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnEntryTextChanged(string value)
+    {
+        entryText = value ?? string.Empty;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (objRef != null)
+        {
+            await JSRuntime.InvokeVoidAsync("detachJournalInputListener");
+            objRef.Dispose();
+        }
     }
 
     private void InitializeColumns()
@@ -387,7 +435,7 @@
         {
             var doctorIds = entries
                 .Where(e => e.EnteredByUserId.HasValue)
-                .Select(e => e.EnteredByUserId.Value)
+                .Select(e => e.EnteredByUserId!.Value)
                 .Distinct()
                 .Where(id => !doctorCache.ContainsKey(id))
                 .ToList();
@@ -433,7 +481,7 @@
         }
     }
 
-    private async Task OnRowExpand(JournalEntryDto entry)
+    private Task OnRowExpand(JournalEntryDto entry)
     {
         try
         {
@@ -448,6 +496,7 @@
         {
             NotificationService.ShowError($"Failed to load entry details: {ex.Message}");
         }
+        return Task.CompletedTask;
     }
 
     private async Task SaveEntry()
