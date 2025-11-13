@@ -39,11 +39,27 @@ namespace SM_MentalHealthApp.Server.Services
 
             try
             {
-                // TODO: Create SectionMarkers table in database
-                // For now, return hardcoded fallback
-                var markers = GetHardcodedSectionMarkers();
-                _cache.Set(CacheKey, markers, CacheDuration);
-                return markers;
+                var sectionMarkers = await _context.SectionMarkers
+                    .Where(m => m.IsActive)
+                    .OrderByDescending(m => m.Priority)
+                    .ThenBy(m => m.Marker)
+                    .Select(m => m.Marker)
+                    .ToListAsync();
+
+                if (sectionMarkers != null && sectionMarkers.Any())
+                {
+                    _cache.Set(CacheKey, sectionMarkers, CacheDuration);
+                    _logger.LogInformation("Loaded {Count} active section markers from database", sectionMarkers.Count);
+                    return sectionMarkers;
+                }
+                else
+                {
+                    // Fallback to hardcoded if database is empty
+                    _logger.LogWarning("No section markers found in database. Using hardcoded fallback.");
+                    var fallbackMarkers = GetHardcodedSectionMarkers();
+                    _cache.Set(CacheKey, fallbackMarkers, CacheDuration);
+                    return fallbackMarkers;
+                }
             }
             catch (Exception ex)
             {

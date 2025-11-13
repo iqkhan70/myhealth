@@ -48,6 +48,9 @@ namespace SM_MentalHealthApp.Server.Data
             
             // Medical Threshold system entities
             public DbSet<MedicalThreshold> MedicalThresholds { get; set; }
+            
+            // Section Marker system entities
+            public DbSet<SectionMarker> SectionMarkers { get; set; }
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -675,6 +678,25 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.Priority);
                         entity.HasIndex(e => e.SeverityLevel);
                         entity.HasIndex(e => new { e.ParameterName, e.IsActive });
+                        entity.HasIndex(e => new { e.IsActive, e.Priority });
+                  });
+
+                  // Configure SectionMarker entity
+                  modelBuilder.Entity<SectionMarker>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Marker).IsRequired().HasMaxLength(500);
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.Property(e => e.Category).HasMaxLength(100);
+                        entity.Property(e => e.Priority).HasDefaultValue(0);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.Marker).IsUnique();
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.Category);
+                        entity.HasIndex(e => e.Priority);
                         entity.HasIndex(e => new { e.IsActive, e.Priority });
                   });
             }

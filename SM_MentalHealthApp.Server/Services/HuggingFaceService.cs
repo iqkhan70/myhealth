@@ -976,19 +976,32 @@ namespace SM_MentalHealthApp.Server.Services
             // Check if this is a role-based prompt with enhanced context (only for non-generic mode)
             _logger.LogInformation("=== ENHANCED CONTEXT DETECTION ===");
             _logger.LogInformation("Text length: {TextLength}", text.Length);
-            _logger.LogInformation("Text contains '=== MEDICAL DATA SUMMARY ===': {HasMedicalData}", text.Contains("=== MEDICAL DATA SUMMARY ==="));
-            _logger.LogInformation("Text contains '=== RECENT JOURNAL ENTRIES ===': {HasJournalEntries}", text.Contains("=== RECENT JOURNAL ENTRIES ==="));
-            _logger.LogInformation("Text contains '=== USER QUESTION ===': {HasUserQuestion}", text.Contains("=== USER QUESTION ==="));
+            var hasMedicalDataLog = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "MEDICAL DATA SUMMARY");
+            var hasJournalEntriesLog = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT JOURNAL ENTRIES");
+            var hasUserQuestionLog = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "USER QUESTION");
+            var hasDoctorAsksLog = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Doctor asks");
+
+            _logger.LogInformation("Text contains '=== MEDICAL DATA SUMMARY ===': {HasMedicalData}", hasMedicalDataLog);
+            _logger.LogInformation("Text contains '=== RECENT JOURNAL ENTRIES ===': {HasJournalEntries}", hasJournalEntriesLog);
+            _logger.LogInformation("Text contains '=== USER QUESTION ===': {HasUserQuestion}", hasUserQuestionLog);
             _logger.LogInformation("Text contains 'Critical Values:': {HasCriticalValues}", text.Contains("Critical Values:"));
             _logger.LogInformation("Text contains 'Hemoglobin': {HasHemoglobinText}", text.Contains("Hemoglobin"));
-            _logger.LogInformation("Text contains 'Doctor asks:': {HasDoctorAsks}", text.Contains("Doctor asks:"));
+            _logger.LogInformation("Text contains 'Doctor asks:': {HasDoctorAsks}", hasDoctorAsksLog);
 
             // Show first 200 characters of text for debugging
             _logger.LogInformation("First 200 chars of text: {TextPreview}", text.Substring(0, Math.Min(200, text.Length)));
 
-            // Only route to patient analysis if we have actual patient context sections
+            // Only route to patient analysis if we have actual patient context sections using section markers
             // Don't route based on just medical keywords - that would catch generic questions too
-            if (text.Contains("=== MEDICAL DATA SUMMARY ===") || text.Contains("=== RECENT JOURNAL ENTRIES ===") || text.Contains("=== USER QUESTION ===") || text.Contains("=== RECENT CLINICAL NOTES ===") || text.Contains("Doctor asks:") || text.Contains("**Medical Resource Information") || text.Contains("**Medical Facilities Search"))
+            var hasMedicalDataRoute = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "MEDICAL DATA SUMMARY");
+            var hasJournalEntriesRoute = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT JOURNAL ENTRIES");
+            var hasUserQuestionRoute = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "USER QUESTION");
+            var hasClinicalNotesRoute = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT CLINICAL NOTES");
+            var hasDoctorAsksRoute = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Doctor asks");
+            var hasMedicalResourceRoute = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Medical Resource Information");
+            var hasMedicalFacilitiesRoute = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Medical Facilities Search");
+
+            if (hasMedicalDataRoute || hasJournalEntriesRoute || hasUserQuestionRoute || hasClinicalNotesRoute || hasDoctorAsksRoute || hasMedicalResourceRoute || hasMedicalFacilitiesRoute)
             {
                 _logger.LogInformation("Processing enhanced context for medical data");
                 return await ProcessEnhancedContextResponseAsync(text);
@@ -1098,11 +1111,18 @@ namespace SM_MentalHealthApp.Server.Services
                     bool hasCriticalValues = await _patternService.MatchesAnyPatternAsync(patientDataText) ||
                                            await _keywordService.ContainsAnyKeywordAsync(patientDataText, "Critical");
 
-                    // Also check if we have any of the section markers that indicate patient data is present
-                    bool hasPatientSections = text.Contains("=== RECENT") || text.Contains("=== MEDICAL") ||
-                                            text.Contains("=== EMERGENCY") || text.Contains("Session:") ||
-                                            text.Contains("Summary:") || text.Contains("Clinical Notes") ||
-                                            text.Contains("Journal Entries") || text.Contains("Chat History");
+                    // Also check if we have any of the section markers that indicate patient data is present using section markers
+                    var hasRecentSectionsCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT");
+                    var hasMedicalSectionsCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "MEDICAL");
+                    var hasEmergencySectionsCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "EMERGENCY");
+                    var hasSessionCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Session");
+                    var hasSummaryCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Summary");
+                    var hasClinicalNotesCheck2 = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Clinical Notes");
+                    var hasJournalEntriesCheck2 = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Journal Entries");
+                    var hasChatHistoryCheck2 = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Chat History");
+
+                    bool hasPatientSections = hasRecentSectionsCheck || hasMedicalSectionsCheck || hasEmergencySectionsCheck ||
+                                            hasSessionCheck || hasSummaryCheck || hasClinicalNotesCheck2 || hasJournalEntriesCheck2 || hasChatHistoryCheck2;
 
                     // Check if we have patient data or if this is a generic query
                     bool hasPatientData = journalEntries.Any() || alerts.Any() || hasMedicalContent || hasPatientSections;
@@ -1460,8 +1480,9 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                             }
 
-                            // Check for chat history
-                            if (text.Contains("=== RECENT CHAT HISTORY ==="))
+                            // Check for chat history using section markers
+                            var hasChatHistorySection = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT CHAT HISTORY");
+                            if (hasChatHistorySection)
                             {
                                 response.AppendLine();
                                 var chatTemplate = await _templateService.FormatTemplateAsync("section_chat_history", null);
@@ -1476,8 +1497,9 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                             }
 
-                            // Check for clinical notes
-                            if (text.Contains("=== RECENT CLINICAL NOTES ==="))
+                            // Check for clinical notes using section markers
+                            var hasClinicalNotesSection = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT CLINICAL NOTES");
+                            if (hasClinicalNotesSection)
                             {
                                 response.AppendLine();
                                 var notesTemplate = await _templateService.FormatTemplateAsync("section_clinical_notes", null);
@@ -1492,8 +1514,9 @@ namespace SM_MentalHealthApp.Server.Services
                                 }
                             }
 
-                            // Check for emergency incidents
-                            if (text.Contains("=== RECENT EMERGENCY INCIDENTS ==="))
+                            // Check for emergency incidents using section markers
+                            var hasEmergencyIncidentsSection = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT EMERGENCY INCIDENTS");
+                            if (hasEmergencyIncidentsSection)
                             {
                                 response.AppendLine();
                                 var emergencyTemplate = await _templateService.FormatTemplateAsync("section_emergency_incidents", null);
@@ -2013,7 +2036,9 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                         }
 
-                        if (text.Contains("=== RECENT CHAT HISTORY ==="))
+                        // Check for chat history using section markers
+                        var hasChatHistoryCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT CHAT HISTORY");
+                        if (hasChatHistoryCheck)
                         {
                             response.AppendLine();
                             var chatTemplate = await _templateService.FormatTemplateAsync("section_chat_history", null);
@@ -2028,7 +2053,9 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                         }
 
-                        if (text.Contains("=== RECENT CLINICAL NOTES ==="))
+                        // Check for clinical notes using section markers
+                        var hasClinicalNotesCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT CLINICAL NOTES");
+                        if (hasClinicalNotesCheck)
                         {
                             response.AppendLine();
                             var notesTemplate = await _templateService.FormatTemplateAsync("section_clinical_notes", null);
@@ -2043,7 +2070,9 @@ namespace SM_MentalHealthApp.Server.Services
                             }
                         }
 
-                        if (text.Contains("=== RECENT EMERGENCY INCIDENTS ==="))
+                        // Check for emergency incidents using section markers
+                        var hasEmergencyIncidentsCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT EMERGENCY INCIDENTS");
+                        if (hasEmergencyIncidentsCheck)
                         {
                             response.AppendLine();
                             var emergencyTemplate = await _templateService.FormatTemplateAsync("section_emergency_incidents", null);
@@ -2155,13 +2184,16 @@ namespace SM_MentalHealthApp.Server.Services
                 }
                 else
                 {
-                    // If knowledge file doesn't exist, check if we have patient data and generate analysis
-                    bool hasPatientDataInContext = text.Contains("=== MEDICAL DATA SUMMARY ===") ||
-                                                   text.Contains("=== RECENT JOURNAL ENTRIES ===") ||
-                                                   text.Contains("=== RECENT CHAT HISTORY ===") ||
-                                                   text.Contains("=== RECENT CLINICAL NOTES ===") ||
-                                                   text.Contains("=== RECENT EMERGENCY INCIDENTS ===") ||
-                                                   text.Contains("AI Health Check for Patient");
+                    // If knowledge file doesn't exist, check if we have patient data and generate analysis using section markers
+                    var hasMedicalDataSummaryFinal = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "MEDICAL DATA SUMMARY");
+                    var hasRecentJournalFinal = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT JOURNAL ENTRIES");
+                    var hasRecentChatFinal = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT CHAT HISTORY");
+                    var hasRecentClinicalFinal = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT CLINICAL NOTES");
+                    var hasRecentEmergencyFinal = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "RECENT EMERGENCY INCIDENTS");
+                    var hasAiHealthCheckFinal = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "AI Health Check");
+
+                    bool hasPatientDataInContext = hasMedicalDataSummaryFinal || hasRecentJournalFinal || hasRecentChatFinal ||
+                                                   hasRecentClinicalFinal || hasRecentEmergencyFinal || hasAiHealthCheckFinal;
 
                     if (hasPatientDataInContext)
                     {
@@ -2837,757 +2869,6 @@ namespace SM_MentalHealthApp.Server.Services
             // This replaces 700+ lines of nested conditionals with a clean handler pattern
             return await _enhancedContextResponseService.ProcessAsync(text);
         }
-
-        /* OLD CODE - REMOVED TO REDUCE FILE SIZE FROM 3,560 TO ~2,800 LINES
-        // This entire method has been replaced by EnhancedContextResponseService
-        // Keeping commented code for reference during migration - can be removed later
-        private async Task<string> ProcessEnhancedContextResponseAsync_OLD(string text)
-        {
-            try
-            {
-                _logger.LogInformation("Processing enhanced context response");
-                _logger.LogInformation("Full context text: {FullText}", text);
-
-                // Check if this is a medical resource response - return it directly
-                if (text.Contains("**Medical Resource Information") || text.Contains("**Medical Facilities Search"))
-                {
-                    _logger.LogInformation("Detected medical resource response, returning directly");
-                    return text;
-                }
-
-                // Extract the user question - try multiple methods
-                var userQuestion = "";
-
-                // For AI Health Check, always use the prompt from "=== USER QUESTION ===" section
-                // Don't extract questions from chat history - those are not the health check question
-                var isAiHealthCheck = text.Contains("AI Health Check for Patient") ||
-                                     text.Contains("=== INSTRUCTIONS FOR AI HEALTH CHECK ANALYSIS ===");
-
-                // Method 1: Look for "=== USER QUESTION ===" section (this is the actual health check prompt)
-                var questionStart = text.IndexOf("=== USER QUESTION ===");
-                _logger.LogInformation("Question start index: {QuestionStart}", questionStart);
-                if (questionStart >= 0)
-                {
-                    var questionEnd = text.IndexOf("\n", questionStart + 21);
-                    if (questionEnd < 0) questionEnd = text.IndexOf("===", questionStart + 21);
-                    if (questionEnd < 0) questionEnd = text.Length;
-
-                    _logger.LogInformation("Question end index: {QuestionEnd}", questionEnd);
-                    if (questionEnd > questionStart)
-                    {
-                        userQuestion = text.Substring(questionStart + 21, questionEnd - questionStart - 21).Trim();
-                        _logger.LogInformation("Extracted from USER QUESTION section: '{UserQuestion}'", userQuestion);
-
-                        // For AI Health Check, ONLY use the question from USER QUESTION section, don't look elsewhere
-                        if (isAiHealthCheck)
-                        {
-                            _logger.LogInformation("AI Health Check detected - using only USER QUESTION section, ignoring chat history questions");
-                            // Don't proceed to Method 2 or 3 for AI Health Check
-                        }
-                    }
-                }
-
-                // Method 2: If no question found, look for common question patterns in the text
-                // BUT: Skip generic knowledge questions from chat history - these are not the user question for AI Health Check
-                // IMPORTANT: For AI Health Check, skip Method 2 and 3 entirely - only use Method 1
-                if (string.IsNullOrEmpty(userQuestion) && !isAiHealthCheck)
-                {
-                    var lines = text.Split('\n');
-                    foreach (var line in lines)
-                    {
-                        var trimmedLine = line.Trim();
-
-                        // Skip generic knowledge questions (these come from chat history, not the actual health check question)
-                        if (await IsGenericKnowledgeQuestionAsync(trimmedLine))
-                        {
-                            _logger.LogInformation("Skipping generic knowledge question from chat history: '{Question}'", trimmedLine);
-                            continue;
-                        }
-
-                        // Only consider lines that look like actual patient-specific questions (contain ? or start with question words)
-                        if ((trimmedLine.Contains("how is") || trimmedLine.Contains("status") || trimmedLine.Contains("suggestions") ||
-                            trimmedLine.Contains("snapshot") || trimmedLine.Contains("results") || trimmedLine.Contains("stats")) &&
-                            (trimmedLine.Contains("?") || trimmedLine.StartsWith("how") || trimmedLine.StartsWith("what") || trimmedLine.StartsWith("where")))
-                        {
-                            userQuestion = trimmedLine;
-                            _logger.LogInformation("Extracted from Method 2: '{UserQuestion}'", userQuestion);
-                            break;
-                        }
-                    }
-                }
-
-                // Method 3: Look for the last line that looks like a question
-                // BUT: Skip generic knowledge questions from chat history
-                // IMPORTANT: For AI Health Check, skip Method 3 entirely - only use Method 1
-                if (string.IsNullOrEmpty(userQuestion) && !isAiHealthCheck)
-                {
-                    var lines = text.Split('\n');
-                    for (int i = lines.Length - 1; i >= 0; i--)
-                    {
-                        var trimmedLine = lines[i].Trim();
-
-                        // Skip generic knowledge questions (these come from chat history, not the actual health check question)
-                        if (await IsGenericKnowledgeQuestionAsync(trimmedLine))
-                        {
-                            _logger.LogInformation("Skipping generic knowledge question from chat history (Method 3): '{Question}'", trimmedLine);
-                            continue;
-                        }
-
-                        // Only consider lines that look like actual questions and are not part of AI responses
-                        if (trimmedLine.Contains("?") && trimmedLine.Length > 5 && trimmedLine.Length < 100 &&
-                            !trimmedLine.StartsWith("**") && !trimmedLine.StartsWith("📊") && !trimmedLine.StartsWith("🚨") &&
-                            !trimmedLine.Contains("No uploaded") && !trimmedLine.Contains("medical documents"))
-                        {
-                            userQuestion = trimmedLine;
-                            _logger.LogInformation("Extracted from Method 3: '{UserQuestion}'", userQuestion);
-                            break;
-                        }
-                    }
-                }
-
-                // For AI Health Check, if we didn't find a question in Method 1, use the default prompt
-                if (isAiHealthCheck && string.IsNullOrEmpty(userQuestion))
-                {
-                    userQuestion = "AI Health Check for Patient";
-                    _logger.LogInformation("AI Health Check - using default prompt as user question: '{UserQuestion}'", userQuestion);
-                }
-
-                _logger.LogInformation("Extracted user question: '{UserQuestion}'", userQuestion);
-
-                // Check for medical data
-                var hasMedicalData = text.Contains("=== MEDICAL DATA SUMMARY ===");
-
-                // Log context for debugging
-                _logger.LogInformation("=== AI CONTEXT ANALYSIS ===");
-                _logger.LogInformation("Context length: {Length}", text.Length);
-                _logger.LogInformation("Contains 'CRITICAL VALUES DETECTED IN LATEST RESULTS': {HasCritical}", text.Contains("CRITICAL VALUES DETECTED IN LATEST RESULTS"));
-                _logger.LogInformation("Contains '🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**': {HasCritical}", text.Contains("🚨 **CRITICAL VALUES DETECTED IN LATEST RESULTS:**"));
-                _logger.LogInformation("Contains 'STATUS: CRITICAL': {HasCritical}", text.Contains("STATUS: CRITICAL"));
-
-                // Extract only the patient data sections (exclude AI instructions which contain example "CRITICAL" text)
-                var patientDataText = ExtractPatientDataSections(text);
-
-                // Check for critical values using database-driven patterns (only in patient data, not instructions)
-                var hasCriticalValuesFromPatterns = await _patternService.MatchesAnyPatternAsync(patientDataText);
-
-                // Check for critical values using database-driven keywords (only from "Critical" category, not "Normal" or "Abnormal")
-                // Only check patient data sections, not AI instructions which contain example "CRITICAL" text
-                var hasCriticalValuesFromKeywords = await _keywordService.ContainsAnyKeywordAsync(patientDataText, "Critical");
-
-                _logger.LogInformation("Contains critical value pattern match: {HasMatch}", hasCriticalValuesFromPatterns);
-                _logger.LogInformation("Contains critical value keyword match (Critical category only): {HasMatch}", hasCriticalValuesFromKeywords);
-
-                // Check for critical values using database-driven detection (patterns + keywords)
-                // Only consider it critical if patterns match OR critical keywords match (not normal/abnormal keywords)
-                var hasCriticalValues = hasCriticalValuesFromPatterns || hasCriticalValuesFromKeywords;
-
-                _logger.LogInformation("Final hasCriticalValues: {HasCritical}", hasCriticalValues);
-
-                // Check for abnormal values using database-driven keywords (only in patient data, not instructions)
-                // Note: Status summary text (e.g., "⚠️ **STATUS: CONCERNING...") is excluded from patientDataText
-                // to prevent false positives from emoji keywords matching status summaries
-                var hasAbnormalValues = await _keywordService.ContainsAnyKeywordAsync(patientDataText ?? string.Empty, "Abnormal");
-
-                // Also check for "High Concern" and "Distress" keywords - these indicate concerning clinical note content
-                // Clinical notes often contain concerns like "anxiety", "serious symptoms", "heart problems" that are in these categories
-                // All keywords are database-driven - no hardcoded patterns
-                var hasHighConcern = await _keywordService.ContainsAnyKeywordAsync(patientDataText ?? string.Empty, "High Concern");
-                var hasDistress = await _keywordService.ContainsAnyKeywordAsync(patientDataText ?? string.Empty, "Distress");
-
-                // If any of these categories match, consider it abnormal/concerning
-                var hasAnyConcerns = hasAbnormalValues || hasHighConcern || hasDistress;
-
-                _logger.LogInformation("Contains abnormal value keyword match (Abnormal category only): {HasMatch}", hasAbnormalValues);
-                _logger.LogInformation("Contains high concern keyword match (High Concern category): {HasMatch}", hasHighConcern);
-                _logger.LogInformation("Contains distress keyword match (Distress category): {HasMatch}", hasDistress);
-                _logger.LogInformation("Final hasAnyConcerns (Abnormal OR High Concern OR Distress): {HasMatch}", hasAnyConcerns);
-                _logger.LogInformation("Patient data text length (for abnormal check): {Length}", patientDataText?.Length ?? 0);
-
-                // Log if clinical notes are present in patientDataText
-                if (!string.IsNullOrEmpty(patientDataText))
-                {
-                    var hasClinicalNotesInData = patientDataText.Contains("RECENT CLINICAL NOTES") || patientDataText.Contains("Content:");
-                    _logger.LogInformation("Clinical notes present in patientDataText: {HasNotes}", hasClinicalNotesInData);
-
-                    if (hasClinicalNotesInData)
-                    {
-                        // Extract a sample of clinical notes content for debugging
-                        var clinicalNotesStart = patientDataText.IndexOf("RECENT CLINICAL NOTES");
-                        if (clinicalNotesStart >= 0)
-                        {
-                            var clinicalNotesSample = patientDataText.Substring(clinicalNotesStart, Math.Min(500, patientDataText.Length - clinicalNotesStart));
-                            _logger.LogInformation("Clinical notes sample from patientDataText: {Sample}", clinicalNotesSample);
-                        }
-                    }
-                }
-
-                if (hasAnyConcerns && !string.IsNullOrEmpty(patientDataText))
-                {
-                    _logger.LogInformation("Concern keyword match found. Sample of patient data text: {Sample}",
-                        patientDataText.Substring(0, Math.Min(500, patientDataText.Length)));
-                }
-                else if (!hasAnyConcerns && !string.IsNullOrEmpty(patientDataText) && patientDataText.Contains("RECENT CLINICAL NOTES"))
-                {
-                    _logger.LogWarning("Clinical notes present but hasAnyConcerns is FALSE. This may indicate missing keywords in database. Patient data sample: {Sample}",
-                        patientDataText.Substring(0, Math.Min(1000, patientDataText.Length)));
-                }
-
-                // Check for normal values using database-driven keywords (only in patient data, not instructions)
-                var hasNormalValues = await _keywordService.ContainsAnyKeywordAsync(patientDataText ?? string.Empty, "Normal");
-                _logger.LogInformation("Contains normal value keyword match (Normal category only): {HasMatch}", hasNormalValues);
-
-                // Check for journal entries
-                var hasJournalEntries = text.Contains("=== RECENT JOURNAL ENTRIES ===");
-
-                var response = new StringBuilder();
-
-                if (!string.IsNullOrEmpty(userQuestion))
-                {
-                    var questionLower = userQuestion.ToLower();
-                    _logger.LogInformation("Processing question: '{Question}'", questionLower);
-                    _logger.LogInformation("Question contains 'how is': {ContainsHowIs}", questionLower.Contains("how is"));
-                    _logger.LogInformation("Question contains 'suggestions': {ContainsSuggestions}", questionLower.Contains("suggestions"));
-                    _logger.LogInformation("Question contains 'attacking': {ContainsAttacking}", questionLower.Contains("attacking"));
-
-                    if (questionLower.Contains("status") || questionLower.Contains("how is") || questionLower.Contains("doing"))
-                    {
-                        var statusHeader = await _templateService.FormatTemplateAsync("section_patient_status_assessment", null);
-                        response.AppendLine(!string.IsNullOrEmpty(statusHeader) ? statusHeader : "**Patient Status Assessment:**");
-
-                        if (hasCriticalValues)
-                        {
-                            // Check the CURRENT medical data in the progression analysis section, not conversation history
-                            var progressionSection = ExtractProgressionSection(text);
-                            if (!string.IsNullOrEmpty(progressionSection))
-                            {
-                                if (progressionSection.Contains("IMPROVEMENT NOTED"))
-                                {
-                                    var improvementTemplate = await _templateService.FormatTemplateAsync("improvement_noted", null);
-                                    if (!string.IsNullOrEmpty(improvementTemplate))
-                                    {
-                                        response.AppendLine(improvementTemplate);
-                                    }
-                                    else
-                                    {
-                                        response.AppendLine("✅ **IMPROVEMENT NOTED:** Previous results showed critical values, but current results show normal values.");
-                                        response.AppendLine("This indicates positive progress, though continued monitoring is recommended.");
-                                    }
-                                }
-                                else if (progressionSection.Contains("DETERIORATION NOTED"))
-                                {
-                                    // Use database-driven template for critical alert
-                                    var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                                    var criticalAlertText = criticalValuesFromContext ?? "- Critical medical values detected - review test results for details";
-
-                                    var template = await _templateService.FormatTemplateAsync("critical_alert_deterioration", new Dictionary<string, string>
-                                    {
-                                        { "CRITICAL_VALUES", criticalAlertText }
-                                    });
-
-                                    if (!string.IsNullOrEmpty(template))
-                                    {
-                                        response.AppendLine(template);
-                                    }
-                                    else
-                                    {
-                                        // Fallback if template not found (should not happen once seeded)
-                                        var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
-                                        response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                                        response.AppendLine(criticalAlertText);
-                                        response.AppendLine();
-
-                                        var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
-                                        response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-
-                                        var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
-                                        var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
-                                        var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
-                                        response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
-                                        response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
-                                        response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
-                                    }
-                                }
-                                else
-                                {
-                                    var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-
-                                    // Extract actual critical values from context
-                                    var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                                    if (!string.IsNullOrEmpty(criticalValuesFromContext))
-                                    {
-                                        response.AppendLine(criticalValuesFromContext);
-                                    }
-                                    else
-                                    {
-                                        response.AppendLine("- Critical medical values detected - review test results for details");
-                                    }
-
-                                    response.AppendLine();
-
-                                    var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-
-                                    var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
-                                    var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
-                                    var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
-                                }
-                            }
-                            else
-                            {
-                                // Use database-driven template for critical alert
-                                var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                                var criticalAlertText = criticalValuesFromContext ?? "- Critical medical values detected - review test results for details";
-
-                                var template = await _templateService.FormatTemplateAsync("critical_alert", new Dictionary<string, string>
-                                {
-                                    { "CRITICAL_VALUES", criticalAlertText }
-                                });
-
-                                if (!string.IsNullOrEmpty(template))
-                                {
-                                    response.AppendLine(template);
-                                }
-                                else
-                                {
-                                    // Fallback if template not found
-                                    var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                                    response.AppendLine(criticalAlertText);
-                                    response.AppendLine();
-
-                                    var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-
-                                    var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
-                                    var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
-                                    var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
-                                }
-                            }
-                        }
-                        else if (hasAnyConcerns)
-                        {
-                            // Use database-driven template for concerns
-                            var template = await _templateService.FormatTemplateAsync("concerns_detected", new Dictionary<string, string>());
-                            if (!string.IsNullOrEmpty(template))
-                            {
-                                response.AppendLine(template);
-                            }
-                            else
-                            {
-                                // Fallback if template not found
-                                var fallbackTemplate = await _templateService.FormatTemplateAsync("concerns_detected", null);
-                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations that require attention and monitoring.");
-                            }
-                        }
-                        else if (hasNormalValues)
-                        {
-                            // Check if this is showing improvement from previous critical values
-                            if (text.Contains("IMPROVEMENT NOTED"))
-                            {
-                                var template = await _templateService.FormatTemplateAsync("improvement_noted", new Dictionary<string, string>());
-                                if (!string.IsNullOrEmpty(template))
-                                {
-                                    response.AppendLine(template);
-                                }
-                                else
-                                {
-                                    // Fallback
-                                    response.AppendLine("✅ **IMPROVEMENT NOTED:** Previous results showed critical values, but current results show normal values.");
-                                    response.AppendLine("This indicates positive progress, though continued monitoring is recommended.");
-                                }
-                            }
-                            else
-                            {
-                                var template = await _templateService.FormatTemplateAsync("stable_status", new Dictionary<string, string>());
-                                if (!string.IsNullOrEmpty(template))
-                                {
-                                    response.AppendLine(template);
-                                }
-                                else
-                                {
-                                    // Fallback
-                                    var stableStatusFull = await _templateService.FormatTemplateAsync("stable_status", null);
-                                    response.AppendLine(!string.IsNullOrEmpty(stableStatusFull) ? stableStatusFull : "✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
-                                }
-                            }
-                        }
-                        else if (hasMedicalData)
-                        {
-                            // Use database-driven template for medical data warning
-                            var template = await _templateService.FormatTemplateAsync("medical_data_warning", new Dictionary<string, string>());
-                            if (!string.IsNullOrEmpty(template))
-                            {
-                                response.AppendLine(template);
-                            }
-                            else
-                            {
-                                // Fallback
-                                response.AppendLine("⚠️ **WARNING:** Medical content was found, but critical values may not have been properly detected.");
-                                response.AppendLine("Please review the medical data manually to ensure no critical values are missed.");
-                                response.AppendLine();
-                                response.AppendLine("📊 **Status Review:** Based on available data, the patient appears to be stable with no immediate concerns detected.");
-                                response.AppendLine("However, please verify the medical content manually for accuracy.");
-                            }
-                        }
-                        else
-                        {
-                            // Use database-driven template for status review
-                            var template = await _templateService.FormatTemplateAsync("status_review", new Dictionary<string, string>());
-                            if (!string.IsNullOrEmpty(template))
-                            {
-                                response.AppendLine(template);
-                            }
-                            else
-                            {
-                                // Fallback
-                                response.AppendLine("📊 **Status Review:** Based on available data, the patient appears to be stable with no immediate concerns detected.");
-                            }
-                        }
-
-                        if (hasJournalEntries)
-                        {
-                            // Extract actual journal entries from context (not hardcoded examples)
-                            var journalSection = ExtractJournalEntriesFromContext(text);
-                            var template = await _templateService.FormatTemplateAsync("recent_patient_activity", new Dictionary<string, string>
-                            {
-                                { "JOURNAL_ENTRIES", journalSection }
-                            });
-                            if (!string.IsNullOrEmpty(template))
-                            {
-                                response.AppendLine();
-                                response.AppendLine(template);
-                            }
-                            else
-                            {
-                                // Fallback - but use actual journal entries, not hardcoded examples
-                                response.AppendLine();
-                                var activityHeader = await _templateService.FormatTemplateAsync("section_recent_activity", null);
-                                response.AppendLine(!string.IsNullOrEmpty(activityHeader) ? activityHeader : "**Recent Patient Activity:**");
-                                if (!string.IsNullOrEmpty(journalSection))
-                                {
-                                    response.AppendLine(journalSection);
-                                }
-                                else
-                                {
-                                    var fallbackTemplate = await _templateService.FormatTemplateAsync("status_patient_tracking", null);
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "The patient has been actively engaging with their health tracking.");
-                                }
-                            }
-                        }
-                    }
-                    else if (questionLower.Contains("stats") || questionLower.Contains("statistics") || questionLower.Contains("data") || questionLower.Contains("snapshot") || questionLower.Contains("results"))
-                    {
-                        var statsHeader = await _templateService.FormatTemplateAsync("section_patient_medical_statistics", null);
-                        response.AppendLine(!string.IsNullOrEmpty(statsHeader) ? statsHeader : "**Patient Medical Statistics:**");
-
-                        if (hasMedicalData)
-                        {
-                            var latestDataHeader = await _templateService.FormatTemplateAsync("section_latest_medical_data", null);
-                            response.AppendLine(!string.IsNullOrEmpty(latestDataHeader) ? latestDataHeader : "📊 **Latest Medical Data:**");
-
-                            // Extract actual critical values from context
-                            var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                            if (!string.IsNullOrEmpty(criticalValuesFromContext))
-                            {
-                                response.AppendLine(criticalValuesFromContext);
-                            }
-                            else
-                            {
-                                var medicalDataAvailable = await _templateService.FormatTemplateAsync("medical_data_available", null);
-                                response.AppendLine(!string.IsNullOrEmpty(medicalDataAvailable) ? medicalDataAvailable : "Medical data available - review test results for specific values");
-                            }
-                        }
-                        else
-                        {
-                            var noMedicalData = await _templateService.FormatTemplateAsync("no_medical_data_statistics", null);
-                            response.AppendLine(!string.IsNullOrEmpty(noMedicalData) ? noMedicalData : "📊 **No recent medical data available for statistical analysis.**");
-                        }
-
-                        if (hasJournalEntries)
-                        {
-                            response.AppendLine();
-                            var moodStatsHeader = await _templateService.FormatTemplateAsync("section_mood_statistics", null);
-                            response.AppendLine(!string.IsNullOrEmpty(moodStatsHeader) ? moodStatsHeader : "**Mood Statistics:**");
-
-                            var moodStatsContent = await _templateService.FormatTemplateAsync("mood_statistics_content", null);
-                            if (!string.IsNullOrEmpty(moodStatsContent))
-                            {
-                                response.AppendLine(moodStatsContent);
-                            }
-                            else
-                            {
-                                response.AppendLine("- Recent entries show mixed mood patterns");
-                                response.AppendLine("- Patient actively tracking health status");
-                            }
-                        }
-                    }
-                    else if (questionLower.Contains("suggestions") || questionLower.Contains("recommendations") || questionLower.Contains("approach") || questionLower.Contains("attacking") || questionLower.Contains("where should"))
-                    {
-                        var recommendationsHeader = await _templateService.FormatTemplateAsync("section_clinical_recommendations", null);
-                        response.AppendLine(!string.IsNullOrEmpty(recommendationsHeader) ? recommendationsHeader : "**Clinical Recommendations:**");
-
-                        if (hasCriticalValues)
-                        {
-                            var criticalRecommendations = await _templateService.FormatTemplateAsync("recommendations_critical_detailed", null);
-                            if (!string.IsNullOrEmpty(criticalRecommendations))
-                            {
-                                response.AppendLine(criticalRecommendations);
-                            }
-                            else
-                            {
-                                response.AppendLine("🚨 **IMMEDIATE ACTIONS REQUIRED:**");
-                                response.AppendLine("1. **Emergency Medical Care**: Contact emergency services immediately");
-                                response.AppendLine("2. **Hospital Admission**: Patient requires immediate hospitalization");
-                                response.AppendLine("3. **Specialist Consultation**: Refer to hematologist for severe anemia");
-                                response.AppendLine("4. **Continuous Monitoring**: Vital signs every 15 minutes");
-                                response.AppendLine("5. **Blood Transfusion**: Consider immediate blood transfusion if hemoglobin is critically low");
-                            }
-                        }
-                        else
-                        {
-                            var generalRecommendations = await _templateService.FormatTemplateAsync("recommendations_general", null);
-                            if (!string.IsNullOrEmpty(generalRecommendations))
-                            {
-                                response.AppendLine(generalRecommendations);
-                            }
-                            else
-                            {
-                                response.AppendLine("📋 **General Recommendations:**");
-                                response.AppendLine("1. **Regular Monitoring**: Schedule routine follow-up appointments");
-                                response.AppendLine("2. **Lifestyle Modifications**: Dietary changes and exercise recommendations");
-                                response.AppendLine("3. **Medication Review**: Assess current medications and interactions");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // Generic response for other questions (including AI Health Check)
-                        // For AI Health Check, this is the main analysis path
-                        if (isAiHealthCheck)
-                        {
-                            var overviewHeader = await _templateService.FormatTemplateAsync("section_patient_overview", null);
-                            response.AppendLine(!string.IsNullOrEmpty(overviewHeader) ? overviewHeader : "**Patient Medical Overview:**");
-                        }
-                        else
-                        {
-                            var responseHeader = await _templateService.FormatTemplateAsync("section_response_to_question", new Dictionary<string, string> { { "USER_QUESTION", userQuestion } });
-                            response.AppendLine(!string.IsNullOrEmpty(responseHeader) ? responseHeader : $"**Response to: \"{userQuestion}\"**");
-                            response.AppendLine();
-                        }
-
-                        if (hasCriticalValues)
-                        {
-                            // Use database-driven template for critical alert
-                            var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                            var criticalAlertText = criticalValuesFromContext ?? "- Critical medical values detected - review test results for details";
-
-                            var template = await _templateService.FormatTemplateAsync("critical_alert", new Dictionary<string, string>
-                            {
-                                { "CRITICAL_VALUES", criticalAlertText }
-                            });
-
-                            if (!string.IsNullOrEmpty(template))
-                            {
-                                response.AppendLine(template);
-                            }
-                            else
-                            {
-                                // Fallback
-                                var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
-                                response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                                response.AppendLine(criticalAlertText);
-                                response.AppendLine();
-
-                                var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
-                                response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-
-                                var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
-                                var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
-                                var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
-                                response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
-                                response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
-                                response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
-                            }
-                        }
-                        else if (hasAnyConcerns)
-                        {
-                            // Use database-driven template for concerns
-                            var template = await _templateService.FormatTemplateAsync("concerns_detected", new Dictionary<string, string>());
-                            if (!string.IsNullOrEmpty(template))
-                            {
-                                response.AppendLine(template);
-                            }
-                            else
-                            {
-                                // Fallback
-                                response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations that require attention and monitoring.");
-                            }
-                        }
-                        else if (hasNormalValues)
-                        {
-                            // Use database-driven template for stable status
-                            var template = await _templateService.FormatTemplateAsync("stable_status", new Dictionary<string, string>());
-                            if (!string.IsNullOrEmpty(template))
-                            {
-                                response.AppendLine(template);
-                            }
-                            else
-                            {
-                                // Fallback
-                                var stableStatusFull = await _templateService.FormatTemplateAsync("stable_status", null);
-                                response.AppendLine(!string.IsNullOrEmpty(stableStatusFull) ? stableStatusFull : "✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
-                            }
-                        }
-                        else
-                        {
-                            // Use database-driven template for status review
-                            var template = await _templateService.FormatTemplateAsync("status_review", new Dictionary<string, string>());
-                            if (!string.IsNullOrEmpty(template))
-                            {
-                                response.AppendLine(template);
-                            }
-                            else
-                            {
-                                // Fallback
-                                var stableStatus = await _templateService.FormatTemplateAsync("stable_status", null);
-                                response.AppendLine(!string.IsNullOrEmpty(stableStatus) ? stableStatus : "✅ The patient appears to be stable with no immediate concerns detected.");
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    // No specific question detected, but we have medical data - provide comprehensive overview
-                    _logger.LogInformation("No specific question detected, providing comprehensive medical overview");
-
-                    var overviewHeader3 = await _templateService.FormatTemplateAsync("section_patient_overview", null);
-                    if (!string.IsNullOrEmpty(overviewHeader3))
-                    {
-                        response.AppendLine(overviewHeader3);
-                    }
-                    else
-                    {
-                        var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_patient_overview", null);
-                        response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Patient Medical Overview:**");
-                    }
-
-                    if (hasCriticalValues)
-                    {
-                        var criticalValuesFromContext = ExtractCriticalValuesFromContext(text);
-                        var criticalAlertText = criticalValuesFromContext ?? "- Critical medical values detected - review test results for details";
-
-                        var template = await _templateService.FormatTemplateAsync("critical_alert", new Dictionary<string, string>
-                        {
-                            { "CRITICAL_VALUES", criticalAlertText }
-                        });
-
-                        if (!string.IsNullOrEmpty(template))
-                        {
-                            response.AppendLine(template);
-                        }
-                        else
-                        {
-                            var fallbackHeader = await _templateService.FormatTemplateAsync("fallback_critical_alert_header", null);
-                            response.AppendLine(!string.IsNullOrEmpty(fallbackHeader) ? fallbackHeader : "🚨 **CRITICAL MEDICAL ALERT:** The patient has critical medical values that require immediate attention.");
-                            response.AppendLine(criticalAlertText);
-                            response.AppendLine();
-
-                            var fallbackImmediate = await _templateService.FormatTemplateAsync("fallback_immediate_attention", null);
-                            response.AppendLine(!string.IsNullOrEmpty(fallbackImmediate) ? fallbackImmediate : "**IMMEDIATE MEDICAL ATTENTION REQUIRED:**");
-
-                            var fallbackAction1 = await _templateService.FormatTemplateAsync("fallback_emergency_action1", null);
-                            var fallbackAction2 = await _templateService.FormatTemplateAsync("fallback_emergency_action2", null);
-                            var fallbackAction3 = await _templateService.FormatTemplateAsync("fallback_emergency_action3", null);
-                            response.AppendLine(!string.IsNullOrEmpty(fallbackAction1) ? fallbackAction1 : "- These values indicate a medical emergency");
-                            response.AppendLine(!string.IsNullOrEmpty(fallbackAction2) ? fallbackAction2 : "- Contact emergency services if symptoms worsen");
-                            response.AppendLine(!string.IsNullOrEmpty(fallbackAction3) ? fallbackAction3 : "- Patient needs immediate medical evaluation");
-                        }
-                    }
-                    else if (hasAnyConcerns)
-                    {
-                        var template = await _templateService.FormatTemplateAsync("concerns_detected", null);
-                        if (!string.IsNullOrEmpty(template))
-                        {
-                            response.AppendLine(template);
-                        }
-                        else
-                        {
-                            response.AppendLine("⚠️ **MEDICAL CONCERNS DETECTED:** There are abnormal medical values or concerning clinical observations that require attention and monitoring.");
-                        }
-                    }
-                    else if (hasNormalValues)
-                    {
-                        var template = await _templateService.FormatTemplateAsync("stable_status", null);
-                        if (!string.IsNullOrEmpty(template))
-                        {
-                            response.AppendLine(template);
-                        }
-                        else
-                        {
-                            response.AppendLine("✅ **CURRENT STATUS: STABLE** - The patient shows normal values with no immediate concerns.");
-                        }
-                    }
-                    else
-                    {
-                        var template = await _templateService.FormatTemplateAsync("status_review", null);
-                        if (!string.IsNullOrEmpty(template))
-                        {
-                            response.AppendLine(template);
-                        }
-                        else
-                        {
-                            var statusReview = await _templateService.FormatTemplateAsync("status_review", null);
-                            response.AppendLine(!string.IsNullOrEmpty(statusReview) ? statusReview : "📊 **Current Status:** Patient appears stable with no immediate concerns.");
-                        }
-                    }
-
-                    if (hasJournalEntries)
-                    {
-                        var journalSection = ExtractJournalEntriesFromContext(text);
-                        var template = await _templateService.FormatTemplateAsync("recent_patient_activity", new Dictionary<string, string>
-                        {
-                            { "JOURNAL_ENTRIES", journalSection }
-                        });
-                        if (!string.IsNullOrEmpty(template))
-                        {
-                            response.AppendLine();
-                            response.AppendLine(template);
-                        }
-                        else
-                        {
-                            response.AppendLine();
-                            var activityHeader = await _templateService.FormatTemplateAsync("section_recent_activity", null);
-                            response.AppendLine(!string.IsNullOrEmpty(activityHeader) ? activityHeader : "**Recent Patient Activity:**");
-                            if (!string.IsNullOrEmpty(journalSection))
-                            {
-                                response.AppendLine(journalSection);
-                            }
-                            else
-                            {
-                                var patientTracking = await _templateService.FormatTemplateAsync("status_patient_tracking", null);
-                                response.AppendLine(!string.IsNullOrEmpty(patientTracking) ? patientTracking : "The patient has been actively engaging with their health tracking.");
-                            }
-                        }
-                    }
-                }
-
-                return response.ToString().Trim();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing enhanced context response");
-                var errorFallback = await _templateService.FormatTemplateAsync("fallback_patient_query", null);
-                return !string.IsNullOrEmpty(errorFallback) ? errorFallback : "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
-            }
-        }
-        */
 
         /// <summary>
         /// Determines if a message is a generic knowledge question (not a patient-specific concern)
