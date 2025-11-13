@@ -257,6 +257,18 @@ namespace SM_MentalHealthApp.Shared
         public int AlertsSent { get; set; }
         public int DoctorsNotified { get; set; }
         public string Message { get; set; } = string.Empty;
+        public List<SeveritySource> SeveritySources { get; set; } = new();
+    }
+
+    public class SeveritySource
+    {
+        public string SourceType { get; set; } = string.Empty; // "JournalEntry", "ClinicalNote", "Content", "Emergency"
+        public int SourceId { get; set; }
+        public string SourceTitle { get; set; } = string.Empty;
+        public string SourcePreview { get; set; } = string.Empty;
+        public DateTime SourceDate { get; set; }
+        public string ContributionReason { get; set; } = string.Empty; // Why this source contributed to severity
+        public string NavigationRoute { get; set; } = string.Empty; // Route to navigate to this source
     }
 
     // Content Analysis Models

@@ -85,12 +85,12 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return BadRequest("No doctors assigned to this patient");
                 }
 
-                // Build comprehensive context for AI analysis
+                // Build comprehensive context for AI analysis with source tracking
                 var contentAnalysisService = HttpContext.RequestServices.GetRequiredService<IContentAnalysisService>();
                 var originalPrompt = $"AI Health Check for Patient {patient.FirstName} {patient.LastName}";
                 _logger.LogInformation("Building context for patient {PatientId} with prompt: {Prompt}", patientId, originalPrompt);
 
-                var patientContext = await contentAnalysisService.BuildEnhancedContextAsync(patientId, originalPrompt);
+                var (patientContext, sources) = await contentAnalysisService.BuildEnhancedContextWithSourcesAsync(patientId, originalPrompt);
 
                 _logger.LogInformation("Built context for patient {PatientId}, length: {ContextLength}", patientId, patientContext.Length);
                 _logger.LogInformation("Context preview (first 500 chars): {ContextPreview}", patientContext.Length > 500 ? patientContext.Substring(0, 500) : patientContext);
@@ -108,9 +108,14 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var aiResponse = await huggingFaceService.GenerateResponse(patientContext);
 
                 _logger.LogInformation("AI Response for patient {PatientId}: {Response}", patientId, aiResponse);
+                _logger.LogInformation("Sources tracked for patient {PatientId}: {SourceCount}", patientId, sources.Count);
 
                 // Check if AI indicates high severity
                 bool isHighSeverity = IsAiResponseIndicatingHighSeverity(aiResponse);
+
+                // Identify which sources contributed to severity (show sources for both High and Normal severity)
+                var severitySources = IdentifySeveritySources(sources, aiResponse, isHighSeverity);
+                _logger.LogInformation("Identified {SeveritySourceCount} severity sources for patient {PatientId}", severitySources.Count, patientId);
 
                 if (isHighSeverity)
                 {
@@ -153,7 +158,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                         AiResponse = aiResponse,
                         AlertsSent = alertsSent,
                         DoctorsNotified = assignedDoctors.Count,
-                        Message = $"AI detected high severity. {alertsSent} doctors notified."
+                        Message = $"AI detected high severity. {alertsSent} doctors notified.",
+                        SeveritySources = severitySources
                     });
                 }
                 else
@@ -167,7 +173,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                         AiResponse = aiResponse,
                         AlertsSent = 0,
                         DoctorsNotified = 0,
-                        Message = "AI health check shows normal status. No alerts sent."
+                        Message = "AI health check shows normal status. No alerts sent.",
+                        SeveritySources = severitySources
                     });
                 }
             }
@@ -184,6 +191,186 @@ namespace SM_MentalHealthApp.Server.Controllers
                     DoctorsNotified = 0
                 });
             }
+        }
+
+        /// <summary>
+        /// Identify which sources contributed to the severity assessment
+        /// </summary>
+        private List<SeveritySource> IdentifySeveritySources(List<SeveritySourceMetadata> sources, string aiResponse, bool isHighSeverity)
+        {
+            var severitySources = new List<SeveritySource>();
+            
+            if (!sources.Any())
+            {
+                return severitySources;
+            }
+
+            // Always include sources if severity is High, or if they have concerning content even for Normal severity
+            var shouldIncludeAllSources = isHighSeverity;
+
+            var responseLower = aiResponse.ToLower();
+            var highSeverityKeywords = new[]
+            {
+                "critical", "urgent", "immediate", "emergency", "severe", "concerning",
+                "high risk", "dangerous", "alarming", "serious", "crisis", "acute",
+                "suicide", "self-harm", "overdose", "chest pain", "difficulty breathing",
+                "heart attack", "stroke", "abnormal", "elevated", "high", "low", "irregular",
+                "medical concerns detected", "abnormal medical values", "concerning clinical observations"
+            };
+
+            foreach (var source in sources)
+            {
+                var sourceContentLower = source.SourceContent.ToLower();
+                var sourceTitleLower = source.SourceTitle.ToLower();
+                var contributionReasons = new List<string>();
+                var shouldInclude = false;
+
+                // Check if source has high severity keywords in content or title
+                var matchingKeywords = highSeverityKeywords.Where(k => 
+                    sourceContentLower.Contains(k) || sourceTitleLower.Contains(k)).ToList();
+
+                // For Content sources, also check alerts
+                if (source.SourceType == "Content" && source.Alerts != null && source.Alerts.Any())
+                {
+                    var alertsText = string.Join(" ", source.Alerts).ToLower();
+                    var alertKeywords = highSeverityKeywords.Where(k => alertsText.Contains(k)).ToList();
+                    if (alertKeywords.Any())
+                    {
+                        matchingKeywords = matchingKeywords.Union(alertKeywords).ToList();
+                        contributionReasons.Add($"Content has critical alerts: {string.Join(", ", source.Alerts.Take(2))}");
+                        shouldInclude = true;
+                    }
+                }
+
+                if (matchingKeywords.Any())
+                {
+                    contributionReasons.Add($"Contains concerning keywords: {string.Join(", ", matchingKeywords.Take(3))}");
+                    shouldInclude = true;
+                }
+
+                // Emergency incidents always contribute
+                if (source.SourceType == "Emergency")
+                {
+                    if (source.Severity == "Critical" || source.Severity == "High")
+                    {
+                        contributionReasons.Add($"Unacknowledged {source.Severity.ToLower()} emergency incident");
+                        shouldInclude = true;
+                    }
+                    else
+                    {
+                        contributionReasons.Add("Emergency incident");
+                        shouldInclude = true; // Always include emergencies
+                    }
+                }
+
+                // Clinical notes with high priority contribute
+                if (source.SourceType == "ClinicalNote")
+                {
+                    if (source.Priority == "High" || source.Priority == "Critical")
+                    {
+                        contributionReasons.Add($"High priority clinical note");
+                        shouldInclude = true;
+                    }
+                    else if (shouldIncludeAllSources)
+                    {
+                        contributionReasons.Add("Clinical note reviewed");
+                        shouldInclude = true;
+                    }
+                }
+
+                // For High severity, include sources that were analyzed and may have contributed
+                // This ensures we show sources that the AI considered, even if they don't match keywords exactly
+                if (shouldIncludeAllSources && !shouldInclude)
+                {
+                    // Only include if it's a type that could contribute to severity
+                    if (source.SourceType == "Content" && source.Alerts != null && source.Alerts.Any())
+                    {
+                        contributionReasons.Add("Content with alerts included in analysis");
+                        shouldInclude = true;
+                    }
+                    else if (source.SourceType == "ClinicalNote" || source.SourceType == "JournalEntry")
+                    {
+                        // Check if mentioned in AI response
+                        var keyPhrases = ExtractKeyPhrases(source.SourceContent);
+                        var mentionedInResponse = keyPhrases.Any(phrase => 
+                            responseLower.Contains(phrase.ToLower()));
+
+                        if (mentionedInResponse)
+                        {
+                            contributionReasons.Add("Referenced in AI analysis");
+                            shouldInclude = true;
+                        }
+                    }
+                }
+
+                // Check if source content appears in AI response (indicating it was considered)
+                if (!shouldInclude)
+                {
+                    var keyPhrases = ExtractKeyPhrases(source.SourceContent);
+                    var mentionedInResponse = keyPhrases.Any(phrase => 
+                        responseLower.Contains(phrase.ToLower()));
+
+                    if (mentionedInResponse)
+                    {
+                        contributionReasons.Add("Referenced in AI analysis");
+                        shouldInclude = true;
+                    }
+                }
+
+                // If source should be included, add it
+                if (shouldInclude)
+                {
+                    var navigationRoute = source.SourceType switch
+                    {
+                        "JournalEntry" => $"/journal",
+                        "ClinicalNote" => $"/clinical-notes",
+                        "Content" => $"/content",
+                        "Emergency" => $"/emergencies",
+                        _ => ""
+                    };
+
+                    severitySources.Add(new SeveritySource
+                    {
+                        SourceType = source.SourceType,
+                        SourceId = source.SourceId,
+                        SourceTitle = source.SourceTitle,
+                        SourcePreview = source.SourceContent.Length > 150 
+                            ? source.SourceContent.Substring(0, 150) + "..." 
+                            : source.SourceContent,
+                        SourceDate = source.SourceDate,
+                        ContributionReason = contributionReasons.Any() 
+                            ? string.Join("; ", contributionReasons) 
+                            : "Included in analysis",
+                        NavigationRoute = navigationRoute
+                    });
+                }
+            }
+
+            return severitySources;
+        }
+
+        /// <summary>
+        /// Extract key phrases from text for matching
+        /// </summary>
+        private List<string> ExtractKeyPhrases(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return new List<string>();
+
+            var phrases = new List<string>();
+            var words = text.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            
+            // Extract 3-word phrases
+            for (int i = 0; i < words.Length - 2; i++)
+            {
+                var phrase = $"{words[i]} {words[i + 1]} {words[i + 2]}";
+                if (phrase.Length > 10 && phrase.Length < 50)
+                {
+                    phrases.Add(phrase);
+                }
+            }
+
+            return phrases.Take(10).ToList(); // Limit to 10 phrases
         }
 
         /// <summary>

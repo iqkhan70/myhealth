@@ -4,6 +4,8 @@
 @inject IAuthService AuthService
 @inject IPatientService PatientService
 @inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@using Microsoft.AspNetCore.Components
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Client.Components.Grid
@@ -429,6 +431,52 @@
                             <div class="ai-response-content">
                                 @((MarkupString)currentHealthCheckResult.AiResponse.Replace("\n", "<br/>"))
                             </div>
+                        </div>
+                    }
+
+                    @if (currentHealthCheckResult.SeveritySources != null && currentHealthCheckResult.SeveritySources.Any())
+                    {
+                        <div class="severity-sources-section mt-4">
+                            <h5>🔍 Sources Contributing to Severity Assessment</h5>
+                            <p class="text-muted small mb-3">The following items were analyzed and contributed to the severity assessment. You can review them or mark them as not applicable if the patient's condition has improved.</p>
+                            
+                            <div class="alert alert-info small mb-3">
+                                <strong>Found @currentHealthCheckResult.SeveritySources.Count source(s)</strong> that contributed to this assessment.
+                            </div>
+                            
+                            @foreach (var source in currentHealthCheckResult.SeveritySources)
+                            {
+                                <div class="source-item mb-3 p-3 border border-danger rounded" style="background-color: #fff5f5;">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex align-items-center mb-2">
+                                                <span class="badge @GetSourceTypeBadgeClass(source.SourceType) me-2">
+                                                    @GetSourceTypeIcon(source.SourceType) @source.SourceType
+                                                </span>
+                                                <strong>@source.SourceTitle</strong>
+                                                <span class="text-muted ms-2 small">@source.SourceDate.ToString("MM/dd/yyyy")</span>
+                                            </div>
+                                            <p class="mb-1 small text-muted">@source.SourcePreview</p>
+                                            @if (!string.IsNullOrEmpty(source.ContributionReason))
+                                            {
+                                                <p class="mb-0 small"><strong>Reason:</strong> <span class="text-info">@source.ContributionReason</span></p>
+                                            }
+                                        </div>
+                                        <div class="ms-3 d-flex flex-column gap-2">
+                                            <RadzenButton Text="View" 
+                                                         ButtonStyle="ButtonStyle.Info" 
+                                                         Size="ButtonSize.Small"
+                                                         Variant="Variant.Flat"
+                                                         Click="@(() => NavigateToSource(source))" />
+                                            <RadzenButton Text="Mark as Not Applicable" 
+                                                         ButtonStyle="ButtonStyle.Warning" 
+                                                         Size="ButtonSize.Small"
+                                                         Variant="Variant.Flat"
+                                                         Click="@(() => MarkSourceAsIgnored(source))" />
+                                        </div>
+                                    </div>
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -1021,6 +1069,12 @@
                 // Store result for viewing in a dialog
                 currentHealthCheckResult = result;
                 showHealthCheckDialog = true;
+                
+                // Debug: Log severity sources
+                await JSRuntime.InvokeVoidAsync("console.log", "Severity Sources:", 
+                    result.SeveritySources != null ? result.SeveritySources.Count : 0,
+                    result.SeveritySources);
+                
                 StateHasChanged();
                 
                 // Show brief notification
@@ -1205,6 +1259,86 @@
         showUnassignConfirmation = false;
         selectedUser = null;
         StateHasChanged();
+    }
+
+    private string GetSourceTypeIcon(string sourceType)
+    {
+        return sourceType switch
+        {
+            "JournalEntry" => "📝",
+            "ClinicalNote" => "📋",
+            "Content" => "📄",
+            "Emergency" => "🚨",
+            _ => "📌"
+        };
+    }
+
+    private string GetSourceTypeBadgeClass(string sourceType)
+    {
+        // All severity-causing sources should be marked in red/warning
+        return "bg-danger text-white";
+    }
+
+    private async Task NavigateToSource(SeveritySource source)
+    {
+        // Store the source ID in a way that the target page can use to highlight it
+        // For now, navigate to the page - we can enhance this later to scroll to the specific item
+        var route = source.NavigationRoute;
+        
+        // Add query parameter to identify the source
+        var uri = $"{route}?sourceId={source.SourceId}&sourceType={source.SourceType}";
+        Navigation.NavigateTo(uri);
+        
+        // Close the health check dialog
+        CloseHealthCheckDialog();
+    }
+
+    private async Task MarkSourceAsIgnored(SeveritySource source)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"Are you sure you want to mark this {source.SourceType} as not applicable for AI analysis? This will exclude it from future health checks.");
+        
+        if (!confirmed)
+            return;
+
+        try
+        {
+            var endpoint = source.SourceType switch
+            {
+                "JournalEntry" => $"api/journal/entry/{source.SourceId}/toggle-ignore",
+                "ClinicalNote" => $"api/clinical-notes/{source.SourceId}/toggle-ignore",
+                "Content" => $"api/content/{source.SourceId}/toggle-ignore",
+                "Emergency" => $"api/emergency/{source.SourceId}/acknowledge", // Acknowledge instead of ignore
+                _ => null
+            };
+
+            if (endpoint == null)
+            {
+                NotificationService.ShowWarning("Unable to mark this source type as ignored.");
+                return;
+            }
+
+            var response = await Http.PostAsync(endpoint, null);
+            if (response.IsSuccessStatusCode)
+            {
+                NotificationService.ShowSuccess($"{source.SourceType} marked as not applicable. It will be excluded from future AI health checks.");
+                
+                // Remove from the current list
+                if (currentHealthCheckResult?.SeveritySources != null)
+                {
+                    currentHealthCheckResult.SeveritySources.Remove(source);
+                    StateHasChanged();
+                }
+            }
+            else
+            {
+                NotificationService.ShowError("Failed to mark source as ignored. Please try again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error: {ex.Message}");
+        }
     }
 
     private void CloseHealthCheckDialog()

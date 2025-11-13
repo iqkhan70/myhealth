@@ -22,9 +22,22 @@ namespace SM_MentalHealthApp.Server.Services
         Task<SM_MentalHealthApp.Shared.ContentAnalysis> AnalyzeContentAsync(ContentItem content);
         Task<List<SM_MentalHealthApp.Shared.ContentAnalysis>> GetContentAnalysisForPatientAsync(int patientId);
         Task<string> BuildEnhancedContextAsync(int patientId, string originalPrompt);
+        Task<(string Context, List<SeveritySourceMetadata> Sources)> BuildEnhancedContextWithSourcesAsync(int patientId, string originalPrompt);
         Task<List<SM_MentalHealthApp.Shared.ContentAlert>> GenerateContentAlertsAsync(int patientId);
         Task ProcessAllUnanalyzedContentAsync();
         Task<List<ClinicalNoteDto>> SearchClinicalNotesWithAIAsync(string searchTerm, int? patientId = null, int? doctorId = null);
+    }
+
+    public class SeveritySourceMetadata
+    {
+        public string SourceType { get; set; } = string.Empty;
+        public int SourceId { get; set; }
+        public string SourceTitle { get; set; } = string.Empty;
+        public string SourceContent { get; set; } = string.Empty;
+        public DateTime SourceDate { get; set; }
+        public string? Priority { get; set; }
+        public string? Severity { get; set; }
+        public List<string> Alerts { get; set; } = new(); // For content items with alerts
     }
 
     public class ContentAnalysisService : IContentAnalysisService
@@ -968,6 +981,170 @@ If you need general medical information without patient context, please switch t
             {
                 _logger.LogError(ex, "Error building enhanced context for patient {PatientId}", patientId);
                 return originalPrompt; // Fallback to original prompt
+            }
+        }
+
+        public async Task<(string Context, List<SeveritySourceMetadata> Sources)> BuildEnhancedContextWithSourcesAsync(int patientId, string originalPrompt)
+        {
+            var sources = new List<SeveritySourceMetadata>();
+            
+            try
+            {
+                if (patientId <= 0)
+                {
+                    return (await BuildEnhancedContextAsync(patientId, originalPrompt), sources);
+                }
+
+                var context = new StringBuilder();
+
+                // Get clinical notes and track them
+                var recentClinicalNotes = await _context.ClinicalNotes
+                    .Where(cn => cn.PatientId == patientId && cn.IsActive && !cn.IsIgnoredByDoctor)
+                    .OrderByDescending(cn => cn.CreatedAt)
+                    .Take(5)
+                    .ToListAsync();
+
+                if (recentClinicalNotes.Any())
+                {
+                    context.AppendLine("=== RECENT CLINICAL NOTES ===");
+                    context.AppendLine("⚠️ IMPORTANT: Clinical notes are written by doctors and contain critical medical observations and assessments.");
+                    context.AppendLine();
+                    foreach (var note in recentClinicalNotes)
+                    {
+                        context.AppendLine($"[{note.CreatedAt:MM/dd/yyyy}] {note.Title} ({note.NoteType}) - Priority: {note.Priority}");
+                        if (!string.IsNullOrEmpty(note.Content))
+                        {
+                            context.AppendLine($"Content: {note.Content}");
+                        }
+                        context.AppendLine();
+
+                        sources.Add(new SeveritySourceMetadata
+                        {
+                            SourceType = "ClinicalNote",
+                            SourceId = note.Id,
+                            SourceTitle = note.Title,
+                            SourceContent = note.Content ?? string.Empty,
+                            SourceDate = note.CreatedAt,
+                            Priority = note.Priority
+                        });
+                    }
+                }
+
+                // Get journal entries and track them
+                var recentEntries = await _context.JournalEntries
+                    .Where(e => e.UserId == patientId && e.IsActive && !e.IsIgnoredByDoctor)
+                    .OrderByDescending(e => e.CreatedAt)
+                    .Take(5)
+                    .ToListAsync();
+
+                if (recentEntries.Any())
+                {
+                    context.AppendLine("=== RECENT JOURNAL ENTRIES ===");
+                    foreach (var entry in recentEntries)
+                    {
+                        context.AppendLine($"[{entry.CreatedAt:MM/dd/yyyy}] Mood: {entry.Mood}");
+                        var entryPreview = entry.Text?.Substring(0, Math.Min(200, entry.Text.Length)) ?? "";
+                        context.AppendLine($"Entry: {entryPreview}...");
+                        context.AppendLine();
+
+                        sources.Add(new SeveritySourceMetadata
+                        {
+                            SourceType = "JournalEntry",
+                            SourceId = entry.Id,
+                            SourceTitle = $"Journal Entry - {entry.Mood}",
+                            SourceContent = entry.Text ?? string.Empty,
+                            SourceDate = entry.CreatedAt
+                        });
+                    }
+                }
+
+                // Get emergency incidents and track them
+                var recentEmergencies = await _context.EmergencyIncidents
+                    .Where(e => e.PatientId == patientId && !e.IsAcknowledged)
+                    .OrderByDescending(e => e.Timestamp)
+                    .Take(3)
+                    .ToListAsync();
+
+                if (recentEmergencies.Any())
+                {
+                    context.AppendLine("=== RECENT EMERGENCY INCIDENTS ===");
+                    foreach (var emergency in recentEmergencies)
+                    {
+                        context.AppendLine($"[{emergency.Timestamp:MM/dd/yyyy HH:mm}] {emergency.EmergencyType} - {emergency.Severity}");
+                        if (!string.IsNullOrEmpty(emergency.Message))
+                        {
+                            context.AppendLine($"Message: {emergency.Message}");
+                        }
+                        context.AppendLine();
+
+                        sources.Add(new SeveritySourceMetadata
+                        {
+                            SourceType = "Emergency",
+                            SourceId = emergency.Id,
+                            SourceTitle = $"{emergency.EmergencyType} Emergency",
+                            SourceContent = emergency.Message ?? string.Empty,
+                            SourceDate = emergency.Timestamp,
+                            Severity = emergency.Severity
+                        });
+                    }
+                }
+
+                // Get content analyses and track them
+                var allContentAnalyses = await GetContentAnalysisForPatientAsync(patientId);
+                allContentAnalyses = allContentAnalyses
+                    .Where(ca => _context.Contents.Any(c => c.Id == ca.ContentId &&
+                                                           c.IsActive &&
+                                                           !c.IsIgnoredByDoctor &&
+                                                           c.PatientId == patientId))
+                    .OrderByDescending(ca => ca.ProcessedAt)
+                    .Take(5)
+                    .ToList();
+
+                if (allContentAnalyses.Any())
+                {
+                    context.AppendLine("=== MEDICAL TEST RESULTS AND CONTENT ===");
+                    foreach (var analysis in allContentAnalyses)
+                    {
+                        var content = await _context.Contents.FirstOrDefaultAsync(c => c.Id == analysis.ContentId);
+                        if (content != null)
+                        {
+                            context.AppendLine($"[{content.CreatedAt:MM/dd/yyyy}] {content.Title}");
+                            if (analysis.Alerts.Any())
+                            {
+                                context.AppendLine($"⚠️ Alerts: {string.Join(", ", analysis.Alerts)}");
+                            }
+                            context.AppendLine();
+
+                            sources.Add(new SeveritySourceMetadata
+                            {
+                                SourceType = "Content",
+                                SourceId = content.Id,
+                                SourceTitle = content.Title,
+                                SourceContent = analysis.ExtractedText ?? string.Empty,
+                                SourceDate = content.CreatedAt,
+                                Alerts = analysis.Alerts?.ToList() ?? new List<string>()
+                            });
+                        }
+                    }
+                }
+
+                // Add the rest of the context (instructions, etc.)
+                context.AppendLine($"=== USER QUESTION ===");
+                context.AppendLine(originalPrompt);
+                context.AppendLine();
+                context.AppendLine("=== INSTRUCTIONS FOR AI HEALTH CHECK ANALYSIS ===");
+                var instructions = await _instructionService.BuildInstructionsAsync("HealthCheck");
+                if (!string.IsNullOrWhiteSpace(instructions))
+                {
+                    context.AppendLine(instructions);
+                }
+
+                return (context.ToString(), sources);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error building enhanced context with sources for patient {PatientId}", patientId);
+                return (originalPrompt, sources);
             }
         }
 
