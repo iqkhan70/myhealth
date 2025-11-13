@@ -382,6 +382,10 @@
     {
         if (session == null) return "None";
 
+        // Generic chat (no patient) should never be marked as high concern
+        // Generic chat is for general medical information queries, not patient-specific concerns
+        bool isGenericChat = !session.PatientId.HasValue;
+
         var concernScore = 0;
         var textToAnalyze = string.Empty;
 
@@ -397,9 +401,11 @@
         {
             foreach (var message in session.Messages)
             {
-                if (message.IsMedicalData)
+                // Only count medical data as a concern for patient-specific chats
+                // Generic chat queries about medical information should not be flagged
+                if (message.IsMedicalData && !isGenericChat)
                 {
-                    concernScore += 2; // Medical data is always a concern
+                    concernScore += 2; // Medical data is a concern only for patient-specific chats
                 }
                 
                 if (!string.IsNullOrEmpty(message.Content))
@@ -408,8 +414,6 @@
                 }
             }
         }
-        // If messages aren't loaded but we have a message count, we can still analyze the summary
-        // The summary should contain key information from the conversation
 
         // High severity keywords
         var highSeverityKeywords = new[]
@@ -428,33 +432,49 @@
             "abnormal", "elevated", "high", "low", "irregular"
         };
 
+        // Critical safety keywords that should still be flagged even in generic chat
+        var criticalSafetyKeywords = new[] { "suicide", "self-harm", "kill myself", "want to die", "emergency", "crisis" };
+
         // Check for high severity keywords in the text (summary or messages)
         foreach (var keyword in highSeverityKeywords)
         {
             if (textToAnalyze.Contains(keyword))
             {
+                // For generic chat, only count critical safety keywords
+                // General medical queries like "normal values" should not trigger concern
+                if (isGenericChat && !criticalSafetyKeywords.Contains(keyword))
+                {
+                    continue; // Skip non-critical keywords for generic chat
+                }
                 concernScore += 3;
             }
         }
 
         // Check for medium severity keywords
-        foreach (var keyword in mediumSeverityKeywords)
+        // For generic chat, don't count these as concerns
+        if (!isGenericChat)
         {
-            if (textToAnalyze.Contains(keyword))
+            foreach (var keyword in mediumSeverityKeywords)
             {
-                concernScore += 1;
+                if (textToAnalyze.Contains(keyword))
+                {
+                    concernScore += 1;
+                }
             }
         }
 
-        // If we have a summary but no messages loaded, and the summary contains concerning keywords,
-        // we should still flag it appropriately
-        if (!hasMessages && !string.IsNullOrEmpty(session.Summary))
+        // For generic chat, only return concern if there are critical safety keywords
+        // General medical queries should return "None"
+        if (isGenericChat)
         {
-            // The summary itself might indicate concern even without message details
-            // This ensures we catch concerns mentioned in the AI-generated summary
+            // Only flag if there are critical safety keywords
+            if (concernScore >= 3)
+                return "High"; // Only for critical safety issues
+            else
+                return "None"; // Generic medical queries are not concerns
         }
 
-        // Determine concern level
+        // Determine concern level for patient-specific chats
         if (concernScore >= 5)
             return "High";
         else if (concernScore >= 2)
