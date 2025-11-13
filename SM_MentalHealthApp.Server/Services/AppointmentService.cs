@@ -15,6 +15,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<AppointmentConflictCheck> CheckConflictsAsync(int doctorId, DateTime startDateTime, DateTime endDateTime, int? excludeAppointmentId = null);
         Task<bool> IsPatientAssignedToDoctorAsync(int patientId, int doctorId);
         Task<DoctorAvailability?> GetDoctorAvailabilityAsync(int doctorId, DateTime date);
+        Task<List<DoctorAvailability>> GetDoctorAvailabilitiesAsync(int doctorId, DateTime startDate, DateTime endDate);
         Task<DoctorAvailability> SetDoctorAvailabilityAsync(DoctorAvailabilityRequest request);
         Task<bool> IsDoctorAvailableAsync(int doctorId, DateTime dateTime);
         Task<bool> IsBusinessHoursAsync(DateTime dateTime);
@@ -439,6 +440,18 @@ namespace SM_MentalHealthApp.Server.Services
         {
             return await _context.DoctorAvailabilities
                 .FirstOrDefaultAsync(da => da.DoctorId == doctorId && da.Date.Date == date.Date);
+        }
+
+        public async Task<List<DoctorAvailability>> GetDoctorAvailabilitiesAsync(int doctorId, DateTime startDate, DateTime endDate)
+        {
+            return await _context.DoctorAvailabilities
+                .Where(da => da.DoctorId == doctorId 
+                    && da.Date.Date >= startDate.Date 
+                    && da.Date.Date <= endDate.Date
+                    && da.IsOutOfOffice)
+                .OrderBy(da => da.Date)
+                .ThenBy(da => da.StartTime ?? TimeSpan.Zero)
+                .ToListAsync();
         }
 
         public async Task<DoctorAvailability> SetDoctorAvailabilityAsync(DoctorAvailabilityRequest request)

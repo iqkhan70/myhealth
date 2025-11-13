@@ -320,6 +320,27 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
+        /// Get all doctor availability/OOO periods for a date range
+        /// </summary>
+        [HttpGet("doctor-availability/{doctorId}/range")]
+        public async Task<ActionResult<List<DoctorAvailability>>> GetDoctorAvailabilities(
+            int doctorId, 
+            [FromQuery] DateTime startDate, 
+            [FromQuery] DateTime endDate)
+        {
+            try
+            {
+                var availabilities = await _appointmentService.GetDoctorAvailabilitiesAsync(doctorId, startDate, endDate);
+                return Ok(availabilities);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting doctor availabilities");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
         /// Set doctor availability (Admin or Doctor)
         /// Doctors can only set availability for themselves
         /// </summary>

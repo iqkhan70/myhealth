@@ -215,6 +215,13 @@
                 <RadzenButton Text="Manage OOO" ButtonStyle="ButtonStyle.Info" 
                     Click="@(async () => await ShowOOODialog())" Icon="event_busy" />
             </div>
+            @if (filterDoctorId.HasValue)
+            {
+                <div class="control-group">
+                    <RadzenButton Text="View OOO Periods" ButtonStyle="ButtonStyle.Success" 
+                        Click="@(() => ShowAllOOOView(filterDoctorId.Value))" Icon="calendar_view_week" />
+                </div>
+            }
         }
     </div>
 
@@ -374,11 +381,62 @@
                 {
                     <div class="error-message form-row-full">No patients assigned to this doctor. Please assign a patient first.</div>
                 }
+                @if (appointmentForm.DoctorId > 0)
+                {
+                    <div class="form-row form-row-full">
+                        <div class="form-group" style="width: 100%;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <label class="form-label" style="margin-bottom: 0;">Doctor Out of Office Periods</label>
+                                <RadzenButton Text="View All OOO" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small"
+                                    Click="@(() => ShowAllOOOView(appointmentForm.DoctorId))" Icon="event_busy" />
+                            </div>
+                            @if (doctorOOOPeriods.Any())
+                            {
+                                <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 10px; max-height: 200px; overflow-y: auto;">
+                                    <div style="font-weight: 600; margin-bottom: 8px; color: #856404;">
+                                        <i class="fas fa-exclamation-triangle"></i> Doctor is unavailable during these periods:
+                                    </div>
+                                    @foreach (var ooo in doctorOOOPeriods.OrderBy(o => o.Date).ThenBy(o => o.StartTime ?? TimeSpan.Zero))
+                                    {
+                                        <div style="margin-bottom: 8px; padding: 8px; background-color: white; border-radius: 3px; font-size: 13px;">
+                                            <div style="font-weight: 500; color: #333;">
+                                                📅 @ooo.Date.ToString("MMM dd, yyyy")
+                                                @if (ooo.StartTime.HasValue && ooo.EndTime.HasValue)
+                                                {
+                                                    <span style="color: #856404;">
+                                                        - @($"{ooo.StartTime.Value.Hours:D2}:{ooo.StartTime.Value.Minutes:D2}") to @($"{ooo.EndTime.Value.Hours:D2}:{ooo.EndTime.Value.Minutes:D2}")
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color: #dc3545; font-weight: 600;">- FULL DAY</span>
+                                                }
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(ooo.Reason))
+                                            {
+                                                <div style="color: #666; font-size: 12px; margin-top: 4px;">
+                                                    <i class="fas fa-info-circle"></i> @ooo.Reason
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="background-color: #d4edda; border: 1px solid #28a745; border-radius: 4px; padding: 10px; color: #155724;">
+                                    <i class="fas fa-check-circle"></i> Doctor is available (no OOO periods in the next 30 days)
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
                 <div class="form-row-3">
                     <div class="form-group">
                         <label class="form-label">Date <span class="required-asterisk">*</span></label>
                         <RadzenDatePicker @bind-value="appointmentDateTime" DateFormat="MM/dd/yyyy" 
-                            Style="width: 100%" />
+                            Style="width: 100%" 
+                            Change="@(async (DateTime? date) => { if (date.HasValue && appointmentForm.DoctorId > 0) { await LoadDoctorOOOPeriods(appointmentForm.DoctorId); } })" />
                     </div>
                     <div class="form-group">
                         <label class="form-label">Time <span class="required-asterisk">*</span></label>
@@ -535,6 +593,104 @@
             </Footer>
         </SMModal>
     }
+
+    <!-- View All OOO Periods Modal -->
+    @if (showOOOView)
+    {
+        <SMModal IsVisible="@showOOOView" 
+                 Title="Doctor Out of Office Periods" 
+                 OnClose="CloseOOOView"
+                 Size="Large">
+            <Body>
+                @if (selectedDoctorForOOO.HasValue)
+                {
+                    var selectedDoctor = doctors.FirstOrDefault(d => d.Id == selectedDoctorForOOO.Value);
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 15px;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Doctor</label>
+                                <RadzenTextBox Value="@(selectedDoctor != null ? $"{selectedDoctor.FirstName} {selectedDoctor.LastName}" : "")" 
+                                    ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Start Date</label>
+                                <RadzenDatePicker @bind-value="oooViewStartDate" DateFormat="MM/dd/yyyy" 
+                                    Style="width: 100%" Change="@(async (DateTime? date) => { if (date.HasValue) { oooViewStartDate = date.Value; await LoadAllOOOPeriods(selectedDoctorForOOO.Value); } })" />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">End Date</label>
+                                <RadzenDatePicker @bind-value="oooViewEndDate" DateFormat="MM/dd/yyyy" 
+                                    Style="width: 100%" Change="@(async (DateTime? date) => { if (date.HasValue) { oooViewEndDate = date.Value; await LoadAllOOOPeriods(selectedDoctorForOOO.Value); } })" />
+                            </div>
+                            <div class="form-group" style="display: flex; align-items: end;">
+                                <RadzenButton Text="Refresh" ButtonStyle="ButtonStyle.Info" 
+                                    Click="@(async () => await LoadAllOOOPeriods(selectedDoctorForOOO.Value))" Icon="refresh" />
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (doctorOOOPeriods.Any())
+                    {
+                        <div style="max-height: 500px; overflow-y: auto;">
+                            <div style="margin-bottom: 10px; font-weight: 600; color: #333;">
+                                Found @doctorOOOPeriods.Count OOO period(s) in the selected date range:
+                            </div>
+                            @foreach (var ooo in doctorOOOPeriods.OrderBy(o => o.Date).ThenBy(o => o.StartTime ?? TimeSpan.Zero))
+                            {
+                                <div style="margin-bottom: 12px; padding: 12px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                                        <div style="flex: 1;">
+                                            <div style="font-weight: 600; color: #856404; margin-bottom: 6px; font-size: 15px;">
+                                                <i class="fas fa-calendar-times"></i> @ooo.Date.ToString("dddd, MMMM dd, yyyy")
+                                            </div>
+                                            @if (ooo.StartTime.HasValue && ooo.EndTime.HasValue)
+                                            {
+                                                <div style="color: #856404; margin-bottom: 6px;">
+                                                    <i class="fas fa-clock"></i> 
+                                                    <strong>@($"{ooo.StartTime.Value.Hours:D2}:{ooo.StartTime.Value.Minutes:D2}")</strong> 
+                                                    to 
+                                                    <strong>@($"{ooo.EndTime.Value.Hours:D2}:{ooo.EndTime.Value.Minutes:D2}")</strong>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div style="color: #dc3545; font-weight: 600; margin-bottom: 6px;">
+                                                    <i class="fas fa-ban"></i> FULL DAY - Doctor is unavailable all day
+                                                </div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(ooo.Reason))
+                                            {
+                                                <div style="color: #666; font-size: 13px; margin-top: 6px; padding: 8px; background-color: white; border-radius: 3px;">
+                                                    <i class="fas fa-info-circle"></i> <strong>Reason:</strong> @ooo.Reason
+                                                </div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(ooo.TimeZoneId) && ooo.TimeZoneId != "UTC")
+                                            {
+                                                <div style="color: #666; font-size: 12px; margin-top: 4px;">
+                                                    <i class="fas fa-globe"></i> Timezone: @ooo.TimeZoneId
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="text-align: center; padding: 40px; background-color: #d4edda; border: 1px solid #28a745; border-radius: 4px; color: #155724;">
+                            <i class="fas fa-check-circle" style="font-size: 48px; margin-bottom: 15px;"></i>
+                            <div style="font-size: 16px; font-weight: 600;">No Out of Office Periods</div>
+                            <div style="font-size: 14px; margin-top: 8px;">Doctor is available during the selected date range.</div>
+                        </div>
+                    }
+                }
+            </Body>
+            <Footer>
+                <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="CloseOOOView" />
+            </Footer>
+        </SMModal>
+    }
 </div>
 
 @code {
@@ -543,6 +699,11 @@
     private List<User> patients = new();
     private List<User> availablePatients = new();
     private Dictionary<int, AppointmentDto> expandedAppointments = new Dictionary<int, AppointmentDto>();
+    private List<DoctorAvailability> doctorOOOPeriods = new();
+    private bool showOOOView = false;
+    private int? selectedDoctorForOOO = null;
+    private DateTime oooViewStartDate = DateTime.Now.Date;
+    private DateTime oooViewEndDate = DateTime.Now.Date.AddDays(30);
     
     private List<SMDataGridColumn<AppointmentDto>> _columns = new();
     private List<SMDataGridActionButton<AppointmentDto>> _actions = new();
@@ -932,10 +1093,13 @@
         if (isDoctor)
         {
             availablePatients = patients; // Already loaded in LoadData
+            // Load OOO periods for the doctor
+            await LoadDoctorOOOPeriods(appointmentForm.DoctorId);
         }
         else
         {
             availablePatients = new();
+            doctorOOOPeriods = new();
         }
 
         showDialog = true;
@@ -988,6 +1152,9 @@
         {
             await LoadAvailablePatients(appointment.DoctorId);
         }
+        
+        // Load OOO periods for the doctor
+        await LoadDoctorOOOPeriods(appointment.DoctorId);
         
         await InvokeAsync(StateHasChanged);
     }
@@ -1385,12 +1552,78 @@
             {
                 appointmentForm.PatientId = 0;
             }
+            // Load OOO periods for the selected doctor
+            await LoadDoctorOOOPeriods(appointmentForm.DoctorId);
         }
         else
         {
             availablePatients = new();
             appointmentForm.PatientId = 0;
+            doctorOOOPeriods = new();
         }
         StateHasChanged();
+    }
+
+    private async Task LoadDoctorOOOPeriods(int doctorId)
+    {
+        try
+        {
+            var startDate = appointmentDateTime?.Date ?? DateTime.Now.Date;
+            var endDate = startDate.AddDays(30);
+            var response = await Http.GetAsync($"api/appointment/doctor-availability/{doctorId}/range?startDate={startDate:yyyy-MM-dd}&endDate={endDate:yyyy-MM-dd}");
+            if (response.IsSuccessStatusCode)
+            {
+                doctorOOOPeriods = await response.Content.ReadFromJsonAsync<List<DoctorAvailability>>() ?? new();
+            }
+            else
+            {
+                doctorOOOPeriods = new();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading OOO periods: {ex.Message}");
+            doctorOOOPeriods = new();
+        }
+    }
+
+    private async Task ShowAllOOOView(int doctorId)
+    {
+        selectedDoctorForOOO = doctorId;
+        oooViewStartDate = DateTime.Now.Date;
+        oooViewEndDate = DateTime.Now.Date.AddDays(90); // Show next 90 days
+        await LoadAllOOOPeriods(doctorId);
+        showOOOView = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAllOOOPeriods(int doctorId)
+    {
+        try
+        {
+            var response = await Http.GetAsync($"api/appointment/doctor-availability/{doctorId}/range?startDate={oooViewStartDate:yyyy-MM-dd}&endDate={oooViewEndDate:yyyy-MM-dd}");
+            if (response.IsSuccessStatusCode)
+            {
+                doctorOOOPeriods = await response.Content.ReadFromJsonAsync<List<DoctorAvailability>>() ?? new();
+            }
+            else
+            {
+                doctorOOOPeriods = new();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading all OOO periods: {ex.Message}");
+            doctorOOOPeriods = new();
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CloseOOOView()
+    {
+        showOOOView = false;
+        selectedDoctorForOOO = null;
+        doctorOOOPeriods = new();
+        await InvokeAsync(StateHasChanged);
     }
 }
