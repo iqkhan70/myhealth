@@ -108,29 +108,6 @@
         margin-left: 10px;
     }
 
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-    }
-
-    .modal-content {
-        background: white;
-        padding: 0;
-        border-radius: 8px;
-        max-width: 800px;
-        width: 90%;
-        max-height: 90vh;
-        overflow-y: auto;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
 
     .form-row-3 {
         display: grid;
@@ -147,32 +124,6 @@
         .form-row-3 {
             grid-template-columns: 1fr;
         }
-        
-        .modal-content {
-            max-width: 95%;
-        }
-    }
-
-    .modal-header {
-        padding: 20px;
-        border-bottom: 1px solid #dee2e6;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background-color: #f8f9fa;
-    }
-
-    .modal-body {
-        padding: 20px;
-    }
-
-    .modal-footer {
-        padding: 15px 20px;
-        border-top: 1px solid #dee2e6;
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-        background-color: #f8f9fa;
     }
 
     .form-group {
@@ -220,7 +171,7 @@
     <div class="appointment-header">
         <h2><i class="fas fa-calendar-alt me-2"></i>Appointment Management</h2>
         <RadzenButton Icon="add" Text="New Appointment" ButtonStyle="ButtonStyle.Success"
-            Click="@ShowAddDialog" />
+            Click="@(async () => await ShowAddDialog())" />
     </div>
 
     <!-- Filters -->
@@ -262,7 +213,7 @@
         {
             <div class="control-group">
                 <RadzenButton Text="Manage OOO" ButtonStyle="ButtonStyle.Info" 
-                    Click="@ShowOOODialog" Icon="event_busy" />
+                    Click="@(async () => await ShowOOODialog())" Icon="event_busy" />
             </div>
         }
     </div>
@@ -365,209 +316,201 @@
     <!-- Add/Edit Appointment Modal -->
     @if (showDialog)
     {
-        <div class="modal-overlay">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h4>@(editingAppointment == null ? "New Appointment" : "Edit Appointment")</h4>
-                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" 
-                        Click="CloseDialog" />
-                </div>
-                <div class="modal-body">
-                    @if (!string.IsNullOrEmpty(validationError))
+        <SMModal IsVisible="@showDialog" 
+                 Title="@(editingAppointment == null ? "New Appointment" : "Edit Appointment")" 
+                 OnClose="CloseDialog"
+                 Size="Large">
+            <Body>
+                @if (!string.IsNullOrEmpty(validationError))
+                {
+                    <div class="error-message">
+                        <i class="fas fa-exclamation-circle"></i> @validationError
+                    </div>
+                }
+                @if (validationWarnings.Any())
+                {
+                    <div class="validation-warning">
+                        <strong>Warnings:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            @foreach (var warning in validationWarnings)
+                            {
+                                <li>@warning</li>
+                            }
+                        </ul>
+                    </div>
+                }
+                <div class="form-row-3">
+                    @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show read-only
                     {
-                        <div class="error-message">
-                            <i class="fas fa-exclamation-circle"></i> @validationError
+                        <div class="form-group">
+                            <label class="form-label">Doctor</label>
+                            <RadzenTextBox Value="@currentDoctorName" 
+                                ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
                         </div>
                     }
-                    @if (validationWarnings.Any())
+                    else // Admin - show dropdown
                     {
-                        <div class="validation-warning">
-                            <strong>Warnings:</strong>
-                            <ul style="margin: 5px 0; padding-left: 20px;">
-                                @foreach (var warning in validationWarnings)
-                                {
-                                    <li>@warning</li>
-                                }
-                            </ul>
+                        <div class="form-group">
+                            <label class="form-label">Doctor <span class="required-asterisk">*</span></label>
+                            <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
+                                @bind-value="appointmentForm.DoctorId" Change="@OnDoctorChanged"
+                                AllowFiltering="true" Placeholder="Select Doctor"
+                                Style="width: 100%" />
                         </div>
                     }
-                    <div class="form-row-3">
-                        @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show read-only
-                        {
-                            <div class="form-group">
-                                <label class="form-label">Doctor</label>
-                                <RadzenTextBox Value="@currentDoctorName" 
-                                    ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
-                            </div>
-                        }
-                        else // Admin - show dropdown
-                        {
-                            <div class="form-group">
-                                <label class="form-label">Doctor <span class="required-asterisk">*</span></label>
-                                <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
-                                    @bind-value="appointmentForm.DoctorId" Change="@OnDoctorChanged"
-                                    AllowFiltering="true" Placeholder="Select Doctor"
-                                    Style="width: 100%" />
-                            </div>
-                        }
-                        <div class="form-group">
-                            <label class="form-label">Patient <span class="required-asterisk">*</span></label>
-                            <RadzenDropDown Data="@availablePatients" TextProperty="FullName" ValueProperty="Id"
-                                @bind-value="appointmentForm.PatientId" AllowFiltering="true" Placeholder="Select Patient"
-                                Style="width: 100%" />
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Appointment Type</label>
-                            <RadzenDropDown Data="@appointmentTypes" TextProperty="Name" ValueProperty="Value"
-                                @bind-value="appointmentForm.AppointmentType" TValue="AppointmentType" Style="width: 100%" />
-                        </div>
+                    <div class="form-group">
+                        <label class="form-label">Patient <span class="required-asterisk">*</span></label>
+                        <RadzenDropDown Data="@availablePatients" TextProperty="FullName" ValueProperty="Id"
+                            @bind-value="appointmentForm.PatientId" AllowFiltering="true" Placeholder="Select Patient"
+                            Style="width: 100%" />
                     </div>
-                    @if (appointmentForm.DoctorId > 0 && availablePatients.Count == 0)
-                    {
-                        <div class="error-message form-row-full">No patients assigned to this doctor. Please assign a patient first.</div>
-                    }
-                    <div class="form-row-3">
-                        <div class="form-group">
-                            <label class="form-label">Date <span class="required-asterisk">*</span></label>
-                            <RadzenDatePicker @bind-value="appointmentDateTime" DateFormat="MM/dd/yyyy" 
-                                Style="width: 100%" />
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Time <span class="required-asterisk">*</span></label>
-                            <RadzenTextBox @bind-value="appointmentTimeString" Placeholder="HH:mm (e.g., 09:00)" 
-                                Style="width: 100%" />
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Duration (minutes) <span class="required-asterisk">*</span></label>
-                            <RadzenNumeric TValue="int" @bind-value="durationMinutes" Min="15" Max="240" Step="15" 
-                                Style="width: 100%" />
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Timezone <span class="required-asterisk">*</span></label>
-                            <RadzenDropDown Data="@timezones" TextProperty="DisplayName" ValueProperty="Id"
-                                @bind-value="selectedTimezone" TValue="string" AllowFiltering="true" Placeholder="Select Timezone"
-                                Style="width: 100%" />
-                        </div>
-                    </div>
-                    <div class="form-row form-row-full">
-                        <div class="form-group" style="width: 100%;">
-                            <label class="form-label">Reason</label>
-                            <RadzenTextBox @bind-value="appointmentForm.Reason" Placeholder="Reason for appointment" 
-                                Style="width: 100%" />
-                        </div>
-                    </div>
-                    <div class="form-row form-row-full">
-                        <div class="form-group" style="width: 100%;">
-                            <label class="form-label">Notes</label>
-                            <RadzenTextArea @bind-value="appointmentForm.Notes" Placeholder="Additional notes" 
-                                Rows="3" Style="width: 100%" />
-                        </div>
+                    <div class="form-group">
+                        <label class="form-label">Appointment Type</label>
+                        <RadzenDropDown Data="@appointmentTypes" TextProperty="Name" ValueProperty="Value"
+                            @bind-value="appointmentForm.AppointmentType" TValue="AppointmentType" Style="width: 100%" />
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="CloseDialog" />
-                    <RadzenButton Text="@(editingAppointment == null ? "Create" : "Update")" 
-                        ButtonStyle="ButtonStyle.Success" Click="SaveAppointment" />
+                @if (appointmentForm.DoctorId > 0 && availablePatients.Count == 0)
+                {
+                    <div class="error-message form-row-full">No patients assigned to this doctor. Please assign a patient first.</div>
+                }
+                <div class="form-row-3">
+                    <div class="form-group">
+                        <label class="form-label">Date <span class="required-asterisk">*</span></label>
+                        <RadzenDatePicker @bind-value="appointmentDateTime" DateFormat="MM/dd/yyyy" 
+                            Style="width: 100%" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Time <span class="required-asterisk">*</span></label>
+                        <RadzenTextBox @bind-value="appointmentTimeString" Placeholder="HH:mm (e.g., 09:00)" 
+                            Style="width: 100%" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Duration (minutes) <span class="required-asterisk">*</span></label>
+                        <RadzenNumeric TValue="int" @bind-value="durationMinutes" Min="15" Max="240" Step="15" 
+                            Style="width: 100%" />
+                    </div>
                 </div>
-            </div>
-        </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Timezone <span class="required-asterisk">*</span></label>
+                        <RadzenDropDown Data="@timezones" TextProperty="DisplayName" ValueProperty="Id"
+                            @bind-value="selectedTimezone" TValue="string" AllowFiltering="true" Placeholder="Select Timezone"
+                            Style="width: 100%" />
+                    </div>
+                </div>
+                <div class="form-row form-row-full">
+                    <div class="form-group" style="width: 100%;">
+                        <label class="form-label">Reason</label>
+                        <RadzenTextBox @bind-value="appointmentForm.Reason" Placeholder="Reason for appointment" 
+                            Style="width: 100%" />
+                    </div>
+                </div>
+                <div class="form-row form-row-full">
+                    <div class="form-group" style="width: 100%;">
+                        <label class="form-label">Notes</label>
+                        <RadzenTextArea @bind-value="appointmentForm.Notes" Placeholder="Additional notes" 
+                            Rows="3" Style="width: 100%" />
+                    </div>
+                </div>
+            </Body>
+            <Footer>
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseDialog" />
+                <RadzenButton Text="@(editingAppointment == null ? "Create" : "Update")" 
+                    ButtonStyle="ButtonStyle.Success" Click="@SaveAppointment" />
+            </Footer>
+        </SMModal>
     }
 
     <!-- OOO Management Modal -->
     @if (showOOODialog)
     {
-        <div class="modal-overlay">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h4>Manage Doctor Out of Office</h4>
-                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" 
-                        Click="CloseOOODialog" />
-                </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label class="form-label">Doctor</label>
-                        @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show read-only
-                        {
-                            <RadzenTextBox Value="@currentDoctorName" 
-                                ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
-                        }
-                        else // Admin - show dropdown
-                        {
+        <SMModal IsVisible="@showOOODialog" 
+                 Title="Manage Doctor Out of Office" 
+                 OnClose="CloseOOODialog"
+                 Size="Large">
+            <Body>
+                <div class="form-group">
+                    <label class="form-label">Doctor</label>
+                    @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show read-only
+                    {
+                        <RadzenTextBox Value="@currentDoctorName" 
+                            ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
+                    }
+                    else // Admin - show dropdown
+                    {
                         <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
                             Value="@oooForm.DoctorId" ValueChanged="@((int? value) => OnOOODoctorChanged(value))" AllowFiltering="true" Placeholder="Select Doctor"
                             Style="width: 100%" />
-                        }
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Date</label>
-                        <RadzenDatePicker Value="@oooDate" ValueChanged="@((DateTime? value) => OnOOODateChanged(value))" DateFormat="MM/dd/yyyy" 
-                            Style="width: 100%" />
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Timezone <span class="required-asterisk">*</span></label>
-                        <RadzenDropDown Data="@timezones" TextProperty="DisplayName" ValueProperty="Id"
-                            @bind-value="selectedOOOTimezone" TValue="string" AllowFiltering="true" Placeholder="Select Timezone"
-                            Style="width: 100%" />
-                    </div>
-                    <div class="form-group">
-                        <RadzenCheckBox @bind-value="oooForm.IsOutOfOffice" Name="IsOutOfOffice" />
-                        <label>Mark as Out of Office</label>
-                    </div>
-                    @if (oooForm.IsOutOfOffice)
-                    {
-                        <div class="form-group">
-                            <label class="form-label">Reason</label>
-                            <RadzenTextBox @bind-value="oooForm.Reason" Placeholder="Reason for being out of office" 
-                                Style="width: 100%" />
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Partial Day (Optional)</label>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <span>From:</span>
-                                <RadzenTextBox @bind-value="oooStartTimeString" Placeholder="HH:mm" Style="width: 150px;" />
-                                <span>To:</span>
-                                <RadzenTextBox @bind-value="oooEndTimeString" Placeholder="HH:mm" Style="width: 150px;" />
-                            </div>
-                            <small style="color: #666;">Leave empty for full day OOO (format: HH:mm, e.g., 09:00)</small>
-                        </div>
-                        @if (oooForm.StartTime.HasValue || oooForm.EndTime.HasValue)
-                        {
-                            <div class="form-group" style="background-color: #f0f0f0; padding: 10px; border-radius: 4px; margin-top: 10px;">
-                                <strong>Current OOO Time:</strong>
-                                <div style="margin-top: 5px;">
-                                    @if (oooForm.StartTime.HasValue && oooForm.EndTime.HasValue)
-                                    {
-                                        <span>@($"{oooForm.StartTime.Value.Hours:D2}:{oooForm.StartTime.Value.Minutes:D2}") - @($"{oooForm.EndTime.Value.Hours:D2}:{oooForm.EndTime.Value.Minutes:D2}")</span>
-                                    }
-                                    else if (oooForm.StartTime.HasValue)
-                                    {
-                                        <span>From @($"{oooForm.StartTime.Value.Hours:D2}:{oooForm.StartTime.Value.Minutes:D2}")</span>
-                                    }
-                                    else if (oooForm.EndTime.HasValue)
-                                    {
-                                        <span>Until @($"{oooForm.EndTime.Value.Hours:D2}:{oooForm.EndTime.Value.Minutes:D2}")</span>
-                                    }
-                                    else
-                                    {
-                                        <span>Full Day</span>
-                                    }
-                                    @if (!string.IsNullOrEmpty(selectedOOOTimezone) && selectedOOOTimezone != "UTC")
-                                    {
-                                        <div style="font-size: 11px; color: #666; margin-top: 3px;">📍 @selectedOOOTimezone</div>
-                                    }
-                                </div>
-                            </div>
-                        }
                     }
                 </div>
-                <div class="modal-footer">
-                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="CloseOOODialog" />
-                    <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Success" Click="SaveOOO" />
+                <div class="form-group">
+                    <label class="form-label">Date</label>
+                    <RadzenDatePicker Value="@oooDate" ValueChanged="@((DateTime? value) => OnOOODateChanged(value))" DateFormat="MM/dd/yyyy" 
+                        Style="width: 100%" />
                 </div>
-            </div>
-        </div>
+                <div class="form-group">
+                    <label class="form-label">Timezone <span class="required-asterisk">*</span></label>
+                    <RadzenDropDown Data="@timezones" TextProperty="DisplayName" ValueProperty="Id"
+                        @bind-value="selectedOOOTimezone" TValue="string" AllowFiltering="true" Placeholder="Select Timezone"
+                        Style="width: 100%" />
+                </div>
+                <div class="form-group">
+                    <RadzenCheckBox @bind-value="oooForm.IsOutOfOffice" Name="IsOutOfOffice" />
+                    <label>Mark as Out of Office</label>
+                </div>
+                @if (oooForm.IsOutOfOffice)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Reason</label>
+                        <RadzenTextBox @bind-value="oooForm.Reason" Placeholder="Reason for being out of office" 
+                            Style="width: 100%" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Partial Day (Optional)</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <span>From:</span>
+                            <RadzenTextBox @bind-value="oooStartTimeString" Placeholder="HH:mm" Style="width: 150px;" />
+                            <span>To:</span>
+                            <RadzenTextBox @bind-value="oooEndTimeString" Placeholder="HH:mm" Style="width: 150px;" />
+                        </div>
+                        <small style="color: #666;">Leave empty for full day OOO (format: HH:mm, e.g., 09:00)</small>
+                    </div>
+                    @if (oooForm.StartTime.HasValue || oooForm.EndTime.HasValue)
+                    {
+                        <div class="form-group" style="background-color: #f0f0f0; padding: 10px; border-radius: 4px; margin-top: 10px;">
+                            <strong>Current OOO Time:</strong>
+                            <div style="margin-top: 5px;">
+                                @if (oooForm.StartTime.HasValue && oooForm.EndTime.HasValue)
+                                {
+                                    <span>@($"{oooForm.StartTime.Value.Hours:D2}:{oooForm.StartTime.Value.Minutes:D2}") - @($"{oooForm.EndTime.Value.Hours:D2}:{oooForm.EndTime.Value.Minutes:D2}")</span>
+                                }
+                                else if (oooForm.StartTime.HasValue)
+                                {
+                                    <span>From @($"{oooForm.StartTime.Value.Hours:D2}:{oooForm.StartTime.Value.Minutes:D2}")</span>
+                                }
+                                else if (oooForm.EndTime.HasValue)
+                                {
+                                    <span>Until @($"{oooForm.EndTime.Value.Hours:D2}:{oooForm.EndTime.Value.Minutes:D2}")</span>
+                                }
+                                else
+                                {
+                                    <span>Full Day</span>
+                                }
+                                @if (!string.IsNullOrEmpty(selectedOOOTimezone) && selectedOOOTimezone != "UTC")
+                                {
+                                    <div style="font-size: 11px; color: #666; margin-top: 3px;">📍 @selectedOOOTimezone</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </Body>
+            <Footer>
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseOOODialog" />
+                <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Success" Click="@SaveOOO" />
+            </Footer>
+        </SMModal>
     }
 </div>
 
@@ -924,7 +867,7 @@
         }
     }
 
-    private void ShowAddDialog()
+    private async Task ShowAddDialog()
     {
         editingAppointment = null;
         var currentUser = AuthService.CurrentUser;
@@ -955,6 +898,7 @@
         }
 
         showDialog = true;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task EditAppointmentAsync(AppointmentDto appointment, CancellationToken ct)
@@ -988,7 +932,6 @@
         validationError = "";
         validationWarnings = new();
         showDialog = true;
-        StateHasChanged();
         
         if (isDoctor)
         {
@@ -998,6 +941,8 @@
         {
             await LoadAvailablePatients(appointment.DoctorId);
         }
+        
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task SaveAppointment()
@@ -1090,7 +1035,7 @@
             if (response.IsSuccessStatusCode)
             {
                 NotificationService.ShowSuccess("Appointment saved successfully!");
-                CloseDialog();
+                await CloseDialog();
                 if (_grid != null)
                 {
                     await _grid.RefreshAsync();
@@ -1144,13 +1089,14 @@
         }
     }
 
-    private void CloseDialog()
+    private async Task CloseDialog()
     {
         showDialog = false;
         editingAppointment = null;
         appointmentForm = new();
         validationError = "";
         validationWarnings = new();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ClearFilters()
@@ -1180,6 +1126,7 @@
         oooEndTimeString = "";
         selectedOOOTimezone = "America/New_York"; // Reset to default
         showOOODialog = true;
+        await InvokeAsync(StateHasChanged);
 
         // Load existing OOO entry if doctor is selected and date is set
         if (oooForm.DoctorId > 0 && oooDate.HasValue)
@@ -1286,7 +1233,7 @@
             if (response.IsSuccessStatusCode)
             {
                 await JSRuntime.InvokeVoidAsync("alert", "Doctor availability updated successfully!");
-                CloseOOODialog();
+                await CloseOOODialog();
             }
             else
             {
@@ -1321,7 +1268,7 @@
         }
     }
 
-    private void CloseOOODialog()
+    private async Task CloseOOODialog()
     {
         showOOODialog = false;
         oooDate = null;
@@ -1329,6 +1276,7 @@
         oooStartTimeString = "";
         oooEndTimeString = "";
         selectedOOOTimezone = "America/New_York";
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnDoctorChanged()
