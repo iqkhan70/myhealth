@@ -21,7 +21,7 @@
                          Icon="fas fa-stethoscope">
                 <ActionButton>
                     <RadzenButton Icon="add" Text="Add Note" ButtonStyle="ButtonStyle.Success"
-                        Click="@(() => ShowAddNoteDialog())" />
+                        Click="@(async () => await ShowAddNoteDialog())" />
                 </ActionButton>
             </SMPageHeader>
 
@@ -107,133 +107,124 @@
 <!-- Add/Edit Note Dialog -->
 @if (showNoteDialog)
 {
-    <div class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>@(editingNote?.Id == 0 ? "Add Clinical Note" : "Edit Clinical Note")</h3>
-                <button @onclick="CloseNoteDialog" class="close-btn">✕</button>
-            </div>
+    <SMModal IsVisible="@showNoteDialog" 
+             Title="@(editingNote?.Id == 0 ? "Add Clinical Note" : "Edit Clinical Note")" 
+             OnClose="CloseNoteDialog"
+             Size="Large">
+        <Body>
+            <form @onsubmit="@SaveNote" @onsubmit:preventDefault="true">
+                <div class="form-group">
+                    <label class="form-label">Patient: <span class="required-asterisk">*</span></label>
+                    <RadzenDropDown @bind-Value="noteForm.PatientId" Data="@patients" TextProperty="FullName"
+                        ValueProperty="Id" Placeholder="Select Patient" Style="width: 100%;" 
+                        AllowClear="false" TValue="int" />
+                    @if (noteForm.PatientId == 0 && showPatientRequiredError)
+                    {
+                        <span class="text-danger" style="font-size: 0.875rem; margin-top: 4px; display: block;">Please select a patient</span>
+                    }
+                </div>
 
-            <div class="modal-body">
-                <form @onsubmit="@SaveNote" @onsubmit:preventDefault="true">
+                <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">Patient: <span class="required-asterisk">*</span></label>
-                        <RadzenDropDown @bind-Value="noteForm.PatientId" Data="@patients" TextProperty="FullName"
-                            ValueProperty="Id" Placeholder="Select Patient" Style="width: 100%;" 
-                            AllowClear="false" TValue="int" />
-                        @if (noteForm.PatientId == 0 && showPatientRequiredError)
-                        {
-                            <span class="text-danger" style="font-size: 0.875rem; margin-top: 4px; display: block;">Please select a patient</span>
-                        }
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Note Type: <span class="required-asterisk">*</span></label>
-                            <RadzenDropDown @bind-Value="noteForm.NoteType" Data="@noteTypes" Placeholder="Note Type"
-                                Style="width: 100%;" />
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Priority: <span class="required-asterisk">*</span></label>
-                            <RadzenDropDown @bind-Value="noteForm.Priority" Data="@priorities" Placeholder="Priority"
-                                Style="width: 100%;" />
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Title: <span class="required-asterisk">*</span></label>
-                        <RadzenTextBox @bind-Value="noteForm.Title" Placeholder="Note Title" Style="width: 100%;" />
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Content: <span class="required-asterisk">*</span></label>
-                        <RadzenTextArea @bind-Value="noteForm.Content" Placeholder="Note Content"
-                            Style="width: 100%; min-height: 200px;" />
-                    </div>
-
-                    <div class="form-group">
-                        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
-                            <RadzenCheckBox @bind-Value="noteForm.IsConfidential" Name="IsConfidential" />
-                            <RadzenText Text="Confidential" />
-                        </RadzenStack>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Tags:</label>
-                        <RadzenTextBox @bind-Value="noteForm.Tags" Placeholder="Tags (comma-separated)"
+                        <label class="form-label">Note Type: <span class="required-asterisk">*</span></label>
+                        <RadzenDropDown @bind-Value="noteForm.NoteType" Data="@noteTypes" Placeholder="Note Type"
                             Style="width: 100%;" />
                     </div>
-
-                    <div class="form-actions">
-                        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseNoteDialog" />
-                        <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Success" ButtonType="ButtonType.Submit" />
+                    <div class="form-group">
+                        <label class="form-label">Priority: <span class="required-asterisk">*</span></label>
+                        <RadzenDropDown @bind-Value="noteForm.Priority" Data="@priorities" Placeholder="Priority"
+                            Style="width: 100%;" />
                     </div>
-                </form>
-            </div>
-        </div>
-    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Title: <span class="required-asterisk">*</span></label>
+                    <RadzenTextBox @bind-Value="noteForm.Title" Placeholder="Note Title" Style="width: 100%;" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Content: <span class="required-asterisk">*</span></label>
+                    <RadzenTextArea @bind-Value="noteForm.Content" Placeholder="Note Content"
+                        Style="width: 100%; min-height: 200px;" />
+                </div>
+
+                <div class="form-group">
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
+                        <RadzenCheckBox @bind-Value="noteForm.IsConfidential" Name="IsConfidential" />
+                        <RadzenText Text="Confidential" />
+                    </RadzenStack>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Tags:</label>
+                    <RadzenTextBox @bind-Value="noteForm.Tags" Placeholder="Tags (comma-separated)"
+                        Style="width: 100%;" />
+                </div>
+            </form>
+        </Body>
+        <Footer>
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseNoteDialog" />
+            <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Success" ButtonType="ButtonType.Submit" Click="@SaveNote" />
+        </Footer>
+    </SMModal>
 }
 
 <!-- View Note Dialog -->
 @if (showViewDialog)
 {
-    <div class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Clinical Note Details</h3>
-                <button @onclick="CloseViewDialog" class="close-btn">✕</button>
-            </div>
-
-            <div class="modal-body">
-                @if (viewingNote != null)
-                {
-                    <div class="note-details">
-                        <h4>@viewingNote.Title</h4>
-                        <div class="note-meta">
-                            <div class="meta-row">
-                                <span class="meta-label">Patient:</span>
-                                <span class="meta-value">@viewingNote.PatientName</span>
-                            </div>
-                            <div class="meta-row">
-                                <span class="meta-label">Doctor:</span>
-                                <span class="meta-value">@viewingNote.DoctorName</span>
-                            </div>
-                            <div class="meta-row">
-                                <span class="meta-label">Type:</span>
-                                <span class="meta-value">@viewingNote.NoteType</span>
-                            </div>
-                            <div class="meta-row">
-                                <span class="meta-label">Priority:</span>
-                                <span class="meta-value">@viewingNote.Priority</span>
-                            </div>
-                            <div class="meta-row">
-                                <span class="meta-label">Created:</span>
-                                <span class="meta-value">@viewingNote.CreatedAt.ToString("MMM dd, yyyy HH:mm")</span>
-                            </div>
-                            @if (viewingNote.UpdatedAt.HasValue)
-                            {
-                                <div class="meta-row">
-                                    <span class="meta-label">Updated:</span>
-                                    <span class="meta-value">@viewingNote.UpdatedAt.Value.ToString("MMM dd, yyyy HH:mm")</span>
-                                </div>
-                            }
-                            @if (!string.IsNullOrEmpty(viewingNote.Tags))
-                            {
-                                <div class="meta-row">
-                                    <span class="meta-label">Tags:</span>
-                                    <span class="meta-value">@viewingNote.Tags</span>
-                                </div>
-                            }
+    <SMModal IsVisible="@showViewDialog" 
+             Title="Clinical Note Details" 
+             OnClose="CloseViewDialog"
+             Size="Large">
+        <Body>
+            @if (viewingNote != null)
+            {
+                <div class="note-details">
+                    <h4>@viewingNote.Title</h4>
+                    <div class="note-meta">
+                        <div class="meta-row">
+                            <span class="meta-label">Patient:</span>
+                            <span class="meta-value">@viewingNote.PatientName</span>
                         </div>
-                        <div class="note-content">
-                            <h5>Content:</h5>
-                            <div class="content-text">@viewingNote.Content</div>
+                        <div class="meta-row">
+                            <span class="meta-label">Doctor:</span>
+                            <span class="meta-value">@viewingNote.DoctorName</span>
                         </div>
+                        <div class="meta-row">
+                            <span class="meta-label">Type:</span>
+                            <span class="meta-value">@viewingNote.NoteType</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="meta-label">Priority:</span>
+                            <span class="meta-value">@viewingNote.Priority</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="meta-label">Created:</span>
+                            <span class="meta-value">@viewingNote.CreatedAt.ToString("MMM dd, yyyy HH:mm")</span>
+                        </div>
+                        @if (viewingNote.UpdatedAt.HasValue)
+                        {
+                            <div class="meta-row">
+                                <span class="meta-label">Updated:</span>
+                                <span class="meta-value">@viewingNote.UpdatedAt.Value.ToString("MMM dd, yyyy HH:mm")</span>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(viewingNote.Tags))
+                        {
+                            <div class="meta-row">
+                                <span class="meta-label">Tags:</span>
+                                <span class="meta-value">@viewingNote.Tags</span>
+                            </div>
+                        }
                     </div>
-                }
-            </div>
-        </div>
-    </div>
+                    <div class="note-content">
+                        <h5>Content:</h5>
+                        <div class="content-text">@viewingNote.Content</div>
+                    </div>
+                </div>
+            }
+        </Body>
+    </SMModal>
 }
 
 @code {
@@ -507,16 +498,16 @@
         }
     }
 
-    private void ShowAddNoteDialog()
+    private async Task ShowAddNoteDialog()
     {
         editingNote = new ClinicalNoteDto { Id = 0 };
         noteForm = new CreateClinicalNoteRequest { PatientId = 0 };
         showPatientRequiredError = false;
         showNoteDialog = true;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
-    private Task EditNoteAsync(ClinicalNoteDto note, CancellationToken ct)
+    private async Task EditNoteAsync(ClinicalNoteDto note, CancellationToken ct)
     {
         editingNote = note;
         noteForm = new CreateClinicalNoteRequest
@@ -530,8 +521,7 @@
             Tags = note.Tags
         };
         showNoteDialog = true;
-        StateHasChanged();
-        return Task.CompletedTask;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnRowExpand(ClinicalNoteDto note)
@@ -674,18 +664,20 @@
         }
     }
 
-    private void CloseNoteDialog()
+    private async Task CloseNoteDialog()
     {
         showNoteDialog = false;
         editingNote = null;
         noteForm = new CreateClinicalNoteRequest { PatientId = 0 };
         showPatientRequiredError = false;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private void CloseViewDialog()
+    private async Task CloseViewDialog()
     {
         showViewDialog = false;
         viewingNote = null;
+        await InvokeAsync(StateHasChanged);
     }
 
     private string GetNoteTypeClass(string noteType)
@@ -794,74 +786,6 @@
 }
 
 <style>
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-    }
-
-    .modal-content {
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        max-width: 900px;
-        width: 95%;
-        max-height: 90vh;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-
-    .modal-content>.modal-header {
-        flex-shrink: 0;
-    }
-
-    .modal-content>.modal-body {
-        flex: 1;
-        overflow-y: auto;
-        padding: 20px;
-        min-height: 0;
-    }
-
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px;
-        border-bottom: 1px solid #e0e0e0;
-        flex-shrink: 0;
-    }
-
-    .modal-header h3 {
-        margin: 0;
-        color: #333;
-    }
-
-    .close-btn {
-        background: none;
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        color: #666;
-        padding: 0;
-        width: 30px;
-        height: 30px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .close-btn:hover {
-        color: #333;
-    }
-
     .form-group {
         margin-bottom: 20px;
     }
@@ -884,15 +808,6 @@
 
     .required-asterisk {
         color: #dc3545;
-    }
-
-    .form-actions {
-        display: flex;
-        gap: 10px;
-        justify-content: flex-end;
-        margin-top: 30px;
-        padding-top: 20px;
-        border-top: 1px solid #e0e0e0;
     }
 
     .note-details {
