@@ -382,8 +382,15 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Time <span class="required-asterisk">*</span></label>
-                        <RadzenTextBox @bind-value="appointmentTimeString" Placeholder="HH:mm (e.g., 09:00)" 
-                            Style="width: 100%" />
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <RadzenDropDown Data="@hourOptions" @bind-value="appointmentHour" 
+                                TValue="int" Style="width: 80px;" Placeholder="Hour" />
+                            <span>:</span>
+                            <RadzenDropDown Data="@minuteOptions" @bind-value="appointmentMinute" 
+                                TValue="int" Style="width: 80px;" Placeholder="Min" />
+                            <RadzenDropDown Data="@amPmOptions" @bind-value="appointmentAmPm" 
+                                TValue="string" Style="width: 80px;" />
+                        </div>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Duration (minutes) <span class="required-asterisk">*</span></label>
@@ -468,13 +475,29 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Partial Day (Optional)</label>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <span>From:</span>
-                            <RadzenTextBox @bind-value="oooStartTimeString" Placeholder="HH:mm" Style="width: 150px;" />
-                            <span>To:</span>
-                            <RadzenTextBox @bind-value="oooEndTimeString" Placeholder="HH:mm" Style="width: 150px;" />
+                        <div style="margin-bottom: 10px;">
+                            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                                <span style="min-width: 50px;">From:</span>
+                                <RadzenDropDown Data="@hourOptions" @bind-value="oooStartHour" 
+                                    TValue="int?" Style="width: 80px;" Placeholder="Hour" />
+                                <span>:</span>
+                                <RadzenDropDown Data="@minuteOptions" @bind-value="oooStartMinute" 
+                                    TValue="int?" Style="width: 80px;" Placeholder="Min" />
+                                <RadzenDropDown Data="@amPmOptions" @bind-value="oooStartAmPm" 
+                                    TValue="string" Style="width: 80px;" />
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <span style="min-width: 50px;">To:</span>
+                                <RadzenDropDown Data="@hourOptions" @bind-value="oooEndHour" 
+                                    TValue="int?" Style="width: 80px;" Placeholder="Hour" />
+                                <span>:</span>
+                                <RadzenDropDown Data="@minuteOptions" @bind-value="oooEndMinute" 
+                                    TValue="int?" Style="width: 80px;" Placeholder="Min" />
+                                <RadzenDropDown Data="@amPmOptions" @bind-value="oooEndAmPm" 
+                                    TValue="string" Style="width: 80px;" />
+                            </div>
                         </div>
-                        <small style="color: #666;">Leave empty for full day OOO (format: HH:mm, e.g., 09:00)</small>
+                        <small style="color: #666;">Leave empty for full day OOO</small>
                     </div>
                     @if (oooForm.StartTime.HasValue || oooForm.EndTime.HasValue)
                     {
@@ -538,12 +561,18 @@
 
     // Appointment form
     private DateTime? appointmentDateTime = DateTime.Now.Date.AddDays(1);
-    private string appointmentTimeString = "09:00";
+    private int appointmentHour = 9; // 1-12
+    private int appointmentMinute = 0; // 0-59
+    private string appointmentAmPm = "AM"; // "AM" or "PM"
 
     // OOO form
     private DateTime? oooDate = DateTime.Now.Date;
-    private string oooStartTimeString = "";
-    private string oooEndTimeString = "";
+    private int? oooStartHour = null; // 1-12
+    private int? oooStartMinute = null; // 0-59
+    private string oooStartAmPm = "AM"; // "AM" or "PM"
+    private int? oooEndHour = null; // 1-12
+    private int? oooEndMinute = null; // 0-59
+    private string oooEndAmPm = "AM"; // "AM" or "PM"
 
     private int durationMinutes = 30;
     private string validationError = "";
@@ -568,6 +597,10 @@
         new AppointmentTypeOption { Name = "Regular", Value = AppointmentType.Regular },
         new AppointmentTypeOption { Name = "Urgent Care", Value = AppointmentType.UrgentCare }
     };
+
+    private List<int> hourOptions = Enumerable.Range(1, 12).ToList();
+    private List<int> minuteOptions = Enumerable.Range(0, 60).ToList();
+    private List<string> amPmOptions = new() { "AM", "PM" };
 
     private List<TimezoneOption> timezones = new()
     {
@@ -628,7 +661,10 @@
                 {
                     try
                     {
-                        patientsResponse = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{currentUser.Id}/patients");
+                        if (currentUser != null)
+                        {
+                            patientsResponse = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{currentUser.Id}/patients");
+                        }
                     }
                     catch
                     {
@@ -638,17 +674,20 @@
                 availablePatients = patientsResponse ?? new();
                 patients = availablePatients;
                 
-                var doctorUser = new User
+                if (currentUser != null)
                 {
-                    Id = currentUser.Id,
-                    FirstName = currentUser.FirstName,
-                    LastName = currentUser.LastName,
-                    Email = currentUser.Email,
-                    RoleId = currentUser.RoleId
-                };
-                doctors = new List<User> { doctorUser };
-                currentDoctorName = $"{currentUser.FirstName} {currentUser.LastName}";
-                appointmentForm.DoctorId = currentUser.Id;
+                    var doctorUser = new User
+                    {
+                        Id = currentUser.Id,
+                        FirstName = currentUser.FirstName,
+                        LastName = currentUser.LastName,
+                        Email = currentUser.Email,
+                        RoleId = currentUser.RoleId
+                    };
+                    doctors = new List<User> { doctorUser };
+                    currentDoctorName = $"{currentUser.FirstName} {currentUser.LastName}";
+                    appointmentForm.DoctorId = currentUser.Id;
+                }
             }
             else if (isAdmin)
             {
@@ -881,7 +920,9 @@
             DoctorId = isDoctor ? (currentUser?.Id ?? 0) : 0
         };
         appointmentDateTime = DateTime.Now.Date.AddDays(1);
-        appointmentTimeString = "09:00";
+        appointmentHour = 9;
+        appointmentMinute = 0;
+        appointmentAmPm = "AM";
         durationMinutes = 30;
         selectedTimezone = "America/New_York";
         validationError = "";
@@ -926,7 +967,13 @@
             TimeZoneId = !string.IsNullOrEmpty(appointment.TimeZoneId) ? appointment.TimeZoneId : "America/New_York"
         };
         appointmentDateTime = appointment.AppointmentDateTime.Date;
-        appointmentTimeString = appointment.AppointmentDateTime.ToString("HH:mm");
+        
+        // Convert 24-hour to 12-hour format
+        var hour24 = appointment.AppointmentDateTime.Hour;
+        appointmentHour = hour24 == 0 ? 12 : (hour24 > 12 ? hour24 - 12 : hour24);
+        appointmentMinute = appointment.AppointmentDateTime.Minute;
+        appointmentAmPm = hour24 >= 12 ? "PM" : "AM";
+        
         durationMinutes = (int)appointment.Duration.TotalMinutes;
         selectedTimezone = !string.IsNullOrEmpty(appointment.TimeZoneId) ? appointment.TimeZoneId : "America/New_York";
         validationError = "";
@@ -970,16 +1017,15 @@
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(appointmentTimeString))
+            if (appointmentHour < 1 || appointmentHour > 12)
             {
-                validationError = "Please enter a time";
+                validationError = "Please select a valid hour";
                 return;
             }
 
-            // Parse time string (HH:mm format)
-            if (!TimeSpan.TryParse(appointmentTimeString, out var timeSpan))
+            if (appointmentMinute < 0 || appointmentMinute > 59)
             {
-                validationError = "Invalid time format. Please use HH:mm format (e.g., 09:00)";
+                validationError = "Please select a valid minute";
                 return;
             }
 
@@ -988,6 +1034,19 @@
                 validationError = "Please select a timezone";
                 return;
             }
+
+            // Convert 12-hour to 24-hour format
+            int hour24 = appointmentHour;
+            if (appointmentAmPm == "PM" && appointmentHour != 12)
+            {
+                hour24 = appointmentHour + 12;
+            }
+            else if (appointmentAmPm == "AM" && appointmentHour == 12)
+            {
+                hour24 = 0;
+            }
+
+            var timeSpan = new TimeSpan(hour24, appointmentMinute, 0);
 
             // Create DateTime in the selected timezone (as Unspecified kind)
             var localDateTime = appointmentDateTime.Value.Date.Add(timeSpan);
@@ -1122,8 +1181,12 @@
             DoctorId = isDoctor ? (currentUser?.Id ?? 0) : 0
         };
         oooDate = DateTime.Now.Date;
-        oooStartTimeString = "";
-        oooEndTimeString = "";
+        oooStartHour = null;
+        oooStartMinute = null;
+        oooStartAmPm = "AM";
+        oooEndHour = null;
+        oooEndMinute = null;
+        oooEndAmPm = "AM";
         selectedOOOTimezone = "America/New_York"; // Reset to default
         showOOODialog = true;
         await InvokeAsync(StateHasChanged);
@@ -1154,24 +1217,36 @@
                     oooForm.EndTime = availability.EndTime;
                     selectedOOOTimezone = availability.TimeZoneId ?? "America/New_York";
                     
-                    // Populate time strings
+                    // Convert 24-hour TimeSpan to 12-hour format
                     if (availability.StartTime.HasValue)
                     {
-                        oooStartTimeString = $"{availability.StartTime.Value.Hours:D2}:{availability.StartTime.Value.Minutes:D2}";
+                        var hour24 = availability.StartTime.Value.Hours;
+                        oooStartHour = hour24 == 0 ? 12 : (hour24 > 12 ? hour24 - 12 : hour24);
+                        oooStartMinute = availability.StartTime.Value.Minutes;
+                        oooStartAmPm = hour24 >= 12 ? "PM" : "AM";
                     }
                     else
                     {
-                        oooStartTimeString = "";
+                        oooStartHour = null;
+                        oooStartMinute = null;
+                        oooStartAmPm = "AM";
                     }
                     
                     if (availability.EndTime.HasValue)
                     {
-                        oooEndTimeString = $"{availability.EndTime.Value.Hours:D2}:{availability.EndTime.Value.Minutes:D2}";
+                        var hour24 = availability.EndTime.Value.Hours;
+                        oooEndHour = hour24 == 0 ? 12 : (hour24 > 12 ? hour24 - 12 : hour24);
+                        oooEndMinute = availability.EndTime.Value.Minutes;
+                        oooEndAmPm = hour24 >= 12 ? "PM" : "AM";
                     }
                     else
                     {
-                        oooEndTimeString = "";
+                        oooEndHour = null;
+                        oooEndMinute = null;
+                        oooEndAmPm = "AM";
                     }
+                    
+                    await InvokeAsync(StateHasChanged);
                 }
             }
         }
@@ -1210,19 +1285,37 @@
             oooForm.Date = oooDate.Value;
             oooForm.TimeZoneId = selectedOOOTimezone;
             
-            // Parse time strings if provided
-            if (!string.IsNullOrWhiteSpace(oooStartTimeString) && TimeSpan.TryParse(oooStartTimeString, out var startTime))
+            // Convert 12-hour format to 24-hour TimeSpan
+            if (oooStartHour.HasValue && oooStartMinute.HasValue)
             {
-                oooForm.StartTime = startTime;
+                int hour24 = oooStartHour.Value;
+                if (oooStartAmPm == "PM" && oooStartHour.Value != 12)
+                {
+                    hour24 = oooStartHour.Value + 12;
+                }
+                else if (oooStartAmPm == "AM" && oooStartHour.Value == 12)
+                {
+                    hour24 = 0;
+                }
+                oooForm.StartTime = new TimeSpan(hour24, oooStartMinute.Value, 0);
             }
             else
             {
                 oooForm.StartTime = null;
             }
 
-            if (!string.IsNullOrWhiteSpace(oooEndTimeString) && TimeSpan.TryParse(oooEndTimeString, out var endTime))
+            if (oooEndHour.HasValue && oooEndMinute.HasValue)
             {
-                oooForm.EndTime = endTime;
+                int hour24 = oooEndHour.Value;
+                if (oooEndAmPm == "PM" && oooEndHour.Value != 12)
+                {
+                    hour24 = oooEndHour.Value + 12;
+                }
+                else if (oooEndAmPm == "AM" && oooEndHour.Value == 12)
+                {
+                    hour24 = 0;
+                }
+                oooForm.EndTime = new TimeSpan(hour24, oooEndMinute.Value, 0);
             }
             else
             {
@@ -1273,8 +1366,12 @@
         showOOODialog = false;
         oooDate = null;
         oooForm = new();
-        oooStartTimeString = "";
-        oooEndTimeString = "";
+        oooStartHour = null;
+        oooStartMinute = null;
+        oooStartAmPm = "AM";
+        oooEndHour = null;
+        oooEndMinute = null;
+        oooEndAmPm = "AM";
         selectedOOOTimezone = "America/New_York";
         await InvokeAsync(StateHasChanged);
     }
