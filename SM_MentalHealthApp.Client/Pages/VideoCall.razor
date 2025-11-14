@@ -393,7 +393,7 @@
             if (uid == 0) uid = (uint)new Random().Next(100000, 999999);
 
             // Join channel (this is always a video call since it's the VideoCall page)
-            var success = await AgoraService.JoinChannelAsync(channelName, "007eJxTYBCfev3xZN7Ihh0a0wy2/ncRPrtJ10dIudy3T21f+L3Xps0KDKlpiYaGScaJ5ikGpiYGlsmJluaWaUlGpommSSYWlompxXcFMhsCGRlErpcwMTJAIIjPwZCcmJMTbxxvyMAAAJUVH8Q=", uid);
+            var success = await AgoraService.JoinChannelAsync(channelName, "007eJxTYBA9aftq7rY7oo82nckM81Axc6k140t69CHj2NQ3m/ZO89uswJCalmhomGScaJ5iYGpiYJmcaGlumZZkZJpommRiYZmYKh4kntkQyMgwXTqfkZEBAkF8DobkxJyceON4QwYGACFwINI=", uid);
             if (!success)
             {
                 throw new Exception("Failed to join call");

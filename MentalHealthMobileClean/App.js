@@ -346,7 +346,7 @@ export default function App() {
       }
 
       console.log(`✅ Received Agora token for channel "${channelName}"`);
-      return "007eJxTYBCfev3xZN7Ihh0a0wy2/ncRPrtJ10dIudy3T21f+L3Xps0KDKlpiYaGScaJ5ikGpiYGlsmJluaWaUlGpommSSYWlompxXcFMhsCGRlErpcwMTJAIIjPwZCcmJMTbxxvyMAAAJUVH8Q=";
+      return "007eJxTYBA9aftq7rY7oo82nckM81Axc6k140t69CHj2NQ3m/ZO89uswJCalmhomGScaJ5iYGpiYJmcaGlumZZkZJpommRiYZmYKh4kntkQyMgwXTqfkZEBAkF8DobkxJyceON4QwYGACFwINI=";
     } catch (e) {
       console.warn('⚠️ Token fetch failed:', e.message);
       return null;
