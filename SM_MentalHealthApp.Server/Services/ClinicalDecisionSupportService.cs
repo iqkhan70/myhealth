@@ -35,6 +35,36 @@ namespace SM_MentalHealthApp.Server.Services
             _contentAnalysisService = contentAnalysisService;
         }
 
+        /// <summary>
+        /// Gets the active AI model configuration for ClinicalDecisionSupport context from the database
+        /// Falls back to tinyllama if no configuration is found
+        /// </summary>
+        private async Task<string> GetModelNameAsync()
+        {
+            try
+            {
+                var modelConfig = await _context.Set<AIModelConfig>()
+                    .Where(m => m.Context == "ClinicalDecisionSupport" && m.IsActive)
+                    .OrderBy(m => m.DisplayOrder)
+                    .FirstOrDefaultAsync();
+
+                if (modelConfig != null && !string.IsNullOrEmpty(modelConfig.ApiEndpoint))
+                {
+                    _logger.LogInformation("Using database-configured model for ClinicalDecisionSupport: {ModelName} ({Provider})",
+                        modelConfig.ModelName, modelConfig.Provider);
+                    return modelConfig.ApiEndpoint; // For Ollama, this is the model name
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error retrieving AI model configuration from database, falling back to default");
+            }
+
+            // Fallback to tinyllama if no configuration found
+            _logger.LogWarning("No active AI model configuration found for ClinicalDecisionSupport context, using default: tinyllama");
+            return "tinyllama";
+        }
+
         public async Task<ClinicalRecommendation> GetRecommendationsAsync(string diagnosis, int patientId, int doctorId)
         {
             try
@@ -140,7 +170,7 @@ Format as JSON with the following structure:
   ]
 }}";
 
-                var modelName = "tinyllama:latest";
+                var modelName = await GetModelNameAsync();
                 var request = new LlmRequest
                 {
                     Prompt = prompt,
@@ -193,7 +223,7 @@ Format as JSON:
   ]
 }}";
 
-                var modelName = "tinyllama:latest";
+                var modelName = await GetModelNameAsync();
                 var request = new LlmRequest
                 {
                     Prompt = prompt,
@@ -247,7 +277,7 @@ Format as JSON:
   }}
 }}";
 
-                var modelName = "tinyllama:latest";
+                var modelName = await GetModelNameAsync();
                 var request = new LlmRequest
                 {
                     Prompt = prompt,
@@ -291,10 +321,10 @@ Provide detailed clinical recommendations including:
 
 Format your response as a clear, structured clinical recommendation.";
 
-            // Use Ollama with tinyllama
+            // Use Ollama with database-configured model
             _logger.LogInformation("Getting AI recommendations for diagnosis: {Diagnosis}", diagnosis);
 
-            var modelName = "tinyllama";
+            var modelName = await GetModelNameAsync();
             var request = new LlmRequest
             {
                 Prompt = prompt,

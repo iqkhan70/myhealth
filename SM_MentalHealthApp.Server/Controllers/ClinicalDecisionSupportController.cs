@@ -4,6 +4,8 @@ using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using System.Security.Claims;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
+using SM_MentalHealthApp.Server.Data;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -15,13 +17,16 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         private readonly IClinicalDecisionSupportService _clinicalDecisionSupportService;
         private readonly ILogger<ClinicalDecisionSupportController> _logger;
+        private readonly JournalDbContext _context;
 
         public ClinicalDecisionSupportController(
             IClinicalDecisionSupportService clinicalDecisionSupportService,
-            ILogger<ClinicalDecisionSupportController> logger)
+            ILogger<ClinicalDecisionSupportController> logger,
+            JournalDbContext context)
         {
             _clinicalDecisionSupportService = clinicalDecisionSupportService;
             _logger = logger;
+            _context = context;
         }
 
         /// <summary>
@@ -174,11 +179,34 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
+                // Get model from database for ClinicalDecisionSupport context
+                string modelName = "tinyllama"; // Fallback
+                if (provider != 1) // Ollama provider
+                {
+                    try
+                    {
+                        var modelConfig = await _context.Set<AIModelConfig>()
+                            .Where(m => m.Context == "ClinicalDecisionSupport" && m.IsActive)
+                            .OrderBy(m => m.DisplayOrder)
+                            .FirstOrDefaultAsync();
+
+                        if (modelConfig != null && !string.IsNullOrEmpty(modelConfig.ApiEndpoint))
+                        {
+                            modelName = modelConfig.ApiEndpoint;
+                            _logger.LogInformation("Using database-configured model for debug endpoint: {ModelName}", modelName);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error retrieving model config, using fallback");
+                    }
+                }
+
                 var llmRequest = new LlmRequest
                 {
                     Prompt = $"Generate clinical recommendations for diagnosis: {diagnosis}. Respond with JSON format only.",
                     Provider = provider == 1 ? AiProvider.HuggingFace : AiProvider.Ollama,
-                    Model = provider == 1 ? "gpt2" : "tinyllama:latest",
+                    Model = provider == 1 ? "gpt2" : modelName,
                     Temperature = 0.3,
                     MaxTokens = 500
                 };
