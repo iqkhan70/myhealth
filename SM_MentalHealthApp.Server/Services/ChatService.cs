@@ -155,11 +155,11 @@ namespace SM_MentalHealthApp.Server.Services
             var patient = await _userService.GetUserByIdAsync(userId);
             if (patient != null)
             {
-                context.AppendLine($"You are a mental health companion talking to {patient.FirstName} {patient.LastName}.");
+                context.AppendLine($"You are a health companion talking to {patient.FirstName} {patient.LastName}.");
             }
             else
             {
-                context.AppendLine("You are a mental health companion talking to a patient.");
+                context.AppendLine("You are a health companion talking to a patient.");
             }
 
             // Patient-specific instructions - conservative and supportive
@@ -188,7 +188,7 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogError(ex, "Error using intelligent context service for patient, falling back to basic context");
                 // Fallback to basic context
                 context.AppendLine($"\nPatient asks: {originalPrompt}");
-                context.AppendLine("\nRespond as a supportive mental health companion, following the guidelines above.");
+                context.AppendLine("\nRespond as a supportive health companion, following the guidelines above.");
             }
 
             var prompt = context.ToString();
@@ -269,7 +269,7 @@ namespace SM_MentalHealthApp.Server.Services
             context.AppendLine("- You can provide insights about patient trends and patterns");
             context.AppendLine("- You can suggest system improvements and monitoring approaches");
             context.AppendLine("- You can help with data analysis and reporting insights");
-            context.AppendLine("- You can provide general mental health information for administrative purposes");
+            context.AppendLine("- You can provide general health information for administrative purposes");
             context.AppendLine("- Be professional and administrative in tone");
             context.AppendLine("- Focus on system-wide insights rather than individual patient care");
 
@@ -349,7 +349,7 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 context.AppendLine($"\nUser asks: {originalPrompt}");
-                context.AppendLine("Respond as a mental health companion with personalized context.");
+                context.AppendLine("Respond as a health companion with personalized context.");
 
                 return context.ToString();
             }

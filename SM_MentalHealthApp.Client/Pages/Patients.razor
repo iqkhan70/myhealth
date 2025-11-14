@@ -25,13 +25,13 @@
         @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
         {
             <h2>My Patients</h2>
-            <p>View and manage your assigned users' mental health journey.</p>
+            <p>View and manage your assigned users' health journey.</p>
         }
         else if (AuthService.CurrentUser?.RoleId == 3) // Admin
         {
             Console.WriteLine("This is at test page");
             <h2>All Patients</h2>
-            <p>Manage all patient records and view their mental health journey.</p>
+            <p>Manage all patient records and view their health journey.</p>
             <button @onclick="ShowAddPatientForm" class="add-patient-btn">
                 ➕ Add New Patient
             </button>

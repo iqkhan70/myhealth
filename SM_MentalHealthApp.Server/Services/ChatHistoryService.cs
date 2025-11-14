@@ -530,7 +530,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Create summary prompt
                 var summaryPrompt = $@"
-Please provide a concise clinical summary of this mental health conversation. Focus on:
+Please provide a concise clinical summary of this health conversation. Focus on:
 
 1. **Key Topics Discussed**: Main themes, concerns, or issues raised
 2. **Patient Concerns**: Specific worries, symptoms, or challenges mentioned

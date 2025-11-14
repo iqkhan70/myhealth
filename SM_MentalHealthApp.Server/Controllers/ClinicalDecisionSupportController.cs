@@ -143,7 +143,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         private async Task<List<DiagnosisSuggestion>> GetAIDiagnosisSuggestions(string symptoms, int patientId)
         {
             // This would integrate with your existing LLM service
-            // For now, return some common mental health diagnoses
+            // For now, return some common health diagnoses
             return new List<DiagnosisSuggestion>
             {
                 new DiagnosisSuggestion

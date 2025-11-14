@@ -67,7 +67,7 @@
         <div class="chat-header">
             <div class="chat-title">
                 <h2>💬 Health Chat</h2>
-                <p>Your personal AI companion for mental health support</p>
+                <p>Your personal AI companion for health support</p>
             </div>
         </div>
     }
@@ -242,7 +242,7 @@
         }
         
         // Add welcome message
-        Messages.Add("Bot: Hello! I'm your mental health companion. How can I help you today?");
+        Messages.Add("Bot: Hello! I'm your health companion. How can I help you today?");
         
         // Initialize sound setting
         await InitializeSound();
@@ -284,7 +284,7 @@
         {
             // Clear messages when switching to patient mode
             Messages.Clear();
-            Messages.Add("Bot: Hello! I'm your mental health AI assistant. Select a patient to get personalized clinical insights and recommendations.");
+            Messages.Add("Bot: Hello! I'm your health AI assistant. Select a patient to get personalized clinical insights and recommendations.");
         }
         StateHasChanged();
     }
@@ -358,7 +358,7 @@
         {
             return "Please select a patient first...";
         }
-        return "Ask me anything about mental health...";
+        return "Ask me anything about health...";
     }
 
     private async Task Send()

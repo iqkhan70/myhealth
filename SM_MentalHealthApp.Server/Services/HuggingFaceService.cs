@@ -69,7 +69,7 @@ namespace SM_MentalHealthApp.Server.Services
 
         private async Task<string> AnalyzeSentiment(string text)
         {
-            // First, try keyword-based analysis for mental health context
+            // First, try keyword-based analysis for health context
             var keywordMood = await AnalyzeMentalHealthKeywordsAsync(text);
             if (keywordMood != "Neutral")
             {
@@ -229,7 +229,7 @@ namespace SM_MentalHealthApp.Server.Services
                 { "JOURNAL_TEXT", text },
                 { "MOOD_CONTEXT", moodContext }
             });
-            return !string.IsNullOrEmpty(fallbackPrompt) ? fallbackPrompt : $"You are a compassionate mental health companion. A person has written in their journal: \"{text}\"\n\n{moodContext}\n\nRespond with a brief, empathetic message (2-3 sentences) that acknowledges their feelings and provides gentle support. Be warm and encouraging.";
+            return !string.IsNullOrEmpty(fallbackPrompt) ? fallbackPrompt : $"You are a compassionate health companion. A person has written in their journal: \"{text}\"\n\n{moodContext}\n\nRespond with a brief, empathetic message (2-3 sentences) that acknowledges their feelings and provides gentle support. Be warm and encouraging.";
         }
 
         private async Task<string> CleanJournalResponseAsync(string response)
@@ -2246,7 +2246,7 @@ namespace SM_MentalHealthApp.Server.Services
                 return response;
             }
 
-            // Enhanced fallback responses based on mental health context - using templates
+            // Enhanced fallback responses based on health context - using templates
             var lowerText = text.ToLower();
 
             if (lowerText.Contains("health") || lowerText.Contains("wellness"))
@@ -2283,13 +2283,13 @@ namespace SM_MentalHealthApp.Server.Services
             if (!string.IsNullOrEmpty(defaultTemplate)) return defaultTemplate;
 
             var finalDefault = await _templateService.FormatTemplateAsync("fallback_default_response", null);
-            return !string.IsNullOrEmpty(finalDefault) ? finalDefault : "I'm here as your mental health companion to listen and support you. How are you feeling today?";
+            return !string.IsNullOrEmpty(finalDefault) ? finalDefault : "I'm here as your health companion to listen and support you. How are you feeling today?";
         }
 
         private async Task<string> HandlePatientPromptAsync(string text)
         {
             var lines = text.Split('\n');
-            var patientName = lines.FirstOrDefault(l => l.Contains("You are a mental health companion talking to"))?.Split(' ').LastOrDefault()?.Replace(".", "");
+            var patientName = lines.FirstOrDefault(l => l.Contains("You are a health companion talking to"))?.Split(' ').LastOrDefault()?.Replace(".", "");
             var userQuestion = lines.FirstOrDefault(l => l.StartsWith("Patient asks:"))?.Replace("Patient asks: ", "");
 
             if (string.IsNullOrEmpty(userQuestion))

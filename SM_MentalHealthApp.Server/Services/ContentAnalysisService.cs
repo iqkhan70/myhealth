@@ -496,7 +496,7 @@ If you need general medical information without patient context, please switch t
                                 break;
                             case "self harm":
                                 context.AppendLine("CLINICAL SIGNIFICANCE: Self-harm incidents indicate:");
-                                context.AppendLine("- Acute mental health crisis requiring immediate intervention");
+                                context.AppendLine("- Acute health crisis requiring immediate intervention");
                                 context.AppendLine("- Risk of suicide or serious injury");
                                 context.AppendLine("- Need for crisis counseling and safety planning");
                                 break;
@@ -987,7 +987,7 @@ If you need general medical information without patient context, please switch t
         public async Task<(string Context, List<SeveritySourceMetadata> Sources)> BuildEnhancedContextWithSourcesAsync(int patientId, string originalPrompt)
         {
             var sources = new List<SeveritySourceMetadata>();
-            
+
             try
             {
                 if (patientId <= 0)
@@ -1198,7 +1198,7 @@ If you need general medical information without patient context, please switch t
                         {
                             context.AppendLine($"Summary: {session.Summary}");
                         }
-                        
+
                         // Combine all messages from the session for source content
                         var sessionContent = new StringBuilder();
                         if (session.Messages != null && session.Messages.Any())
@@ -1215,7 +1215,7 @@ If you need general medical information without patient context, please switch t
                                 sessionContent.AppendLine($"{rolePrefix}: {message.Content}");
                             }
                         }
-                        
+
                         context.AppendLine(sessionContent.ToString());
                         context.AppendLine();
 
