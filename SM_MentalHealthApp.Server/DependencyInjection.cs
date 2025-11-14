@@ -167,6 +167,7 @@ public static class DependencyInjection
         services.AddScoped<HuggingFaceService>();
         services.AddScoped<ConversationRepository>();
         services.AddScoped<LlmClient>();
+        services.AddScoped<IChainedAIService, ChainedAIService>();
 
         // External Service Integrations
         services.AddScoped<S3Service>();

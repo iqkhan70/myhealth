@@ -51,6 +51,10 @@ namespace SM_MentalHealthApp.Server.Data
             
             // Section Marker system entities
             public DbSet<SectionMarker> SectionMarkers { get; set; }
+            
+            // AI Model Configuration system entities
+            public DbSet<AIModelConfig> AIModelConfigs { get; set; }
+            public DbSet<AIModelChain> AIModelChains { get; set; }
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -698,6 +702,58 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.Category);
                         entity.HasIndex(e => e.Priority);
                         entity.HasIndex(e => new { e.IsActive, e.Priority });
+                  });
+
+                  // Configure AIModelConfig entity
+                  modelBuilder.Entity<AIModelConfig>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.ModelName).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.ModelType).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.Provider).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.ApiEndpoint).IsRequired().HasMaxLength(500);
+                        entity.Property(e => e.ApiKeyConfigKey).HasMaxLength(100);
+                        entity.Property(e => e.Context).IsRequired().HasMaxLength(50).HasDefaultValue("ClinicalNote");
+                        entity.Property(e => e.DisplayOrder).HasDefaultValue(0);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Unique constraint on ModelName + Context
+                        entity.HasIndex(e => new { e.ModelName, e.Context }).IsUnique();
+                        entity.HasIndex(e => e.ModelType);
+                        entity.HasIndex(e => e.Context);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => new { e.Context, e.IsActive, e.DisplayOrder });
+                  });
+
+                  // Configure AIModelChain entity
+                  modelBuilder.Entity<AIModelChain>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.ChainName).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.Context).IsRequired().HasMaxLength(50).HasDefaultValue("ClinicalNote");
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.Property(e => e.ChainOrder).HasDefaultValue(1);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.PrimaryModel)
+                              .WithMany()
+                              .HasForeignKey(e => e.PrimaryModelId)
+                              .OnDelete(DeleteBehavior.Restrict);
+
+                        entity.HasOne(e => e.SecondaryModel)
+                              .WithMany()
+                              .HasForeignKey(e => e.SecondaryModelId)
+                              .OnDelete(DeleteBehavior.Restrict);
+
+                        // Unique constraint on ChainName + Context
+                        entity.HasIndex(e => new { e.ChainName, e.Context }).IsUnique();
+                        entity.HasIndex(e => e.Context);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.PrimaryModelId);
+                        entity.HasIndex(e => e.SecondaryModelId);
                   });
             }
       }

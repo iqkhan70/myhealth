@@ -143,9 +143,37 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Content: <span class="required-asterisk">*</span></label>
-                    <RadzenTextArea @bind-Value="noteForm.Content" Placeholder="Note Content"
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="form-label" style="margin-bottom: 0;">Content: <span class="required-asterisk">*</span></label>
+                        @if (editingNote?.Id == 0 && noteForm.PatientId > 0)
+                        {
+                            <RadzenButton Text="🤖 AI Assist" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small"
+                                Icon="auto_awesome" Click="@GenerateWithAI" Disabled="@isGeneratingAI"
+                                Title="Generate structured clinical note using AI" />
+                        }
+                    </div>
+                    @if (isGeneratingAI)
+                    {
+                        <div style="padding: 10px; background-color: #e3f2fd; border-radius: 4px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
+                            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+                            <span style="color: #1976d2; font-size: 14px;">AI is generating your clinical note... This may take a moment.</span>
+                        </div>
+                    }
+                    <RadzenTextArea @bind-Value="noteForm.Content" Placeholder="Note Content (or enter encounter data and click 'AI Assist' to generate structured note)"
                         Style="width: 100%; min-height: 200px;" />
+                    @if (!string.IsNullOrEmpty(aiAnalysis))
+                    {
+                        <div style="margin-top: 12px; padding: 12px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <strong style="color: #856404;">
+                                    <i class="fas fa-lightbulb"></i> AI Analysis - Missed Considerations & Follow-up Actions
+                                </strong>
+                                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall"
+                                    Click="@(() => aiAnalysis = string.Empty)" Title="Dismiss" />
+                            </div>
+                            <div style="color: #856404; font-size: 14px; white-space: pre-wrap;">@aiAnalysis</div>
+                        </div>
+                    }
                 </div>
 
                 <div class="form-group">
@@ -239,6 +267,8 @@
     private ClinicalNoteDto? editingNote;
     private ClinicalNoteDto? viewingNote;
     private CreateClinicalNoteRequest noteForm = new();
+    private bool isGeneratingAI = false;
+    private string aiAnalysis = string.Empty;
 
     private List<SMDataGridColumn<ClinicalNoteDto>> _columns = new();
     private List<SMDataGridActionButton<ClinicalNoteDto>> _actions = new();
@@ -503,6 +533,8 @@
         editingNote = new ClinicalNoteDto { Id = 0 };
         noteForm = new CreateClinicalNoteRequest { PatientId = 0 };
         showPatientRequiredError = false;
+        aiAnalysis = string.Empty;
+        isGeneratingAI = false;
         showNoteDialog = true;
         await InvokeAsync(StateHasChanged);
     }
@@ -670,6 +702,8 @@
         editingNote = null;
         noteForm = new CreateClinicalNoteRequest { PatientId = 0 };
         showPatientRequiredError = false;
+        aiAnalysis = string.Empty;
+        isGeneratingAI = false;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -781,6 +815,131 @@
         catch (Exception ex)
         {
             NotificationService.ShowError($"Failed to toggle ignore status: {ex.Message}");
+        }
+    }
+
+    private async Task GenerateWithAI()
+    {
+        if (noteForm.PatientId <= 0)
+        {
+            NotificationService.ShowWarning("Please select a patient first before using AI Assist.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(noteForm.Content))
+        {
+            NotificationService.ShowWarning("Please enter some encounter data or notes in the Content field first. The AI will use this to generate a structured clinical note.");
+            return;
+        }
+
+        isGeneratingAI = true;
+        aiAnalysis = string.Empty;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var request = new
+            {
+                EncounterData = noteForm.Content,
+                PatientId = noteForm.PatientId
+            };
+
+            // Create a timeout-aware HTTP request (AI generation can take 60-90 seconds)
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)); // 3 minute timeout
+            
+            await JSRuntime.InvokeVoidAsync("console.log", $"Calling chained AI API for patient {noteForm.PatientId}...");
+            
+            var response = await Http.PostAsJsonAsync("api/chainedai/generate-note-and-analysis", request, cts.Token);
+
+            await JSRuntime.InvokeVoidAsync("console.log", $"Received response: StatusCode={response.StatusCode}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync(cts.Token);
+                await JSRuntime.InvokeVoidAsync("console.log", $"Response content length: {responseContent.Length} characters");
+                
+                try
+                {
+                    var result = System.Text.Json.JsonSerializer.Deserialize<ChainedAIResult>(
+                        responseContent,
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                    await JSRuntime.InvokeVoidAsync("console.log", 
+                        $"Deserialized result: Success={result?.Success ?? false}, " +
+                        $"PrimaryModelOutput length={result?.PrimaryModelOutput?.Length ?? 0}, " +
+                        $"SecondaryModelOutput length={result?.SecondaryModelOutput?.Length ?? 0}");
+
+                if (result != null && result.Success)
+                {
+                    await JSRuntime.InvokeVoidAsync("console.log", "AI generation successful! Updating UI...");
+                    
+                    // Populate the form with the generated structured note
+                    noteForm.Content = result.PrimaryModelOutput ?? string.Empty;
+                    
+                    // If title is empty, generate one from the structured note
+                    if (string.IsNullOrWhiteSpace(noteForm.Title))
+                    {
+                        // Try to extract a title from the structured note (first line or first section)
+                        var firstLine = result.PrimaryModelOutput?.Split('\n').FirstOrDefault(l => !string.IsNullOrWhiteSpace(l));
+                        if (!string.IsNullOrWhiteSpace(firstLine) && firstLine.Length > 50)
+                        {
+                            noteForm.Title = firstLine.Substring(0, Math.Min(50, firstLine.Length)) + "...";
+                        }
+                        else if (!string.IsNullOrWhiteSpace(firstLine))
+                        {
+                            noteForm.Title = firstLine;
+                        }
+                        else
+                        {
+                            noteForm.Title = $"Clinical Note - {DateTime.Now:MMM dd, yyyy}";
+                        }
+                    }
+
+                    // Store the analysis to show to the doctor
+                    aiAnalysis = result.SecondaryModelOutput ?? string.Empty;
+
+                    await JSRuntime.InvokeVoidAsync("console.log", 
+                        $"Updated form: Content length={noteForm.Content.Length}, Analysis length={aiAnalysis.Length}");
+
+                    // Force UI update
+                    await InvokeAsync(StateHasChanged);
+
+                    NotificationService.ShowSuccess($"AI generated structured note using {result.PrimaryModelName}. Review the analysis below for missed considerations.");
+                }
+                else
+                {
+                    var errorMsg = result?.ErrorMessage ?? "Unknown error";
+                    await JSRuntime.InvokeVoidAsync("console.error", $"AI generation failed: {errorMsg}");
+                    NotificationService.ShowError($"AI generation failed: {errorMsg}");
+                }
+                }
+                catch (System.Text.Json.JsonException jsonEx)
+                {
+                    await JSRuntime.InvokeVoidAsync("console.error", $"JSON deserialization error: {jsonEx.Message}", responseContent.Substring(0, Math.Min(500, responseContent.Length)));
+                    NotificationService.ShowError($"Failed to parse AI response. Check browser console for details.");
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync(cts.Token);
+                await JSRuntime.InvokeVoidAsync("console.error", $"API call failed: StatusCode={response.StatusCode}, Error={errorContent}");
+                NotificationService.ShowError($"Failed to generate AI note: {response.StatusCode} - {errorContent}");
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "AI generation timed out after 3 minutes");
+            NotificationService.ShowError("AI generation timed out. The request took too long. Please try again with less data or check your Ollama connection.");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error calling AI service: {ex.Message}", ex.StackTrace);
+            NotificationService.ShowError($"Error calling AI service: {ex.Message}");
+        }
+        finally
+        {
+            isGeneratingAI = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 }

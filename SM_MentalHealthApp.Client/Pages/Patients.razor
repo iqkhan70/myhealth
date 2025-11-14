@@ -1304,10 +1304,10 @@
             var endpoint = source.SourceType switch
             {
                 "JournalEntry" => $"api/journal/entry/{source.SourceId}/toggle-ignore",
-                "ClinicalNote" => $"api/clinical-notes/{source.SourceId}/toggle-ignore",
+                "ClinicalNote" => $"api/clinicalnotes/{source.SourceId}/toggle-ignore", // Fixed: was clinical-notes, should be clinicalnotes
                 "Content" => $"api/content/{source.SourceId}/toggle-ignore",
                 "Emergency" => $"api/emergency/{source.SourceId}/acknowledge", // Acknowledge instead of ignore
-                "ChatSession" => $"api/chat-history/session/{source.SourceId}/toggle-ignore",
+                "ChatSession" => $"api/chathistory/sessions/{source.SourceId}/toggle-ignore", // Fixed: was chat-history, should be chathistory
                 _ => null
             };
 
@@ -1317,25 +1317,42 @@
                 return;
             }
 
-            var response = await Http.PostAsync(endpoint, null);
+            // Create request message with authorization header
+            var token = AuthService.Token;
+            var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+            
+            if (!string.IsNullOrEmpty(token))
+            {
+                request.Headers.Authorization = 
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+
+            // Use StringContent with empty body instead of null
+            request.Content = new StringContent("", System.Text.Encoding.UTF8, "application/json");
+            var response = await Http.SendAsync(request);
+            
             if (response.IsSuccessStatusCode)
             {
+                var responseContent = await response.Content.ReadAsStringAsync();
                 NotificationService.ShowSuccess($"{source.SourceType} marked as not applicable. It will be excluded from future AI health checks.");
                 
                 // Remove from the current list
                 if (currentHealthCheckResult?.SeveritySources != null)
                 {
                     currentHealthCheckResult.SeveritySources.Remove(source);
-                    StateHasChanged();
+                    await InvokeAsync(StateHasChanged);
                 }
             }
             else
             {
-                NotificationService.ShowError("Failed to mark source as ignored. Please try again.");
+                var errorContent = await response.Content.ReadAsStringAsync();
+                await JSRuntime.InvokeVoidAsync("console.error", $"Failed to mark source as ignored: {response.StatusCode} - {errorContent}");
+                NotificationService.ShowError($"Failed to mark source as ignored: {response.StatusCode}. Please try again.");
             }
         }
         catch (Exception ex)
         {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error marking source as ignored: {ex.Message}", ex.StackTrace);
             NotificationService.ShowError($"Error: {ex.Message}");
         }
     }

@@ -140,16 +140,19 @@ Format as JSON with the following structure:
   ]
 }}";
 
+                var modelName = "tinyllama:latest";
                 var request = new LlmRequest
                 {
                     Prompt = prompt,
                     Provider = AiProvider.Ollama,
-                    Model = "tinyllama:latest",
+                    Model = modelName,
                     Temperature = 0.3,
                     MaxTokens = 1000
                 };
+                _logger.LogInformation("Calling Ollama model: {ModelName} for follow-up steps (diagnosis: {Diagnosis})", modelName, diagnosis);
                 var response = await _llmClient.GenerateTextAsync(request);
                 var responseText = response.Text;
+                _logger.LogInformation("Ollama response from model {ModelName} ({Provider}): {Length} characters", modelName, response.Provider, responseText?.Length ?? 0);
 
                 // Clean the response and extract structured data
                 var cleanText = CleanOllamaResponse(responseText);
@@ -190,16 +193,19 @@ Format as JSON:
   ]
 }}";
 
+                var modelName = "tinyllama:latest";
                 var request = new LlmRequest
                 {
                     Prompt = prompt,
                     Provider = AiProvider.Ollama,
-                    Model = "tinyllama:latest",
+                    Model = modelName,
                     Temperature = 0.3,
                     MaxTokens = 1000
                 };
+                _logger.LogInformation("Calling Ollama model: {ModelName} for insurance requirements (diagnosis: {Diagnosis})", modelName, diagnosis);
                 var response = await _llmClient.GenerateTextAsync(request);
                 var responseText = response.Text;
+                _logger.LogInformation("Ollama response from model {ModelName} ({Provider}): {Length} characters", modelName, response.Provider, responseText?.Length ?? 0);
 
                 // Clean the response and extract structured data
                 var cleanText = CleanOllamaResponse(responseText);
@@ -241,16 +247,19 @@ Format as JSON:
   }}
 }}";
 
+                var modelName = "tinyllama:latest";
                 var request = new LlmRequest
                 {
                     Prompt = prompt,
                     Provider = AiProvider.Ollama,
-                    Model = "tinyllama:latest",
+                    Model = modelName,
                     Temperature = 0.3,
                     MaxTokens = 1000
                 };
+                _logger.LogInformation("Calling Ollama model: {ModelName} for clinical protocol (diagnosis: {Diagnosis})", modelName, diagnosis);
                 var response = await _llmClient.GenerateTextAsync(request);
                 var responseText = response.Text;
+                _logger.LogInformation("Ollama response from model {ModelName} ({Provider}): {Length} characters", modelName, response.Provider, responseText?.Length ?? 0);
 
                 // Clean the response and extract structured data
                 var cleanText = CleanOllamaResponse(responseText);
@@ -285,19 +294,21 @@ Format your response as a clear, structured clinical recommendation.";
             // Use Ollama with tinyllama
             _logger.LogInformation("Getting AI recommendations for diagnosis: {Diagnosis}", diagnosis);
 
+            var modelName = "tinyllama";
             var request = new LlmRequest
             {
                 Prompt = prompt,
                 Provider = AiProvider.Ollama,
-                Model = "tinyllama",
+                Model = modelName,
                 Temperature = 0.3,
                 MaxTokens = 1000
             };
 
+            _logger.LogInformation("Calling Ollama model: {ModelName} for diagnosis: {Diagnosis}", modelName, diagnosis);
             var response = await _llmClient.GenerateTextAsync(request);
             var responseText = response.Text;
 
-            _logger.LogInformation("Ollama response: {Response}", responseText);
+            _logger.LogInformation("Ollama response from model {ModelName} ({Provider}): {Response}", modelName, response.Provider, responseText);
 
             // Parse the raw text into structured response
             try
