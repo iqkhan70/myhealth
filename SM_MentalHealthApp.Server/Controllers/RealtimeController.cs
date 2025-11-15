@@ -52,13 +52,13 @@ namespace SM_MentalHealthApp.Server.Controllers
         [HttpGet("token")]
         public async Task<IActionResult> GetAgoraToken([FromQuery] string channel, [FromQuery] uint uid)
         {
+            _logger.LogInformation("📞 Token request - Channel: {Channel}, Requested UID: {Uid}", channel, uid);
 
-            Console.WriteLine("Using uid1: " + uid);
-            Console.WriteLine("Using channel1: " + channel);
+            if (string.IsNullOrEmpty(channel))
+                return BadRequest("Missing channel");
 
-            if (string.IsNullOrEmpty(channel) || uid == 0)
-                return BadRequest("Missing channel or uid");
-
+            // Note: UID is logged but not used for token generation
+            // Token is generated with UID=0 (shared token for all users in the channel)
             return await GenerateAndCacheTokenAsync(channel, uid, 3600);
         }
 
@@ -66,13 +66,13 @@ namespace SM_MentalHealthApp.Server.Controllers
         [HttpPost("token")]
         public async Task<IActionResult> PostAgoraToken([FromBody] AgoraRequest request)
         {
+            _logger.LogInformation("📞 Token request - Channel: {Channel}, Requested UID: {Uid}", request.ChannelName, request.Uid);
 
-            Console.WriteLine("Using uid2: " + request.Uid);
-            Console.WriteLine("Using channel2: " + request.ChannelName);
+            if (string.IsNullOrEmpty(request.ChannelName))
+                return BadRequest("Missing channel");
 
-            if (string.IsNullOrEmpty(request.ChannelName) || request.Uid == 0)
-                return BadRequest("Missing channel or uid");
-
+            // Note: UID is logged but not used for token generation
+            // Token is generated with UID=0 (shared token for all users in the channel)
             var expireSeconds = request.ExpirationTimeInSeconds ?? 3600;
             return await GenerateAndCacheTokenAsync(request.ChannelName, request.Uid, expireSeconds);
         }
@@ -81,21 +81,33 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
+                // ✅ Validate channel name
+                if (string.IsNullOrWhiteSpace(channel))
+                {
+                    _logger.LogError("❌ Empty or null channel name provided");
+                    return BadRequest(new { message = "Channel name cannot be empty or null" });
+                }
+
+                // ✅ IMPORTANT: Cache by channel only (not by UID)
+                // All users in the same channel should use the SAME token
+                // Token is generated with UID=0 which means "any UID can use this token"
                 string cacheKey = $"agora_token:{channel}";
                 _logger.LogInformation("🔍 Checking Redis for key {Key}", cacheKey);
 
                 var cachedToken = await _cache.GetAsync(cacheKey);
                 if (!string.IsNullOrEmpty(cachedToken))
                 {
-                    _logger.LogInformation("✅ Returning cached token for {Channel}", channel);
-                    return Ok(new { agoraAppId = _appId, token = "007eJxTYBA9aftq7rY7oo82nckM81Axc6k140t69CHj2NQ3m/ZO89uswJCalmhomGScaJ5iYGpiYJmcaGlumZZkZJpommRiYZmYKh4kntkQyMgwXTqfkZEBAkF8DobkxJyceON4QwYGACFwINI=", cached = true });
+                    _logger.LogInformation("✅ Returning cached token for {Channel} (shared by all users)", channel);
+                    return Ok(new { agoraAppId = _appId, token = cachedToken, cached = true });
                 }
 
-                var token = _agoraTokenService.GenerateToken(channel, uid, expireSeconds);
+                // ✅ Generate token with UID=0 (means "any UID can use this token")
+                // This allows all users in the same channel to share the same token
+                var token = _agoraTokenService.GenerateToken(channel, 0, expireSeconds);
                 await _cache.SetAsync(cacheKey, token, TimeSpan.FromSeconds(expireSeconds));
 
-                _logger.LogInformation("🆕 Generated and cached new token for {Channel}", channel);
-                return Ok(new { agoraAppId = _appId, token = "007eJxTYBA9aftq7rY7oo82nckM81Axc6k140t69CHj2NQ3m/ZO89uswJCalmhomGScaJ5iYGpiYJmcaGlumZZkZJpommRiYZmYKh4kntkQyMgwXTqfkZEBAkF8DobkxJyceON4QwYGACFwINI=", cached = false, uid });
+                _logger.LogInformation("🆕 Generated and cached new token for {Channel} (shared token, UID=0)", channel);
+                return Ok(new { agoraAppId = _appId, token = token, cached = false });
             }
             catch (Exception ex)
             {
@@ -312,7 +324,11 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var userId = connection.UserId;
                 var otherUserId = request.OtherUserId;
 
+                _logger.LogInformation("Getting message history for users {UserId} and {OtherUserId}", userId, otherUserId);
+
+                // ✅ Load messages with Sender navigation property included
                 var messages = await _context.SmsMessages
+                    .Include(m => m.Sender) // ✅ Explicitly include Sender to avoid lazy loading issues
                     .Where(m => (m.SenderId == userId && m.ReceiverId == otherUserId) ||
                                 (m.SenderId == otherUserId && m.ReceiverId == userId))
                     .OrderBy(m => m.SentAt)
@@ -328,11 +344,13 @@ namespace SM_MentalHealthApp.Server.Controllers
                     })
                     .ToListAsync();
 
+                _logger.LogInformation("Retrieved {Count} messages", messages.Count);
                 return Ok(new { messages });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting message history");
+                _logger.LogError(ex, "Error getting message history: {Message}", ex.Message);
+                _logger.LogError(ex, "Stack trace: {StackTrace}", ex.StackTrace);
                 return BadRequest($"Failed to get message history: {ex.Message}");
             }
         }

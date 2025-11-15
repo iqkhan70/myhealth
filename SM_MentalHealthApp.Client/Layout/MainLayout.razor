@@ -126,12 +126,41 @@ else
 
         try
         {
+            // ✅ Pass the channel name in query string so the call page can auto-join
+            // The CallId is the channel name (e.g., "call_2_3")
+            var channelName = call.CallId ?? "";
+            
+            // ✅ Validate channel name - if empty, generate one based on caller and current user
+            if (string.IsNullOrWhiteSpace(channelName))
+            {
+                var currentUserId = AuthService.CurrentUser?.Id ?? 0;
+                var callerId = call.CallerId;
+                if (currentUserId > 0 && callerId > 0)
+                {
+                    var smallerId = Math.Min(currentUserId, callerId);
+                    var largerId = Math.Max(currentUserId, callerId);
+                    channelName = $"call_{smallerId}_{largerId}";
+                    Console.WriteLine($"⚠️ MainLayout: Channel was empty, generated: {channelName}");
+                }
+                else
+                {
+                    Console.WriteLine($"❌ MainLayout: Cannot generate channel - currentUserId: {currentUserId}, callerId: {callerId}");
+                    NotificationService.Notify(NotificationSeverity.Error, "Call Error",
+                    "Cannot join call: missing channel information");
+                    return;
+                }
+            }
+            
+            Console.WriteLine($"🎯 MainLayout: Accepting {call.CallType} call from {call.CallerName}");
+            Console.WriteLine($"📞 MainLayout: Channel name: {channelName}");
+            Console.WriteLine($"📞 MainLayout: CallId from call: {call.CallId}");
+            
             // Navigate to the video call page to join the call
             var callUrl = call.CallType?.ToLower() == "video"
-            ? $"/video-call/{call.CallerId}"
-            : $"/audio-call/{call.CallerId}";
+            ? $"/video-call/{call.CallerId}?channel={Uri.EscapeDataString(channelName)}"
+            : $"/audio-call/{call.CallerId}?channel={Uri.EscapeDataString(channelName)}";
 
-            Console.WriteLine($"🎯 Web App: Accepting {call.CallType} call from {call.CallerName}, navigating to {callUrl}");
+            Console.WriteLine($"🎯 MainLayout: Navigating to: {callUrl}");
 
             NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
             $"Joining {call.CallType} call with {call.CallerName}...");
@@ -140,7 +169,8 @@ else
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Web App: Error accepting call: {ex.Message}");
+            Console.WriteLine($"❌ MainLayout: Error accepting call: {ex.Message}");
+            Console.WriteLine($"❌ MainLayout: Stack trace: {ex.StackTrace}");
             NotificationService.Notify(NotificationSeverity.Error, "Call Error",
             $"Failed to join call: {ex.Message}");
         }

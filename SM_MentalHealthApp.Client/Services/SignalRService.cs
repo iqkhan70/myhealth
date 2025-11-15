@@ -110,6 +110,20 @@ namespace SM_MentalHealthApp.Client.Services
                 try
                 {
                     var json = JsonSerializer.Serialize(callData);
+                    var jsonDoc = JsonDocument.Parse(json);
+                    var root = jsonDoc.RootElement;
+                    
+                    Console.WriteLine($"📞 SignalR: Received incoming-call event: {json}");
+                    
+                    // ✅ Extract channelName if available, otherwise use callId
+                    var channelName = root.TryGetProperty("channelName", out var channelNameElement)
+                        ? channelNameElement.GetString()
+                        : root.TryGetProperty("callId", out var callIdElement)
+                            ? callIdElement.GetString()
+                            : "";
+                    
+                    Console.WriteLine($"📞 SignalR: Extracted channelName: {channelName}");
+                    
                     var call = JsonSerializer.Deserialize<CallInvitation>(json, new JsonSerializerOptions
                     {
                         PropertyNameCaseInsensitive = true
@@ -117,12 +131,29 @@ namespace SM_MentalHealthApp.Client.Services
 
                     if (call != null)
                     {
+                        // ✅ Override CallId with channel name for auto-join
+                        var finalChannelName = !string.IsNullOrWhiteSpace(channelName) ? channelName : call.CallId;
+                        call.CallId = finalChannelName ?? "";
+                        
+                        Console.WriteLine($"📞 SignalR: Final CallId (channel): {call.CallId}");
+                        Console.WriteLine($"📞 SignalR: CallerId: {call.CallerId}, CallerName: {call.CallerName}, CallType: {call.CallType}");
+                        
+                        if (string.IsNullOrWhiteSpace(call.CallId))
+                        {
+                            Console.WriteLine($"⚠️ SignalR: WARNING - Channel name is empty! This will cause issues.");
+                        }
+                        
                         OnIncomingCall?.Invoke(call);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"❌ SignalR: Failed to deserialize CallInvitation");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error processing incoming call: {ex.Message}");
+                    Console.WriteLine($"❌ SignalR: Error processing incoming call: {ex.Message}");
+                    Console.WriteLine($"❌ SignalR: Stack trace: {ex.StackTrace}");
                 }
             });
 

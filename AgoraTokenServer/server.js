@@ -53,7 +53,7 @@ app.get("/realtime/token", async (req, res) => {
     console.log(`🆕 [Redis] Cached new token for ${channel}`);
 
     // ✅ 4️⃣ Return to mobile client
-    return res.json({ token:"007eJxTYBA9aftq7rY7oo82nckM81Axc6k140t69CHj2NQ3m/ZO89uswJCalmhomGScaJ5iYGpiYJmcaGlumZZkZJpommRiYZmYKh4kntkQyMgwXTqfkZEBAkF8DobkxJyceON4QwYGACFwINI=", cached: false });
+    return res.json({ token: token, cached: false });
 
   } catch (err) {
     console.error("❌ Error generating Agora token:", err);

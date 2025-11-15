@@ -318,12 +318,12 @@ export default function App() {
         return null;
       }
 
+      // Use .NET Server for token generation (same as main API)
       const url = `${API_BASE_URL}/realtime/token?channel=${encodeURIComponent(channelName)}&uid=${uid}`;
-      console.log(`🎯 Fetching Agora token from: ${url}`);
+      console.log(`🎯 Fetching Agora token from .NET server: ${url}`);
 
+      // Get auth token for .NET server authentication
       const authToken = await AsyncStorage.getItem('userToken');
-
-      console.log('Using uid for token fetch:', authToken);
 
       const resp = await fetch(url, {
         method: 'GET',
@@ -346,7 +346,7 @@ export default function App() {
       }
 
       console.log(`✅ Received Agora token for channel "${channelName}"`);
-      return "007eJxTYBA9aftq7rY7oo82nckM81Axc6k140t69CHj2NQ3m/ZO89uswJCalmhomGScaJ5iYGpiYJmcaGlumZZkZJpommRiYZmYKh4kntkQyMgwXTqfkZEBAkF8DobkxJyceON4QwYGACFwINI=";
+      return data.token;
     } catch (e) {
       console.warn('⚠️ Token fetch failed:', e.message);
       return null;

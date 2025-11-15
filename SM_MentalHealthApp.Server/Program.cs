@@ -15,7 +15,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// ✅ Only redirect to HTTPS in production (not needed for API server)
+// app.UseHttpsRedirection(); // Disabled - server runs on HTTP, client handles HTTPS
 
 // Enable static files (not Blazor WebAssembly)
 // app.UseStaticFiles(); // Removed - this was serving Blazor client files

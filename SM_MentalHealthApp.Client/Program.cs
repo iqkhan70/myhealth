@@ -9,4 +9,14 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 // Register all services using centralized dependency injection
 builder.Services.AddClientServices(builder);
 
-await builder.Build().RunAsync();
+try
+{
+    var host = builder.Build();
+    await host.RunAsync();
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"❌ Fatal error starting Blazor app: {ex.Message}");
+    Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
+    throw; // Re-throw to show error in browser
+}

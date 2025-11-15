@@ -1169,23 +1169,59 @@
         $"Starting audio call with user {userId}");
     }
 
-    private async void AcceptCall()
+    private async Task AcceptCall()
     {
         if (incomingCall == null) return;
 
         try
         {
+            // ✅ Get channel name from CallId
+            var channelName = incomingCall.CallId ?? "";
+            
+            // ✅ Validate channel name - if empty, generate one based on caller and current user
+            if (string.IsNullOrWhiteSpace(channelName))
+            {
+                var currentUserId = AuthService.CurrentUser?.Id ?? 0;
+                var callerId = incomingCall.CallerId;
+                if (currentUserId > 0 && callerId > 0)
+                {
+                    var smallerId = Math.Min(currentUserId, callerId);
+                    var largerId = Math.Max(currentUserId, callerId);
+                    channelName = $"call_{smallerId}_{largerId}";
+                    Console.WriteLine($"⚠️ RealTimeChat: Channel was empty, generated: {channelName}");
+                }
+                else
+                {
+                    Console.WriteLine($"❌ RealTimeChat: Cannot generate channel - currentUserId: {currentUserId}, callerId: {callerId}");
+                    NotificationService.Notify(NotificationSeverity.Error, "Call Error",
+                    "Cannot join call: missing channel information");
+                    return;
+                }
+            }
+            
+            Console.WriteLine($"🎯 RealTimeChat: Accepting {incomingCall.CallType} call from {incomingCall.CallerName}");
+            Console.WriteLine($"📞 RealTimeChat: Channel name: {channelName}");
+            Console.WriteLine($"📞 RealTimeChat: CallId from incomingCall: {incomingCall.CallId}");
+
             NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
             $"Accepting {incomingCall.CallType} call from {incomingCall.CallerName}");
 
-            var url =
-            $"https://localhost:5443/shared-room?mobile_call=true&caller={incomingCall.CallerName}&channel={incomingCall.CallId}";
-            await JS.InvokeVoidAsync("open", url, "_blank");
+            // Navigate to the appropriate call page based on call type
+            // Pass the channel name as a query parameter so the call page can auto-join
+            var callUrl = incomingCall.CallType?.ToLower() == "video"
+            ? $"/video-call/{incomingCall.CallerId}?channel={Uri.EscapeDataString(channelName)}&mobile_call=true"
+            : $"/audio-call/{incomingCall.CallerId}?channel={Uri.EscapeDataString(channelName)}&mobile_call=true";
+            
+            Console.WriteLine($"🎯 RealTimeChat: Navigating to: {callUrl}");
+            Navigation.NavigateTo(callUrl);
+
             incomingCall = null;
             StateHasChanged();
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"❌ RealTimeChat: Error accepting call: {ex.Message}");
+            Console.WriteLine($"❌ RealTimeChat: Stack trace: {ex.StackTrace}");
             NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
         }
     }

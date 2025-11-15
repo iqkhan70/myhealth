@@ -166,6 +166,11 @@ namespace SM_MentalHealthApp.Server.Hubs
                     return;
                 }
 
+                // ✅ Generate consistent channel name (same format as client: call_{smallerId}_{largerId})
+                var smallerId = Math.Min(callerId, targetUserId);
+                var largerId = Math.Max(callerId, targetUserId);
+                var channelName = $"call_{smallerId}_{largerId}";
+                
                 var callId = Guid.NewGuid().ToString();
                 var callSession = new CallSession
                 {
@@ -181,12 +186,13 @@ namespace SM_MentalHealthApp.Server.Hubs
 
                 var callData = new
                 {
-                    callId = callId,
+                    callId = channelName, // ✅ Use channel name as callId so client can auto-join
                     callerId = callerId,
                     callerName = $"{caller.FirstName} {caller.LastName}",
                     callerRole = caller.RoleId == 2 ? "Doctor" : "Patient",
                     callType = callType,
-                    timestamp = DateTime.UtcNow.ToString("O")
+                    timestamp = DateTime.UtcNow.ToString("O"),
+                    channelName = channelName // ✅ Also include channelName for compatibility
                 };
 
                 // Send call invitation to target user

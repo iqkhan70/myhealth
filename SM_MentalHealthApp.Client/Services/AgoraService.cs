@@ -9,7 +9,7 @@ namespace SM_MentalHealthApp.Client.Services
     {
         Task<bool> InitializeAsync(string appId);
         Task<bool> JoinChannelAsync(string channelName, string token, uint uid);
-        Task<bool> JoinChannelAsync(string channelName, string token, uint uid, bool isVideoCall);
+        Task<bool> JoinChannelAsync(string channelName, string token, string appId, uint uid, bool isVideoCall);
         Task LeaveChannelAsync();
         Task EnableLocalVideoAsync(bool enable);
         Task EnableLocalAudioAsync(bool enable);
@@ -26,7 +26,7 @@ namespace SM_MentalHealthApp.Client.Services
         event Action<string> OnConnectionStateChanged;
         event Action<string> OnError;
         //Task<string> GetAgoraTokenAsync(string channelName);
-        Task<string> GetAgoraTokenAsync(string channelName, uint uid = 0);
+        Task<(string Token, string AppId)> GetAgoraTokenAsync(string channelName, uint uid = 0);
     }
 
     public class AgoraService : IAgoraService, IAsyncDisposable
@@ -73,10 +73,18 @@ namespace SM_MentalHealthApp.Client.Services
 
         public async Task<bool> JoinChannelAsync(string channelName, string token, uint uid)
         {
-            return await JoinChannelAsync(channelName, token, uid, true); // Default to video call
+            // This overload is deprecated - should use the one with appId
+            // For backward compatibility, try to get appId from token response
+            var (newToken, appId) = await GetAgoraTokenAsync(channelName, uid);
+            if (string.IsNullOrEmpty(newToken))
+            {
+                // Fallback to default App ID
+                appId = "efa11b3a7d05409ca979fb25a5b489ae";
+            }
+            return await JoinChannelAsync(channelName, string.IsNullOrEmpty(newToken) ? token : newToken, appId, uid, true); // Default to video call
         }
 
-        public async Task<bool> JoinChannelAsync(string channelName, string token, uint uid, bool isVideoCall)
+        public async Task<bool> JoinChannelAsync(string channelName, string token, string appId, uint uid, bool isVideoCall)
         {
             try
             {
@@ -85,8 +93,8 @@ namespace SM_MentalHealthApp.Client.Services
                     throw new InvalidOperationException("Agora not initialized");
                 }
 
-                Console.WriteLine($"🎯 Joining Agora channel: {channelName} with UID: {uid}, Video: {isVideoCall}");
-                await _jsRuntime.InvokeVoidAsync("agoraJoinChannel", channelName, token, uid, isVideoCall);
+                Console.WriteLine($"🎯 Joining Agora channel: {channelName} with UID: {uid}, Video: {isVideoCall}, AppId: {appId}");
+                await _jsRuntime.InvokeVoidAsync("agoraJoinChannel", appId, channelName, token, uid, isVideoCall);
                 _isInCall = true;
                 _currentChannel = channelName;
                 _currentUid = uid;
@@ -244,10 +252,17 @@ namespace SM_MentalHealthApp.Client.Services
         //     }
         // }
 
-        public async Task<string> GetAgoraTokenAsync(string channelName, uint uid = 0)
+        public async Task<(string Token, string AppId)> GetAgoraTokenAsync(string channelName, uint uid = 0)
         {
             try
             {
+                // ✅ Validate channel name before making request
+                if (string.IsNullOrWhiteSpace(channelName))
+                {
+                    Console.WriteLine("❌ Invalid channel name: channel name is empty or null");
+                    throw new ArgumentException("Channel name cannot be empty or null", nameof(channelName));
+                }
+
                 Console.WriteLine($"🎯 Getting Agora token for channel: {channelName}");
 
                 // ✅ 1. Get user JWT token from browser storage
@@ -260,37 +275,45 @@ namespace SM_MentalHealthApp.Client.Services
 
                 Console.WriteLine($"✅ Auth token found: {authToken.Substring(0, Math.Min(20, authToken.Length))}...");
 
-                // ✅ 2. Prepare the request URL (GET)
+                // ✅ 2. Use .NET Server for token generation (same as main API)
                 var url = $"api/realtime/token?channel={Uri.EscapeDataString(channelName)}&uid={uid}";
-                Console.WriteLine($"🌐 Calling API: {_httpClient.BaseAddress}{url}");
+                Console.WriteLine($"🌐 Calling .NET Server: {_httpClient.BaseAddress}{url}");
 
-                // ✅ 3. Attach Authorization header
+                // ✅ 3. Attach Authorization header for .NET server
                 _httpClient.DefaultRequestHeaders.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
 
                 // ✅ 4. Make the GET request and parse JSON directly
                 var result = await _httpClient.GetFromJsonAsync<AgoraTokenResponse>(url);
 
-                // ✅ 5. Validate and return token
+                // ✅ 5. Validate and return token with App ID
                 if (result == null || string.IsNullOrEmpty(result.Token))
                 {
-                    Console.WriteLine("❌ Invalid or empty Agora token received from API");
-                    return string.Empty;
+                    Console.WriteLine("❌ Invalid or empty Agora token received from token server");
+                    return (string.Empty, string.Empty);
                 }
 
-                Console.WriteLine($"✅ Agora token received (cached={result.Cached}): {result.Token.Substring(0, Math.Min(20, result.Token.Length))}...");
-                return result.Token;
+                var appId = result.AgoraAppId;
+                if (string.IsNullOrEmpty(appId))
+                {
+                    // Fallback to default App ID if not in response
+                    appId = "efa11b3a7d05409ca979fb25a5b489ae";
+                    Console.WriteLine("⚠️ App ID not in response, using default");
+                }
+
+                Console.WriteLine($"✅ Agora token received from .NET server (cached={result.Cached}, appId={appId}): {result.Token.Substring(0, Math.Min(20, result.Token.Length))}...");
+                return (result.Token, appId);
             }
             catch (HttpRequestException httpEx)
             {
                 Console.WriteLine($"❌ Network error fetching Agora token: {httpEx.Message}");
-                return string.Empty;
+                return (string.Empty, string.Empty);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ Failed to get Agora token: {ex.Message}");
                 Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
-                return string.Empty;
+                return (string.Empty, string.Empty);
             }
         }
 

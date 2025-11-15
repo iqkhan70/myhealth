@@ -319,9 +319,14 @@ namespace SM_MentalHealthApp.Client.Services
                             break;
 
                         case "incoming-call":
+                            // ✅ Try to get channelName first, fallback to callId
+                            var channelName = message.TryGetProperty("channelName", out var channelNameElement)
+                                ? channelNameElement.GetString()
+                                : message.GetProperty("callId").GetString();
+
                             var callInvitation = new CallInvitation
                             {
-                                CallId = message.GetProperty("callId").GetString() ?? "",
+                                CallId = channelName ?? "", // ✅ Use channel name as CallId
                                 CallerId = message.GetProperty("callerId").GetInt32(),
                                 CallerName = message.GetProperty("callerName").GetString() ?? "",
                                 CallerRole = message.GetProperty("callerRole").GetString() ?? "",

@@ -4,6 +4,10 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- ✅ Allow mixed content (HTTP API calls from HTTPS page) for development -->
+    <!-- This is needed because client runs on HTTPS (for Agora) but server API runs on HTTP -->
+    <!-- Note: Some browsers may still show warnings, but API calls will work -->
+    <meta http-equiv="Content-Security-Policy" content="connect-src 'self' http://*:* https://*:* ws://*:* wss://*:* data: blob:;">
     <title>SM_MentalHealthApp.Client</title>
     <base href="/" />
     <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
@@ -584,6 +588,16 @@
                     throw new Error('AgoraRTC SDK is not loaded');
                 }
                 
+                // ✅ Check if we're on HTTPS or localhost (required for Agora)
+                const isSecure = window.location.protocol === 'https:' || 
+                                 window.location.hostname === 'localhost' || 
+                                 window.location.hostname === '127.0.0.1';
+                
+                if (!isSecure) {
+                    console.warn('⚠️ Agora requires HTTPS or localhost. Current protocol:', window.location.protocol);
+                    console.warn('⚠️ Some features may not work on HTTP. Please use HTTPS or localhost.');
+                }
+                
                 // Create real Agora client
                 agoraClient = AgoraRTC.createClient({ 
                     mode: "rtc", 
@@ -751,42 +765,67 @@
         //     }
         // };
 
-        window.agoraJoinChannel = async (channelName, token, uid, isVideoCall = false) => {
+        window.agoraJoinChannel = async (appId, channelName, token, uid, isVideoCall = false) => {
             try {
                 if (!agoraClient) {
                     throw new Error("Agora client not initialized");
                 }
 
-                // ✅ Fetch the real App ID and token dynamically from your .NET backend
-                console.log('🎯 Fetching Agora credentials...');
-                
-                const API_BASE_URL = "http://localhost:5262";
-
-                const tokenResponse = await fetch(`${API_BASE_URL}/api/realtime/token?channel=${channelName}&uid=${uid}`);
-
-                const rawResponse = await tokenResponse.text();
-                console.log("🔍 Raw Token API Response:", rawResponse);
-
-                const tokenData = JSON.parse(rawResponse);
-
-                if (!tokenData || !tokenData.agoraAppId || !tokenData.token) {
-                    throw new Error("Failed to retrieve valid Agora credentials from backend");
-                }
-
-                const appId = tokenData.agoraAppId;
-                const agoraToken = tokenData.token;
-
+                // ✅ Use the App ID and token passed from C# (already fetched)
                 console.log('🎯 Web App: Joining Agora channel...');
                 console.log('App ID:', appId);
+                console.log('App ID length:', appId ? appId.length : 0);
                 console.log('Channel:', channelName);
-                console.log('Token:', agoraToken);
+                console.log('Token:', token ? token.substring(0, 50) + '...' : 'null');
+                console.log('Token length:', token ? token.length : 0);
+                console.log('Token starts with:', token ? token.substring(0, 10) : 'null');
                 console.log('UID:', uid);
                 console.log('Is Video Call:', isVideoCall);
 
-                console.log('a');
+                // ✅ Validate App ID and token
+                if (!appId || appId.trim() === '') {
+                    console.error('❌ App ID is missing or empty:', appId);
+                    throw new Error("App ID is missing or empty. App ID: " + appId);
+                }
+                
+                if (!token || token.trim() === '') {
+                    console.error('❌ Token is missing or empty');
+                    throw new Error("Token is missing or empty");
+                }
 
-                // Join Agora channel with the real App ID and Token
-                await agoraClient.join(appId, channelName, agoraToken, uid);
+                // ✅ Validate token format (should start with version like "006")
+                if (!token.startsWith('006')) {
+                    console.warn('⚠️ Token format might be invalid. Expected to start with "006", got:', token.substring(0, 10));
+                }
+
+                // ✅ Extract App ID from token to verify it matches
+                // Token format: 006{appId}{encodedBody}
+                if (token.length > 9) {
+                    const tokenAppId = token.substring(3, 35); // Skip "006" (3 chars), get next 32 chars (App ID)
+                    console.log('🔍 App ID extracted from token:', tokenAppId);
+                    console.log('🔍 App ID from parameter:', appId);
+                    console.log('🔍 App IDs match:', tokenAppId === appId);
+                    
+                    if (tokenAppId !== appId) {
+                        console.error('❌ CRITICAL: App ID in token does not match App ID parameter!');
+                        console.error('   Token App ID:', tokenAppId);
+                        console.error('   Parameter App ID:', appId);
+                        throw new Error(`App ID mismatch: token contains "${tokenAppId}" but join() called with "${appId}"`);
+                    }
+                }
+
+                console.log('✅ All validations passed, joining channel...');
+                console.log('📞 Calling agoraClient.join() with:');
+                console.log('   appId:', appId);
+                console.log('   channelName:', channelName);
+                console.log('   token (first 50 chars):', token.substring(0, 50));
+                console.log('   uid:', uid);
+                
+                // Join Agora channel with the App ID and Token passed from C#
+                // Note: In Agora SDK v4, join signature is: join(appId, channel, token, uid)
+                await agoraClient.join(appId, channelName, token, uid);
+                
+                console.log('✅ Successfully joined Agora channel');
 
                 console.log('b');
 

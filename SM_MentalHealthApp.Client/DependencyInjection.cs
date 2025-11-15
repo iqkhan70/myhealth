@@ -39,11 +39,29 @@ public static class DependencyInjection
     {
         services.AddScoped(sp =>
         {
-            // Get the base address where the app is running
-            var baseUri = new Uri(builder.HostEnvironment.BaseAddress);
-            // Construct server URL using same hostname but server port (5262)
-            var serverUrl = $"{baseUri.Scheme}://{baseUri.Host}:5262/";
-            return new HttpClient { BaseAddress = new Uri(serverUrl) };
+            try
+            {
+                // Get the base address where the app is running
+                var baseUri = new Uri(builder.HostEnvironment.BaseAddress);
+                // ✅ Always use HTTP for server API (server runs on HTTP, not HTTPS)
+                // Client can run on HTTPS for Agora, but server API is always HTTP
+                var serverUrl = $"http://{baseUri.Host}:5262/";
+                Console.WriteLine($"🌐 HttpClient BaseAddress configured: {serverUrl}");
+                var httpClient = new HttpClient { BaseAddress = new Uri(serverUrl) };
+                
+                // ✅ Set timeout to prevent hanging
+                httpClient.Timeout = TimeSpan.FromSeconds(30);
+                
+                return httpClient;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error configuring HttpClient: {ex.Message}");
+                // Fallback to localhost if host extraction fails
+                var fallbackClient = new HttpClient { BaseAddress = new Uri("http://localhost:5262/") };
+                fallbackClient.Timeout = TimeSpan.FromSeconds(30);
+                return fallbackClient;
+            }
         });
 
         return services;

@@ -68,11 +68,26 @@ namespace SM_MentalHealthApp.Client.Services
         {
             try
             {
+                var apiUrl = $"{_httpClient.BaseAddress}api/auth/login";
+                Console.WriteLine($"🔐 Login: Calling API at {apiUrl}");
+                Console.WriteLine($"🔐 Login: BaseAddress is {_httpClient.BaseAddress}");
+                
                 var response = await _httpClient.PostAsJsonAsync("api/auth/login", request);
+                
+                Console.WriteLine($"🔐 Login: Response status: {response.StatusCode}");
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"❌ Login: Error response: {errorContent}");
+                    return new LoginResponse { Success = false, Message = $"Login failed: {response.StatusCode} - {errorContent}" };
+                }
+                
                 var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
 
                 if (result?.Success == true)
                 {
+                    Console.WriteLine($"✅ Login: Success! User: {result.User?.Email}");
                     _token = result.Token;
                     _currentUser = new AuthUser
                     {
@@ -91,11 +106,30 @@ namespace SM_MentalHealthApp.Client.Services
                     await SaveTokenToStorageAsync(_token);
                     OnAuthenticationStateChanged?.Invoke();
                 }
+                else
+                {
+                    Console.WriteLine($"❌ Login: Failed - {result?.Message}");
+                }
 
                 return result ?? new LoginResponse { Success = false, Message = "Login failed" };
             }
+            catch (HttpRequestException httpEx)
+            {
+                Console.WriteLine($"❌ Login: HTTP Exception - {httpEx.Message}");
+                Console.WriteLine($"❌ Login: Inner exception - {httpEx.InnerException?.Message}");
+                return new LoginResponse { Success = false, Message = $"Cannot connect to server. Please check if the server is running at {_httpClient.BaseAddress}" };
+            }
+            catch (TaskCanceledException timeoutEx)
+            {
+                Console.WriteLine($"❌ Login: Timeout - {timeoutEx.Message}");
+                return new LoginResponse { Success = false, Message = "Login request timed out. Please check your network connection." };
+            }
             catch (Exception ex)
             {
+                Console.WriteLine($"❌ Login: Exception - {ex.Message}");
+                Console.WriteLine($"❌ Login: Exception type - {ex.GetType().Name}");
+                Console.WriteLine($"❌ Login: Stack trace - {ex.StackTrace}");
+                // ✅ Don't let exceptions crash the runtime - return error response instead
                 return new LoginResponse { Success = false, Message = $"Login failed: {ex.Message}" };
             }
         }
