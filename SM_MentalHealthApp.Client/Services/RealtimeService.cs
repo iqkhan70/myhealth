@@ -306,6 +306,24 @@ namespace SM_MentalHealthApp.Client.Services
                     switch (messageType)
                     {
                         case "new-message":
+                            var timestampStr = message.GetProperty("timestamp").GetString() ?? "";
+                            // ✅ Parse timestamp with UTC awareness
+                            DateTime timestamp;
+                            if (DateTime.TryParse(timestampStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+                            {
+                                // If parsed as Unspecified, assume it's UTC
+                                timestamp = parsed.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(parsed, DateTimeKind.Utc) : parsed;
+                                if (timestamp.Kind == DateTimeKind.Local)
+                                {
+                                    timestamp = timestamp.ToUniversalTime();
+                                }
+                            }
+                            else
+                            {
+                                timestamp = DateTime.UtcNow;
+                                _logger.LogWarning("Failed to parse timestamp: {TimestampStr}, using UtcNow", timestampStr);
+                            }
+
                             var chatMessage = new ChatMessage
                             {
                                 Id = message.GetProperty("id").GetString() ?? "",
@@ -313,7 +331,7 @@ namespace SM_MentalHealthApp.Client.Services
                                 TargetUserId = message.GetProperty("targetUserId").GetInt32(),
                                 Message = message.GetProperty("message").GetString() ?? "",
                                 SenderName = message.GetProperty("senderName").GetString() ?? "",
-                                Timestamp = DateTime.Parse(message.GetProperty("timestamp").GetString() ?? DateTime.UtcNow.ToString())
+                                Timestamp = timestamp
                             };
                             OnNewMessage?.Invoke(chatMessage);
                             break;

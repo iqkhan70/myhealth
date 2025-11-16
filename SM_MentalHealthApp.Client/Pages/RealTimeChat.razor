@@ -237,7 +237,7 @@
                             <div class="message @(message.SenderId == AuthService.CurrentUser?.Id ? "sent" : "received")">
                                 <div class="message-content">
                                     <div class="message-text">@message.Message</div>
-                                    <div class="message-time">@message.Timestamp.ToString("HH:mm")</div>
+                                    <div class="message-time" title="@message.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff UTC")">@message.Timestamp.ToString("HH:mm")</div>
                                 </div>
                             </div>
                         }
@@ -980,7 +980,7 @@
 @code {
     private List<User> users = new();
     private User? selectedUser;
-    private List<ChatMsg> messages = new();
+    private List<ChatMsg> _messages = new();
     private string newMessage = string.Empty;
     private bool isLoadingUsers = false;
     private bool isLoadingHistory = false;
@@ -993,6 +993,36 @@
     private ActiveCall? activeCall = null;
     private int lastMessageCount = 0;
     private DateTime lastScrollTime = DateTime.MinValue;
+    
+    // ✅ Helper method to ensure messages are always sorted
+    private void SortMessages()
+    {
+        // ✅ Sort by full DateTime (including date and time) - ascending (oldest first, newest last)
+        _messages = _messages.OrderBy(m => m.Timestamp.Ticks) // Use Ticks for precise ordering
+                           .ThenBy(m => m.Id)
+                           .ToList();
+        
+        // ✅ Debug: Log first and last message timestamps
+        if (_messages.Count > 0)
+        {
+            var first = _messages.First();
+            var last = _messages.Last();
+            Console.WriteLine($"🔄 Sorted {_messages.Count} messages. First: {first.Timestamp:yyyy-MM-dd HH:mm:ss.fff} ({first.Message}), Last: {last.Timestamp:yyyy-MM-dd HH:mm:ss.fff} ({last.Message})");
+        }
+    }
+    
+    // ✅ Computed property that always returns messages sorted by timestamp (most recent at bottom)
+    private List<ChatMsg> messages
+    {
+        get
+        {
+            // Always sort by timestamp Ticks (ascending - oldest first, newest last)
+            // Use ThenBy with Id as secondary sort for consistent ordering when timestamps are identical
+            return _messages.OrderBy(m => m.Timestamp.Ticks)
+                           .ThenBy(m => m.Id)
+                           .ToList();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -1016,10 +1046,11 @@
             StartAutoRefresh();
         }
 
-        if (messages.Count > lastMessageCount && !isAutoRefreshing &&
+        // ✅ Use _messages.Count for comparison (computed property might have different count due to sorting)
+        if (_messages.Count > lastMessageCount && !isAutoRefreshing &&
         (DateTime.Now - lastScrollTime).TotalMilliseconds > 500)
         {
-            lastMessageCount = messages.Count;
+            lastMessageCount = _messages.Count;
             lastScrollTime = DateTime.Now;
             await Task.Delay(100);
             await ScrollToBottom();
@@ -1070,16 +1101,49 @@
                 var json = await response.Content.ReadFromJsonAsync<JsonElement>();
                 if (json.TryGetProperty("messages", out var msgs))
                 {
-                    messages = msgs.EnumerateArray().Select(m => new ChatMsg
+                    // ✅ Load messages and store in _messages
+                    _messages = msgs.EnumerateArray().Select(m =>
                     {
-                        Id = m.GetProperty("id").GetInt32().ToString(),
-                        SenderId = m.GetProperty("senderId").GetInt32(),
-                        TargetUserId = m.GetProperty("receiverId").GetInt32(),
-                        Message = m.GetProperty("message").GetString() ?? "",
-                        SenderName = m.GetProperty("senderName").GetString() ?? "",
-                        Timestamp = DateTime.TryParse(m.GetProperty("timestamp").GetString(), out var t)
-                    ? t : DateTime.UtcNow
-                    }).OrderBy(x => x.Timestamp).ToList();
+                        var timestampStr = m.GetProperty("timestamp").GetString() ?? "";
+                        // ✅ Parse timestamp - try UTC first, then local, then fallback to UtcNow
+                        DateTime timestamp;
+                        if (DateTime.TryParse(timestampStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+                        {
+                            // If parsed as Unspecified, assume it's UTC
+                            timestamp = parsed.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(parsed, DateTimeKind.Utc) : parsed;
+                            if (timestamp.Kind == DateTimeKind.Local)
+                            {
+                                timestamp = timestamp.ToUniversalTime();
+                            }
+                        }
+                        else
+                        {
+                            timestamp = DateTime.UtcNow;
+                            Console.WriteLine($"⚠️ Failed to parse timestamp: {timestampStr}, using UtcNow");
+                        }
+                        
+                        return new ChatMsg
+                        {
+                            Id = m.GetProperty("id").GetInt32().ToString(),
+                            SenderId = m.GetProperty("senderId").GetInt32(),
+                            TargetUserId = m.GetProperty("receiverId").GetInt32(),
+                            Message = m.GetProperty("message").GetString() ?? "",
+                            SenderName = m.GetProperty("senderName").GetString() ?? "",
+                            Timestamp = timestamp
+                        };
+                    }).ToList();
+                    
+                    // ✅ Log all timestamps before sorting for debugging
+                    Console.WriteLine($"📨 Loaded {_messages.Count} messages. Timestamps:");
+                    foreach (var msg in _messages)
+                    {
+                        Console.WriteLine($"   [{msg.Timestamp:yyyy-MM-dd HH:mm:ss.fff} UTC] {msg.Message}");
+                    }
+                    
+                    // ✅ Sort immediately after loading
+                    SortMessages();
+                    
+                    Console.WriteLine($"📨 After sorting. First: {messages.FirstOrDefault()?.Timestamp:yyyy-MM-dd HH:mm:ss.fff}, Last: {messages.LastOrDefault()?.Timestamp:yyyy-MM-dd HH:mm:ss.fff}");
                 }
             }
         }
@@ -1098,7 +1162,7 @@
     private async Task SelectUser(User user)
     {
         selectedUser = user;
-        messages.Clear();
+        _messages.Clear();
         isHistoryLoaded = false;
         lastMessageCount = 0;
 
@@ -1115,21 +1179,28 @@
         if (string.IsNullOrWhiteSpace(newMessage) || selectedUser == null || !RealtimeService.IsConnected)
             return;
 
-        await RealtimeService.SendMessageAsync(selectedUser.Id, newMessage);
+        var messageText = newMessage;
+        await RealtimeService.SendMessageAsync(selectedUser.Id, messageText);
 
-        messages.Add(new ChatMsg
+        // ✅ Add message with precise timestamp (including milliseconds)
+        // This is a temporary local message that will be replaced by the server message when received
+        var localMessageId = $"local_{Guid.NewGuid()}";
+        var newMsg = new ChatMsg
         {
-            Id = $"local_{Guid.NewGuid()}",
+            Id = localMessageId,
             SenderId = AuthService.CurrentUser?.Id ?? 0,
             TargetUserId = selectedUser.Id,
-            Message = newMessage,
+            Message = messageText,
             SenderName = $"{AuthService.CurrentUser?.FirstName} {AuthService.CurrentUser?.LastName}",
-            Timestamp = DateTime.UtcNow
-        });
-
-        messages = messages.OrderBy(m => m.Timestamp).ToList();
+            Timestamp = DateTime.UtcNow // This includes milliseconds
+        };
+        
+        _messages.Add(newMsg);
+        SortMessages(); // ✅ Sort immediately after adding
+        Console.WriteLine($"📤 Sent message at {newMsg.Timestamp:HH:mm:ss.fff} - Total messages: {_messages.Count}");
+        
         newMessage = string.Empty;
-        lastMessageCount = messages.Count;
+        lastMessageCount = _messages.Count;
         StateHasChanged();
         await Task.Delay(100);
         await ScrollToBottom();
@@ -1151,11 +1222,65 @@
         if ((message.SenderId == selectedUser.Id && message.TargetUserId == AuthService.CurrentUser?.Id) ||
         (message.SenderId == AuthService.CurrentUser?.Id && message.TargetUserId == selectedUser.Id))
         {
-            if (!messages.Any(m => m.Id == message.Id))
-                messages.Add(message);
+            // ✅ Check if this is a server response for a local message we just sent
+            // Match by content, sender, and target (within 5 seconds) to replace local message with server message
+            var isLocalMessage = message.SenderId == AuthService.CurrentUser?.Id;
+            if (isLocalMessage)
+            {
+                var localMessage = _messages.FirstOrDefault(m => 
+                    m.Id.StartsWith("local_") &&
+                    m.Message == message.Message &&
+                    m.SenderId == message.SenderId &&
+                    m.TargetUserId == message.TargetUserId &&
+                    Math.Abs((m.Timestamp - message.Timestamp).TotalSeconds) < 5
+                );
+                
+                if (localMessage != null)
+                {
+                    // ✅ Replace local message with server message (has correct timestamp and ID)
+                    var index = _messages.IndexOf(localMessage);
+                    _messages[index] = message;
+                    Console.WriteLine($"🔄 Replaced local message with server message: {message.Message} (ID: {message.Id}) at {message.Timestamp:HH:mm:ss.fff}");
+                }
+                else if (!_messages.Any(m => m.Id == message.Id))
+                {
+                    // ✅ Server message but no matching local message - add it
+                    _messages.Add(message);
+                    Console.WriteLine($"📥 Received server message at {message.Timestamp:HH:mm:ss.fff}");
+                }
+                else
+                {
+                    Console.WriteLine($"⚠️ Duplicate server message ignored: {message.Id} at {message.Timestamp:HH:mm:ss.fff}");
+                }
+            }
+            else
+            {
+                // ✅ Message from other user - check if already exists
+                if (!_messages.Any(m => m.Id == message.Id))
+                {
+                    _messages.Add(message);
+                    Console.WriteLine($"📥 Received message from {message.SenderName} at {message.Timestamp:HH:mm:ss.fff}");
+                }
+                else
+                {
+                    Console.WriteLine($"⚠️ Duplicate message ignored: {message.Id} at {message.Timestamp:HH:mm:ss.fff}");
+                }
+            }
 
-            messages = messages.OrderBy(m => m.Timestamp).ToList();
-            await InvokeAsync(StateHasChanged);
+            // ✅ Always sort after any modification
+            SortMessages();
+            
+            // ✅ Force UI update
+            await InvokeAsync(() =>
+            {
+                StateHasChanged();
+                // Scroll to bottom after a short delay to ensure DOM is updated
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(50);
+                    await InvokeAsync(ScrollToBottom);
+                });
+            });
         }
     }
 
