@@ -1290,7 +1290,7 @@
         }
     }
 
-    private void HandleIncomingCall(CallInvitation call)
+    private async void HandleIncomingCall(CallInvitation call)
     {
         incomingCall = new IncomingCall
         {
@@ -1300,6 +1300,18 @@
             CallId = call.CallId,
             CallTime = call.Timestamp
         };
+        
+        // ✅ Play incoming call ringtone
+        try
+        {
+            await JS.InvokeVoidAsync("playIncomingCallSound");
+            Console.WriteLine("🔔 RealTimeChat: Started playing incoming call ringtone");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ RealTimeChat: Error playing ringtone: {ex.Message}");
+        }
+        
         StateHasChanged();
     }
 
@@ -1343,6 +1355,17 @@
 
         try
         {
+            // ✅ Stop the ringtone
+            try
+            {
+                await JS.InvokeVoidAsync("stopIncomingCallSound");
+                Console.WriteLine("🔕 RealTimeChat: Stopped ringtone (call accepted)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ RealTimeChat: Error stopping ringtone: {ex.Message}");
+            }
+            
             // ✅ Get channel name from CallId
             var channelName = incomingCall.CallId ?? "";
             
@@ -1394,9 +1417,31 @@
         }
     }
 
-    private void RejectCall()
+    private async Task RejectCall()
     {
         if (incomingCall == null) return;
+        
+        // ✅ Stop the ringtone
+        try
+        {
+            await JS.InvokeVoidAsync("stopIncomingCallSound");
+            Console.WriteLine("🔕 RealTimeChat: Stopped ringtone (call rejected)");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ RealTimeChat: Error stopping ringtone: {ex.Message}");
+        }
+        
+        // ✅ Notify the caller that call was rejected
+        try
+        {
+            await RealtimeService.RejectCallAsync(incomingCall.CallId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ RealTimeChat: Error rejecting call via SignalR: {ex.Message}");
+        }
+        
         NotificationService.Notify(NotificationSeverity.Warning, "Call Declined",
         $"Declined {incomingCall.CallType} call from {incomingCall.CallerName}");
         incomingCall = null;

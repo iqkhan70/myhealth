@@ -229,8 +229,29 @@
     {
         if (IncomingCall != null)
         {
-            // Play incoming call sound
-            await JS.InvokeVoidAsync("playIncomingCallSound");
+            // ✅ Play incoming call sound
+            try
+            {
+                await JS.InvokeVoidAsync("playIncomingCallSound");
+                Console.WriteLine("🔔 IncomingCallModal: Started playing ringtone");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ IncomingCallModal: Error playing ringtone: {ex.Message}");
+            }
+        }
+        else
+        {
+            // ✅ Stop ringtone if call is cleared
+            try
+            {
+                await JS.InvokeVoidAsync("stopIncomingCallSound");
+                Console.WriteLine("🔕 IncomingCallModal: Stopped ringtone (call cleared)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone: {ex.Message}");
+            }
         }
     }
 
@@ -244,6 +265,17 @@
 
         try
         {
+            // ✅ Stop the ringtone
+            try
+            {
+                await JS.InvokeVoidAsync("stopIncomingCallSound");
+                Console.WriteLine("🔕 IncomingCallModal: Stopped ringtone (call accepted)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone: {ex.Message}");
+            }
+            
             if (SignalRService == null)
             {
                 Console.WriteLine("SignalRService is null in AcceptCall");
@@ -290,6 +322,17 @@
 
         try
         {
+            // ✅ Stop the ringtone
+            try
+            {
+                await JS.InvokeVoidAsync("stopIncomingCallSound");
+                Console.WriteLine("🔕 IncomingCallModal: Stopped ringtone (call declined)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone: {ex.Message}");
+            }
+            
             if (SignalRService == null)
             {
                 Console.WriteLine("SignalRService is null in DeclineCall");
