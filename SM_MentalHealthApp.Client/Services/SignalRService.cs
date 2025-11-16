@@ -124,6 +124,18 @@ namespace SM_MentalHealthApp.Client.Services
 
                     Console.WriteLine($"📞 SignalR: Extracted channelName: {channelName}");
 
+                    // ✅ Extract callerName directly from JSON FIRST (before deserialization)
+                    string? extractedCallerName = null;
+                    if (root.TryGetProperty("callerName", out var callerNameElement))
+                    {
+                        extractedCallerName = callerNameElement.GetString();
+                        Console.WriteLine($"📞 SignalR: Extracted callerName from JSON: '{extractedCallerName}'");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"⚠️ SignalR: No 'callerName' property found in JSON");
+                    }
+
                     var call = JsonSerializer.Deserialize<CallInvitation>(json, new JsonSerializerOptions
                     {
                         PropertyNameCaseInsensitive = true
@@ -135,8 +147,27 @@ namespace SM_MentalHealthApp.Client.Services
                         var finalChannelName = !string.IsNullOrWhiteSpace(channelName) ? channelName : call.CallId;
                         call.CallId = finalChannelName ?? "";
 
+                        // ✅ ALWAYS use extracted callerName if available (more reliable than deserialization)
+                        if (!string.IsNullOrWhiteSpace(extractedCallerName) && extractedCallerName != "Mobile User")
+                        {
+                            call.CallerName = extractedCallerName;
+                            Console.WriteLine($"✅ SignalR: Using extracted CallerName: '{call.CallerName}'");
+                        }
+                        else if (string.IsNullOrWhiteSpace(call.CallerName) || call.CallerName == "Mobile User")
+                        {
+                            Console.WriteLine($"⚠️ SignalR: CallerName is empty or 'Mobile User'. Deserialized value: '{call.CallerName}'");
+                            Console.WriteLine($"⚠️ SignalR: Extracted value: '{extractedCallerName}'");
+                            // Try to use extracted value even if it's "Mobile User" as last resort
+                            if (!string.IsNullOrWhiteSpace(extractedCallerName))
+                            {
+                                call.CallerName = extractedCallerName;
+                            }
+                        }
+
+                        // ✅ Log all properties to debug caller name issue
                         Console.WriteLine($"📞 SignalR: Final CallId (channel): {call.CallId}");
-                        Console.WriteLine($"📞 SignalR: CallerId: {call.CallerId}, CallerName: {call.CallerName}, CallType: {call.CallType}");
+                        Console.WriteLine($"📞 SignalR: CallerId: {call.CallerId}, CallerName: '{call.CallerName}', CallType: {call.CallType}");
+                        Console.WriteLine($"📞 SignalR: CallerRole: '{call.CallerRole}'");
 
                         if (string.IsNullOrWhiteSpace(call.CallId))
                         {

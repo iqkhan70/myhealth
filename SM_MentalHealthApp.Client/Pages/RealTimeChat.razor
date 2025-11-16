@@ -993,6 +993,8 @@
     private ActiveCall? activeCall = null;
     private int lastMessageCount = 0;
     private DateTime lastScrollTime = DateTime.MinValue;
+    private System.Threading.Timer? _callTimeoutTimer;
+    private const int CALL_TIMEOUT_SECONDS = 15;
     
     // ✅ Helper method to ensure messages are always sorted
     private void SortMessages()
@@ -1417,6 +1419,8 @@
 
     private async void HandleIncomingCall(CallInvitation call)
     {
+        Console.WriteLine($"📞 RealTimeChat: HandleIncomingCall - CallerName: '{call.CallerName}', CallId: '{call.CallId}'");
+        
         incomingCall = new IncomingCall
         {
             CallerName = call.CallerName,
@@ -1437,7 +1441,77 @@
             Console.WriteLine($"⚠️ RealTimeChat: Error playing ringtone: {ex.Message}");
         }
         
-        StateHasChanged();
+        // ✅ Start timeout timer - close dialog after 15 seconds if not answered
+        StartCallTimeoutTimer();
+        
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void StartCallTimeoutTimer()
+    {
+        StopCallTimeoutTimer(); // Clear any existing timer
+        
+        _callTimeoutTimer = new System.Threading.Timer(_ =>
+        {
+            Console.WriteLine($"⏰ RealTimeChat: Call timeout ({CALL_TIMEOUT_SECONDS}s) - auto-closing dialog");
+            
+            Task.Run(async () =>
+            {
+                try
+                {
+                    // Stop ringtone
+                    try
+                    {
+                        await JS.InvokeVoidAsync("stopIncomingCallSound");
+                        Console.WriteLine("🔕 RealTimeChat: Stopped ringtone (timeout)");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️ RealTimeChat: Error stopping ringtone: {ex.Message}");
+                    }
+                    
+                    // ✅ Try to reject the call (notify caller), but don't fail if call session is gone
+                    if (incomingCall != null)
+                    {
+                        Console.WriteLine($"⏰ RealTimeChat: Attempting to reject call due to timeout");
+                        try
+                        {
+                            await SignalRService.RejectCallAsync(incomingCall.CallId);
+                            Console.WriteLine($"✅ RealTimeChat: Rejection sent");
+                        }
+                        catch (Exception rejectEx)
+                        {
+                            Console.WriteLine($"⚠️ RealTimeChat: Error sending rejection (call may already be ended): {rejectEx.Message}");
+                            // Continue to close dialog even if rejection fails
+                        }
+                    }
+                    
+                    // ✅ ALWAYS close the dialog, regardless of rejection success
+                    await InvokeAsync(() =>
+                    {
+                        Console.WriteLine($"✅ RealTimeChat: Closing dialog due to timeout");
+                        incomingCall = null;
+                        StateHasChanged();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ RealTimeChat: Error in timeout handler: {ex.Message}");
+                }
+            });
+        }, null, TimeSpan.FromSeconds(CALL_TIMEOUT_SECONDS), Timeout.InfiniteTimeSpan);
+        
+        Console.WriteLine($"⏰ RealTimeChat: Started call timeout timer ({CALL_TIMEOUT_SECONDS}s)");
+    }
+
+    private void StopCallTimeoutTimer()
+    {
+        if (_callTimeoutTimer != null)
+        {
+            _callTimeoutTimer.Dispose();
+            _callTimeoutTimer = null;
+            Console.WriteLine($"⏰ RealTimeChat: Stopped call timeout timer");
+        }
     }
 
     private void StartAutoRefresh()
@@ -1477,6 +1551,9 @@
     private async Task AcceptCall()
     {
         if (incomingCall == null) return;
+
+        // ✅ Stop timeout timer since call was accepted
+        StopCallTimeoutTimer();
 
         try
         {
@@ -1545,6 +1622,9 @@
     private async Task RejectCall()
     {
         if (incomingCall == null) return;
+        
+        // ✅ Stop timeout timer since call was rejected
+        StopCallTimeoutTimer();
         
         var callId = incomingCall.CallId;
         var callType = incomingCall.CallType;
@@ -1678,6 +1758,7 @@
         RealtimeService.OnNewMessage -= HandleNewMessage;
         RealtimeService.OnIncomingCall -= HandleIncomingCall;
         autoRefreshTimer?.Dispose();
+        StopCallTimeoutTimer();
     }
 
     public class IncomingCall

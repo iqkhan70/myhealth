@@ -342,15 +342,26 @@ namespace SM_MentalHealthApp.Client.Services
                                 ? channelNameElement.GetString()
                                 : message.GetProperty("callId").GetString();
 
+                            // ✅ Extract callerName directly from JSON (more reliable)
+                            var extractedCallerName = message.TryGetProperty("callerName", out var callerNameElement)
+                                ? callerNameElement.GetString()
+                                : null;
+
+                            Console.WriteLine($"📞 RealtimeService: Extracted callerName from JSON: '{extractedCallerName}'");
+
                             var callInvitation = new CallInvitation
                             {
                                 CallId = channelName ?? "", // ✅ Use channel name as CallId
                                 CallerId = message.GetProperty("callerId").GetInt32(),
-                                CallerName = message.GetProperty("callerName").GetString() ?? "",
+                                CallerName = extractedCallerName ?? "", // ✅ Use extracted name
                                 CallerRole = message.GetProperty("callerRole").GetString() ?? "",
                                 CallType = message.GetProperty("callType").GetString() ?? "",
                                 Timestamp = DateTime.Parse(message.GetProperty("timestamp").GetString() ?? DateTime.UtcNow.ToString())
                             };
+
+                            // ✅ Log to debug caller name
+                            Console.WriteLine($"📞 RealtimeService: CallInvitation created - CallerName: '{callInvitation.CallerName}', CallId: '{callInvitation.CallId}'");
+
                             OnIncomingCall?.Invoke(callInvitation);
                             break;
 

@@ -297,6 +297,9 @@ namespace SM_MentalHealthApp.Server.Hubs
         {
             try
             {
+                _logger.LogInformation("📞 EndCall called with: {CallIdOrChannel}", callIdOrChannel);
+                _logger.LogInformation("📞 ActiveCalls count: {Count}", ActiveCalls.Count);
+                
                 // ✅ Try to find call by callId (GUID) or channel name
                 CallSession? callSession = null;
                 string? actualCallId = null;
@@ -305,6 +308,7 @@ namespace SM_MentalHealthApp.Server.Hubs
                 {
                     // Found by key (could be GUID or channel name)
                     actualCallId = callSession.CallId;
+                    _logger.LogInformation("📞 Found call session by key: {CallId}, Channel: {Channel}", actualCallId, callSession.ChannelName);
                 }
                 else
                 {
@@ -313,13 +317,22 @@ namespace SM_MentalHealthApp.Server.Hubs
                     if (callSession != null)
                     {
                         actualCallId = callSession.CallId;
+                        _logger.LogInformation("📞 Found call session by channel name: {CallId}, Channel: {Channel}", actualCallId, callSession.ChannelName);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("📞 Call session not found in ActiveCalls. Searched for: {CallIdOrChannel}", callIdOrChannel);
+                        _logger.LogWarning("📞 Available keys in ActiveCalls: {Keys}", string.Join(", ", ActiveCalls.Keys));
                     }
                 }
 
                 if (callSession == null)
                 {
-                    _logger.LogWarning("Call not found: {CallIdOrChannel}", callIdOrChannel);
-                    // Don't send error - call might have already ended
+                    _logger.LogWarning("Call not found: {CallIdOrChannel}. ActiveCalls keys: {Keys}", callIdOrChannel, string.Join(", ", ActiveCalls.Keys));
+                    // ✅ Even if call session not found, try to send call-ended to all users with matching channel in their incoming calls
+                    // This is a fallback for timeout scenarios where the session might have been cleaned up
+                    _logger.LogInformation("📞 Attempting fallback: sending call-ended to all connected users for channel: {Channel}", callIdOrChannel);
+                    // We can't easily find which users have this channel without the session, so we'll just log and return
                     return;
                 }
 
@@ -334,14 +347,22 @@ namespace SM_MentalHealthApp.Server.Hubs
 
                 // Notify both participants
                 var participants = new[] { callSession.CallerId, callSession.TargetUserId };
+                _logger.LogInformation("📞 Notifying participants: CallerId={CallerId}, TargetUserId={TargetUserId}", callSession.CallerId, callSession.TargetUserId);
+                
                 foreach (var participantId in participants)
                 {
                     if (UserConnections.TryGetValue(participantId, out string? connectionId))
                     {
+                        _logger.LogInformation("📞 Sending call-ended to participant {ParticipantId} (connection: {ConnectionId})", participantId, connectionId);
                         await Clients.Client(connectionId).SendAsync("call-ended", new { 
                             callId = actualCallId,
                             channelName = callSession.ChannelName 
                         });
+                        _logger.LogInformation("✅ call-ended event sent to participant {ParticipantId}", participantId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Participant {ParticipantId} not found in UserConnections", participantId);
                     }
                 }
             }

@@ -1,4 +1,5 @@
 @using SM_MentalHealthApp.Client.Services
+@implements IDisposable
 @inject ISignalRService SignalRService
 @inject NotificationService NotificationService
 @inject IJSRuntime JS
@@ -227,10 +228,15 @@
     [Parameter] public EventCallback<CallInvitation> OnCallAccepted { get; set; }
     [Parameter] public EventCallback<CallInvitation> OnCallDeclined { get; set; }
 
+    private System.Threading.Timer? _timeoutTimer;
+    private const int TIMEOUT_SECONDS = 15;
+
     protected override async Task OnParametersSetAsync()
     {
         if (IncomingCall != null)
         {
+            Console.WriteLine($"📞 IncomingCallModal: Call received - CallerName: '{IncomingCall.CallerName}', CallId: '{IncomingCall.CallId}'");
+            
             // ✅ Play incoming call sound
             try
             {
@@ -241,6 +247,9 @@
             {
                 Console.WriteLine($"⚠️ IncomingCallModal: Error playing ringtone: {ex.Message}");
             }
+            
+            // ✅ Start timeout timer - close dialog after 15 seconds if not answered
+            StartTimeoutTimer();
         }
         else
         {
@@ -254,7 +263,94 @@
             {
                 Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone: {ex.Message}");
             }
+            
+            // ✅ Stop timeout timer
+            StopTimeoutTimer();
         }
+    }
+
+    private void StartTimeoutTimer()
+    {
+        StopTimeoutTimer(); // Clear any existing timer
+        
+        _timeoutTimer = new System.Threading.Timer(_ =>
+        {
+            Console.WriteLine($"⏰ IncomingCallModal: Timeout ({TIMEOUT_SECONDS}s) - auto-closing dialog");
+            
+            // ✅ Use Task.Run to handle async operations in timer callback
+            Task.Run(async () =>
+            {
+                try
+                {
+                    // Stop ringtone
+                    try
+                    {
+                        await JS.InvokeVoidAsync("stopIncomingCallSound");
+                        Console.WriteLine("🔕 IncomingCallModal: Stopped ringtone (timeout)");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone: {ex.Message}");
+                    }
+                    
+                    // ✅ Try to decline the call (notify caller), but don't fail if call session is gone
+                    if (IncomingCall != null)
+                    {
+                        Console.WriteLine($"⏰ IncomingCallModal: Attempting to decline call due to timeout");
+                        try
+                        {
+                            if (SignalRService != null)
+                            {
+                                await SignalRService.RejectCallAsync(IncomingCall.CallId);
+                                Console.WriteLine($"✅ IncomingCallModal: Rejection sent");
+                            }
+                        }
+                        catch (Exception rejectEx)
+                        {
+                            Console.WriteLine($"⚠️ IncomingCallModal: Error sending rejection (call may already be ended): {rejectEx.Message}");
+                            // Continue to close dialog even if rejection fails
+                        }
+                    }
+                    
+                    // ✅ ALWAYS close the dialog and clear the incoming call, regardless of rejection success
+                    if (IncomingCall != null)
+                    {
+                        var callToDecline = IncomingCall; // Capture for async operation
+                        await InvokeAsync(async () =>
+                        {
+                            Console.WriteLine($"✅ IncomingCallModal: Closing dialog due to timeout");
+                            if (OnCallDeclined.HasDelegate)
+                            {
+                                // Fire the event to notify parent to clear the call
+                                await OnCallDeclined.InvokeAsync(callToDecline);
+                                Console.WriteLine($"✅ IncomingCallModal: OnCallDeclined event fired");
+                            }
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ IncomingCallModal: Error in timeout handler: {ex.Message}");
+                }
+            });
+        }, null, TimeSpan.FromSeconds(TIMEOUT_SECONDS), Timeout.InfiniteTimeSpan);
+        
+        Console.WriteLine($"⏰ IncomingCallModal: Started timeout timer ({TIMEOUT_SECONDS}s)");
+    }
+
+    private void StopTimeoutTimer()
+    {
+        if (_timeoutTimer != null)
+        {
+            _timeoutTimer.Dispose();
+            _timeoutTimer = null;
+            Console.WriteLine($"⏰ IncomingCallModal: Stopped timeout timer");
+        }
+    }
+
+    public void Dispose()
+    {
+        StopTimeoutTimer();
     }
 
     private async Task AcceptCall()
@@ -264,6 +360,9 @@
             Console.WriteLine("IncomingCall is null in AcceptCall");
             return;
         }
+
+        // ✅ Stop timeout timer since call was accepted
+        StopTimeoutTimer();
 
         try
         {
@@ -322,12 +421,15 @@
             return;
         }
 
+        // ✅ Stop timeout timer since call was declined
+        StopTimeoutTimer();
+
         var callId = IncomingCall.CallId;
         var callType = IncomingCall.CallType;
         var callerName = IncomingCall.CallerName;
 
         Console.WriteLine($"📞 ========== IncomingCallModal: DeclineCall called ==========");
-        Console.WriteLine($"📞 IncomingCallModal: CallId: {callId}, CallType: {callType}, CallerName: {callerName}");
+        Console.WriteLine($"📞 IncomingCallModal: CallId: {callId}, CallType: {callType}, CallerName: '{callerName}'");
 
         try
         {

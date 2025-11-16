@@ -132,6 +132,9 @@ else
             Console.WriteLine($"📞 MainLayout: Matching check - callIdMatch: {callIdMatch}");
             Console.WriteLine($"📞 MainLayout:   incomingCall.CallId: '{incomingCall.CallId}'");
             Console.WriteLine($"📞 MainLayout:   callIdOrChannel: '{callIdOrChannel}'");
+            Console.WriteLine($"📞 MainLayout:   Direct equals (case-insensitive): {incomingCall.CallId.Equals(callIdOrChannel, StringComparison.OrdinalIgnoreCase)}");
+            Console.WriteLine($"📞 MainLayout:   Contains check 1: {callIdOrChannel.Contains(incomingCall.CallId, StringComparison.OrdinalIgnoreCase)}");
+            Console.WriteLine($"📞 MainLayout:   Contains check 2: {incomingCall.CallId.Contains(callIdOrChannel, StringComparison.OrdinalIgnoreCase)}");
             
             if (callIdMatch)
             {
@@ -155,6 +158,17 @@ else
             else
             {
                 Console.WriteLine($"⚠️ MainLayout: Call ID mismatch - not closing dialog. Incoming: '{incomingCall.CallId}', Received: '{callIdOrChannel}'");
+                // ✅ FALLBACK: If there's an incoming call and we get a call-ended event, close it anyway
+                // This handles cases where the channel name might be slightly different
+                Console.WriteLine($"📞 MainLayout: FALLBACK - Closing dialog anyway since we have an incoming call");
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+                }
+                catch { }
+                incomingCall = null;
+                await InvokeAsync(StateHasChanged);
+                Console.WriteLine($"✅ MainLayout: Dialog closed via fallback");
             }
         }
         else
@@ -224,8 +238,22 @@ else
 
     private async Task HandleCallDeclined(CallInvitation call)
     {
+        Console.WriteLine($"📞 MainLayout: HandleCallDeclined called for call: {call.CallId}");
+        
+        // ✅ Stop ringtone when call is declined
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+            Console.WriteLine("🔕 MainLayout: Stopped ringtone (call declined)");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ MainLayout: Error stopping ringtone: {ex.Message}");
+        }
+        
         incomingCall = null;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
+        Console.WriteLine($"✅ MainLayout: Dialog cleared after decline");
     }
 
     private void ShowAbout()
