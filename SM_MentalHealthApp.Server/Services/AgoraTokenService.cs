@@ -3,16 +3,32 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Configuration;
 
 namespace SM_MentalHealthApp.Server.Services
 {
     public class AgoraTokenService
     {
-        private readonly string _appId = "efa11b3a7d05409ca979fb25a5b489ae";
-        private readonly string _appCertificate = "89ab54068fae46aeaf930ffd493e977b";
+        private readonly string _appId;
+        private readonly string _appCertificate;
+        private readonly IConfiguration _configuration;
+
+        public AgoraTokenService(IConfiguration configuration)
+        {
+            _configuration = configuration;
+            // ✅ Get from configuration, fallback to defaults
+            _appId = configuration["Agora:AppId"] ?? "b480142a879c4ed2ab7efb07d318abda";
+            _appCertificate = configuration["Agora:AppCertificate"] ?? "";
+        }
 
         public string GenerateToken(string channelName, uint uid, uint expirationTimeInSeconds = 3600)
         {
+            // ✅ If certificate is empty, token generation is not possible
+            if (string.IsNullOrEmpty(_appCertificate))
+            {
+                throw new InvalidOperationException("App Certificate is not configured. Cannot generate token without certificate.");
+            }
+
             var currentTs = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var privilegeExpireTs = currentTs + expirationTimeInSeconds;
 
@@ -38,7 +54,7 @@ namespace SM_MentalHealthApp.Server.Services
 
             // Write signature as hex string
             WriteString(bw, signatureHex);
-            
+
             // Write timestamps and salt as uint (4 bytes each)
             WriteUint(bw, issueTs);
             WriteUint(bw, expireTs);
@@ -46,15 +62,15 @@ namespace SM_MentalHealthApp.Server.Services
 
             // Privileges - need JoinChannel + PublishAudioStream + PublishVideoStream for full functionality
             bw.Write((short)3); // 3 privileges (JoinChannel, PublishAudioStream, PublishVideoStream)
-            
+
             // Privilege 1: JoinChannel
             bw.Write((short)1); // Privilege type: JoinChannel
             WriteUint(bw, expireTs);
-            
+
             // Privilege 2: PublishAudioStream
             bw.Write((short)2); // Privilege type: PublishAudioStream
             WriteUint(bw, expireTs);
-            
+
             // Privilege 3: PublishVideoStream
             bw.Write((short)3); // Privilege type: PublishVideoStream
             WriteUint(bw, expireTs);

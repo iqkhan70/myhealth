@@ -174,7 +174,7 @@ class WebRTCService {
       
       if (isWeb && this.client) {
         // Web implementation with Agora
-        await this.client.join("efa11b3a7d05409ca979fb25a5b489ae", channelName, token, uid);
+        await this.client.join("b480142a879c4ed2ab7efb07d318abda", channelName, token, uid);
 
         // Create and publish tracks
         this.localTracks.audioTrack = await window.AgoraRTC.createMicrophoneAudioTrack({

@@ -345,7 +345,30 @@ namespace SM_MentalHealthApp.Client.Services
                             break;
 
                         case "call-ended":
-                            OnCallEnded?.Invoke(message.GetProperty("callId").GetString() ?? "");
+                            // ✅ Prefer channelName over callId for matching (same as SignalRService)
+                            Console.WriteLine($"📞 RealtimeService: Received call-ended message: {message}");
+
+                            string? callIdentifier = null;
+                            if (message.TryGetProperty("channelName", out var channelNameProp))
+                            {
+                                callIdentifier = channelNameProp.GetString();
+                                Console.WriteLine($"📞 RealtimeService: Found channelName: {callIdentifier}");
+                            }
+                            else if (message.TryGetProperty("callId", out var callIdProp))
+                            {
+                                callIdentifier = callIdProp.GetString();
+                                Console.WriteLine($"📞 RealtimeService: Found callId: {callIdentifier}");
+                            }
+
+                            if (!string.IsNullOrEmpty(callIdentifier))
+                            {
+                                Console.WriteLine($"📞 RealtimeService: Invoking OnCallEnded with: {callIdentifier}");
+                                OnCallEnded?.Invoke(callIdentifier);
+                            }
+                            else
+                            {
+                                Console.WriteLine($"⚠️ RealtimeService: No call identifier found in call-ended message");
+                            }
                             break;
                     }
                 }

@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Convenience script to start both server and client with ngrok setup instructions
+
+echo "🚀 Starting application with ngrok setup..."
+echo ""
+echo "📋 Steps to follow:"
+echo ""
+echo "1. Start the server:"
+echo "   cd SM_MentalHealthApp.Server"
+echo "   dotnet run --launch-profile https"
+echo ""
+echo "2. In a NEW terminal, start ngrok for the server:"
+echo "   ./start-ngrok-server.sh"
+echo "   Copy the ngrok URL (e.g., https://abc123.ngrok.io)"
+echo ""
+echo "3. In ANOTHER terminal, start ngrok for the client:"
+echo "   ./start-ngrok-client.sh"
+echo "   Copy the ngrok URL (e.g., https://xyz789.ngrok.io)"
+echo ""
+echo "4. Set the server ngrok URL and start the client:"
+echo "   export SERVER_NGROK_URL=https://your-server-ngrok-url.ngrok.io"
+echo "   cd SM_MentalHealthApp.Client"
+echo "   dotnet run --launch-profile https"
+echo ""
+echo "5. Access the client via the client ngrok URL"
+echo ""
+echo "For detailed instructions, see NGROK_SETUP.md"
+echo ""
+

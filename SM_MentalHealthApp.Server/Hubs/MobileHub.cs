@@ -175,6 +175,7 @@ namespace SM_MentalHealthApp.Server.Hubs
                 var callSession = new CallSession
                 {
                     CallId = callId,
+                    ChannelName = channelName, // ✅ Store channel name for lookup
                     CallerId = callerId,
                     TargetUserId = targetUserId,
                     CallType = callType,
@@ -183,6 +184,8 @@ namespace SM_MentalHealthApp.Server.Hubs
                 };
 
                 ActiveCalls[callId] = callSession;
+                // ✅ Also store by channel name for easy lookup
+                ActiveCalls[channelName] = callSession;
 
                 var callData = new
                 {
@@ -261,17 +264,44 @@ namespace SM_MentalHealthApp.Server.Hubs
             }
         }
 
-        public async Task EndCall(string callId)
+        public async Task EndCall(string callIdOrChannel)
         {
             try
             {
-                if (!ActiveCalls.TryRemove(callId, out CallSession? callSession))
+                // ✅ Try to find call by callId (GUID) or channel name
+                CallSession? callSession = null;
+                string? actualCallId = null;
+                
+                if (ActiveCalls.TryGetValue(callIdOrChannel, out callSession))
                 {
-                    await Clients.Caller.SendAsync("error", "Call not found");
+                    // Found by key (could be GUID or channel name)
+                    actualCallId = callSession.CallId;
+                }
+                else
+                {
+                    // Try to find by channel name in values
+                    callSession = ActiveCalls.Values.FirstOrDefault(c => c.ChannelName == callIdOrChannel);
+                    if (callSession != null)
+                    {
+                        actualCallId = callSession.CallId;
+                    }
+                }
+
+                if (callSession == null)
+                {
+                    _logger.LogWarning("Call not found: {CallIdOrChannel}", callIdOrChannel);
+                    // Don't send error - call might have already ended
                     return;
                 }
 
-                _logger.LogInformation("Call {CallId} ended", callId);
+                // ✅ Remove both callId (GUID) and channelName entries if they exist
+                ActiveCalls.TryRemove(actualCallId!, out _);
+                if (!string.IsNullOrEmpty(callSession.ChannelName))
+                {
+                    ActiveCalls.TryRemove(callSession.ChannelName, out _);
+                }
+
+                _logger.LogInformation("Call {CallId} (channel: {Channel}) ended", actualCallId, callSession.ChannelName);
 
                 // Notify both participants
                 var participants = new[] { callSession.CallerId, callSession.TargetUserId };
@@ -279,7 +309,10 @@ namespace SM_MentalHealthApp.Server.Hubs
                 {
                     if (UserConnections.TryGetValue(participantId, out string? connectionId))
                     {
-                        await Clients.Client(connectionId).SendAsync("call-ended", new { callId });
+                        await Clients.Client(connectionId).SendAsync("call-ended", new { 
+                            callId = actualCallId,
+                            channelName = callSession.ChannelName 
+                        });
                     }
                 }
             }
@@ -413,6 +446,7 @@ namespace SM_MentalHealthApp.Server.Hubs
     public class CallSession
     {
         public string CallId { get; set; } = string.Empty;
+        public string ChannelName { get; set; } = string.Empty; // ✅ Store channel name for lookup
         public int CallerId { get; set; }
         public int TargetUserId { get; set; }
         public string CallType { get; set; } = string.Empty;

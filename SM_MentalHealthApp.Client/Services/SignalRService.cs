@@ -219,10 +219,23 @@ namespace SM_MentalHealthApp.Client.Services
                 try
                 {
                     var json = JsonSerializer.Serialize(data);
-                    var callData = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
-                    if (callData?.ContainsKey("callId") == true)
+                    var jsonDoc = JsonDocument.Parse(json);
+                    var root = jsonDoc.RootElement;
+                    
+                    // ✅ Prefer channelName over callId for matching
+                    string? callIdentifier = null;
+                    if (root.TryGetProperty("channelName", out var channelNameElement))
                     {
-                        OnCallEnded?.Invoke(callData["callId"].ToString() ?? "");
+                        callIdentifier = channelNameElement.GetString();
+                    }
+                    else if (root.TryGetProperty("callId", out var callIdElement))
+                    {
+                        callIdentifier = callIdElement.GetString();
+                    }
+                    
+                    if (!string.IsNullOrEmpty(callIdentifier))
+                    {
+                        OnCallEnded?.Invoke(callIdentifier);
                     }
                 }
                 catch (Exception ex)

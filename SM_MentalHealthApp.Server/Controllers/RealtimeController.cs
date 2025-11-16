@@ -22,8 +22,13 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly ILogger<RealtimeController> _logger;
         private readonly IRedisCacheService _cache;
         private readonly AgoraTokenService _agoraTokenService;
+        private readonly IConfiguration _configuration;
 
-        private const string _appId = "efa11b3a7d05409ca979fb25a5b489ae";
+        // ✅ Get App ID from configuration, fallback to default
+        private string _appId => _configuration["Agora:AppId"] ?? "b480142a879c4ed2ab7efb07d318abda";
+
+        // ✅ Check if token authentication is enabled (default: true for security)
+        private bool _useTokens => _configuration.GetValue<bool>("Agora:UseTokens", true);
 
         private static readonly Dictionary<string, RealtimeConnection> _connections = new();
         private static readonly Dictionary<int, string> _userConnections = new();
@@ -38,12 +43,14 @@ namespace SM_MentalHealthApp.Server.Controllers
             JournalDbContext context,
             ILogger<RealtimeController> logger,
             IRedisCacheService cache,
-            AgoraTokenService agoraTokenService)
+            AgoraTokenService agoraTokenService,
+            IConfiguration configuration)
         {
             _context = context;
             _logger = logger;
             _cache = cache;
             _agoraTokenService = agoraTokenService;
+            _configuration = configuration;
         }
 
         // ✅ AGORA TOKEN ENDPOINTS ============================================
@@ -88,6 +95,13 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return BadRequest(new { message = "Channel name cannot be empty or null" });
                 }
 
+                // ✅ If token authentication is disabled, return empty token
+                if (!_useTokens)
+                {
+                    _logger.LogInformation("🔓 Token authentication disabled - returning empty token for {Channel}", channel);
+                    return Ok(new { agoraAppId = _appId, token = "", cached = false, useTokens = false });
+                }
+
                 // ✅ IMPORTANT: Cache by channel only (not by UID)
                 // All users in the same channel should use the SAME token
                 // Token is generated with UID=0 which means "any UID can use this token"
@@ -98,7 +112,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (!string.IsNullOrEmpty(cachedToken))
                 {
                     _logger.LogInformation("✅ Returning cached token for {Channel} (shared by all users)", channel);
-                    return Ok(new { agoraAppId = _appId, token = cachedToken, cached = true });
+                    return Ok(new { agoraAppId = _appId, token = cachedToken, cached = true, useTokens = true });
                 }
 
                 // ✅ Generate token with UID=0 (means "any UID can use this token")
@@ -107,7 +121,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 await _cache.SetAsync(cacheKey, token, TimeSpan.FromSeconds(expireSeconds));
 
                 _logger.LogInformation("🆕 Generated and cached new token for {Channel} (shared token, UID=0)", channel);
-                return Ok(new { agoraAppId = _appId, token = token, cached = false });
+                return Ok(new { agoraAppId = _appId, token = token, cached = false, useTokens = true });
             }
             catch (Exception ex)
             {
@@ -256,7 +270,17 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (!_userConnections.TryGetValue(request.TargetUserId, out var targetConnectionId))
                     return Ok(new { message = "Target user is not online", delivered = false });
 
-                var agoraTokenResult = await GenerateAndCacheTokenAsync(request.ChannelName, (uint)callerConnection.UserId, 3600) as OkObjectResult;
+                // ✅ Generate channel name if not provided (same format as MobileHub: call_{smallerId}_{largerId})
+                var channelName = request.ChannelName;
+                if (string.IsNullOrWhiteSpace(channelName))
+                {
+                    var smallerId = Math.Min(callerConnection.UserId, request.TargetUserId);
+                    var largerId = Math.Max(callerConnection.UserId, request.TargetUserId);
+                    channelName = $"call_{smallerId}_{largerId}";
+                    _logger.LogInformation("Generated channel name: {ChannelName}", channelName);
+                }
+
+                var agoraTokenResult = await GenerateAndCacheTokenAsync(channelName, (uint)callerConnection.UserId, 3600) as OkObjectResult;
                 var tokenData = agoraTokenResult?.Value as dynamic;
 
                 var callData = new
@@ -265,7 +289,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     callerId = callerConnection.UserId,
                     callerName = "Mobile User",
                     callType = request.CallType,
-                    channelName = request.ChannelName,
+                    channelName = channelName, // ✅ Use generated channel name
                     timestamp = DateTime.UtcNow,
                     agoraAppId = tokenData?.agoraAppId,
                     agoraToken = tokenData?.token

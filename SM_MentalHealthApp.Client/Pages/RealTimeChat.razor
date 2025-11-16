@@ -5,6 +5,8 @@
 @using ChatMsg = SM_MentalHealthApp.Client.Services.ChatMessage
 @inject IAuthService AuthService
 @inject IRealtimeService RealtimeService
+@inject ISignalRService SignalRService
+@inject IAgoraService AgoraService
 @inject HttpClient Http
 @inject NotificationService NotificationService
 @inject DialogService DialogService
@@ -51,6 +53,24 @@
             </div>
         </div>
     </div>
+
+    <!-- Active Call Banner (for caller) -->
+    @if (activeCall != null)
+    {
+        <div class="active-call-banner">
+            <div class="call-banner-content">
+                <div class="call-banner-info">
+                    <i class="fas fa-phone-alt"></i>
+                    <span>
+                        <strong>@(activeCall.CallType == "video" ? "Video" : "Audio") Call</strong> with @activeCall.TargetUserName
+                    </span>
+                </div>
+                <button class="btn btn-danger btn-sm" @onclick="EndActiveCall">
+                    <i class="fas fa-phone-slash"></i> End Call
+                </button>
+            </div>
+        </div>
+    }
 
     <!-- Incoming Call Modal -->
     @if (incomingCall != null)
@@ -889,6 +909,56 @@
         transform: translateY(-2px);
         box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
     }
+
+    /* Active Call Banner */
+    .active-call-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 12px 20px;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+        position: relative;
+    }
+
+    .call-banner-content {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        max-width: 1200px;
+    }
+
+    .call-banner-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+    }
+
+    .call-banner-info i {
+        font-size: 18px;
+    }
+
+    .call-banner-info strong {
+        font-weight: 600;
+    }
+
+    .active-call-banner .btn-danger {
+        background: #dc3545;
+        border-color: #dc3545;
+        color: white;
+        padding: 6px 16px;
+        font-size: 13px;
+    }
+
+    .active-call-banner .btn-danger:hover {
+        background: #c82333;
+        border-color: #bd2130;
+        transform: translateY(-1px);
+    }
 </style>
 
 <script>
@@ -920,6 +990,7 @@
     private bool isAutoRefreshing = false;
 
     private IncomingCall? incomingCall = null;
+    private ActiveCall? activeCall = null;
     private int lastMessageCount = 0;
     private DateTime lastScrollTime = DateTime.MinValue;
 
@@ -1098,13 +1169,90 @@
     private async Task InitiateVideoCall(User user)
     {
         await RealtimeService.InitiateCallAsync(user.Id, "video");
+        
+        // ✅ Track active call for caller
+        activeCall = new ActiveCall
+        {
+            CallType = "video",
+            TargetUserId = user.Id,
+            TargetUserName = $"{user.FirstName} {user.LastName}",
+            ChannelName = GenerateChannelName(user.Id)
+        };
+        
         NotificationService.Notify(NotificationSeverity.Info, "Video Call", $"Request sent to {user.FirstName}");
+        StateHasChanged();
     }
 
     private async Task InitiateAudioCall(User user)
     {
-        await RealtimeService.InitiateCallAsync(user.Id, "audio");
-        NotificationService.Notify(NotificationSeverity.Info, "Audio Call", $"Request sent to {user.FirstName}");
+        try
+        {
+            Console.WriteLine($"📞 RealTimeChat: Initiating audio call to user {user.Id} ({user.FirstName} {user.LastName})");
+            
+            // ✅ Generate channel name
+            var channelName = GenerateChannelName(user.Id);
+            Console.WriteLine($"📞 RealTimeChat: Channel name: {channelName}");
+            
+            // ✅ Send SignalR call notification to receiver
+            await RealtimeService.InitiateCallAsync(user.Id, "audio");
+            
+            // ✅ Track active call for caller (for the banner)
+            activeCall = new ActiveCall
+            {
+                CallType = "audio",
+                TargetUserId = user.Id,
+                TargetUserName = $"{user.FirstName} {user.LastName}",
+                ChannelName = channelName
+            };
+            
+            // ✅ Navigate to AudioCall page - this will automatically join the channel
+            var callUrl = $"/audio-call/{user.Id}?channel={Uri.EscapeDataString(channelName)}";
+            Console.WriteLine($"📞 RealTimeChat: Navigating caller to: {callUrl}");
+            Navigation.NavigateTo(callUrl);
+            
+            NotificationService.Notify(NotificationSeverity.Info, "Audio Call", $"Connecting to {user.FirstName}...");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ RealTimeChat: Error initiating audio call: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Error, "Call Error", $"Failed to start call: {ex.Message}");
+        }
+    }
+
+    private string GenerateChannelName(int targetUserId)
+    {
+        var callerId = AuthService.CurrentUser?.Id ?? 0;
+        if (callerId == 0 || targetUserId == 0) return "";
+        
+        var smallerId = Math.Min(callerId, targetUserId);
+        var largerId = Math.Max(callerId, targetUserId);
+        return $"call_{smallerId}_{largerId}";
+    }
+
+    private async Task EndActiveCall()
+    {
+        if (activeCall == null) return;
+        
+        try
+        {
+            // ✅ Notify server via SignalR that call is ending (this will notify the receiver)
+            await SignalRService.EndCallAsync(activeCall.ChannelName);
+            
+            // ✅ Leave Agora channel if we're in a call
+            await AgoraService.LeaveChannelAsync();
+            
+            NotificationService.Notify(NotificationSeverity.Info, "Call Ended", 
+                $"Ended {activeCall.CallType} call with {activeCall.TargetUserName}");
+            
+            activeCall = null;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error ending call: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to end call: {ex.Message}");
+        }
     }
 
     private async Task ScrollToBottom()
@@ -1307,5 +1455,13 @@
         public int CallerId { get; set; }
         public string CallId { get; set; } = string.Empty;
         public DateTime CallTime { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ActiveCall
+    {
+        public string CallType { get; set; } = string.Empty;
+        public int TargetUserId { get; set; }
+        public string TargetUserName { get; set; } = string.Empty;
+        public string ChannelName { get; set; } = string.Empty;
     }
 }

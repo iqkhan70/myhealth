@@ -14,7 +14,7 @@ const redis = new Redis({
 });
 
 // Agora setup
-const AGORA_APP_ID = "efa11b3a7d05409ca979fb25a5b489ae";
+const AGORA_APP_ID = "b480142a879c4ed2ab7efb07d318abda";
 const AGORA_APP_CERTIFICATE = "89ab54068fae46aeaf930ffd493e977b";
 
 // GET /realtime/token?channel=myroom&uid=42

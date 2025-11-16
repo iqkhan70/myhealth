@@ -79,7 +79,7 @@ namespace SM_MentalHealthApp.Client.Services
             if (string.IsNullOrEmpty(newToken))
             {
                 // Fallback to default App ID
-                appId = "efa11b3a7d05409ca979fb25a5b489ae";
+                appId = "b480142a879c4ed2ab7efb07d318abda";
             }
             return await JoinChannelAsync(channelName, string.IsNullOrEmpty(newToken) ? token : newToken, appId, uid, true); // Default to video call
         }
@@ -91,6 +91,25 @@ namespace SM_MentalHealthApp.Client.Services
                 if (!_isInitialized)
                 {
                     throw new InvalidOperationException("Agora not initialized");
+                }
+
+                // ✅ CRITICAL: Leave any existing channel before joining a new one to avoid UID_CONFLICT
+                if (_isInCall)
+                {
+                    Console.WriteLine($"⚠️ AgoraService: Already in a call, leaving current channel first to avoid UID_CONFLICT");
+                    try
+                    {
+                        await _jsRuntime.InvokeVoidAsync("agoraLeaveChannel");
+                    }
+                    catch (Exception leaveEx)
+                    {
+                        Console.WriteLine($"⚠️ AgoraService: Error leaving existing channel (non-critical): {leaveEx.Message}");
+                    }
+                    _isInCall = false;
+                    _currentChannel = string.Empty;
+                    _currentUid = 0;
+                    // Small delay to ensure cleanup completes
+                    await Task.Delay(500);
                 }
 
                 Console.WriteLine($"🎯 Joining Agora channel: {channelName} with UID: {uid}, Video: {isVideoCall}, AppId: {appId}");
@@ -284,25 +303,53 @@ namespace SM_MentalHealthApp.Client.Services
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
 
                 // ✅ 4. Make the GET request and parse JSON directly
-                var result = await _httpClient.GetFromJsonAsync<AgoraTokenResponse>(url);
+                AgoraTokenResponse? result = null;
+                try
+                {
+                    result = await _httpClient.GetFromJsonAsync<AgoraTokenResponse>(url);
+                }
+                catch (HttpRequestException httpEx)
+                {
+                    Console.WriteLine($"❌ HTTP error fetching Agora token: {httpEx.Message}");
+                    Console.WriteLine($"❌ This might be a mixed content error (HTTPS client calling HTTP server)");
+                    Console.WriteLine($"❌ Server URL: {_httpClient.BaseAddress}{url}");
+                    return (string.Empty, string.Empty);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ Error fetching Agora token: {ex.Message}");
+                    Console.WriteLine($"❌ Exception type: {ex.GetType().Name}");
+                    return (string.Empty, string.Empty);
+                }
 
                 // ✅ 5. Validate and return token with App ID
-                if (result == null || string.IsNullOrEmpty(result.Token))
+                if (result == null)
                 {
-                    Console.WriteLine("❌ Invalid or empty Agora token received from token server");
+                    Console.WriteLine("❌ Null response received from token server (request may have been blocked by browser)");
+                    Console.WriteLine($"❌ This is likely a mixed content error - HTTPS page trying to call HTTP API");
+                    return (string.Empty, string.Empty);
+                }
+
+                // ✅ Token can be empty if UseTokens is false, but App ID should always be present
+                if (string.IsNullOrEmpty(result.AgoraAppId))
+                {
+                    Console.WriteLine("❌ Invalid or empty Agora App ID received from token server");
                     return (string.Empty, string.Empty);
                 }
 
                 var appId = result.AgoraAppId;
-                if (string.IsNullOrEmpty(appId))
-                {
-                    // Fallback to default App ID if not in response
-                    appId = "efa11b3a7d05409ca979fb25a5b489ae";
-                    Console.WriteLine("⚠️ App ID not in response, using default");
-                }
 
-                Console.WriteLine($"✅ Agora token received from .NET server (cached={result.Cached}, appId={appId}): {result.Token.Substring(0, Math.Min(20, result.Token.Length))}...");
-                return (result.Token, appId);
+                // ✅ Handle empty token (when Token Authentication is disabled)
+                var token = result.Token ?? "";
+                if (string.IsNullOrEmpty(token))
+                {
+                    Console.WriteLine($"✅ Agora token authentication disabled - joining without token (appId={appId})");
+                }
+                else
+                {
+                    Console.WriteLine($"✅ Agora token received from .NET server (cached={result.Cached}, appId={appId}): {token.Substring(0, Math.Min(20, token.Length))}...");
+                }
+                return (token, appId);
             }
             catch (HttpRequestException httpEx)
             {

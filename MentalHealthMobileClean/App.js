@@ -29,7 +29,7 @@ const API_BASE_URL = getApiBaseUrl();
 const SIGNALR_HUB_URL = API_BASE_URL.replace('/api', '/mobilehub');
 
 // 👉 Set your Agora App ID here (or pull from .env)
-const AGORA_APP_ID = 'efa11b3a7d05409ca979fb25a5b489ae';
+const AGORA_APP_ID = 'b480142a879c4ed2ab7efb07d318abda';
 
 // ---------- APP ----------
 export default function App() {

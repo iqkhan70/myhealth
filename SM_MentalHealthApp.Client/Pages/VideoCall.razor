@@ -367,7 +367,7 @@
             }
 
             // Initialize Agora (using demo mode)
-            const string AGORA_APP_ID = "efa11b3a7d05409ca979fb25a5b489ae"; // Demo mode for testing
+            const string AGORA_APP_ID = "b480142a879c4ed2ab7efb07d318abda"; // Demo mode for testing
             isInitialized = await AgoraService.InitializeAsync(AGORA_APP_ID);
 
             if (!isInitialized)
@@ -462,10 +462,16 @@
 
             // Get Agora token and App ID for the incoming channel
             var (token, appId) = await AgoraService.GetAgoraTokenAsync(channelName, (uint)callerId);
-            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(appId))
+            if (string.IsNullOrEmpty(appId))
             {
-                Console.WriteLine($"❌ VideoCall: Failed to get token or App ID. Token: {token?.Substring(0, Math.Min(20, token?.Length ?? 0))}, AppId: {appId}");
-                throw new Exception("Failed to get call token or App ID");
+                Console.WriteLine($"❌ VideoCall: Failed to get App ID. AppId: {appId}");
+                throw new Exception("Failed to get App ID");
+            }
+            
+            // ✅ Token can be empty if Token Authentication is disabled in Agora Console
+            if (string.IsNullOrEmpty(token))
+            {
+                Console.WriteLine($"⚠️ VideoCall: No token received - Token Authentication may be disabled (this is OK for testing)");
             }
 
             Console.WriteLine($"✅ VideoCall: Got token and App ID, joining channel...");
@@ -524,8 +530,14 @@
 
             // Get Agora token and App ID
             var (token, appId) = await AgoraService.GetAgoraTokenAsync(channelName, uid);
-            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(appId))
-                throw new Exception("Failed to get call token or App ID");
+            if (string.IsNullOrEmpty(appId))
+                throw new Exception("Failed to get App ID");
+            
+            // ✅ Token can be empty if Token Authentication is disabled in Agora Console
+            if (string.IsNullOrEmpty(token))
+            {
+                Console.WriteLine($"⚠️ VideoCall: No token received - Token Authentication may be disabled (this is OK for testing)");
+            }
 
             // Join channel (this is always a video call since it's the VideoCall page)
             var success = await AgoraService.JoinChannelAsync(channelName, token, appId, uid, true);
@@ -571,8 +583,14 @@
 
             // ✅ Get Agora token and App ID (pass both channel + caller UID)
             var (token, appId) = await AgoraService.GetAgoraTokenAsync(channelName, (uint)callerId);
-            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(appId))
-                throw new Exception("Failed to get call token or App ID");
+            if (string.IsNullOrEmpty(appId))
+                throw new Exception("Failed to get App ID");
+            
+            // ✅ Token can be empty if Token Authentication is disabled in Agora Console
+            if (string.IsNullOrEmpty(token))
+            {
+                Console.WriteLine($"⚠️ VideoCall: No token received - Token Authentication may be disabled (this is OK for testing)");
+            }
 
             // ✅ Join the Agora channel (video enabled)
             var uid = (uint)callerId;

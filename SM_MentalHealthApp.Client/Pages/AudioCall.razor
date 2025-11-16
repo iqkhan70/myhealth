@@ -37,29 +37,54 @@
                         <p class="text-danger">@error</p>
                     }
                 </div>
-            </div>
-        }
-        else
-        {
-            // ✅ Outgoing call - show Start Call button
-            <div class="call-setup">
-                <div class="call-info">
-                    <h3>Audio Call with @targetUser?.FirstName @targetUser?.LastName</h3>
-                    <p>Click "Start Call" to begin the audio call</p>
-                </div>
-                <div class="call-actions">
-                    <button class="btn btn-primary btn-lg" @onclick="() => StartCall(UserId)" disabled="@isConnecting">
-                        @if (isConnecting)
-                        {
-                            <span class="spinner-border spinner-border-sm me-2"></span>
-                        }
-                        Start Call
-                    </button>
-                    <button class="btn btn-secondary btn-lg" @onclick="CancelCall">
+                <div class="call-actions" style="margin-top: 20px;">
+                    <button class="btn btn-danger btn-lg" @onclick="CancelCall">
                         Cancel
                     </button>
                 </div>
             </div>
+        }
+        else
+        {
+            // ✅ Outgoing call - show Start Call button or connecting state
+            @if (isConnecting)
+            {
+                // ✅ Show connecting state while call is being established
+                <div class="call-setup">
+                    <div class="loading-container">
+                        <div class="loading-spinner"></div>
+                        <h3>Connecting...</h3>
+                        <p>@callStatus</p>
+                        @if (!string.IsNullOrEmpty(error))
+                        {
+                            <p class="text-danger">@error</p>
+                        }
+                    </div>
+                    <div class="call-actions" style="margin-top: 20px;">
+                        <button class="btn btn-danger btn-lg" @onclick="CancelCall">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                // ✅ Show Start Call button when not connecting
+                <div class="call-setup">
+                    <div class="call-info">
+                        <h3>Audio Call with @targetUser?.FirstName @targetUser?.LastName</h3>
+                        <p>Click "Start Call" to begin the audio call</p>
+                    </div>
+                    <div class="call-actions">
+                        <button class="btn btn-primary btn-lg" @onclick="() => StartCall(UserId)">
+                            Start Call
+                        </button>
+                        <button class="btn btn-secondary btn-lg" @onclick="CancelCall">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            }
         }
     }
     else
@@ -275,6 +300,22 @@
     {
         try
         {
+            // ✅ CRITICAL: Clean up any existing Agora connection to avoid UID_CONFLICT
+            // This handles cases where user logged out/in or navigated back to call page
+            try
+            {
+                if (AgoraService.IsInCall)
+                {
+                    Console.WriteLine($"⚠️ AudioCall: Detected existing call, cleaning up to avoid UID_CONFLICT");
+                    await AgoraService.LeaveChannelAsync();
+                    await Task.Delay(300); // Small delay for cleanup
+                }
+            }
+            catch (Exception cleanupEx)
+            {
+                Console.WriteLine($"⚠️ AudioCall: Error during cleanup (non-critical): {cleanupEx.Message}");
+            }
+
             // Get target user info
             targetUser = await GetUserById(UserId);
             if (targetUser == null)
@@ -284,7 +325,7 @@
             }
 
             // Initialize Agora
-            var initialized = await AgoraService.InitializeAsync("efa11b3a7d05409ca979fb25a5b489ae");
+            var initialized = await AgoraService.InitializeAsync("b480142a879c4ed2ab7efb07d318abda");
 
 
 
@@ -316,18 +357,38 @@
 
                 Console.WriteLine($"🔍 AudioCall: Query params: {string.Join(", ", queryParams.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
 
-                // ✅ Auto-join if channel parameter exists (for both mobile and web calls)
+                // ✅ Auto-join if channel parameter exists
+                // Check if this is an incoming call (has mobile_call=true) or outgoing call (caller initiated)
                 if (queryParams.TryGetValue("channel", out var channelParam))
                 {
                     Console.WriteLine($"✅ AudioCall: Found channel parameter: {channelParam}");
-                    // This is an incoming call - auto-join the channel
+                    
                     if (!string.IsNullOrEmpty(channelParam))
                     {
-                        callStatus = "Joining incoming call...";
-                        StateHasChanged(); // Update UI immediately
-                        await JoinIncomingCallAsync(channelParam);
-                        StateHasChanged(); // Update UI after join
-                        return;
+                        // Check if this is a mobile call (incoming) or web-to-web call
+                        var isMobileCall = queryParams.TryGetValue("mobile_call", out var mobileCallParam) && 
+                                          mobileCallParam?.ToLower() == "true";
+                        
+                        if (isMobileCall)
+                        {
+                            // This is an incoming call from mobile - auto-join as receiver
+                            Console.WriteLine("📱 AudioCall: This is an incoming mobile call - joining as receiver");
+                            callStatus = "Joining incoming call...";
+                            StateHasChanged(); // Update UI immediately
+                            await JoinIncomingCallAsync(channelParam);
+                            StateHasChanged(); // Update UI after join
+                            return;
+                        }
+                        else
+                        {
+                            // This is an outgoing call (caller initiated from RealTimeChat) - start the call
+                            Console.WriteLine("📞 AudioCall: This is an outgoing call - starting call as caller");
+                            callStatus = "Starting call...";
+                            StateHasChanged(); // Update UI immediately
+                            await StartCall(UserId); // UserId is the target user ID
+                            StateHasChanged(); // Update UI after start
+                            return;
+                        }
                     }
                     else
                     {
@@ -336,7 +397,7 @@
                 }
                 else
                 {
-                    Console.WriteLine("⚠️ AudioCall: No channel parameter found in query string");
+                    Console.WriteLine("⚠️ AudioCall: No channel parameter found in query string - this is a manual call");
                 }
             }
             else
@@ -364,28 +425,52 @@
                 throw new Exception("Invalid channel name: channel name is empty or null");
             }
 
+            // ✅ CRITICAL: Force cleanup before joining to avoid UID_CONFLICT
+            Console.WriteLine($"🔧 AudioCall: Force cleaning up any existing Agora connection...");
+            try
+            {
+                if (AgoraService.IsInCall)
+                {
+                    Console.WriteLine($"⚠️ AudioCall: Detected existing call, leaving first");
+                    await AgoraService.LeaveChannelAsync();
+                    await Task.Delay(800); // Wait for cleanup
+                }
+            }
+            catch (Exception cleanupEx)
+            {
+                Console.WriteLine($"⚠️ AudioCall: Cleanup error (non-critical): {cleanupEx.Message}");
+            }
+
             isConnecting = true;
             callStatus = "Connecting to call...";
             StateHasChanged(); // Update UI immediately
 
-            var callerId = AuthService.CurrentUser?.Id ?? 0;
-            if (callerId == 0)
-                throw new Exception("Invalid caller ID");
+            var receiverId = AuthService.CurrentUser?.Id ?? 0;
+            if (receiverId == 0)
+                throw new Exception("Invalid receiver ID");
 
-            Console.WriteLine($"📞 AudioCall: Getting token for channel: {channelName}, UID: {callerId}");
+            Console.WriteLine($"📞 AudioCall: Receiver joining channel: {channelName}, UID: {receiverId}");
 
             // Get Agora token and App ID for the incoming channel
-            var (token, appId) = await AgoraService.GetAgoraTokenAsync(channelName, (uint)callerId);
-            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(appId))
+            var (token, appId) = await AgoraService.GetAgoraTokenAsync(channelName, (uint)receiverId);
+            if (string.IsNullOrEmpty(appId))
             {
-                Console.WriteLine($"❌ AudioCall: Failed to get token or App ID. Token: {token?.Substring(0, Math.Min(20, token?.Length ?? 0))}, AppId: {appId}");
-                throw new Exception("Failed to get call token or App ID");
+                Console.WriteLine($"❌ AudioCall: Failed to get App ID. AppId: {appId}");
+                throw new Exception("Failed to get App ID");
+            }
+            
+            // ✅ Token can be empty if Token Authentication is disabled in Agora Console
+            if (string.IsNullOrEmpty(token))
+            {
+                Console.WriteLine($"⚠️ AudioCall: No token received - Token Authentication may be disabled (this is OK for testing)");
             }
 
             Console.WriteLine($"✅ AudioCall: Got token and App ID, joining channel...");
+            Console.WriteLine($"📞 AudioCall: Joining as receiver with UID: {receiverId}");
 
             // Join the Agora channel (audio call - video disabled)
-            var uid = (uint)callerId;
+            // Use receiver's own ID as UID (not the caller's ID)
+            var uid = (uint)receiverId;
             var success = await AgoraService.JoinChannelAsync(
             channelName,
             token,
@@ -474,6 +559,7 @@
         {
             isConnecting = true;
             callStatus = "Connecting...";
+            StateHasChanged(); // ✅ Update UI immediately
 
             // ✅ Generate consistent channel name between caller/callee
             var callerId = AuthService.CurrentUser?.Id ?? 0;
@@ -486,8 +572,14 @@
 
             // ✅ Fetch token and App ID from server (server handles Redis)
             var (token, appId) = await AgoraService.GetAgoraTokenAsync(channelName, (uint)callerId);
-            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(appId))
-                throw new Exception("Failed to get call token or App ID");
+            if (string.IsNullOrEmpty(appId))
+                throw new Exception("Failed to get App ID");
+            
+            // ✅ Token can be empty if Token Authentication is disabled in Agora Console
+            if (string.IsNullOrEmpty(token))
+            {
+                Console.WriteLine($"⚠️ AudioCall: No token received - Token Authentication may be disabled (this is OK for testing)");
+            }
 
             // ✅ Join the Agora channel
             var uid = (uint)callerId;
@@ -498,15 +590,18 @@
             isInCall = true;
             currentChannel = channelName;
             callStatus = "Connected";
+            StateHasChanged(); // ✅ Update UI to show End Call button
         }
         catch (Exception ex)
         {
             error = $"Failed to start call: {ex.Message}";
             callStatus = "Call failed";
+            StateHasChanged(); // ✅ Update UI to show error
         }
         finally
         {
             isConnecting = false;
+            StateHasChanged(); // ✅ Final UI update
         }
     }
 
@@ -525,10 +620,24 @@
         }
     }
 
-    private Task CancelCall()
+    private async Task CancelCall()
     {
-        Navigation.NavigateTo("/");
-        return Task.CompletedTask;
+        try
+        {
+            // ✅ If already in call or connecting, leave the channel first
+            if (isInCall || isConnecting)
+            {
+                await AgoraService.LeaveChannelAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error leaving channel during cancel: {ex.Message}");
+        }
+        finally
+        {
+            Navigation.NavigateTo("/");
+        }
     }
 
     private async Task ToggleMute()

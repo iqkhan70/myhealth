@@ -113,7 +113,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
         private string GetAppIdFromConfig()
         {
-            return _configuration["Agora:AppId"] ?? "efa11b3a7d05409ca979fb25a5b489ae";
+            return _configuration["Agora:AppId"] ?? "b480142a879c4ed2ab7efb07d318abda";
         }
     }
 

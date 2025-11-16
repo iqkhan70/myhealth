@@ -117,7 +117,16 @@ namespace SM_MentalHealthApp.Client.Services
             {
                 Console.WriteLine($"❌ Login: HTTP Exception - {httpEx.Message}");
                 Console.WriteLine($"❌ Login: Inner exception - {httpEx.InnerException?.Message}");
-                return new LoginResponse { Success = false, Message = $"Cannot connect to server. Please check if the server is running at {_httpClient.BaseAddress}" };
+                Console.WriteLine($"❌ Login: Server URL: {_httpClient.BaseAddress}");
+                Console.WriteLine($"❌ Login: Troubleshooting:");
+                Console.WriteLine($"   1. Is server running? Check: lsof -i :5262");
+                Console.WriteLine($"   2. SSL Certificate issue? Try accessing {_httpClient.BaseAddress}api/health directly in browser");
+                Console.WriteLine($"   3. Accept the certificate warning in browser first");
+                Console.WriteLine($"   4. Is firewall blocking? Check macOS firewall settings");
+                Console.WriteLine($"   5. Can you reach server? Try: curl -k {_httpClient.BaseAddress}api/health");
+                Console.WriteLine($"   6. Are both machines on same network?");
+                Console.WriteLine($"   7. For self-signed certs: See FIX_SSL_CERTIFICATE_ERROR.md");
+                return new LoginResponse { Success = false, Message = $"Cannot connect to server at {_httpClient.BaseAddress}. This is likely an SSL certificate issue. Try: 1) Access {_httpClient.BaseAddress}api/health in browser and accept certificate, 2) Check FIX_SSL_CERTIFICATE_ERROR.md" };
             }
             catch (TaskCanceledException timeoutEx)
             {

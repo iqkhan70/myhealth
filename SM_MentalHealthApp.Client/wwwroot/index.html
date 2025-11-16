@@ -7,7 +7,7 @@
     <!-- ✅ Allow mixed content (HTTP API calls from HTTPS page) for development -->
     <!-- This is needed because client runs on HTTPS (for Agora) but server API runs on HTTP -->
     <!-- Note: Some browsers may still show warnings, but API calls will work -->
-    <meta http-equiv="Content-Security-Policy" content="connect-src 'self' http://*:* https://*:* ws://*:* wss://*:* data: blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: http://*:* https://*:* ws://*:* wss://*:*; connect-src 'self' http://*:* https://*:* ws://*:* wss://*:* data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://download.agora.io; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;">
     <title>SM_MentalHealthApp.Client</title>
     <base href="/" />
     <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
@@ -203,7 +203,16 @@
         
         const handleActivity = () => {
             if (activityTrackingActive && activityDotNetRef) {
-                activityDotNetRef.invokeMethodAsync('OnUserActivity');
+                try {
+                    // ✅ Wrap in try-catch to prevent runtime crashes
+                    activityDotNetRef.invokeMethodAsync('OnUserActivity').catch(err => {
+                        // Silently ignore errors - runtime might be shutting down
+                        console.debug('Activity tracking error (ignored):', err);
+                    });
+                } catch (error) {
+                    // Silently ignore errors - runtime might be shutting down
+                    console.debug('Activity tracking error (ignored):', error);
+                }
             }
         };
         
@@ -604,36 +613,10 @@
                     codec: "vp8" 
                 });
 
-                // Set up event handlers
-                agoraClient.on("user-published", async (user, mediaType) => {
-                    console.log('📱 Web App: User published:', user.uid, mediaType);
-                    try {
-                        await agoraClient.subscribe(user, mediaType);
-                        
-                        if (mediaType === "video") {
-                            agoraRemoteStreams.set(user.uid, user.videoTrack);
-                            if (agoraDotNetRef) {
-                                agoraDotNetRef.invokeMethodAsync("OnUserJoinedCallback", user.uid);
-                            }
-                        } else if (mediaType === "audio") {
-                            user.audioTrack.play();
-                            console.log('🔊 Web App: Playing remote audio from user:', user.uid);
-                        }
-                    } catch (error) {
-                        console.error('❌ Error handling user published:', error);
-                    }
-                });
-
-                agoraClient.on("user-unpublished", (user, mediaType) => {
-                    console.log('📱 Web App: User unpublished:', user.uid, mediaType);
-                    if (mediaType === "video") {
-                        agoraRemoteStreams.delete(user.uid);
-                        if (agoraDotNetRef) {
-                            agoraDotNetRef.invokeMethodAsync("OnUserLeftCallback", user.uid);
-                        }
-                    }
-                });
-
+                // ✅ Note: Event handlers for user-published/user-unpublished are set up in agoraJoinChannel
+                // This prevents duplicate handlers and ensures proper audio context handling
+                // Only set up connection state handler here (not user-specific)
+                
                 agoraClient.on("connection-state-change", (curState, revState) => {
                     console.log('🔗 Connection state changed:', curState);
                     if (agoraDotNetRef) {
@@ -667,7 +650,7 @@
         //         // Join channel (check if demo mode)
         //         if (agoraClient.join.toString().includes('Demo: Simulating')) {
         //             // Demo mode - simulate join
-        //             await agoraClient.join("demo-efa11b3a7d05409ca979fb25a5b489ae", channelName, token, uid);
+        //             await agoraClient.join("demo-b480142a879c4ed2ab7efb07d318abda", channelName, token, uid);
         //             console.log('🎭 Demo: Simulated channel join successful');
                     
         //             // Simulate remote user joining after 2 seconds
@@ -679,7 +662,7 @@
         //             }, 2000);
         //         } else {
         //             // Real mode - use actual Agora
-        //             await agoraClient.join("efa11b3a7d05409ca979fb25a5b489ae", channelName, token, uid);
+        //             await agoraClient.join("b480142a879c4ed2ab7efb07d318abda", channelName, token, uid);
         //         }
 
         //         // Create and publish tracks (check if demo mode)
@@ -771,6 +754,34 @@
                     throw new Error("Agora client not initialized");
                 }
 
+                // ✅ CRITICAL: Always leave any existing channel first to avoid UID_CONFLICT
+                // This handles cases where user logged out/in or navigated back to call page
+                try {
+                    // Check connection state - if connected or connecting, leave first
+                    const connectionState = agoraClient.connectionState;
+                    console.log(`🔍 Agora: Current connection state: ${connectionState}`);
+                    
+                    if (connectionState === 'CONNECTED' || connectionState === 'CONNECTING' || connectionState === 'RECONNECTING') {
+                        console.log(`⚠️ Agora: Already connected (state: ${connectionState}), leaving first to avoid UID_CONFLICT`);
+                        await window.agoraLeaveChannel();
+                        // Wait longer for cleanup to complete
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        console.log(`✅ Agora: Cleanup complete, ready to join new channel`);
+                    } else {
+                        // Even if not connected, try to leave to be safe
+                        console.log(`🔧 Agora: Preemptively cleaning up any stale connections`);
+                        try {
+                            await window.agoraLeaveChannel();
+                            await new Promise(resolve => setTimeout(resolve, 300));
+                        } catch (cleanupError) {
+                            console.log(`ℹ️ Agora: No existing connection to clean up (this is OK)`);
+                        }
+                    }
+                } catch (leaveError) {
+                    console.warn("⚠️ Error leaving existing channel (non-critical):", leaveError);
+                    // Try to continue anyway - might work if there was no connection
+                }
+
                 // ✅ Use the App ID and token passed from C# (already fetched)
                 console.log('🎯 Web App: Joining Agora channel...');
                 console.log('App ID:', appId);
@@ -782,25 +793,25 @@
                 console.log('UID:', uid);
                 console.log('Is Video Call:', isVideoCall);
 
-                // ✅ Validate App ID and token
+                // ✅ Validate App ID (required)
                 if (!appId || appId.trim() === '') {
                     console.error('❌ App ID is missing or empty:', appId);
                     throw new Error("App ID is missing or empty. App ID: " + appId);
                 }
                 
-                if (!token || token.trim() === '') {
-                    console.error('❌ Token is missing or empty');
-                    throw new Error("Token is missing or empty");
+                // ✅ Token is optional (can be null/empty if Token Authentication is disabled)
+                if (token && token.trim() !== '') {
+                    // ✅ Validate token format (should start with version like "006")
+                    if (!token.startsWith('006')) {
+                        console.warn('⚠️ Token format might be invalid. Expected to start with "006", got:', token.substring(0, 10));
+                    }
+                } else {
+                    console.log('ℹ️ No token provided - Token Authentication may be disabled (this is OK for testing)');
                 }
 
-                // ✅ Validate token format (should start with version like "006")
-                if (!token.startsWith('006')) {
-                    console.warn('⚠️ Token format might be invalid. Expected to start with "006", got:', token.substring(0, 10));
-                }
-
-                // ✅ Extract App ID from token to verify it matches
+                // ✅ Extract App ID from token to verify it matches (only if token exists)
                 // Token format: 006{appId}{encodedBody}
-                if (token.length > 9) {
+                if (token && token.trim() !== '' && token.length > 9) {
                     const tokenAppId = token.substring(3, 35); // Skip "006" (3 chars), get next 32 chars (App ID)
                     console.log('🔍 App ID extracted from token:', tokenAppId);
                     console.log('🔍 App ID from parameter:', appId);
@@ -812,18 +823,22 @@
                         console.error('   Parameter App ID:', appId);
                         throw new Error(`App ID mismatch: token contains "${tokenAppId}" but join() called with "${appId}"`);
                     }
+                } else if (!token || token.trim() === '') {
+                    console.log('ℹ️ No token to validate - Token Authentication is disabled');
                 }
 
                 console.log('✅ All validations passed, joining channel...');
                 console.log('📞 Calling agoraClient.join() with:');
                 console.log('   appId:', appId);
                 console.log('   channelName:', channelName);
-                console.log('   token (first 50 chars):', token.substring(0, 50));
+                console.log('   token (first 50 chars):', token ? token.substring(0, 50) : 'null/empty (no token)');
                 console.log('   uid:', uid);
                 
-                // Join Agora channel with the App ID and Token passed from C#
+                // ✅ Join Agora channel with the App ID and Token passed from C#
                 // Note: In Agora SDK v4, join signature is: join(appId, channel, token, uid)
-                await agoraClient.join(appId, channelName, token, uid);
+                // If token is empty/null and Token Authentication is disabled in Agora Console, pass null
+                const tokenToUse = (token && token.trim() !== '') ? token : null;
+                await agoraClient.join(appId, channelName, tokenToUse, uid);
                 
                 console.log('✅ Successfully joined Agora channel');
 
@@ -862,36 +877,293 @@
                 console.log('3');
 
 
+                // ✅ CRITICAL: Set up remote user event handlers BEFORE publishing
+                // This ensures we catch remote users who join before or after us
+                // Remove any existing handlers first to avoid duplicates
+                agoraClient.removeAllListeners("user-published");
+                agoraClient.removeAllListeners("user-unpublished");
+                agoraClient.removeAllListeners("user-left");
+                
+                console.log('🎧 Setting up Agora event handlers for remote users...');
+                
+                // Set up handlers
+                agoraClient.on("user-published", async (user, mediaType) => {
+                    console.log('📱 ========== REMOTE USER PUBLISHED EVENT ==========');
+                    console.log('📱 Remote user published:', user.uid, mediaType);
+                    console.log('📱 User details:', {
+                        uid: user.uid,
+                        hasAudio: user.hasAudio,
+                        hasVideo: user.hasVideo,
+                        audioTrack: !!user.audioTrack,
+                        videoTrack: !!user.videoTrack
+                    });
+                    
+                    try {
+                        await agoraClient.subscribe(user, mediaType);
+                        console.log(`✅ Subscribed to remote ${mediaType} from user ${user.uid}`);
+                        
+                        // Wait a moment for the track to be available after subscription
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                        
+                        if (mediaType === "audio") {
+                            console.log(`🔊 Processing remote audio from user ${user.uid}...`);
+                            console.log(`🔊 user.audioTrack exists: ${!!user.audioTrack}`);
+                            
+                            if (user.audioTrack) {
+                                // ✅ Resume audio context before playing
+                                try {
+                                    if (typeof AgoraRTC.resumeAudioContext === 'function') {
+                                        await AgoraRTC.resumeAudioContext();
+                                        console.log('✅ Audio context resumed');
+                                    }
+                                } catch (e) {
+                                    console.warn('⚠️ Audio context resume warning:', e);
+                                }
+                                
+                                // Play the remote audio track
+                                try {
+                                    console.log(`🔊 Attempting to play audio track from user ${user.uid}...`);
+                                    await user.audioTrack.play();
+                                    console.log('🔊 Playing remote audio from user:', user.uid);
+                                    
+                                    // Verify audio track is playing
+                                    await new Promise(resolve => setTimeout(resolve, 500));
+                                    if (user.audioTrack.isPlaying) {
+                                        console.log('✅ Remote audio track is confirmed playing');
+                                    } else {
+                                        console.warn('⚠️ Remote audio track play() called but isPlaying is false');
+                                        console.warn('⚠️ This might be a browser autoplay issue - try clicking on the page');
+                                    }
+                                } catch (playError) {
+                                    console.error('❌ Error playing remote audio:', playError);
+                                    console.error('❌ Error details:', {
+                                        message: playError.message,
+                                        stack: playError.stack
+                                    });
+                                    console.error('❌ This might be due to browser autoplay policy - user interaction required');
+                                }
+                            } else {
+                                console.warn(`⚠️ user.audioTrack is null for user ${user.uid} even though mediaType is audio`);
+                            }
+                        } else if (mediaType === "video" && user.videoTrack) {
+                            agoraRemoteStreams.set(user.uid, user.videoTrack);
+                            if (agoraDotNetRef) {
+                                agoraDotNetRef.invokeMethodAsync("OnUserJoinedCallback", user.uid);
+                            }
+                            console.log('📹 Remote video track received from user:', user.uid);
+                        }
+                        
+                        console.log('📱 ========== END REMOTE USER PUBLISHED EVENT ==========');
+                    } catch (error) {
+                        console.error('❌ Error handling user-published event:', error);
+                        console.error('❌ Error details:', {
+                            message: error.message,
+                            stack: error.stack
+                        });
+                    }
+                });
+                
+                agoraClient.on("user-unpublished", (user, mediaType) => {
+                    console.log('📱 Remote user unpublished:', user.uid, mediaType);
+                    if (mediaType === "audio" && user.audioTrack) {
+                        user.audioTrack.stop();
+                        console.log('🔇 Stopped remote audio from user:', user.uid);
+                    } else if (mediaType === "video") {
+                        agoraRemoteStreams.delete(user.uid);
+                        if (agoraDotNetRef) {
+                            agoraDotNetRef.invokeMethodAsync("OnUserLeftCallback", user.uid);
+                        }
+                    }
+                });
+                
+                agoraClient.on("user-left", (user) => {
+                    console.log('📱 Remote user left:', user.uid);
+                    agoraRemoteStreams.delete(user.uid);
+                    if (agoraDotNetRef) {
+                        agoraDotNetRef.invokeMethodAsync("OnUserLeftCallback", user.uid);
+                    }
+                });
+
                 await agoraClient.publish(tracksToPublish);
 
                 console.log('4');
                 console.log(`✅ Published ${isVideoCall ? 'audio + video' : 'audio'} tracks successfully`);
+                console.log(`📊 Agora client state after publish:`, {
+                    connectionState: agoraClient.connectionState,
+                    localTracks: tracksToPublish.length,
+                    remoteUsers: agoraClient.remoteUsers.length
+                });
                 
                 console.log('5');
 
-                // Set up remote user event handlers
-                agoraClient.on("user-published", async (user, mediaType) => {
-                    console.log('📱 Remote user published:', user.uid, mediaType);
-                    await agoraClient.subscribe(user, mediaType);
-                    if (mediaType === "audio" && user.audioTrack) {
-                        user.audioTrack.play();
-                        console.log('🔊 Playing remote audio');
+                // ✅ CRITICAL: Resume audio context to enable audio playback
+                // Browsers require user interaction before playing audio
+                try {
+                    if (typeof AgoraRTC.resumeAudioContext === 'function') {
+                        await AgoraRTC.resumeAudioContext();
+                        console.log('✅ Audio context resumed');
                     }
-                });
-                console.log('6');
-                agoraClient.on("user-unpublished", (user, mediaType) => {
-                    console.log('📱 Remote user unpublished:', user.uid, mediaType);
-                });
-                console.log('7');
-                agoraClient.on("user-left", (user) => {
-                    console.log('📱 Remote user left:', user.uid);
-                });
+                } catch (audioContextError) {
+                    console.warn('⚠️ Could not resume audio context:', audioContextError);
+                }
+                
+                // ✅ Check for existing remote users who joined before us
+                // This handles the case where the caller joins before the receiver
+                // Use periodic checking to catch users who join after us
+                let remoteUserCheckInterval = null;
+                let checkCount = 0;
+                const maxChecks = 10; // Check for 10 seconds total
+                
+                const checkForRemoteUsers = async () => {
+                    try {
+                        const remoteUsers = agoraClient.remoteUsers;
+                        checkCount++;
+                        console.log(`🔍 Check #${checkCount}: Checking for existing remote users: ${remoteUsers.length} found`);
+                        
+                        if (remoteUsers.length > 0) {
+                            console.log('✅ Found remote users! Stopping periodic checks.');
+                            if (remoteUserCheckInterval) {
+                                clearInterval(remoteUserCheckInterval);
+                                remoteUserCheckInterval = null;
+                            }
+                            await handleRemoteUsers(remoteUsers);
+                        } else if (checkCount >= maxChecks) {
+                            console.warn(`⚠️ No remote users found after ${maxChecks} checks (${maxChecks} seconds).`);
+                            console.warn('⚠️ Make sure the caller has joined and published their audio.');
+                            if (remoteUserCheckInterval) {
+                                clearInterval(remoteUserCheckInterval);
+                                remoteUserCheckInterval = null;
+                            }
+                        } else {
+                            console.log(`⚠️ No remote users yet (check ${checkCount}/${maxChecks}). Will check again in 1 second...`);
+                        }
+                    } catch (checkError) {
+                        console.warn('⚠️ Error checking for existing remote users:', checkError);
+                    }
+                };
+                
+                // Start periodic checking
+                console.log('🔍 Starting periodic remote user checks (every 1 second for 10 seconds)...');
+                await checkForRemoteUsers(); // Check immediately
+                remoteUserCheckInterval = setInterval(checkForRemoteUsers, 1000); // Then every second
+                
+                const handleRemoteUsers = async (remoteUsers) => {
+                    for (const remoteUser of remoteUsers) {
+                        console.log(`🔍 Found existing remote user: UID ${remoteUser.uid}, hasAudio: ${!!remoteUser.audioTrack}, hasVideo: ${!!remoteUser.videoTrack}`);
+                        console.log(`🔍 Remote user details:`, {
+                            uid: remoteUser.uid,
+                            hasAudio: remoteUser.hasAudio,
+                            hasVideo: remoteUser.hasVideo,
+                            audioTrack: !!remoteUser.audioTrack,
+                            videoTrack: !!remoteUser.videoTrack
+                        });
+                        
+                        // Subscribe to existing remote user's tracks
+                        if (remoteUser.hasAudio) {
+                            console.log(`🔊 Remote user has audio, subscribing...`);
+                            try {
+                                await agoraClient.subscribe(remoteUser, "audio");
+                                console.log(`✅ Subscribed to remote audio from user ${remoteUser.uid}`);
+                                
+                                // Wait a bit for the track to be available
+                                await new Promise(resolve => setTimeout(resolve, 200));
+                                
+                                if (remoteUser.audioTrack) {
+                                    // Resume audio context and play
+                                    try {
+                                        if (typeof AgoraRTC.resumeAudioContext === 'function') {
+                                            await AgoraRTC.resumeAudioContext();
+                                        }
+                                        await remoteUser.audioTrack.play();
+                                        console.log(`✅ Playing existing remote audio from user ${remoteUser.uid}`);
+                                        
+                                        if (remoteUser.audioTrack.isPlaying) {
+                                            console.log(`✅ Remote audio track is confirmed playing`);
+                                        } else {
+                                            console.warn(`⚠️ Remote audio track play() called but isPlaying is false`);
+                                        }
+                                    } catch (playError) {
+                                        console.error(`❌ Error playing existing remote audio:`, playError);
+                                    }
+                                } else {
+                                    console.warn(`⚠️ Remote user hasAudio=true but audioTrack is null`);
+                                }
+                            } catch (subscribeError) {
+                                console.error(`❌ Error subscribing to remote audio:`, subscribeError);
+                            }
+                        }
+                        
+                        if (remoteUser.hasVideo) {
+                            console.log(`📹 Subscribing to existing remote video from user ${remoteUser.uid}`);
+                            try {
+                                await agoraClient.subscribe(remoteUser, "video");
+                                agoraRemoteStreams.set(remoteUser.uid, remoteUser.videoTrack);
+                                if (agoraDotNetRef) {
+                                    agoraDotNetRef.invokeMethodAsync("OnUserJoinedCallback", remoteUser.uid);
+                                }
+                            } catch (subscribeError) {
+                                console.error(`❌ Error subscribing to remote video:`, subscribeError);
+                            }
+                        }
+                    }
+                };
+                
+                await checkForRemoteUsers();
 
                 console.log(`✅ Joined Agora channel "${channelName}" with UID: ${uid}`);
                 return true;
 
             } catch (error) {
-                console.error("❌ Web App: Failed to join channel (Iqbal4):", error);
+                console.error("❌ Web App: Failed to join channel:", error);
+                
+                // ✅ Handle UID_CONFLICT specifically - try to leave and rejoin
+                if (error.message && error.message.includes('UID_CONFLICT')) {
+                    console.log("⚠️ UID_CONFLICT detected, attempting recovery...");
+                    try {
+                        // Force leave the channel
+                        await window.agoraLeaveChannel();
+                        await new Promise(resolve => setTimeout(resolve, 1500)); // Wait longer
+                        
+                        // Try joining again
+                        console.log("🔄 Retrying join after UID_CONFLICT recovery...");
+                        const tokenToUse = (token && token.trim() !== '') ? token : null;
+                        await agoraClient.join(appId, channelName, tokenToUse, uid);
+                        
+                        // Recreate and publish tracks
+                        const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+                            encoderConfig: "music_standard",
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        });
+                        const tracksToPublish = [audioTrack];
+                        if (isVideoCall) {
+                            const videoTrack = await AgoraRTC.createCameraVideoTrack({
+                                encoderConfig: "720p_1",
+                                optimizationMode: "motion"
+                            });
+                            agoraLocalStream = { audioTrack, videoTrack };
+                            tracksToPublish.push(videoTrack);
+                            const localVideoContainer = document.getElementById('local-video-container');
+                            if (localVideoContainer) {
+                                videoTrack.play(localVideoContainer);
+                            }
+                        } else {
+                            agoraLocalStream = { audioTrack };
+                        }
+                        await agoraClient.publish(tracksToPublish);
+                        
+                        console.log("✅ Successfully joined after UID_CONFLICT recovery");
+                        return true;
+                    } catch (retryError) {
+                        console.error("❌ Retry after UID_CONFLICT also failed:", retryError);
+                        if (agoraDotNetRef) {
+                            agoraDotNetRef.invokeMethodAsync("OnErrorCallback", `UID_CONFLICT recovery failed: ${retryError.message}`);
+                        }
+                        return false;
+                    }
+                }
+                
                 if (agoraDotNetRef) {
                     agoraDotNetRef.invokeMethodAsync("OnErrorCallback", error.message);
                 }
@@ -902,20 +1174,54 @@
 
         window.agoraLeaveChannel = async () => {
             try {
+                console.log("🔌 Leaving Agora channel...");
+                
+                // ✅ CRITICAL: Unpublish tracks first before leaving
+                if (agoraClient) {
+                    try {
+                        // Unpublish all local tracks
+                        if (agoraLocalStream) {
+                            const tracksToUnpublish = [];
+                            if (agoraLocalStream.audioTrack) {
+                                tracksToUnpublish.push(agoraLocalStream.audioTrack);
+                            }
+                            if (agoraLocalStream.videoTrack) {
+                                tracksToUnpublish.push(agoraLocalStream.videoTrack);
+                            }
+                            
+                            if (tracksToUnpublish.length > 0) {
+                                await agoraClient.unpublish(tracksToUnpublish);
+                                console.log("✅ Unpublished local tracks");
+                            }
+                        }
+                    } catch (unpublishError) {
+                        console.warn("⚠️ Error unpublishing tracks (non-critical):", unpublishError);
+                    }
+                    
+                    // Leave the channel
+                    await agoraClient.leave();
+                    console.log("✅ Left Agora channel");
+                }
+
+                // ✅ Close and cleanup local tracks
                 if (agoraLocalStream) {
-                    agoraLocalStream.close();
+                    if (agoraLocalStream.audioTrack) {
+                        agoraLocalStream.audioTrack.close();
+                        agoraLocalStream.audioTrack = null;
+                    }
+                    if (agoraLocalStream.videoTrack) {
+                        agoraLocalStream.videoTrack.close();
+                        agoraLocalStream.videoTrack = null;
+                    }
                     agoraLocalStream = null;
                 }
 
-                if (agoraClient) {
-                    await agoraClient.leave();
-                }
-
+                // Clear remote streams
                 agoraRemoteStreams.clear();
-                console.log("Left channel successfully");
+                console.log("✅ Channel cleanup complete");
             } catch (error) {
-                console.error("Failed to leave channel:", error);
-                agoraDotNetRef.invokeMethodAsync("OnErrorCallback", error.message);
+                console.error("❌ Failed to leave channel:", error);
+                // Don't call OnErrorCallback here - we're leaving, errors are expected
             }
         };
 

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using SM_MentalHealthApp.Client.Services;
 using Radzen;
+using System;
 
 namespace SM_MentalHealthApp.Client;
 
@@ -43,14 +44,67 @@ public static class DependencyInjection
             {
                 // Get the base address where the app is running
                 var baseUri = new Uri(builder.HostEnvironment.BaseAddress);
-                // ✅ Always use HTTP for server API (server runs on HTTP, not HTTPS)
-                // Client can run on HTTPS for Agora, but server API is always HTTP
-                var serverUrl = $"http://{baseUri.Host}:5262/";
+                
+                // ✅ Detect if running through ngrok
+                var isNgrok = baseUri.Host.Contains("ngrok.io") || baseUri.Host.Contains("ngrok-free.app");
+                
+                string serverUrl;
+                if (isNgrok)
+                {
+                    // When using ngrok, we need a separate ngrok tunnel for the server
+                    // The server URL can be provided via:
+                    // 1. Query parameter: ?server=https://abc.ngrok.io (saved to localStorage)
+                    // 2. Environment variable: SERVER_NGROK_URL (build-time)
+                    
+                    // Try environment variable first (build-time configuration)
+                    var serverNgrokUrl = Environment.GetEnvironmentVariable("SERVER_NGROK_URL");
+                    
+                    // If not set, we'll use a JavaScript function to read from query/localStorage
+                    // This will be handled by a service that updates the HttpClient after initialization
+                    if (string.IsNullOrEmpty(serverNgrokUrl))
+                    {
+                        // For now, we'll create the HttpClient with a placeholder
+                        // A service will update it after reading from query/localStorage
+                        Console.WriteLine($"⚠️ SERVER_NGROK_URL not set in environment.");
+                        Console.WriteLine($"⚠️ The app will try to read it from URL query parameter or localStorage.");
+                        Console.WriteLine($"⚠️ Add ?server=https://your-server-ngrok-url.ngrok.io to the URL");
+                        Console.WriteLine($"⚠️ Or set SERVER_NGROK_URL environment variable before building");
+                        
+                        // Use a default that will be updated by ServerUrlService
+                        serverUrl = "http://localhost:5262/";
+                    }
+                    else
+                    {
+                        serverUrl = serverNgrokUrl.EndsWith("/") ? serverNgrokUrl : serverNgrokUrl + "/";
+                        Console.WriteLine($"🌐 Using server ngrok URL from environment: {serverUrl}");
+                    }
+                }
+                else
+                {
+                    // ✅ Use HTTPS for server API (server runs on HTTPS)
+                    // Both client and server use HTTPS - no mixed content issues
+                    // For localhost, can use HTTP, but for IP addresses, use HTTPS
+                    var isLocalhost = baseUri.Host == "localhost" || baseUri.Host == "127.0.0.1";
+                    serverUrl = isLocalhost 
+                        ? $"http://{baseUri.Host}:5262/" 
+                        : $"https://{baseUri.Host}:5262/";
+                }
+                
                 Console.WriteLine($"🌐 HttpClient BaseAddress configured: {serverUrl}");
+                Console.WriteLine($"ℹ️ Client is on: {baseUri.Scheme}://{baseUri.Host}:{baseUri.Port}");
+                Console.WriteLine($"ℹ️ Server API will use: {serverUrl}");
+                
+                // ✅ Create HttpClient with proper configuration
                 var httpClient = new HttpClient { BaseAddress = new Uri(serverUrl) };
                 
                 // ✅ Set timeout to prevent hanging
                 httpClient.Timeout = TimeSpan.FromSeconds(30);
+                
+                // ✅ Note: In Blazor WebAssembly, SSL certificate validation is handled by the browser
+                // If you get "failed to fetch" errors with self-signed certificates:
+                // 1. Accept the certificate warning in the browser when accessing the server directly
+                // 2. Or use ngrok which provides valid certificates
+                // 3. Or configure the server with a trusted certificate
                 
                 return httpClient;
             }
@@ -63,6 +117,9 @@ public static class DependencyInjection
                 return fallbackClient;
             }
         });
+        
+        // Register a service to update HttpClient BaseAddress from query/localStorage
+        services.AddScoped<ServerUrlService>();
 
         return services;
     }

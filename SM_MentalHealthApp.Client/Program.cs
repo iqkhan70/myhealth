@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using SM_MentalHealthApp.Client;
+using SM_MentalHealthApp.Client.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -12,6 +13,11 @@ builder.Services.AddClientServices(builder);
 try
 {
     var host = builder.Build();
+    
+    // ✅ Initialize server URL from query parameter/localStorage if using ngrok
+    var serverUrlService = host.Services.GetRequiredService<ServerUrlService>();
+    await serverUrlService.InitializeServerUrlAsync();
+    
     await host.RunAsync();
 }
 catch (Exception ex)
