@@ -6,6 +6,8 @@
 @inject NavigationManager Navigation
 @inject NotificationService NotificationService
 @inject IJSRuntime JSRuntime
+@inject IRealtimeService RealtimeService
+@inject ISignalRService SignalRService
 @implements IAsyncDisposable
 
 <PageTitle>Video Call</PageTitle>
@@ -463,11 +465,85 @@
             }
 
             callStatus = "Ready to call";
+            
+            // ✅ Ensure SignalRService is connected
+            if (!SignalRService.IsConnected)
+            {
+                Console.WriteLine("📞 VideoCall: SignalRService not connected, starting...");
+                try
+                {
+                    await SignalRService.StartAsync();
+                    await Task.Delay(1000); // Wait for connection
+                    Console.WriteLine($"📞 VideoCall: SignalRService connection state: {SignalRService.IsConnected}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ VideoCall: Error starting SignalRService: {ex.Message}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("📞 VideoCall: SignalRService is already connected");
+            }
+            
+            // ✅ Subscribe to call-ended events so both parties get notified
+            RealtimeService.OnCallEnded += HandleCallEnded;
+            SignalRService.OnCallEnded += HandleCallEnded;
+            Console.WriteLine("📞 VideoCall: Subscribed to call-ended events from both services");
         }
         catch (Exception ex)
         {
             error = $"Failed to initialize: {ex.Message}";
         }
+    }
+    
+    private void HandleCallEnded(string channelName)
+    {
+        Console.WriteLine($"📞 ========== VideoCall: Call ended event received ==========");
+        Console.WriteLine($"📞 VideoCall: Received channelName: '{channelName}'");
+        Console.WriteLine($"📞 VideoCall: Current channel: '{currentChannel}'");
+        Console.WriteLine($"📞 VideoCall: Channels match: {channelName == currentChannel}");
+        Console.WriteLine($"📞 VideoCall: isInCall: {isInCall}");
+        
+        // ✅ Check if this call-ended event is for our current call
+        // Use case-insensitive comparison and also check if either is empty
+        var channelsMatch = !string.IsNullOrEmpty(channelName) && 
+                           !string.IsNullOrEmpty(currentChannel) && 
+                           channelName.Equals(currentChannel, StringComparison.OrdinalIgnoreCase);
+        
+        if (channelsMatch || isInCall) // If we're in a call, assume it's for us
+        {
+            Console.WriteLine($"📞 VideoCall: ✅ This is our call! Navigating back to chat...");
+            // Navigate back to chat on the UI thread
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    if (isInCall)
+                    {
+                        await AgoraService.LeaveChannelAsync();
+                        await Task.Delay(300); // Small delay for cleanup
+                    }
+                    await InvokeAsync(() =>
+                    {
+                        Console.WriteLine($"📞 VideoCall: Navigating to /real-time-chat");
+                        Navigation.NavigateTo("/real-time-chat");
+                        StateHasChanged();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ VideoCall: Error in HandleCallEnded: {ex.Message}");
+                }
+            });
+        }
+        else
+        {
+            Console.WriteLine($"📞 VideoCall: ⚠️ Call-ended event is for a different channel, ignoring");
+            Console.WriteLine($"📞 VideoCall:   Received: '{channelName}'");
+            Console.WriteLine($"📞 VideoCall:   Current: '{currentChannel}'");
+        }
+        Console.WriteLine($"📞 ========== End VideoCall: Call ended event ==========");
     }
 
     private async Task JoinIncomingCallAsync(string channelName)
@@ -658,12 +734,38 @@
         try
         {
             Console.WriteLine("📞 VideoCall: Ending call...");
+            
+            // ✅ Notify the other party via SignalR (use SignalRService for direct hub call)
+            if (!string.IsNullOrEmpty(currentChannel))
+            {
+                try
+                {
+                    await SignalRService.EndCallAsync(currentChannel);
+                    Console.WriteLine($"📞 VideoCall: Sent call-ended notification via SignalR for channel: {currentChannel}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ VideoCall: Error sending call-ended notification: {ex.Message}");
+                    // Fallback to RealtimeService
+                    try
+                    {
+                        await RealtimeService.EndCallAsync(currentChannel);
+                        Console.WriteLine($"📞 VideoCall: Sent call-ended notification via RealtimeService (fallback)");
+                    }
+                    catch (Exception ex2)
+                    {
+                        Console.WriteLine($"⚠️ VideoCall: Fallback also failed: {ex2.Message}");
+                    }
+                }
+            }
+            
+            // Leave Agora channel
             await AgoraService.LeaveChannelAsync();
             isInCall = false;
             callStatus = "Call ended";
             StateHasChanged();
             
-            // Navigate back to chat or home
+            // Navigate back to chat
             await Task.Delay(500); // Small delay to show call ended status
             Navigation.NavigateTo("/real-time-chat");
         }
@@ -727,7 +829,34 @@
 
     private void HandleUserLeft(uint uid)
     {
+        Console.WriteLine($"📞 VideoCall: Remote user {uid} left (Agora event)");
         remoteUsers.Remove(uid);
+        
+        // ✅ If we're in a call and the remote user left, navigate back to chat
+        // This is a fallback in case SignalR call-ended event doesn't fire
+        if (isInCall && remoteUsers.Count == 0)
+        {
+            Console.WriteLine($"📞 VideoCall: All remote users left, navigating back to chat (fallback)...");
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await AgoraService.LeaveChannelAsync();
+                    await Task.Delay(500); // Small delay for cleanup
+                    await InvokeAsync(() =>
+                    {
+                        Console.WriteLine($"📞 VideoCall: Navigating to /real-time-chat (user-left fallback)");
+                        Navigation.NavigateTo("/real-time-chat");
+                        StateHasChanged();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ VideoCall: Error in HandleUserLeft fallback: {ex.Message}");
+                }
+            });
+        }
+        
         StateHasChanged();
     }
 
@@ -760,6 +889,10 @@
     {
         try
         {
+            // ✅ Unsubscribe from call-ended events
+            RealtimeService.OnCallEnded -= HandleCallEnded;
+            SignalRService.OnCallEnded -= HandleCallEnded;
+            
             if (isInCall)
             {
                 await AgoraService.LeaveChannelAsync();

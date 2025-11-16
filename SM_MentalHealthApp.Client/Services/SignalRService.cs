@@ -112,18 +112,18 @@ namespace SM_MentalHealthApp.Client.Services
                     var json = JsonSerializer.Serialize(callData);
                     var jsonDoc = JsonDocument.Parse(json);
                     var root = jsonDoc.RootElement;
-                    
+
                     Console.WriteLine($"📞 SignalR: Received incoming-call event: {json}");
-                    
+
                     // ✅ Extract channelName if available, otherwise use callId
                     var channelName = root.TryGetProperty("channelName", out var channelNameElement)
                         ? channelNameElement.GetString()
                         : root.TryGetProperty("callId", out var callIdElement)
                             ? callIdElement.GetString()
                             : "";
-                    
+
                     Console.WriteLine($"📞 SignalR: Extracted channelName: {channelName}");
-                    
+
                     var call = JsonSerializer.Deserialize<CallInvitation>(json, new JsonSerializerOptions
                     {
                         PropertyNameCaseInsensitive = true
@@ -134,15 +134,15 @@ namespace SM_MentalHealthApp.Client.Services
                         // ✅ Override CallId with channel name for auto-join
                         var finalChannelName = !string.IsNullOrWhiteSpace(channelName) ? channelName : call.CallId;
                         call.CallId = finalChannelName ?? "";
-                        
+
                         Console.WriteLine($"📞 SignalR: Final CallId (channel): {call.CallId}");
                         Console.WriteLine($"📞 SignalR: CallerId: {call.CallerId}, CallerName: {call.CallerName}, CallType: {call.CallType}");
-                        
+
                         if (string.IsNullOrWhiteSpace(call.CallId))
                         {
                             Console.WriteLine($"⚠️ SignalR: WARNING - Channel name is empty! This will cause issues.");
                         }
-                        
+
                         OnIncomingCall?.Invoke(call);
                     }
                     else
@@ -218,29 +218,40 @@ namespace SM_MentalHealthApp.Client.Services
             {
                 try
                 {
+                    Console.WriteLine($"📞 ========== SignalRService: call-ended event received ==========");
                     var json = JsonSerializer.Serialize(data);
+                    Console.WriteLine($"📞 SignalRService: Raw call-ended data: {json}");
                     var jsonDoc = JsonDocument.Parse(json);
                     var root = jsonDoc.RootElement;
-                    
+
                     // ✅ Prefer channelName over callId for matching
                     string? callIdentifier = null;
                     if (root.TryGetProperty("channelName", out var channelNameElement))
                     {
                         callIdentifier = channelNameElement.GetString();
+                        Console.WriteLine($"📞 SignalRService: Found channelName: {callIdentifier}");
                     }
                     else if (root.TryGetProperty("callId", out var callIdElement))
                     {
                         callIdentifier = callIdElement.GetString();
+                        Console.WriteLine($"📞 SignalRService: Found callId: {callIdentifier}");
                     }
-                    
+
                     if (!string.IsNullOrEmpty(callIdentifier))
                     {
+                        Console.WriteLine($"📞 SignalRService: Invoking OnCallEnded with: {callIdentifier}");
                         OnCallEnded?.Invoke(callIdentifier);
                     }
+                    else
+                    {
+                        Console.WriteLine($"⚠️ SignalRService: No call identifier found in call-ended message");
+                    }
+                    Console.WriteLine($"📞 ========== End SignalRService: call-ended event ==========");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error processing call ended: {ex.Message}");
+                    Console.WriteLine($"❌ SignalRService: Error processing call ended: {ex.Message}");
+                    Console.WriteLine($"❌ SignalRService: Stack trace: {ex.StackTrace}");
                 }
             });
 
