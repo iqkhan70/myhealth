@@ -204,13 +204,18 @@
         position: relative;
         width: 100%;
         height: 100vh;
+        display: flex;
+        flex-direction: column;
     }
 
     .remote-video-container {
         width: 100%;
-        height: 100%;
+        flex: 1; /* Take available space but leave room for controls */
+        min-height: 0; /* Allow flex shrinking */
         background: #1a1a1a;
         position: relative;
+        z-index: 1; /* Base layer for remote video */
+        margin-bottom: 120px; /* Leave space for controls at bottom */
     }
 
     .remote-video {
@@ -252,6 +257,7 @@
         overflow: hidden;
         border: 2px solid #fff;
         background: #333;
+        z-index: 999; /* Below controls but above remote video */
     }
 
     .local-video-container video {
@@ -274,10 +280,15 @@
     }
 
     .call-controls {
-        position: absolute;
+        position: fixed; /* Fixed position so it stays visible */
         bottom: 30px;
         left: 50%;
         transform: translateX(-50%);
+        z-index: 10000; /* Very high z-index to ensure it's always on top */
+        background: rgba(0, 0, 0, 0.5); /* Semi-transparent background for visibility */
+        padding: 15px 25px;
+        border-radius: 50px;
+        backdrop-filter: blur(10px); /* Blur effect for better visibility */
     }
 
     .control-buttons {
@@ -322,6 +333,7 @@
         top: 30px;
         left: 30px;
         color: white;
+        z-index: 1000; /* Ensure info appears above video */
     }
 
     .call-info-overlay h4 {
