@@ -297,6 +297,9 @@
     private string error = "";
     private List<uint> remoteUsers = new();
     private string currentChannel = "";
+    private Timer? callTimeoutTimer = null; // Timer to auto-close if receiver doesn't answer
+    private DateTime callStartTime = DateTime.MinValue;
+    private bool receiverJoined = false; // Flag to track if receiver has joined (prevents timeout from firing)
 
     protected override async Task OnInitializedAsync()
     {
@@ -372,6 +375,10 @@
                     
                     if (!string.IsNullOrEmpty(channelParam))
                     {
+                        // ✅ CRITICAL: Set currentChannel immediately so rejection handler can match it
+                        currentChannel = channelParam;
+                        Console.WriteLine($"📞 AudioCall: Set currentChannel to: {currentChannel} (for rejection handling)");
+                        
                         // Check if this is a mobile call (incoming) or web-to-web call
                         var isMobileCall = queryParams.TryGetValue("mobile_call", out var mobileCallParam) && 
                                           mobileCallParam?.ToLower() == "true";
@@ -438,6 +445,11 @@
             RealtimeService.OnCallEnded += HandleCallEnded;
             SignalRService.OnCallEnded += HandleCallEnded;
             Console.WriteLine("📞 AudioCall: Subscribed to call-ended events from both services");
+            
+            // ✅ Subscribe to call-rejected events so caller gets notified when receiver declines
+            RealtimeService.OnCallRejected += HandleCallRejected;
+            SignalRService.OnCallRejected += HandleCallRejected;
+            Console.WriteLine("📞 AudioCall: Subscribed to call-rejected events from both services");
         }
         catch (Exception ex)
         {
@@ -492,6 +504,70 @@
             Console.WriteLine($"📞 AudioCall:   Current: '{currentChannel}'");
         }
         Console.WriteLine($"📞 ========== End AudioCall: Call ended event ==========");
+    }
+
+    private void HandleCallRejected(string callId)
+    {
+        Console.WriteLine($"📞 ========== AudioCall: Call rejected event received ==========");
+        Console.WriteLine($"📞 AudioCall: Received callId: '{callId}'");
+        Console.WriteLine($"📞 AudioCall: Current channel: '{currentChannel}'");
+        Console.WriteLine($"📞 AudioCall: isInCall: {isInCall}");
+        Console.WriteLine($"📞 AudioCall: isConnecting: {isConnecting}");
+        
+        // ✅ Stop the timeout timer since receiver declined
+        StopCallTimeoutTimer();
+        
+        // ✅ Check if this rejection is for our current call
+        // Match by channel name (callId from server is usually the channel name)
+        var channelsMatch = !string.IsNullOrEmpty(callId) && 
+                           !string.IsNullOrEmpty(currentChannel) && 
+                           callId.Equals(currentChannel, StringComparison.OrdinalIgnoreCase);
+        
+        // ✅ Also check if we're on the AudioCall page (caller initiated a call)
+        // If we're on this page and have a channel, we should handle rejection
+        var isOnCallPage = Navigation.Uri.Contains("/audio-call/");
+        
+        // ✅ If we're the caller (either in call or connecting, or on call page with channel), handle rejection
+        if (channelsMatch || isInCall || isConnecting || (!string.IsNullOrEmpty(currentChannel) && isOnCallPage))
+        {
+            Console.WriteLine($"📞 AudioCall: ✅ Call was rejected by receiver! Closing call...");
+            
+            // Navigate back to chat on the UI thread
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Leave Agora channel if we're in a call
+                    if (isInCall)
+                    {
+                        await AgoraService.LeaveChannelAsync();
+                        await Task.Delay(300); // Small delay for cleanup
+                    }
+                    
+                    await InvokeAsync(() =>
+                    {
+                        // Show notification
+                        NotificationService.Notify(NotificationSeverity.Warning, "Call Declined", 
+                            $"{targetUser?.FirstName} {targetUser?.LastName} declined your call");
+                        
+                        Console.WriteLine($"📞 AudioCall: Navigating to /real-time-chat (call rejected)");
+                        Navigation.NavigateTo("/real-time-chat");
+                        StateHasChanged();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ AudioCall: Error in HandleCallRejected: {ex.Message}");
+                }
+            });
+        }
+        else
+        {
+            Console.WriteLine($"📞 AudioCall: ⚠️ Call-rejected event is for a different call, ignoring");
+            Console.WriteLine($"📞 AudioCall:   Received: '{callId}'");
+            Console.WriteLine($"📞 AudioCall:   Current: '{currentChannel}'");
+        }
+        Console.WriteLine($"📞 ========== End AudioCall: Call rejected event ==========");
     }
 
     private async Task JoinIncomingCallAsync(string channelName)
@@ -670,8 +746,24 @@
 
             isInCall = true;
             currentChannel = channelName;
-            callStatus = "Connected";
-            StateHasChanged(); // ✅ Update UI to show End Call button
+            callStatus = "Ringing...";
+            callStartTime = DateTime.UtcNow;
+            receiverJoined = false; // Reset flag when starting a new call
+            StateHasChanged(); // ✅ Update UI to show status
+            
+            // ✅ Play ringing sound for caller
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("playIncomingCallSound");
+                Console.WriteLine("🔔 AudioCall: Started playing ringtone for caller");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ AudioCall: Error playing ringtone: {ex.Message}");
+            }
+            
+            // ✅ Start timeout timer (20 seconds) - if receiver doesn't join, close the call
+            StartCallTimeoutTimer();
         }
         catch (Exception ex)
         {
@@ -685,6 +777,108 @@
             StateHasChanged(); // ✅ Final UI update
         }
     }
+    
+    private void StartCallTimeoutTimer()
+    {
+        // ✅ Reset the receiver joined flag
+        receiverJoined = false;
+        
+        // ✅ Stop any existing timer
+        callTimeoutTimer?.Dispose();
+        callTimeoutTimer = null;
+        
+        // ✅ Start 10-second timeout - if receiver doesn't join, close the call
+        callTimeoutTimer = new Timer(async _ =>
+        {
+            // ✅ CRITICAL: Check the flag BEFORE InvokeAsync to avoid race conditions
+            if (receiverJoined)
+            {
+                Console.WriteLine($"✅ AudioCall: Timeout cancelled - receiver already joined (flag checked before InvokeAsync)");
+                return;
+            }
+            
+            await InvokeAsync(() =>
+            {
+                // ✅ CRITICAL: Check the receiverJoined flag AGAIN - if receiver joined, don't timeout
+                if (receiverJoined)
+                {
+                    Console.WriteLine($"✅ AudioCall: Timeout cancelled - receiver already joined (flag: {receiverJoined}, remoteUsers: {remoteUsers.Count})");
+                    return;
+                }
+                
+                // ✅ Also check if receiver has joined (has remote users) OR if call is already connected
+                // If receiver joined, remoteUsers.Count > 0, so don't timeout
+                // Also check isInCall to ensure we're still in a call state
+                if (remoteUsers.Count == 0 && !string.IsNullOrEmpty(currentChannel) && isInCall && !receiverJoined)
+                {
+                    Console.WriteLine($"⏰ AudioCall: Call timeout (15s) - receiver didn't answer, closing call...");
+                    
+                    // Close the call automatically
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            Console.WriteLine($"⏰ AudioCall: Timeout handler - notifying server and cleaning up...");
+                            
+                            // ✅ CRITICAL: Notify server that call timed out (this will trigger call-ended event for receiver)
+                            // Use the channel name to ensure receiver's dialog closes
+                            try
+                            {
+                                Console.WriteLine($"📞 AudioCall: Calling SignalRService.EndCallAsync with channel: {currentChannel}");
+                                await SignalRService.EndCallAsync(currentChannel);
+                                Console.WriteLine($"✅ AudioCall: EndCallAsync completed");
+                            }
+                            catch (Exception endCallEx)
+                            {
+                                Console.WriteLine($"❌ AudioCall: Error calling EndCallAsync: {endCallEx.Message}");
+                                Console.WriteLine($"❌ AudioCall: Stack trace: {endCallEx.StackTrace}");
+                            }
+                            
+                            // Leave Agora channel
+                            try
+                            {
+                                await AgoraService.LeaveChannelAsync();
+                                Console.WriteLine($"✅ AudioCall: Left Agora channel");
+                            }
+                            catch (Exception leaveEx)
+                            {
+                                Console.WriteLine($"⚠️ AudioCall: Error leaving Agora channel: {leaveEx.Message}");
+                            }
+                            
+                            await InvokeAsync(() =>
+                            {
+                                NotificationService.Notify(NotificationSeverity.Warning, "Call Timeout", 
+                                    "No answer from receiver. Call ended.");
+                                Navigation.NavigateTo("/real-time-chat");
+                                StateHasChanged();
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"❌ AudioCall: Error in timeout handler: {ex.Message}");
+                            Console.WriteLine($"❌ AudioCall: Stack trace: {ex.StackTrace}");
+                        }
+                    });
+                }
+                else
+                {
+                    Console.WriteLine($"✅ AudioCall: Timeout check - receiverJoined: {receiverJoined}, remoteUsers: {remoteUsers.Count}, isInCall: {isInCall}, channel: {currentChannel}");
+                }
+            });
+        }, null, TimeSpan.FromSeconds(15), Timeout.InfiniteTimeSpan); // One-time timer after 15 seconds
+        
+        Console.WriteLine($"⏰ AudioCall: Started 15-second timeout timer for call (receiverJoined: {receiverJoined})");
+    }
+    
+    private void StopCallTimeoutTimer()
+    {
+        if (callTimeoutTimer != null)
+        {
+            callTimeoutTimer.Dispose();
+            callTimeoutTimer = null;
+            Console.WriteLine($"✅ AudioCall: Stopped call timeout timer");
+        }
+    }
 
 
 
@@ -693,6 +887,20 @@
         try
         {
             Console.WriteLine("📞 AudioCall: Ending call...");
+            
+            // ✅ Stop timeout timer (call is ending manually)
+            StopCallTimeoutTimer();
+            
+            // ✅ Stop ringing sound
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+                Console.WriteLine("🔕 AudioCall: Stopped ringtone (call ending)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ AudioCall: Error stopping ringtone: {ex.Message}");
+            }
             
             // ✅ Notify the other party via SignalR (use SignalRService for direct hub call)
             if (!string.IsNullOrEmpty(currentChannel))
@@ -771,12 +979,43 @@
 
     private void HandleUserJoined(uint uid)
     {
+        Console.WriteLine($"📞 ========== AudioCall: HandleUserJoined FIRED for uid {uid} ==========");
         Console.WriteLine($"📞 AudioCall: Remote user {uid} joined");
+        
         if (!remoteUsers.Contains(uid))
         {
             remoteUsers.Add(uid);
+            Console.WriteLine($"✅ AudioCall: Added remote user {uid}, total remote users: {remoteUsers.Count}");
         }
-        StateHasChanged();
+        
+        // ✅ CRITICAL: Set the flag FIRST - this prevents the timeout callback from executing
+        var oldFlagValue = receiverJoined;
+        receiverJoined = true;
+        Console.WriteLine($"✅ AudioCall: Set receiverJoined flag from {oldFlagValue} to {receiverJoined}");
+        
+        // ✅ CRITICAL: Stop the timeout timer - this prevents the timeout from firing
+        StopCallTimeoutTimer();
+        Console.WriteLine($"✅ AudioCall: Stopped timeout timer (receiver joined)");
+        
+        // ✅ Stop ringing sound immediately - use InvokeAsync to ensure UI thread
+        InvokeAsync(async () =>
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+                Console.WriteLine("🔕 AudioCall: Stopped ringtone (receiver joined)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ AudioCall: Error stopping ringtone: {ex.Message}");
+            }
+        });
+        
+        callStatus = "Connected";
+        Console.WriteLine($"✅ AudioCall: Receiver accepted call, status updated to Connected");
+        Console.WriteLine($"📞 ========== End AudioCall: HandleUserJoined ==========");
+        
+        InvokeAsync(StateHasChanged);
     }
 
     private void HandleUserLeft(uint uid)
@@ -843,9 +1082,16 @@
     {
         try
         {
+            // ✅ Stop timeout timer
+            StopCallTimeoutTimer();
+            
             // ✅ Unsubscribe from call-ended events
             RealtimeService.OnCallEnded -= HandleCallEnded;
             SignalRService.OnCallEnded -= HandleCallEnded;
+            
+            // ✅ Unsubscribe from call-rejected events
+            RealtimeService.OnCallRejected -= HandleCallRejected;
+            SignalRService.OnCallRejected -= HandleCallRejected;
             
             // ✅ Unsubscribe from Agora events
             AgoraService.OnUserJoined -= HandleUserJoined;

@@ -243,18 +243,47 @@ namespace SM_MentalHealthApp.Server.Hubs
         {
             try
             {
-                if (!ActiveCalls.TryRemove(callId, out CallSession? callSession))
+                // ✅ Try to find call by callId (could be GUID or channel name)
+                CallSession? callSession = null;
+                string? actualCallId = null;
+                
+                if (ActiveCalls.TryGetValue(callId, out callSession))
                 {
+                    // Found by key (could be GUID or channel name)
+                    actualCallId = callSession.CallId;
+                }
+                else
+                {
+                    // Try to find by channel name in values
+                    callSession = ActiveCalls.Values.FirstOrDefault(c => c.ChannelName == callId);
+                    if (callSession != null)
+                    {
+                        actualCallId = callSession.CallId;
+                    }
+                }
+
+                if (callSession == null)
+                {
+                    _logger.LogWarning("Call not found for rejection: {CallId}", callId);
                     await Clients.Caller.SendAsync("error", "Call not found");
                     return;
                 }
 
-                _logger.LogInformation("Call {CallId} rejected", callId);
+                // ✅ Remove both callId (GUID) and channelName entries if they exist
+                ActiveCalls.TryRemove(actualCallId!, out _);
+                if (!string.IsNullOrEmpty(callSession.ChannelName))
+                {
+                    ActiveCalls.TryRemove(callSession.ChannelName, out _);
+                }
 
-                // Notify caller that call was rejected
+                _logger.LogInformation("Call {CallId} (channel: {Channel}) rejected", actualCallId, callSession.ChannelName);
+
+                // ✅ Notify caller that call was rejected - use channel name for matching
                 if (UserConnections.TryGetValue(callSession.CallerId, out string? callerConnectionId))
                 {
-                    await Clients.Client(callerConnectionId).SendAsync("call-rejected", new { callId });
+                    await Clients.Client(callerConnectionId).SendAsync("call-rejected", new { 
+                        callId = callSession.ChannelName ?? actualCallId // Use channel name for matching
+                    });
                 }
             }
             catch (Exception ex)

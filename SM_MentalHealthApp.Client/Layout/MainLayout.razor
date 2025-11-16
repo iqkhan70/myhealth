@@ -111,13 +111,57 @@ else
     }
 
 
-    private void HandleCallEnded(string callId)
+    private async void HandleCallEnded(string callIdOrChannel)
     {
-        if (incomingCall?.CallId == callId)
+        Console.WriteLine($"📞 ========== MainLayout: HandleCallEnded called ==========");
+        Console.WriteLine($"📞 MainLayout: Received callIdOrChannel: '{callIdOrChannel}'");
+        Console.WriteLine($"📞 MainLayout: Current incomingCall?.CallId: '{incomingCall?.CallId}'");
+        
+        // ✅ If there's an incoming call, close it when we receive call-ended event
+        // The server sends channelName in call-ended, and incomingCall.CallId is the channel name
+        // Use case-insensitive matching and also close if IDs match or if either is empty (fallback)
+        if (incomingCall != null)
         {
-            incomingCall = null;
-            InvokeAsync(StateHasChanged);
+            var callIdMatch = string.IsNullOrEmpty(incomingCall.CallId) || 
+                            string.IsNullOrEmpty(callIdOrChannel) ||
+                            incomingCall.CallId.Equals(callIdOrChannel, StringComparison.OrdinalIgnoreCase) ||
+                            callIdOrChannel.Equals(incomingCall.CallId, StringComparison.OrdinalIgnoreCase) ||
+                            callIdOrChannel.Contains(incomingCall.CallId, StringComparison.OrdinalIgnoreCase) ||
+                            incomingCall.CallId.Contains(callIdOrChannel, StringComparison.OrdinalIgnoreCase);
+            
+            Console.WriteLine($"📞 MainLayout: Matching check - callIdMatch: {callIdMatch}");
+            Console.WriteLine($"📞 MainLayout:   incomingCall.CallId: '{incomingCall.CallId}'");
+            Console.WriteLine($"📞 MainLayout:   callIdOrChannel: '{callIdOrChannel}'");
+            
+            if (callIdMatch)
+            {
+                Console.WriteLine($"✅ MainLayout: Closing incoming call dialog (matched: {incomingCall.CallId} == {callIdOrChannel})");
+                
+                // ✅ Stop ringtone when call ends (timeout or manual end)
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+                    Console.WriteLine("🔕 MainLayout: Stopped ringtone (call ended)");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ MainLayout: Error stopping ringtone: {ex.Message}");
+                }
+                
+                incomingCall = null;
+                await InvokeAsync(StateHasChanged);
+                Console.WriteLine($"✅ MainLayout: Dialog closed and state updated");
+            }
+            else
+            {
+                Console.WriteLine($"⚠️ MainLayout: Call ID mismatch - not closing dialog. Incoming: '{incomingCall.CallId}', Received: '{callIdOrChannel}'");
+            }
         }
+        else
+        {
+            Console.WriteLine($"📞 MainLayout: No incoming call to close (incomingCall is null)");
+        }
+        Console.WriteLine($"📞 ========== End MainLayout: HandleCallEnded ==========");
     }
 
     private async Task HandleCallAccepted(CallInvitation call)

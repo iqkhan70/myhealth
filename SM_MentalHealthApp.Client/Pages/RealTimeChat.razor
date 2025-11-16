@@ -1546,6 +1546,10 @@
     {
         if (incomingCall == null) return;
         
+        var callId = incomingCall.CallId;
+        var callType = incomingCall.CallType;
+        var callerName = incomingCall.CallerName;
+        
         // ✅ Stop the ringtone
         try
         {
@@ -1557,18 +1561,56 @@
             Console.WriteLine($"⚠️ RealTimeChat: Error stopping ringtone: {ex.Message}");
         }
         
+        // ✅ Check if receiver is on the call page (AudioCall/VideoCall) - if so, leave Agora and navigate back
+        var currentUri = Navigation.Uri;
+        var isOnAudioCallPage = currentUri.Contains("/audio-call/");
+        var isOnVideoCallPage = currentUri.Contains("/video-call/");
+        
+        if (isOnAudioCallPage || isOnVideoCallPage)
+        {
+            Console.WriteLine($"📞 RealTimeChat: Receiver is on call page, leaving Agora and navigating back...");
+            try
+            {
+                // Leave Agora channel if connected
+                if (AgoraService.IsInCall)
+                {
+                    await AgoraService.LeaveChannelAsync();
+                    Console.WriteLine("✅ RealTimeChat: Left Agora channel");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ RealTimeChat: Error leaving Agora channel: {ex.Message}");
+            }
+            
+            // Navigate back to chat
+            await Task.Delay(300); // Small delay for cleanup
+            Navigation.NavigateTo("/real-time-chat");
+        }
+        
         // ✅ Notify the caller that call was rejected
+        // Use SignalRService instead of RealtimeService (RealtimeService uses HTTP which doesn't have reject endpoint)
         try
         {
-            await RealtimeService.RejectCallAsync(incomingCall.CallId);
+            await SignalRService.RejectCallAsync(callId);
+            Console.WriteLine($"✅ RealTimeChat: Sent rejection via SignalR for call: {callId}");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"⚠️ RealTimeChat: Error rejecting call via SignalR: {ex.Message}");
+            // Fallback to RealtimeService (though it will fail, at least we tried)
+            try
+            {
+                await RealtimeService.RejectCallAsync(callId);
+            }
+            catch (Exception ex2)
+            {
+                Console.WriteLine($"⚠️ RealTimeChat: Fallback rejection also failed: {ex2.Message}");
+            }
         }
         
         NotificationService.Notify(NotificationSeverity.Warning, "Call Declined",
-        $"Declined {incomingCall.CallType} call from {incomingCall.CallerName}");
+        $"Declined {callType} call from {callerName}");
         incomingCall = null;
         StateHasChanged();
     }

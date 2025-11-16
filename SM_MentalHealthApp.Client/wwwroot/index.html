@@ -343,55 +343,92 @@
             // Stop any existing ringtone
             window.stopIncomingCallSound();
             
-            // Create audio context
-            ringtoneAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // ✅ Create or get audio context (handle suspended state)
+            if (!ringtoneAudioContext) {
+                ringtoneAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
             
-            // Create a phone-like ringtone pattern
-            const playRing = () => {
+            // ✅ Resume audio context if suspended (required by browser autoplay policy)
+            const resumeContext = async () => {
                 try {
-                    const now = ringtoneAudioContext.currentTime;
-                    const oscillator1 = ringtoneAudioContext.createOscillator();
-                    const oscillator2 = ringtoneAudioContext.createOscillator();
-                    const gainNode = ringtoneAudioContext.createGain();
-                    
-                    // Two-tone phone ring (like a real phone)
-                    oscillator1.frequency.setValueAtTime(800, now);
-                    oscillator2.frequency.setValueAtTime(1000, now);
-                    oscillator1.type = 'sine';
-                    oscillator2.type = 'sine';
-                    
-                    oscillator1.connect(gainNode);
-                    oscillator2.connect(gainNode);
-                    gainNode.connect(ringtoneAudioContext.destination);
-                    
-                    // Volume envelope (fade in/out for each ring)
-                    gainNode.gain.setValueAtTime(0, now);
-                    gainNode.gain.linearRampToValueAtTime(0.4, now + 0.1);
-                    gainNode.gain.setValueAtTime(0.4, now + 0.3);
-                    gainNode.gain.linearRampToValueAtTime(0, now + 0.4);
-                    
-                    oscillator1.start(now);
-                    oscillator2.start(now);
-                    oscillator1.stop(now + 0.4);
-                    oscillator2.stop(now + 0.4);
-                } catch (error) {
-                    console.error('Error in playRing:', error);
+                    if (ringtoneAudioContext.state === 'suspended') {
+                        await ringtoneAudioContext.resume();
+                        console.log('✅ AudioContext resumed');
+                    }
+                } catch (resumeError) {
+                    console.warn('⚠️ Could not resume AudioContext (may require user interaction):', resumeError);
+                    // If resume fails, try to create a new context (this might also fail, but we'll catch it)
+                    try {
+                        ringtoneAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    } catch (createError) {
+                        console.error('❌ Could not create AudioContext:', createError);
+                        return false; // Can't play sound without AudioContext
+                    }
                 }
+                return true;
             };
             
-            // Play ringtone continuously (ring pattern: 0.4s ring, 0.2s pause, 0.4s ring, 2s pause)
-            const ringPattern = () => {
-                playRing();
-                setTimeout(playRing, 600); // Second ring in the pattern
-            };
-            
-            // Start the ring pattern
-            ringPattern();
-            
-            // Repeat the pattern every 3 seconds (like a real phone)
-            ringtoneInterval = setInterval(ringPattern, 3000);
-            
-            console.log('🔔 Ringtone started');
+            // ✅ Try to resume context first
+            resumeContext().then(contextReady => {
+                if (!contextReady) {
+                    console.warn('⚠️ AudioContext not ready, ringtone will not play');
+                    return;
+                }
+                
+                // Create a phone-like ringtone pattern
+                const playRing = () => {
+                    try {
+                        if (!ringtoneAudioContext || ringtoneAudioContext.state === 'closed') {
+                            console.warn('⚠️ AudioContext is closed, cannot play ring');
+                            return;
+                        }
+                        
+                        const now = ringtoneAudioContext.currentTime;
+                        const oscillator1 = ringtoneAudioContext.createOscillator();
+                        const oscillator2 = ringtoneAudioContext.createOscillator();
+                        const gainNode = ringtoneAudioContext.createGain();
+                        
+                        // Two-tone phone ring (like a real phone)
+                        oscillator1.frequency.setValueAtTime(800, now);
+                        oscillator2.frequency.setValueAtTime(1000, now);
+                        oscillator1.type = 'sine';
+                        oscillator2.type = 'sine';
+                        
+                        oscillator1.connect(gainNode);
+                        oscillator2.connect(gainNode);
+                        gainNode.connect(ringtoneAudioContext.destination);
+                        
+                        // Volume envelope (fade in/out for each ring)
+                        gainNode.gain.setValueAtTime(0, now);
+                        gainNode.gain.linearRampToValueAtTime(0.4, now + 0.1);
+                        gainNode.gain.setValueAtTime(0.4, now + 0.3);
+                        gainNode.gain.linearRampToValueAtTime(0, now + 0.4);
+                        
+                        oscillator1.start(now);
+                        oscillator2.start(now);
+                        oscillator1.stop(now + 0.4);
+                        oscillator2.stop(now + 0.4);
+                    } catch (error) {
+                        console.error('Error in playRing:', error);
+                    }
+                };
+                
+                // Play ringtone continuously (ring pattern: 0.4s ring, 0.2s pause, 0.4s ring, 2s pause)
+                const ringPattern = () => {
+                    playRing();
+                    setTimeout(playRing, 600); // Second ring in the pattern
+                };
+                
+                // Start the ring pattern
+                ringPattern();
+                
+                // Repeat the pattern every 3 seconds (like a real phone)
+                ringtoneInterval = setInterval(ringPattern, 3000);
+                
+                console.log('🔔 Ringtone started');
+            }).catch(error => {
+                console.error('❌ Error setting up ringtone:', error);
+            });
         } catch (error) {
             console.error('❌ Error playing incoming call sound:', error);
         }
@@ -1126,6 +1163,10 @@
                 // ✅ Check for existing remote users who joined before us
                 // This handles the case where the caller joins before the receiver
                 // Use periodic checking to catch users who join after us
+                // Store interval in global scope so it can be stopped when call is rejected
+                if (!window.agoraRemoteUserCheckInterval) {
+                    window.agoraRemoteUserCheckInterval = null;
+                }
                 let remoteUserCheckInterval = null;
                 let checkCount = 0;
                 const maxChecks = 10; // Check for 10 seconds total
@@ -1141,6 +1182,7 @@
                             if (remoteUserCheckInterval) {
                                 clearInterval(remoteUserCheckInterval);
                                 remoteUserCheckInterval = null;
+                                window.agoraRemoteUserCheckInterval = null;
                             }
                             await handleRemoteUsers(remoteUsers);
                         } else if (checkCount >= maxChecks) {
@@ -1149,6 +1191,7 @@
                             if (remoteUserCheckInterval) {
                                 clearInterval(remoteUserCheckInterval);
                                 remoteUserCheckInterval = null;
+                                window.agoraRemoteUserCheckInterval = null;
                             }
                         } else {
                             console.log(`⚠️ No remote users yet (check ${checkCount}/${maxChecks}). Will check again in 1 second...`);
@@ -1162,6 +1205,7 @@
                 console.log('🔍 Starting periodic remote user checks (every 1 second for 10 seconds)...');
                 await checkForRemoteUsers(); // Check immediately
                 remoteUserCheckInterval = setInterval(checkForRemoteUsers, 1000); // Then every second
+                window.agoraRemoteUserCheckInterval = remoteUserCheckInterval; // Store globally so it can be stopped
                 
                 const handleRemoteUsers = async (remoteUsers) => {
                     for (const remoteUser of remoteUsers) {
@@ -1203,6 +1247,12 @@
                                     }
                                 } else {
                                     console.warn(`⚠️ Remote user hasAudio=true but audioTrack is null`);
+                                }
+                                
+                                // ✅ CRITICAL: Notify C# that user joined (for audio users too!)
+                                if (agoraDotNetRef) {
+                                    console.log(`📞 Calling OnUserJoinedCallback for audio user ${remoteUser.uid}`);
+                                    agoraDotNetRef.invokeMethodAsync("OnUserJoinedCallback", remoteUser.uid);
                                 }
                             } catch (subscribeError) {
                                 console.error(`❌ Error subscribing to remote audio:`, subscribeError);
@@ -1340,6 +1390,13 @@
         window.agoraLeaveChannel = async () => {
             try {
                 console.log("🔌 Leaving Agora channel...");
+                
+                // ✅ Stop remote user checking interval if it's running
+                if (window.agoraRemoteUserCheckInterval) {
+                    clearInterval(window.agoraRemoteUserCheckInterval);
+                    window.agoraRemoteUserCheckInterval = null;
+                    console.log("✅ Stopped remote user checking interval");
+                }
                 
                 // ✅ CRITICAL: Unpublish tracks first before leaving
                 if (agoraClient) {

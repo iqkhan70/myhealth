@@ -2,6 +2,8 @@
 @inject ISignalRService SignalRService
 @inject NotificationService NotificationService
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject IAgoraService AgoraService
 
 @if (IncomingCall != null)
 {
@@ -320,9 +322,16 @@
             return;
         }
 
+        var callId = IncomingCall.CallId;
+        var callType = IncomingCall.CallType;
+        var callerName = IncomingCall.CallerName;
+
+        Console.WriteLine($"📞 ========== IncomingCallModal: DeclineCall called ==========");
+        Console.WriteLine($"📞 IncomingCallModal: CallId: {callId}, CallType: {callType}, CallerName: {callerName}");
+
         try
         {
-            // ✅ Stop the ringtone
+            // ✅ Stop the ringtone (wrap in try-catch to prevent AudioContext errors from blocking)
             try
             {
                 await JS.InvokeVoidAsync("stopIncomingCallSound");
@@ -330,36 +339,89 @@
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone: {ex.Message}");
+                Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone (non-critical): {ex.Message}");
+                // Don't fail the decline if ringtone stop fails
             }
             
+            // ✅ Notify the caller that call was rejected FIRST (before cleanup)
             if (SignalRService == null)
             {
-                Console.WriteLine("SignalRService is null in DeclineCall");
+                Console.WriteLine("⚠️ IncomingCallModal: SignalRService is null in DeclineCall");
             }
             else
             {
-                await SignalRService.RejectCallAsync(IncomingCall.CallId);
+                try
+                {
+                    Console.WriteLine($"📞 IncomingCallModal: Sending rejection via SignalR for callId: {callId}");
+                    await SignalRService.RejectCallAsync(callId);
+                    Console.WriteLine($"✅ IncomingCallModal: Rejection sent successfully");
+                }
+                catch (Exception rejectEx)
+                {
+                    Console.WriteLine($"❌ IncomingCallModal: Error sending rejection: {rejectEx.Message}");
+                    Console.WriteLine($"❌ IncomingCallModal: Stack trace: {rejectEx.StackTrace}");
+                    // Continue with cleanup even if rejection fails
+                }
+            }
+            
+            // ✅ Check if receiver is on the call page (AudioCall/VideoCall) - if so, leave Agora and navigate back
+            var currentUri = Navigation.Uri;
+            var isOnAudioCallPage = currentUri.Contains("/audio-call/");
+            var isOnVideoCallPage = currentUri.Contains("/video-call/");
+            
+            if (isOnAudioCallPage || isOnVideoCallPage)
+            {
+                Console.WriteLine($"📞 IncomingCallModal: Receiver is on call page, leaving Agora and navigating back...");
+                try
+                {
+                    // Leave Agora channel if connected
+                    if (AgoraService.IsInCall)
+                    {
+                        await AgoraService.LeaveChannelAsync();
+                        Console.WriteLine("✅ IncomingCallModal: Left Agora channel");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ IncomingCallModal: Error leaving Agora channel: {ex.Message}");
+                }
+                
+                // Navigate back to chat
+                await Task.Delay(300); // Small delay for cleanup
+                Navigation.NavigateTo("/real-time-chat");
             }
 
+            // ✅ Clear the incoming call and notify parent component
             if (OnCallDeclined.HasDelegate)
             {
-                await OnCallDeclined.InvokeAsync(IncomingCall);
+                try
+                {
+                    await OnCallDeclined.InvokeAsync(IncomingCall);
+                    Console.WriteLine("✅ IncomingCallModal: OnCallDeclined event fired");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ IncomingCallModal: Error firing OnCallDeclined: {ex.Message}");
+                }
             }
 
+            // ✅ Show notification
             try
             {
                 NotificationService?.Notify(NotificationSeverity.Info, "Call Declined",
-                    $"Declined {IncomingCall.CallType} call from {IncomingCall.CallerName}");
+                    $"Declined {callType} call from {callerName}");
             }
             catch (Exception notifEx)
             {
-                Console.WriteLine($"NotificationService failed in DeclineCall: {notifEx.Message}");
+                Console.WriteLine($"⚠️ IncomingCallModal: NotificationService failed: {notifEx.Message}");
             }
+            
+            Console.WriteLine($"✅ IncomingCallModal: DeclineCall completed successfully");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error in DeclineCall: {ex.Message}\n{ex}");
+            Console.WriteLine($"❌ IncomingCallModal: Error in DeclineCall: {ex.Message}");
+            Console.WriteLine($"❌ IncomingCallModal: Stack trace: {ex.StackTrace}");
             try
             {
                 NotificationService?.Notify(NotificationSeverity.Error, "Call Error",
@@ -367,5 +429,6 @@
             }
             catch { }
         }
+        Console.WriteLine($"📞 ========== End IncomingCallModal: DeclineCall ==========");
     }
 }
