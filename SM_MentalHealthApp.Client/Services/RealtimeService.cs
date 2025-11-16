@@ -337,26 +337,65 @@ namespace SM_MentalHealthApp.Client.Services
                             break;
 
                         case "incoming-call":
+                            // ✅ Log the entire message JSON for debugging
+                            var messageJson = message.GetRawText();
+                            Console.WriteLine($"📞 RealtimeService: Raw incoming-call message: {messageJson}");
+
                             // ✅ Try to get channelName first, fallback to callId
                             var channelName = message.TryGetProperty("channelName", out var channelNameElement)
                                 ? channelNameElement.GetString()
-                                : message.GetProperty("callId").GetString();
+                                : message.TryGetProperty("callId", out var callIdElement)
+                                    ? callIdElement.GetString()
+                                    : null;
 
                             // ✅ Extract callerName directly from JSON (more reliable)
-                            var extractedCallerName = message.TryGetProperty("callerName", out var callerNameElement)
-                                ? callerNameElement.GetString()
-                                : null;
+                            string? extractedCallerName = null;
+                            if (message.TryGetProperty("callerName", out var callerNameElement))
+                            {
+                                extractedCallerName = callerNameElement.GetString();
+                                Console.WriteLine($"📞 RealtimeService: Found callerName property: '{extractedCallerName}'");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"⚠️ RealtimeService: No 'callerName' property found in message");
+                                // Try alternative property names
+                                if (message.TryGetProperty("CallerName", out var callerNameElement2))
+                                {
+                                    extractedCallerName = callerNameElement2.GetString();
+                                    Console.WriteLine($"📞 RealtimeService: Found CallerName (capitalized) property: '{extractedCallerName}'");
+                                }
+                            }
 
-                            Console.WriteLine($"📞 RealtimeService: Extracted callerName from JSON: '{extractedCallerName}'");
+                            // ✅ If still null or "Mobile User", check all string properties
+                            if (string.IsNullOrWhiteSpace(extractedCallerName) || extractedCallerName == "Mobile User")
+                            {
+                                Console.WriteLine($"⚠️ RealtimeService: CallerName is empty or 'Mobile User', checking all properties...");
+                                foreach (var prop in message.EnumerateObject())
+                                {
+                                    if (prop.Value.ValueKind == JsonValueKind.String)
+                                    {
+                                        var propValue = prop.Value.GetString();
+                                        Console.WriteLine($"   Property '{prop.Name}': '{propValue}'");
+                                    }
+                                }
+                            }
 
                             var callInvitation = new CallInvitation
                             {
                                 CallId = channelName ?? "", // ✅ Use channel name as CallId
-                                CallerId = message.GetProperty("callerId").GetInt32(),
-                                CallerName = extractedCallerName ?? "", // ✅ Use extracted name
-                                CallerRole = message.GetProperty("callerRole").GetString() ?? "",
-                                CallType = message.GetProperty("callType").GetString() ?? "",
-                                Timestamp = DateTime.Parse(message.GetProperty("timestamp").GetString() ?? DateTime.UtcNow.ToString())
+                                CallerId = message.TryGetProperty("callerId", out var callerIdElement)
+                                    ? callerIdElement.GetInt32()
+                                    : 0,
+                                CallerName = extractedCallerName ?? "Unknown Caller", // ✅ Use extracted name, fallback to "Unknown Caller" instead of empty
+                                CallerRole = message.TryGetProperty("callerRole", out var callerRoleElement)
+                                    ? callerRoleElement.GetString() ?? ""
+                                    : "",
+                                CallType = message.TryGetProperty("callType", out var callTypeElement)
+                                    ? callTypeElement.GetString() ?? ""
+                                    : "",
+                                Timestamp = message.TryGetProperty("timestamp", out var timestampElement)
+                                    ? DateTime.Parse(timestampElement.GetString() ?? DateTime.UtcNow.ToString("O"))
+                                    : DateTime.UtcNow
                             };
 
                             // ✅ Log to debug caller name
@@ -418,15 +457,66 @@ namespace SM_MentalHealthApp.Client.Services
 
                     if (callType == "incoming_call")
                     {
+                        // ✅ Log the entire call JSON for debugging
+                        var callJson = call.GetRawText();
+                        Console.WriteLine($"📞 RealtimeService: Raw incoming_call (ProcessCall): {callJson}");
+
+                        // ✅ Extract callerName directly from JSON (more reliable)
+                        string? extractedCallerName = null;
+                        if (call.TryGetProperty("callerName", out var callerNameElement))
+                        {
+                            extractedCallerName = callerNameElement.GetString();
+                            Console.WriteLine($"📞 RealtimeService: Found callerName property: '{extractedCallerName}'");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"⚠️ RealtimeService: No 'callerName' property found in call");
+                            // Try alternative property names
+                            if (call.TryGetProperty("CallerName", out var callerNameElement2))
+                            {
+                                extractedCallerName = callerNameElement2.GetString();
+                                Console.WriteLine($"📞 RealtimeService: Found CallerName (capitalized) property: '{extractedCallerName}'");
+                            }
+                        }
+
+                        // ✅ If still null or "Mobile User", check all string properties
+                        if (string.IsNullOrWhiteSpace(extractedCallerName) || extractedCallerName == "Mobile User")
+                        {
+                            Console.WriteLine($"⚠️ RealtimeService: CallerName is empty or 'Mobile User', checking all properties...");
+                            foreach (var prop in call.EnumerateObject())
+                            {
+                                if (prop.Value.ValueKind == JsonValueKind.String)
+                                {
+                                    var propValue = prop.Value.GetString();
+                                    Console.WriteLine($"   Property '{prop.Name}': '{propValue}'");
+                                }
+                            }
+                        }
+
                         var callInvitation = new CallInvitation
                         {
-                            CallId = call.GetProperty("channelName").GetString() ?? "",
-                            CallerId = call.GetProperty("callerId").GetInt32(),
-                            CallerName = call.GetProperty("callerName").GetString() ?? "",
-                            CallerRole = "Unknown", // We don't have this in the new format
-                            CallType = call.GetProperty("callType").GetString() ?? "",
-                            Timestamp = DateTime.Parse(call.GetProperty("timestamp").GetString() ?? DateTime.UtcNow.ToString())
+                            CallId = call.TryGetProperty("channelName", out var channelNameElement)
+                                ? channelNameElement.GetString() ?? ""
+                                : call.TryGetProperty("callId", out var callIdElement)
+                                    ? callIdElement.GetString() ?? ""
+                                    : "",
+                            CallerId = call.TryGetProperty("callerId", out var callerIdElement)
+                                ? callerIdElement.GetInt32()
+                                : 0,
+                            CallerName = extractedCallerName ?? "Unknown Caller", // ✅ Use extracted name
+                            CallerRole = call.TryGetProperty("callerRole", out var callerRoleElement)
+                                ? callerRoleElement.GetString() ?? ""
+                                : "Unknown",
+                            CallType = call.TryGetProperty("callType", out var callTypeElement)
+                                ? callTypeElement.GetString() ?? ""
+                                : "",
+                            Timestamp = call.TryGetProperty("timestamp", out var timestampElement)
+                                ? DateTime.Parse(timestampElement.GetString() ?? DateTime.UtcNow.ToString("O"))
+                                : DateTime.UtcNow
                         };
+
+                        // ✅ Log to debug caller name
+                        Console.WriteLine($"📞 RealtimeService: CallInvitation created (ProcessCall) - CallerName: '{callInvitation.CallerName}', CallId: '{callInvitation.CallId}'");
 
                         // Store Agora details for the call
                         if (call.TryGetProperty("agoraAppId", out var appIdElement))

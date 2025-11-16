@@ -283,11 +283,19 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var agoraTokenResult = await GenerateAndCacheTokenAsync(channelName, (uint)callerConnection.UserId, 3600) as OkObjectResult;
                 var tokenData = agoraTokenResult?.Value as dynamic;
 
+                // ✅ Get caller info from database (same as MobileHub)
+                var caller = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == callerConnection.UserId);
+
+                var callerName = caller != null
+                    ? $"{caller.FirstName} {caller.LastName}"
+                    : "Unknown User";
+
                 var callData = new
                 {
                     type = "incoming_call",
                     callerId = callerConnection.UserId,
-                    callerName = "Mobile User",
+                    callerName = callerName, // ✅ Use actual caller name from database
                     callType = request.CallType,
                     channelName = channelName, // ✅ Use generated channel name
                     timestamp = DateTime.UtcNow,
