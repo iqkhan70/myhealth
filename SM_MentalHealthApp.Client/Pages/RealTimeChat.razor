@@ -1168,19 +1168,39 @@
 
     private async Task InitiateVideoCall(User user)
     {
-        await RealtimeService.InitiateCallAsync(user.Id, "video");
-        
-        // ✅ Track active call for caller
-        activeCall = new ActiveCall
+        try
         {
-            CallType = "video",
-            TargetUserId = user.Id,
-            TargetUserName = $"{user.FirstName} {user.LastName}",
-            ChannelName = GenerateChannelName(user.Id)
-        };
-        
-        NotificationService.Notify(NotificationSeverity.Info, "Video Call", $"Request sent to {user.FirstName}");
-        StateHasChanged();
+            Console.WriteLine($"📞 RealTimeChat: Initiating video call to user {user.Id} ({user.FirstName} {user.LastName})");
+            
+            // ✅ Generate channel name
+            var channelName = GenerateChannelName(user.Id);
+            Console.WriteLine($"📞 RealTimeChat: Channel name: {channelName}");
+            
+            // ✅ Send SignalR call notification to receiver
+            await RealtimeService.InitiateCallAsync(user.Id, "video");
+            
+            // ✅ Track active call for caller (for the banner)
+            activeCall = new ActiveCall
+            {
+                CallType = "video",
+                TargetUserId = user.Id,
+                TargetUserName = $"{user.FirstName} {user.LastName}",
+                ChannelName = channelName
+            };
+            
+            // ✅ Navigate to VideoCall page - this will automatically join the channel
+            var callUrl = $"/video-call/{user.Id}?channel={Uri.EscapeDataString(channelName)}";
+            Console.WriteLine($"📞 RealTimeChat: Navigating caller to: {callUrl}");
+            Navigation.NavigateTo(callUrl);
+            
+            NotificationService.Notify(NotificationSeverity.Info, "Video Call", $"Connecting to {user.FirstName}...");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ RealTimeChat: Error initiating video call: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Error, "Call Error", $"Failed to start call: {ex.Message}");
+        }
     }
 
     private async Task InitiateAudioCall(User user)

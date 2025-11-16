@@ -402,18 +402,38 @@
 
                 Console.WriteLine($"🔍 VideoCall: Query params: {string.Join(", ", queryParams.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
 
-                // ✅ Auto-join if channel parameter exists (for both mobile and web calls)
+                // ✅ Auto-join if channel parameter exists
+                // Check if this is an incoming call (has mobile_call=true) or outgoing call (caller initiated)
                 if (queryParams.TryGetValue("channel", out var channelParam))
                 {
                     Console.WriteLine($"✅ VideoCall: Found channel parameter: {channelParam}");
-                    // This is an incoming call - auto-join the channel
+                    
                     if (!string.IsNullOrEmpty(channelParam))
                     {
-                        callStatus = "Joining incoming call...";
-                        StateHasChanged(); // Update UI immediately
-                        await JoinIncomingCallAsync(channelParam);
-                        StateHasChanged(); // Update UI after join
-                        return;
+                        // Check if this is a mobile call (incoming) or web-to-web call
+                        var isMobileCall = queryParams.TryGetValue("mobile_call", out var mobileCallParam) && 
+                                          mobileCallParam?.ToLower() == "true";
+                        
+                        if (isMobileCall)
+                        {
+                            // This is an incoming call from mobile - auto-join as receiver
+                            Console.WriteLine("📱 VideoCall: This is an incoming mobile call - joining as receiver");
+                            callStatus = "Joining incoming call...";
+                            StateHasChanged(); // Update UI immediately
+                            await JoinIncomingCallAsync(channelParam);
+                            StateHasChanged(); // Update UI after join
+                            return;
+                        }
+                        else
+                        {
+                            // This is an outgoing call (caller initiated from RealTimeChat) - start the call
+                            Console.WriteLine("📞 VideoCall: This is an outgoing call - starting call as caller");
+                            callStatus = "Starting call...";
+                            StateHasChanged(); // Update UI immediately
+                            await StartVideoCall(UserId); // UserId is the target user ID
+                            StateHasChanged(); // Update UI after start
+                            return;
+                        }
                     }
                     else
                     {
@@ -422,7 +442,7 @@
                 }
                 else
                 {
-                    Console.WriteLine("⚠️ VideoCall: No channel parameter found in query string");
+                    Console.WriteLine("⚠️ VideoCall: No channel parameter found in query string - this is a manual call");
                 }
             }
             else
