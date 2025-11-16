@@ -645,12 +645,21 @@
     {
         try
         {
+            Console.WriteLine("📞 VideoCall: Ending call...");
             await AgoraService.LeaveChannelAsync();
-            Navigation.NavigateTo("/");
+            isInCall = false;
+            callStatus = "Call ended";
+            StateHasChanged();
+            
+            // Navigate back to chat or home
+            await Task.Delay(500); // Small delay to show call ended status
+            Navigation.NavigateTo("/real-time-chat");
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"❌ VideoCall: Error ending call: {ex.Message}");
             error = $"Failed to end call: {ex.Message}";
+            StateHasChanged();
         }
     }
 
