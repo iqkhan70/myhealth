@@ -42,7 +42,11 @@
                 <label for="password">Password</label>
                 <input type="password" id="password"
                     class="form-control @(string.IsNullOrEmpty(password) && showValidation ? "is-invalid" : "")"
-                    @bind="password" placeholder="Enter your password" disabled="@isLoading" />
+                    @bind="password" 
+                    @bind:event="oninput"
+                    @onkeydown="HandleKeyPress"
+                    placeholder="Enter your password" 
+                    disabled="@isLoading" />
                 @if (string.IsNullOrEmpty(password) && showValidation)
                 {
                     <div class="invalid-feedback">Password is required</div>
@@ -113,7 +117,11 @@
                     <label for="registerPassword">Password</label>
                     <input type="password" id="registerPassword"
                         class="form-control @(string.IsNullOrEmpty(registerPassword) && showValidation ? "is-invalid" : "")"
-                        @bind="registerPassword" placeholder="Enter your password" disabled="@isLoading" />
+                        @bind="registerPassword" 
+                        @bind:event="oninput"
+                        @onkeydown="HandleRegisterKeyPress"
+                        placeholder="Enter your password" 
+                        disabled="@isLoading" />
                     @if (string.IsNullOrEmpty(registerPassword) && showValidation)
                     {
                         <div class="invalid-feedback">Password is required</div>
@@ -298,5 +306,21 @@
         registerPassword = "";
         dateOfBirth = DateTime.Today.AddYears(-25);
         gender = "";
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if ((e.Key == "Enter" || e.Key == "NumpadEnter") && !isLoading && !isRegisterMode)
+        {
+            await HandleLogin();
+        }
+    }
+
+    private async Task HandleRegisterKeyPress(KeyboardEventArgs e)
+    {
+        if ((e.Key == "Enter" || e.Key == "NumpadEnter") && !isLoading && isRegisterMode)
+        {
+            await HandleRegister();
+        }
     }
 }
