@@ -11,6 +11,7 @@ public interface IPatientService
     Task DeleteAsync(int id, CancellationToken ct = default);
     Task<UserStats?> GetStatsAsync(int id, CancellationToken ct = default);
     Task<AiHealthCheckResult?> PerformAiHealthCheckAsync(int id, CancellationToken ct = default);
+    Task<bool> SendAiHealthAlertsAsync(int patientId, CancellationToken ct = default);
     Task<List<User>> GetDoctorsAsync(CancellationToken ct = default);
     Task AssignToDoctorAsync(DoctorAssignPatientRequest request, CancellationToken ct = default);
     Task UnassignFromDoctorAsync(DoctorUnassignPatientRequest request, CancellationToken ct = default);

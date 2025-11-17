@@ -1,5 +1,6 @@
 using SM_MentalHealthApp.Shared;
 using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace SM_MentalHealthApp.Client.Services;
 
@@ -75,6 +76,24 @@ public class PatientService : BaseService, IPatientService
 
         var result = await response.Content.ReadFromJsonAsync<AiHealthCheckResult>(ct);
         return result;
+    }
+
+    public async Task<bool> SendAiHealthAlertsAsync(int patientId, CancellationToken ct = default)
+    {
+        AddAuthorizationHeader();
+        var response = await _http.PostAsync($"api/admin/send-ai-health-alerts/{patientId}", null, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(ct);
+            throw new HttpRequestException($"Send alerts failed with status {response.StatusCode}: {errorContent}")
+            {
+                Data = { ["StatusCode"] = response.StatusCode }
+            };
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        return result.TryGetProperty("success", out var success) && success.GetBoolean();
     }
 
     public async Task<List<User>> GetDoctorsAsync(CancellationToken ct = default)

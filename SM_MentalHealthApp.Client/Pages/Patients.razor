@@ -417,7 +417,23 @@
                     <p class="mt-2"><strong>Status:</strong> @currentHealthCheckResult.Message</p>
                     @if (currentHealthCheckResult.AlertsSent > 0)
                     {
-                        <p><strong>Alerts Sent:</strong> @currentHealthCheckResult.AlertsSent doctor(s) notified</p>
+                        <p class="text-success"><strong>✅ Alerts Sent:</strong> @currentHealthCheckResult.AlertsSent doctor(s) notified</p>
+                    }
+                    @if (currentHealthCheckResult.Severity == "High" && currentHealthCheckResult.AlertsSent == 0)
+                    {
+                        <div class="alert alert-warning mt-3">
+                            <p class="mb-2"><strong>⚠️ High Severity Detected</strong></p>
+                            <p class="mb-2">You can send alerts to @currentHealthCheckResult.DoctorsNotified assigned doctor(s) if needed.</p>
+                            <RadzenButton Text="📤 Send Alerts to Doctors" 
+                                         ButtonStyle="ButtonStyle.Danger" 
+                                         Size="ButtonSize.Medium"
+                                         Click="SendAlertsToDoctors"
+                                         Disabled="@isSendingAlerts" />
+                            @if (isSendingAlerts)
+                            {
+                                <span class="ms-2">Sending...</span>
+                            }
+                        </div>
                     }
                 </div>
                 
@@ -543,7 +559,9 @@
     private bool isAssigning = false;
     private bool isUnassigning = false;
     private bool isPerformingHealthCheck = false;
+    private bool isSendingAlerts = false;
     private AiHealthCheckResult? currentHealthCheckResult;
+    private User? currentHealthCheckPatient = null; // Store patient for sending alerts
     private User? editingUser;
     private CreatePatientRequest patientForm = new();
     private List<User> availableDoctors = new();
@@ -1065,6 +1083,7 @@
                 
                 // Store result for viewing in a dialog
                 currentHealthCheckResult = result;
+                currentHealthCheckPatient = user; // Store patient for sending alerts
                 showHealthCheckDialog = true;
                 
                 // Debug: Log severity sources
@@ -1361,7 +1380,50 @@
     {
         showHealthCheckDialog = false;
         currentHealthCheckResult = null;
+        currentHealthCheckPatient = null;
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SendAlertsToDoctors()
+    {
+        if (currentHealthCheckPatient == null || currentHealthCheckResult == null)
+        {
+            NotificationService.ShowError("Cannot send alerts: Patient information not available");
+            return;
+        }
+
+        try
+        {
+            isSendingAlerts = true;
+            StateHasChanged();
+
+            var success = await PatientService.SendAiHealthAlertsAsync(currentHealthCheckPatient.Id);
+
+            if (success)
+            {
+                // Update the result to show alerts were sent
+                if (currentHealthCheckResult != null)
+                {
+                    currentHealthCheckResult.AlertsSent = currentHealthCheckResult.DoctorsNotified;
+                }
+
+                NotificationService.ShowSuccess($"Alerts sent to {currentHealthCheckResult?.DoctorsNotified ?? 0} doctor(s)");
+                StateHasChanged();
+            }
+            else
+            {
+                NotificationService.ShowError("Failed to send alerts. Please try again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error sending alerts: {ex.Message}");
+        }
+        finally
+        {
+            isSendingAlerts = false;
+            StateHasChanged();
+        }
     }
 
     private async Task ConfirmUnassignPatient()

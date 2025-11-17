@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Shared;
@@ -119,52 +120,29 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 if (isHighSeverity)
                 {
-                    _logger.LogInformation("AI detected high severity for patient {PatientId}. Sending alerts to doctors.", patientId);
+                    _logger.LogInformation("AI detected high severity for patient {PatientId}. Alerts can be sent manually by doctor.", patientId);
 
-                    // Send SMS alerts to all assigned doctors
-                    var notificationService = HttpContext.RequestServices.GetRequiredService<INotificationService>();
-                    var alertsSent = 0;
-
-                    foreach (var doctor in assignedDoctors)
-                    {
-                        try
-                        {
-                            var alert = new global::SM_MentalHealthApp.Shared.EmergencyAlert
-                            {
-                                Id = 0, // AI-generated alert
-                                PatientId = patient.Id,
-                                PatientName = $"{patient.FirstName} {patient.LastName}",
-                                PatientEmail = patient.Email,
-                                EmergencyType = "AI Health Alert",
-                                Severity = "High",
-                                Message = $"AI Health Check detected concerning patterns for {patient.FirstName} {patient.LastName}",
-                                Timestamp = DateTime.UtcNow,
-                                DeviceId = "AI-SYSTEM"
-                            };
-
-                            await notificationService.SendEmergencyAlert(doctor.Id, alert);
-                            alertsSent++;
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to send AI health alert to doctor {DoctorId}", doctor.Id);
-                        }
-                    }
-
+                    // ✅ Don't send alerts automatically - doctor will choose to send them manually
                     return Ok(new AiHealthCheckResult
                     {
                         Success = true,
                         Severity = "High",
                         AiResponse = aiResponse,
-                        AlertsSent = alertsSent,
-                        DoctorsNotified = assignedDoctors.Count,
-                        Message = $"AI detected high severity. {alertsSent} doctors notified.",
+                        AlertsSent = 0, // No alerts sent automatically
+                        DoctorsNotified = assignedDoctors.Count, // Number of doctors who can be notified
+                        Message = "AI detected high severity. You can send alerts to assigned doctors if needed.",
                         SeveritySources = severitySources
                     });
                 }
                 else
                 {
                     _logger.LogInformation("AI health check for patient {PatientId} shows normal status", patientId);
+
+                    // ✅ Check if there are severity sources (indicating criticality was found but AI says normal)
+                    var hasCriticalSources = severitySources != null && severitySources.Any();
+                    var message = hasCriticalSources 
+                        ? "AI health check shows normal status. Nothing to alert at this time."
+                        : "AI health check shows normal status.";
 
                     return Ok(new AiHealthCheckResult
                     {
@@ -173,7 +151,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                         AiResponse = aiResponse,
                         AlertsSent = 0,
                         DoctorsNotified = 0,
-                        Message = "AI health check shows normal status. No alerts sent.",
+                        Message = message,
                         SeveritySources = severitySources
                     });
                 }
@@ -190,6 +168,79 @@ namespace SM_MentalHealthApp.Server.Controllers
                     AlertsSent = 0,
                     DoctorsNotified = 0
                 });
+            }
+        }
+
+        /// <summary>
+        /// Manually send alerts to assigned doctors for a patient
+        /// </summary>
+        [HttpPost("send-ai-health-alerts/{patientId}")]
+        [Authorize(Roles = "Admin,Doctor")]
+        public async Task<IActionResult> SendAiHealthAlerts(int patientId)
+        {
+            try
+            {
+                var patient = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == patientId && u.RoleId == 1);
+
+                if (patient == null)
+                    return NotFound("Patient not found");
+
+                // Get assigned doctors
+                var assignedDoctors = await _context.UserAssignments
+                    .Where(ua => ua.AssigneeId == patientId && ua.IsActive)
+                    .Select(ua => ua.Assigner)
+                    .Where(d => d != null && d.IsActive)
+                    .ToListAsync();
+
+                if (!assignedDoctors.Any())
+                {
+                    return BadRequest("No doctors assigned to this patient");
+                }
+
+                // Send SMS alerts to all assigned doctors
+                var notificationService = HttpContext.RequestServices.GetRequiredService<INotificationService>();
+                var alertsSent = 0;
+
+                foreach (var doctor in assignedDoctors)
+                {
+                    try
+                    {
+                        var alert = new global::SM_MentalHealthApp.Shared.EmergencyAlert
+                        {
+                            Id = 0, // AI-generated alert
+                            PatientId = patient.Id,
+                            PatientName = $"{patient.FirstName} {patient.LastName}",
+                            PatientEmail = patient.Email,
+                            EmergencyType = "AI Health Alert",
+                            Severity = "High",
+                            Message = $"AI Health Check detected concerning patterns for {patient.FirstName} {patient.LastName}",
+                            Timestamp = DateTime.UtcNow,
+                            DeviceId = "AI-SYSTEM"
+                        };
+
+                        await notificationService.SendEmergencyAlert(doctor.Id, alert);
+                        alertsSent++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to send AI health alert to doctor {DoctorId}", doctor.Id);
+                    }
+                }
+
+                _logger.LogInformation("Manually sent {AlertsSent} AI health alerts for patient {PatientId}", alertsSent, patientId);
+
+                return Ok(new { 
+                    success = true, 
+                    alertsSent = alertsSent,
+                    doctorsNotified = assignedDoctors.Count,
+                    message = $"Alerts sent to {alertsSent} doctor(s)"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending AI health alerts for patient {PatientId}: {Message}", patientId, ex.Message);
+                return StatusCode(500, new { success = false, message = $"Failed to send alerts: {ex.Message}" });
             }
         }
 
