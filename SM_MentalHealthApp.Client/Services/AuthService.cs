@@ -258,7 +258,20 @@ namespace SM_MentalHealthApp.Client.Services
         {
             _token = null;
             _currentUser = null;
+            
+            // ✅ Clear token from storage
             await RemoveTokenFromStorageAsync();
+            
+            // ✅ Clear all user-related data from localStorage
+            try
+            {
+                await _jsRuntime.InvokeVoidAsync("clearAllUserData");
+            }
+            catch
+            {
+                // If function doesn't exist, that's okay - we already removed the token
+            }
+            
             _httpClient.DefaultRequestHeaders.Authorization = null;
             OnAuthenticationStateChanged?.Invoke();
         }

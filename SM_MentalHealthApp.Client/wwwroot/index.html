@@ -190,6 +190,13 @@
         localStorage.removeItem('authToken');
     };
 
+    // ✅ Clear all user-related data from localStorage on logout
+    window.clearAllUserData = () => {
+        localStorage.removeItem('authToken');
+        // Add any other user-specific data keys here if needed
+        console.log('🧹 All user data cleared from localStorage');
+    };
+
     // Session timeout activity tracking
     let activityDotNetRef = null;
     let activityTrackingActive = false;

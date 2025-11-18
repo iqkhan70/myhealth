@@ -135,6 +135,7 @@
 @inject DialogService DialogService
 @inject IAuthService AuthService
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 
 @code {
     private string GetActiveClass(string path)
@@ -161,8 +162,20 @@
 
         if (confirmed == true)
         {
-            await AuthService.LogoutAsync();
-            Navigation.NavigateTo("/login");
+            try
+            {
+                // ✅ Clear authentication state
+                await AuthService.LogoutAsync();
+                
+                // ✅ Force full page reload to clear all component state and cached data
+                await JSRuntime.InvokeVoidAsync("eval", "window.location.href = '/login'");
+            }
+            catch (Exception ex)
+            {
+                // If JS interop fails, fallback to navigation
+                Console.WriteLine($"Error during logout: {ex.Message}");
+                Navigation.NavigateTo("/login", forceLoad: true);
+            }
         }
     }
 }

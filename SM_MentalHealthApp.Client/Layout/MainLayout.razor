@@ -269,9 +269,24 @@ else
 
     private async Task Logout()
     {
-        await SignalRService.StopAsync();
-        await AuthService.LogoutAsync();
-        Navigation.NavigateTo("/login");
+        try
+        {
+            // ✅ Stop SignalR connection
+            await SignalRService.StopAsync();
+            
+            // ✅ Clear authentication state
+            await AuthService.LogoutAsync();
+            
+            // ✅ Force full page reload to clear all component state and cached data
+            // This ensures no data from previous user persists
+            await JSRuntime.InvokeVoidAsync("eval", "window.location.href = '/login'");
+        }
+        catch (Exception ex)
+        {
+            // If JS interop fails, fallback to navigation
+            Console.WriteLine($"Error during logout: {ex.Message}");
+            Navigation.NavigateTo("/login", forceLoad: true);
+        }
     }
 
     public async ValueTask DisposeAsync()

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 using SM_MentalHealthApp.Client.Services;
 
 namespace SM_MentalHealthApp.Client.Components
@@ -8,6 +9,7 @@ namespace SM_MentalHealthApp.Client.Components
         [Inject] protected IAuthService AuthService { get; set; } = null!;
         [Inject] protected ISessionTimeoutService SessionTimeoutService { get; set; } = null!;
         [Inject] protected NavigationManager Navigation { get; set; } = null!;
+        [Inject] protected IJSRuntime JSRuntime { get; set; } = null!;
         [Parameter] public RenderFragment? ChildContent { get; set; }
 
         protected override async Task OnInitializedAsync()
@@ -51,7 +53,18 @@ namespace SM_MentalHealthApp.Client.Components
             _ = Task.Run(async () =>
             {
                 await AuthService.LogoutAsync();
-                await InvokeAsync(() => Navigation.NavigateTo("/login"));
+                await InvokeAsync(async () =>
+                {
+                    // ✅ Force full page reload to clear all component state and cached data
+                    try
+                    {
+                        await JSRuntime.InvokeVoidAsync("eval", "window.location.href = '/login'");
+                    }
+                    catch
+                    {
+                        Navigation.NavigateTo("/login", forceLoad: true);
+                    }
+                });
             });
         }
 

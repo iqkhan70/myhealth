@@ -1,15 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
-using SM_MentalHealthApp.Server.Data;
-using SM_MentalHealthApp.Shared;
-using System.Text.Json;
-using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
+using SM_MentalHealthApp.Server.Data;
+using SM_MentalHealthApp.Server.Services;
+using SM_MentalHealthApp.Shared;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
-using SM_MentalHealthApp.Server.Utils;
-using SM_MentalHealthApp.Server.Services;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -22,13 +18,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly ILogger<RealtimeController> _logger;
         private readonly IRedisCacheService _cache;
         private readonly AgoraTokenService _agoraTokenService;
-        private readonly IConfiguration _configuration;
-
-        // ✅ Get App ID from configuration, fallback to default
-        private string _appId => _configuration["Agora:AppId"] ?? "b480142a879c4ed2ab7efb07d318abda";
-
-        // ✅ Check if token authentication is enabled (default: true for security)
-        private bool _useTokens => _configuration.GetValue<bool>("Agora:UseTokens", true);
+        private readonly bool _useTokens;
 
         private static readonly Dictionary<string, RealtimeConnection> _connections = new();
         private static readonly Dictionary<int, string> _userConnections = new();
@@ -50,10 +40,10 @@ namespace SM_MentalHealthApp.Server.Controllers
             _logger = logger;
             _cache = cache;
             _agoraTokenService = agoraTokenService;
-            _configuration = configuration;
+            _useTokens = configuration.GetValue<bool>("Agora:UseTokens", true);
         }
 
-        // ✅ AGORA TOKEN ENDPOINTS ============================================
+        // ===================== AGORA TOKEN ENDPOINTS ==========================
 
         // Blazor & Web: GET
         [HttpGet("token")]
@@ -64,8 +54,6 @@ namespace SM_MentalHealthApp.Server.Controllers
             if (string.IsNullOrEmpty(channel))
                 return BadRequest("Missing channel");
 
-            // Note: UID is logged but not used for token generation
-            // Token is generated with UID=0 (shared token for all users in the channel)
             return await GenerateAndCacheTokenAsync(channel, uid, 3600);
         }
 
@@ -78,8 +66,6 @@ namespace SM_MentalHealthApp.Server.Controllers
             if (string.IsNullOrEmpty(request.ChannelName))
                 return BadRequest("Missing channel");
 
-            // Note: UID is logged but not used for token generation
-            // Token is generated with UID=0 (shared token for all users in the channel)
             var expireSeconds = request.ExpirationTimeInSeconds ?? 3600;
             return await GenerateAndCacheTokenAsync(request.ChannelName, request.Uid, expireSeconds);
         }
@@ -88,23 +74,24 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                // ✅ Validate channel name
                 if (string.IsNullOrWhiteSpace(channel))
                 {
                     _logger.LogError("❌ Empty or null channel name provided");
                     return BadRequest(new { message = "Channel name cannot be empty or null" });
                 }
 
-                // ✅ If token authentication is disabled, return empty token
                 if (!_useTokens)
                 {
                     _logger.LogInformation("🔓 Token authentication disabled - returning empty token for {Channel}", channel);
-                    return Ok(new { agoraAppId = _appId, token = "", cached = false, useTokens = false });
+                    return Ok(new
+                    {
+                        agoraAppId = _agoraTokenService.AppId,
+                        token = "",
+                        cached = false,
+                        useTokens = false
+                    });
                 }
 
-                // ✅ IMPORTANT: Cache by channel only (not by UID)
-                // All users in the same channel should use the SAME token
-                // Token is generated with UID=0 which means "any UID can use this token"
                 string cacheKey = $"agora_token:{channel}";
                 _logger.LogInformation("🔍 Checking Redis for key {Key}", cacheKey);
 
@@ -112,16 +99,27 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (!string.IsNullOrEmpty(cachedToken))
                 {
                     _logger.LogInformation("✅ Returning cached token for {Channel} (shared by all users)", channel);
-                    return Ok(new { agoraAppId = _appId, token = cachedToken, cached = true, useTokens = true });
+                    return Ok(new
+                    {
+                        agoraAppId = _agoraTokenService.AppId,
+                        token = cachedToken,
+                        cached = true,
+                        useTokens = true
+                    });
                 }
 
-                // ✅ Generate token with UID=0 (means "any UID can use this token")
-                // This allows all users in the same channel to share the same token
+                // Token for UID 0: shared by any UID in that channel
                 var token = _agoraTokenService.GenerateToken(channel, 0, expireSeconds);
                 await _cache.SetAsync(cacheKey, token, TimeSpan.FromSeconds(expireSeconds));
 
                 _logger.LogInformation("🆕 Generated and cached new token for {Channel} (shared token, UID=0)", channel);
-                return Ok(new { agoraAppId = _appId, token = token, cached = false, useTokens = true });
+                return Ok(new
+                {
+                    agoraAppId = _agoraTokenService.AppId,
+                    token = token,
+                    cached = false,
+                    useTokens = true
+                });
             }
             catch (Exception ex)
             {
@@ -130,8 +128,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-        // =====================================================================
-
+        // ===================== REALTIME CONNECTIONS ==========================
 
         [HttpPost("connect")]
         public async Task<IActionResult> Connect([FromBody] ConnectRequest request)
@@ -270,7 +267,6 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (!_userConnections.TryGetValue(request.TargetUserId, out var targetConnectionId))
                     return Ok(new { message = "Target user is not online", delivered = false });
 
-                // ✅ Generate channel name if not provided (same format as MobileHub: call_{smallerId}_{largerId})
                 var channelName = request.ChannelName;
                 if (string.IsNullOrWhiteSpace(channelName))
                 {
@@ -283,7 +279,6 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var agoraTokenResult = await GenerateAndCacheTokenAsync(channelName, (uint)callerConnection.UserId, 3600) as OkObjectResult;
                 var tokenData = agoraTokenResult?.Value as dynamic;
 
-                // ✅ Get caller info from database (same as MobileHub)
                 var caller = await _context.Users
                     .FirstOrDefaultAsync(u => u.Id == callerConnection.UserId);
 
@@ -295,9 +290,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                 {
                     type = "incoming_call",
                     callerId = callerConnection.UserId,
-                    callerName = callerName, // ✅ Use actual caller name from database
+                    callerName = callerName,
                     callType = request.CallType,
-                    channelName = channelName, // ✅ Use generated channel name
+                    channelName = channelName,
                     timestamp = DateTime.UtcNow,
                     agoraAppId = tokenData?.agoraAppId,
                     agoraToken = tokenData?.token
@@ -358,9 +353,8 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _logger.LogInformation("Getting message history for users {UserId} and {OtherUserId}", userId, otherUserId);
 
-                // ✅ Load messages with Sender navigation property included
                 var messages = await _context.SmsMessages
-                    .Include(m => m.Sender) // ✅ Explicitly include Sender to avoid lazy loading issues
+                    .Include(m => m.Sender)
                     .Where(m => (m.SenderId == userId && m.ReceiverId == otherUserId) ||
                                 (m.SenderId == otherUserId && m.ReceiverId == userId))
                     .OrderBy(m => m.SentAt)
@@ -410,9 +404,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-        // ==============================================================
-        // 🔒 Token authentication helper
-        // ==============================================================
+        // ===================== AUTH HELPERS ==========================
 
         private async Task<int?> AuthenticateToken()
         {
@@ -474,9 +466,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
     }
 
-    // ============================================================
-    // 💬 Data Models
-    // ============================================================
+    // ===================== DTOs ==========================
 
     public class AgoraRequest
     {
