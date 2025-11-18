@@ -42,11 +42,14 @@ namespace SM_MentalHealthApp.Client.Services
             _isInitializing = true;
             try
             {
+                // ✅ Get token from sessionStorage (persists across page refresh)
                 _token = await GetTokenFromStorageAsync();
                 if (!string.IsNullOrEmpty(_token))
                 {
                     _httpClient.DefaultRequestHeaders.Authorization = 
                         new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+                    
+                    // ✅ Validate token and get user (validates against Redis session)
                     await GetCurrentUserAsync();
                 }
             }
@@ -181,29 +184,70 @@ namespace SM_MentalHealthApp.Client.Services
 
         public async Task<bool> ValidateTokenAsync()
         {
+            // ✅ First try to get token from sessionStorage (in case of page refresh)
             if (string.IsNullOrEmpty(_token))
+            {
+                _token = await GetTokenFromStorageAsync();
+            }
+
+            if (string.IsNullOrEmpty(_token))
+            {
                 return false;
+            }
 
             try
             {
-                // Authorization header should already be set during initialization
+                // ✅ Validate token against server (checks both JWT validity and Redis session)
                 var response = await _httpClient.PostAsJsonAsync("api/auth/validate", _token);
-                return response.IsSuccessStatusCode;
+                if (response.IsSuccessStatusCode)
+                {
+                    var isValid = await response.Content.ReadFromJsonAsync<bool>();
+                    if (isValid)
+                    {
+                        // ✅ If token is valid, ensure it's set in Authorization header
+                        _httpClient.DefaultRequestHeaders.Authorization = 
+                            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+                    }
+                    else
+                    {
+                        // ✅ Token invalid - clear it
+                        _token = null;
+                        await RemoveTokenFromStorageAsync();
+                    }
+                    return isValid;
+                }
             }
             catch
             {
-                return false;
+                // If validation fails, assume token is invalid
             }
+
+            // ✅ Clear invalid token
+            _token = null;
+            await RemoveTokenFromStorageAsync();
+            return false;
         }
 
         public async Task<AuthUser?> GetCurrentUserAsync()
         {
+            // ✅ First try to get token from sessionStorage (in case of page refresh)
             if (string.IsNullOrEmpty(_token))
+            {
+                _token = await GetTokenFromStorageAsync();
+                if (!string.IsNullOrEmpty(_token))
+                {
+                    _httpClient.DefaultRequestHeaders.Authorization = 
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+                }
+            }
+
+            if (string.IsNullOrEmpty(_token))
+            {
                 return null;
+            }
 
             try
             {
-                // Authorization header should already be set during initialization
                 var response = await _httpClient.GetAsync("api/auth/user");
                 if (response.IsSuccessStatusCode)
                 {
@@ -213,20 +257,16 @@ namespace SM_MentalHealthApp.Client.Services
                 }
                 else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 {
-                    // Token is invalid, clear it
+                    // ✅ Token invalid - clear it
                     _token = null;
                     _currentUser = null;
-                    _httpClient.DefaultRequestHeaders.Authorization = null;
                     await RemoveTokenFromStorageAsync();
+                    _httpClient.DefaultRequestHeaders.Authorization = null;
                 }
             }
             catch
             {
-                // Token might be invalid, clear it
-                _token = null;
-                _currentUser = null;
-                _httpClient.DefaultRequestHeaders.Authorization = null;
-                await RemoveTokenFromStorageAsync();
+                // If request fails, return null
             }
 
             return null;
@@ -256,26 +296,32 @@ namespace SM_MentalHealthApp.Client.Services
 
         public async Task LogoutAsync()
         {
+            // ✅ Call server to invalidate session in Redis
+            if (!string.IsNullOrEmpty(_token))
+            {
+                try
+                {
+                    _httpClient.DefaultRequestHeaders.Authorization = 
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+                    await _httpClient.PostAsync("api/auth/logout", null);
+                }
+                catch
+                {
+                    // Continue with logout even if server call fails
+                }
+            }
+
+            // ✅ Clear token from sessionStorage and memory
             _token = null;
             _currentUser = null;
-            
-            // ✅ Clear token from storage
             await RemoveTokenFromStorageAsync();
-            
-            // ✅ Clear all user-related data from localStorage
-            try
-            {
-                await _jsRuntime.InvokeVoidAsync("clearAllUserData");
-            }
-            catch
-            {
-                // If function doesn't exist, that's okay - we already removed the token
-            }
-            
             _httpClient.DefaultRequestHeaders.Authorization = null;
             OnAuthenticationStateChanged?.Invoke();
         }
 
+        // ✅ Store token in sessionStorage (persists on refresh, cleared on tab close)
+        // Session is validated and managed server-side via Redis
+        // Token is also kept in memory for immediate access
         private async Task SaveTokenToStorageAsync(string token)
         {
             await _jsRuntime.InvokeVoidAsync("saveToken", token);
@@ -283,7 +329,13 @@ namespace SM_MentalHealthApp.Client.Services
 
         private async Task<string?> GetTokenFromStorageAsync()
         {
-            return await _jsRuntime.InvokeAsync<string?>("getToken");
+            // Get token from sessionStorage (persists across page refresh)
+            var token = await _jsRuntime.InvokeAsync<string?>("getToken");
+            if (!string.IsNullOrEmpty(token))
+            {
+                _token = token; // Also store in memory for immediate access
+            }
+            return token;
         }
 
         private async Task RemoveTokenFromStorageAsync()

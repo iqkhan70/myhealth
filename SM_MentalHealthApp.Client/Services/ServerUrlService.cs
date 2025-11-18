@@ -18,7 +18,7 @@ namespace SM_MentalHealthApp.Client.Services
         }
 
         /// <summary>
-        /// Initializes the server URL from query parameter or localStorage.
+        /// Initializes the server URL from query parameter.
         /// Call this during app initialization if accessing via ngrok or from another machine.
         /// </summary>
         public async Task InitializeServerUrlAsync()
@@ -38,16 +38,10 @@ namespace SM_MentalHealthApp.Client.Services
                 
                 Console.WriteLine($"🔍 ServerUrlService: isNgrok={isNgrok}, isLocalhost={isLocalhost}, isRemoteAccess={isRemoteAccess}");
 
-                // Try to get server URL from query parameter first (highest priority)
+                // ✅ Get server URL from query parameter only (no localStorage)
+                // Server URL is a configuration setting, not user data, so we don't store it in Redis
                 var serverUrl = await _jsRuntime.InvokeAsync<string>("eval", 
                     "new URLSearchParams(window.location.search).get('server')");
-
-                // If not in query, try localStorage
-                if (string.IsNullOrWhiteSpace(serverUrl))
-                {
-                    serverUrl = await _jsRuntime.InvokeAsync<string>("eval", 
-                        "localStorage.getItem('server_ngrok_url')");
-                }
 
                 if (!string.IsNullOrWhiteSpace(serverUrl))
                 {
@@ -57,17 +51,13 @@ namespace SM_MentalHealthApp.Client.Services
 
                     // Update HttpClient BaseAddress
                     _httpClient.BaseAddress = new Uri(serverUrl);
-                    
-                    // Save to localStorage for next time
-                    await _jsRuntime.InvokeVoidAsync("eval", 
-                        $"localStorage.setItem('server_ngrok_url', '{serverUrl}')");
 
-                    Console.WriteLine($"✅ Server URL configured from query/localStorage: {serverUrl}");
+                    Console.WriteLine($"✅ Server URL configured from query parameter: {serverUrl}");
                 }
                 else if (isNgrok)
                 {
                     // Using ngrok but no server URL provided
-                    Console.WriteLine($"❌ No server URL found in query parameter or localStorage.");
+                    Console.WriteLine($"❌ No server URL found in query parameter.");
                     Console.WriteLine($"❌ When accessing via ngrok, you must provide the server URL.");
                     Console.WriteLine($"❌ Add ?server=https://your-server-ngrok-url.ngrok.io to the URL");
                     Console.WriteLine($"❌ Example: {currentUrl}?server=https://abc123.ngrok.io");

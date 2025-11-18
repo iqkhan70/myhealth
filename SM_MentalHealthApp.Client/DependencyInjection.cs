@@ -53,7 +53,7 @@ public static class DependencyInjection
                 {
                     // When using ngrok, we need a separate ngrok tunnel for the server
                     // The server URL can be provided via:
-                    // 1. Query parameter: ?server=https://abc.ngrok.io (saved to localStorage)
+                    // 1. Query parameter: ?server=https://abc.ngrok.io (used directly, not stored)
                     // 2. Environment variable: SERVER_NGROK_URL (build-time)
                     
                     // Try environment variable first (build-time configuration)
@@ -118,7 +118,7 @@ public static class DependencyInjection
             }
         });
         
-        // Register a service to update HttpClient BaseAddress from query/localStorage
+        // Register a service to update HttpClient BaseAddress from query parameter
         services.AddScoped<ServerUrlService>();
 
         return services;

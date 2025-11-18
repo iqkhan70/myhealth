@@ -8,6 +8,8 @@ namespace SM_MentalHealthApp.Server.Services
     {
         Task<string?> GetAsync(string key);
         Task SetAsync(string key, string value, TimeSpan expiration);
+        Task<bool> RemoveAsync(string key);
+        Task<bool> ExistsAsync(string key);
     }
 
     public class RedisCacheService : IRedisCacheService
@@ -28,6 +30,16 @@ namespace SM_MentalHealthApp.Server.Services
         public async Task SetAsync(string key, string value, TimeSpan expiration)
         {
             await _db.StringSetAsync(key, value, expiration);
+        }
+
+        public async Task<bool> RemoveAsync(string key)
+        {
+            return await _db.KeyDeleteAsync(key);
+        }
+
+        public async Task<bool> ExistsAsync(string key)
+        {
+            return await _db.KeyExistsAsync(key);
         }
     }
 }

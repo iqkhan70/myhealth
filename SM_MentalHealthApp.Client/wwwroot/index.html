@@ -175,26 +175,29 @@
         window.soundEnabled = enabled;
     };
 
-    // Authentication storage functions
+    // ✅ Authentication: Token stored in sessionStorage (persists on refresh, cleared on tab close)
+    // Session is validated and managed server-side via Redis
     window.saveToken = (token) => {
-        localStorage.setItem('authToken', token);
+        sessionStorage.setItem('authToken', token);
+        console.log('🔑 Token saved to sessionStorage (validated against Redis on server)');
     };
 
     window.getToken = () => {
-        const token = localStorage.getItem('authToken');
+        const token = sessionStorage.getItem('authToken');
         console.log('🔑 getToken called, found token:', token ? `${token.substring(0, 20)}...` : 'null');
         return token;
     };
 
     window.removeToken = () => {
-        localStorage.removeItem('authToken');
+        sessionStorage.removeItem('authToken');
+        console.log('🔑 Token removed from sessionStorage');
     };
 
-    // ✅ Clear all user-related data from localStorage on logout
+    // ✅ Clear all user-related data from sessionStorage on logout
     window.clearAllUserData = () => {
-        localStorage.removeItem('authToken');
+        sessionStorage.removeItem('authToken');
         // Add any other user-specific data keys here if needed
-        console.log('🧹 All user data cleared from localStorage');
+        console.log('🧹 All user data cleared from sessionStorage');
     };
 
     // Session timeout activity tracking

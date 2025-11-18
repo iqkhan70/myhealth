@@ -14,7 +14,7 @@ try
 {
     var host = builder.Build();
     
-    // ✅ Initialize server URL from query parameter/localStorage if using ngrok
+    // ✅ Initialize server URL from query parameter if using ngrok
     var serverUrlService = host.Services.GetRequiredService<ServerUrlService>();
     await serverUrlService.InitializeServerUrlAsync();
     

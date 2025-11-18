@@ -367,7 +367,7 @@ namespace SM_MentalHealthApp.Server.Services
                     new Claim("isFirstLogin", isFirstLogin.ToString()),
                     new Claim("mustChangePassword", mustChangePassword.ToString())
                 }),
-                Expires = DateTime.UtcNow.AddDays(7),
+                Expires = DateTime.UtcNow.AddMinutes(30), // ✅ 30 minute expiration to match session timeout
                 Issuer = _configuration["Jwt:Issuer"] ?? "MentalHealthApp",
                 Audience = _configuration["Jwt:Audience"] ?? "MentalHealthAppUsers",
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
