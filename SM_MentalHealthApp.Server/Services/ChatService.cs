@@ -45,6 +45,12 @@ namespace SM_MentalHealthApp.Server.Services
                 // Get or create chat session
                 var session = await _chatHistoryService.GetOrCreateSessionAsync(userId, patientId > 0 ? patientId : null);
 
+                if (session == null)
+                {
+                    _logger.LogError("Failed to get or create chat session for userId: {UserId}, patientId: {PatientId}", userId, patientId);
+                    throw new Exception("Failed to create or retrieve chat session");
+                }
+
                 // Add user message to history
                 var isMedicalData = ContainsMedicalData(prompt);
                 var metadata = BuildMessageMetadata(userId, userRoleId, patientId);

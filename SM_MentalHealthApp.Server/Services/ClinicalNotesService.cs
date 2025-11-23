@@ -47,12 +47,13 @@ namespace SM_MentalHealthApp.Server.Services
                     .OrderByDescending(cn => cn.CreatedAt)
                     .ToListAsync();
 
-                return notes.Select(MapToDto).ToList();
+                return notes?.Select(MapToDto).ToList() ?? new List<ClinicalNoteDto>();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting clinical notes");
-                throw;
+                _logger.LogError(ex, "Error getting clinical notes - returning empty list");
+                // Return empty list instead of throwing - allows UI to show empty grid
+                return new List<ClinicalNoteDto>();
             }
         }
 

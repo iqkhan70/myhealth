@@ -118,6 +118,14 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
+                // Verify session exists
+                var session = await _context.ChatSessions.FindAsync(sessionId);
+                if (session == null)
+                {
+                    _logger.LogError("Session {SessionId} not found when trying to add message", sessionId);
+                    throw new Exception($"Chat session {sessionId} not found");
+                }
+
                 var message = new ChatMessage
                 {
                     SessionId = sessionId,
@@ -126,18 +134,15 @@ namespace SM_MentalHealthApp.Server.Services
                     MessageType = messageType,
                     IsMedicalData = isMedicalData,
                     Metadata = metadata,
-                    Timestamp = DateTime.UtcNow
+                    Timestamp = DateTime.UtcNow,
+                    IsActive = true // Ensure IsActive is set
                 };
 
                 _context.ChatMessages.Add(message);
 
                 // Update session activity and message count
-                var session = await _context.ChatSessions.FindAsync(sessionId);
-                if (session != null)
-                {
-                    session.LastActivityAt = DateTime.UtcNow;
-                    session.MessageCount++;
-                }
+                session.LastActivityAt = DateTime.UtcNow;
+                session.MessageCount++;
 
                 await _context.SaveChangesAsync();
 
@@ -413,11 +418,13 @@ namespace SM_MentalHealthApp.Server.Services
                     .ThenByDescending(s => s.CreatedAt)
                     .ToListAsync();
 
-                _logger.LogInformation("GetUserSessionsAsync: Found {Count} active sessions for user {UserId}, patient {PatientId}. Sessions: {Sessions}",
-                    sessions.Count,
+                _logger.LogInformation("GetUserSessionsAsync: Found {Count} active sessions for user {UserId}, patient {PatientId}",
+                    sessions?.Count ?? 0,
                     userId,
-                    patientId,
-                    string.Join(", ", sessions.Select(s => $"Id={s.Id}, Created={s.CreatedAt:yyyy-MM-dd HH:mm}, Ignored={s.IsIgnoredByDoctor}, Messages={s.MessageCount}")));
+                    patientId);
+
+                // Return empty list if null or no sessions
+                return sessions ?? new List<ChatSession>();
 
                 // Pre-load a sample of recent messages for each session to help with concern detection
                 // This allows the client to analyze message content even when Messages collection isn't fully loaded

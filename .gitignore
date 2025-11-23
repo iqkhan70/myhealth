@@ -2,6 +2,7 @@
 bin/
 obj/
 out/
+deploy/
 
 # User-specific files
 *.rsuser

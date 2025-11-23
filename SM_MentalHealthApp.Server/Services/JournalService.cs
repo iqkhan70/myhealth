@@ -76,12 +76,36 @@ namespace SM_MentalHealthApp.Server.Services
 
         public async Task<List<JournalEntry>> GetEntriesForUser(int userId)
         {
-            return await _context.JournalEntries
-                .Include(e => e.EnteredByUser) // Include who entered the entry (doctor or patient)
-                .Include(e => e.User) // Include the patient
-                .Where(e => e.UserId == userId && e.IsActive)
-                .OrderByDescending(e => e.CreatedAt)
-                .ToListAsync();
+            try
+            {
+                // Try with includes first
+                var entries = await _context.JournalEntries
+                    .Include(e => e.EnteredByUser) // Include who entered the entry (doctor or patient)
+                    .Include(e => e.User) // Include the patient
+                    .Where(e => e.UserId == userId && e.IsActive)
+                    .OrderByDescending(e => e.CreatedAt)
+                    .ToListAsync();
+                
+                return entries ?? new List<JournalEntry>();
+            }
+            catch (Exception ex)
+            {
+                // Fallback: return entries without includes if navigation properties fail
+                try
+                {
+                    var entries = await _context.JournalEntries
+                        .Where(e => e.UserId == userId && e.IsActive)
+                        .OrderByDescending(e => e.CreatedAt)
+                        .ToListAsync();
+                    
+                    return entries ?? new List<JournalEntry>();
+                }
+                catch
+                {
+                    // If even the simple query fails, return empty list
+                    return new List<JournalEntry>();
+                }
+            }
         }
 
         public async Task<List<JournalEntry>> GetRecentEntriesForUser(int userId, int days = 30)

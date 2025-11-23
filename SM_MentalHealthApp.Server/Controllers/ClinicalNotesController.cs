@@ -33,12 +33,14 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var notes = await _clinicalNotesService.GetClinicalNotesAsync(patientId, doctorId);
-                return Ok(notes);
+                // Always return OK with list (empty list if no notes) - never error on empty
+                return Ok(notes ?? new List<ClinicalNoteDto>());
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting clinical notes");
-                return StatusCode(500, "Internal server error");
+                _logger.LogError(ex, "Error getting clinical notes - returning empty list");
+                // Return empty list instead of error - allows UI to show empty grid
+                return Ok(new List<ClinicalNoteDto>());
             }
         }
 

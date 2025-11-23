@@ -44,10 +44,10 @@ public static class DependencyInjection
             {
                 // Get the base address where the app is running
                 var baseUri = new Uri(builder.HostEnvironment.BaseAddress);
-                
+
                 // ✅ Detect if running through ngrok
                 var isNgrok = baseUri.Host.Contains("ngrok.io") || baseUri.Host.Contains("ngrok-free.app");
-                
+
                 string serverUrl;
                 if (isNgrok)
                 {
@@ -55,10 +55,10 @@ public static class DependencyInjection
                     // The server URL can be provided via:
                     // 1. Query parameter: ?server=https://abc.ngrok.io (used directly, not stored)
                     // 2. Environment variable: SERVER_NGROK_URL (build-time)
-                    
+
                     // Try environment variable first (build-time configuration)
                     var serverNgrokUrl = Environment.GetEnvironmentVariable("SERVER_NGROK_URL");
-                    
+
                     // If not set, we'll use a JavaScript function to read from query/localStorage
                     // This will be handled by a service that updates the HttpClient after initialization
                     if (string.IsNullOrEmpty(serverNgrokUrl))
@@ -69,7 +69,7 @@ public static class DependencyInjection
                         Console.WriteLine($"⚠️ The app will try to read it from URL query parameter or localStorage.");
                         Console.WriteLine($"⚠️ Add ?server=https://your-server-ngrok-url.ngrok.io to the URL");
                         Console.WriteLine($"⚠️ Or set SERVER_NGROK_URL environment variable before building");
-                        
+
                         // Use a default that will be updated by ServerUrlService
                         serverUrl = "http://localhost:5262/";
                     }
@@ -81,31 +81,46 @@ public static class DependencyInjection
                 }
                 else
                 {
-                    // ✅ Use HTTPS for server API (server runs on HTTPS)
-                    // Both client and server use HTTPS - no mixed content issues
-                    // For localhost, can use HTTP, but for IP addresses, use HTTPS
+                    // ✅ Determine server URL based on client location
                     var isLocalhost = baseUri.Host == "localhost" || baseUri.Host == "127.0.0.1";
-                    serverUrl = isLocalhost 
-                        ? $"http://{baseUri.Host}:5262/" 
-                        : $"https://{baseUri.Host}:5262/";
+                    var clientPort = baseUri.Port;
+
+                    if (isLocalhost)
+                    {
+                        // Localhost: connect directly to server on port 5262 (HTTPS)
+                        serverUrl = $"https://{baseUri.Host}:5262/";
+                    }
+                    else if (clientPort == 5282 || clientPort == 5283)
+                    {
+                        // Local network access (macip): client on 5282/5283, server on 5262
+                        // Use HTTPS to match client scheme
+                        serverUrl = $"https://{baseUri.Host}:5262/";
+                    }
+                    else
+                    {
+                        // DigitalOcean or other production: client on port 443 (default HTTPS)
+                        // Use same host without port (goes through Nginx proxy)
+                        serverUrl = $"{baseUri.Scheme}://{baseUri.Host}/";
+                    }
                 }
-                
+
                 Console.WriteLine($"🌐 HttpClient BaseAddress configured: {serverUrl}");
                 Console.WriteLine($"ℹ️ Client is on: {baseUri.Scheme}://{baseUri.Host}:{baseUri.Port}");
                 Console.WriteLine($"ℹ️ Server API will use: {serverUrl}");
-                
+
                 // ✅ Create HttpClient with proper configuration
                 var httpClient = new HttpClient { BaseAddress = new Uri(serverUrl) };
-                
-                // ✅ Set timeout to prevent hanging
-                httpClient.Timeout = TimeSpan.FromSeconds(30);
-                
+
+                // ✅ Set timeout for long-running AI requests (15 minutes)
+                // AI generation can take 3-5 minutes, so we need a longer timeout
+                httpClient.Timeout = TimeSpan.FromMinutes(15);
+
                 // ✅ Note: In Blazor WebAssembly, SSL certificate validation is handled by the browser
                 // If you get "failed to fetch" errors with self-signed certificates:
                 // 1. Accept the certificate warning in the browser when accessing the server directly
                 // 2. Or use ngrok which provides valid certificates
                 // 3. Or configure the server with a trusted certificate
-                
+
                 return httpClient;
             }
             catch (Exception ex)
@@ -113,11 +128,11 @@ public static class DependencyInjection
                 Console.WriteLine($"❌ Error configuring HttpClient: {ex.Message}");
                 // Fallback to localhost if host extraction fails
                 var fallbackClient = new HttpClient { BaseAddress = new Uri("http://localhost:5262/") };
-                fallbackClient.Timeout = TimeSpan.FromSeconds(30);
+                fallbackClient.Timeout = TimeSpan.FromMinutes(15);
                 return fallbackClient;
             }
         });
-        
+
         // Register a service to update HttpClient BaseAddress from query parameter
         services.AddScoped<ServerUrlService>();
 

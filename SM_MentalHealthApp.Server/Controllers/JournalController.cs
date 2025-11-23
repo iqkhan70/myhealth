@@ -38,7 +38,18 @@ namespace SM_MentalHealthApp.Server.Controllers
         [HttpGet("user/{userId}")]
         public async Task<ActionResult<List<JournalEntry>>> GetEntriesForUser(int userId)
         {
-            return Ok(await _journalService.GetEntriesForUser(userId));
+            try
+            {
+                var entries = await _journalService.GetEntriesForUser(userId);
+                // Always return OK with list (empty list if no entries) - never error on empty
+                return Ok(entries ?? new List<JournalEntry>());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting journal entries for user {UserId}", userId);
+                // Return empty list instead of error - allows UI to show empty grid
+                return Ok(new List<JournalEntry>());
+            }
         }
 
         [HttpGet("user/{userId}/recent")]

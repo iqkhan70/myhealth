@@ -491,7 +491,14 @@
     <!-- Agora SDK for Web -->
     <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
     <script src="journal-input.js"></script>
-    <script>navigator.serviceWorker.register('service-worker.js');</script>
+    <script>
+        // Only register ServiceWorker on localhost (not on production with self-signed cert)
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            navigator.serviceWorker.register('service-worker.js').catch(err => {
+                console.log('ServiceWorker registration skipped:', err.message);
+            });
+        }
+    </script>
     
     <script>
         // Agora Web SDK Integration

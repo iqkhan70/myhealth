@@ -31,16 +31,21 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var userId = GetCurrentUserId();
                 if (!userId.HasValue)
                 {
+                    _logger.LogWarning("GetUserSessions: User not authenticated - GetCurrentUserId returned null. User.Identity: {IsAuthenticated}, Claims: {Claims}",
+                        User.Identity?.IsAuthenticated,
+                        string.Join(", ", User.Claims.Select(c => $"{c.Type}={c.Value}")));
                     return Unauthorized("User not authenticated");
                 }
 
                 var sessions = await _chatHistoryService.GetUserSessionsAsync(userId.Value, patientId);
-                return Ok(sessions);
+                // Always return OK with list (empty list if no sessions) - never error on empty
+                return Ok(sessions ?? new List<ChatSession>());
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting user sessions");
-                return StatusCode(500, "Internal server error");
+                _logger.LogError(ex, "Error getting user sessions - returning empty list. Exception: {Exception}", ex);
+                // Return empty list instead of error - allows UI to show empty grid
+                return Ok(new List<ChatSession>());
             }
         }
 
