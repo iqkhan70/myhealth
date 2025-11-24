@@ -1,11 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import AppConfig from '../config/app.config';
 
-// API Configuration
+// API Configuration - uses centralized config
 const getApiBaseUrl = () => {
   const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
-  if (isWeb) return 'http://localhost:5262/api';
-  return 'http://192.168.86.27:5262/api';
+  // For web/localhost development, use HTTPS (server runs on HTTPS)
+  if (isWeb) return AppConfig.getWebApiBaseUrl();
+  // For mobile: use HTTPS with configured server IP
+  return AppConfig.getMobileApiBaseUrl();
 };
 
 const API_BASE_URL = getApiBaseUrl();

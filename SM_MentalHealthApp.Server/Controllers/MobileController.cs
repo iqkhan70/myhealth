@@ -65,6 +65,10 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        // Rate limiting: track last request time per user
+        private static readonly Dictionary<int, DateTime> _lastRequestTime = new();
+        private static readonly object _lockObject = new();
+
         /// <summary>
         /// Get assigned doctors for a patient (mobile app)
         /// </summary>
@@ -78,6 +82,21 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (!int.TryParse(userIdClaim, out int patientId))
                 {
                     return Unauthorized("Invalid user token");
+                }
+
+                // Rate limiting: prevent requests more than once per 5 seconds
+                lock (_lockObject)
+                {
+                    if (_lastRequestTime.TryGetValue(patientId, out var lastTime))
+                    {
+                        var timeSinceLastRequest = DateTime.UtcNow - lastTime;
+                        if (timeSinceLastRequest.TotalSeconds < 5)
+                        {
+                            // Silently return empty - don't log every blocked request to reduce spam
+                            return Ok(new List<User>());
+                        }
+                    }
+                    _lastRequestTime[patientId] = DateTime.UtcNow;
                 }
 
                 _logger.LogInformation("Getting doctors for patient {PatientId}", patientId);

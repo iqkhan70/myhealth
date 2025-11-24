@@ -14,7 +14,24 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mentalhealthapp.mobile.clean"
+      "bundleIdentifier": "com.mentalhealthapp.mobile.clean",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSExceptionDomains": {
+            "192.168.86.25": {
+              "NSExceptionAllowsInsecureHTTPLoads": false,
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSIncludesSubdomains": true
+            },
+            "localhost": {
+              "NSExceptionAllowsInsecureHTTPLoads": false,
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSIncludesSubdomains": true
+            }
+          }
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {

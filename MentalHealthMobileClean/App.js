@@ -1,5 +1,5 @@
 // App.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ScrollView,
   Platform, KeyboardAvoidingView, Modal
@@ -10,11 +10,36 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import SignalRService from './src/services/SignalRService';
-// ✅ Use Agora now
-import AgoraService from './src/services/AgoraService';
-import { RtcLocalView, RtcRemoteView } from 'react-native-agora';
+// ✅ Use Agora now (conditionally imported for development builds only)
+let AgoraService = null;
+let RtcLocalView = null;
+let RtcRemoteView = null;
+
+// Try to import Agora - will fail in Expo Go, that's OK
+// In Expo Go, react-native-agora requires native code which isn't available
+try {
+  AgoraService = require('./src/services/AgoraService').default;
+  const agoraComponents = require('react-native-agora');
+  RtcLocalView = agoraComponents.RtcLocalView;
+  RtcRemoteView = agoraComponents.RtcRemoteView;
+  console.log('✅ Agora components loaded successfully');
+} catch (error) {
+  console.warn('⚠️ Agora not available (running in Expo Go?):', error.message);
+  console.warn('💡 Video/Audio calls will not work. To enable calls, create a development build:');
+  console.warn('   npx expo run:ios  or  npx expo run:android');
+  // Create mock components for Expo Go (with same structure as real components)
+  const MockView = () => null;
+  MockView.TextureView = () => null;
+  MockView.SurfaceView = () => null;
+  RtcLocalView = MockView;
+  RtcRemoteView = MockView;
+}
+
 import DocumentUpload from './src/components/DocumentUpload';
 import SmsComponent from './src/components/SmsComponent';
+
+// Import app configuration
+import AppConfig from './src/config/app.config';
 
 // detect platform once
 const isIOS = Platform.OS === 'ios';
@@ -22,11 +47,26 @@ const isIOS = Platform.OS === 'ios';
 // ---------- ENV / URLS ----------
 const getApiBaseUrl = () => {
   const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
-  if (isWeb) return 'http://localhost:5262/api';
-  return 'http://192.168.86.32:5262/api';
+  // For web/localhost development, use HTTPS (server runs on HTTPS)
+  if (isWeb) {
+    const url = AppConfig.getWebApiBaseUrl();
+    console.log('🌐 Using Web API URL:', url);
+    return url;
+  }
+  // For mobile: use HTTPS with configured server IP
+  const url = AppConfig.getMobileApiBaseUrl();
+  console.log('📱 Using Mobile API URL:', url);
+  console.log('📱 Config:', {
+    SERVER_IP: AppConfig.SERVER_IP,
+    SERVER_PORT: AppConfig.SERVER_PORT,
+    USE_HTTPS: AppConfig.USE_HTTPS
+  });
+  return url;
 };
 const API_BASE_URL = getApiBaseUrl();
 const SIGNALR_HUB_URL = API_BASE_URL.replace('/api', '/mobilehub');
+console.log('✅ API Base URL initialized:', API_BASE_URL);
+console.log('✅ SignalR Hub URL:', SIGNALR_HUB_URL);
 
 // 👉 Set your Agora App ID here (or pull from .env)
 const AGORA_APP_ID = 'b480142a879c4ed2ab7efb07d318abda';
@@ -60,11 +100,26 @@ export default function App() {
   // 📱 SMS state
   const [smsModalVisible, setSmsModalVisible] = useState(false);
 
+  // 🚨 Emergency state
+  const [sendingEmergency, setSendingEmergency] = useState(false);
+  const [deviceToken, setDeviceToken] = useState(null);
+  const deviceRegisteredRef = useRef(false);
+  const userInitializedRef = useRef(false);
+  const contactsLoadedRef = useRef(false);
+  const lastLoadedUserIdRef = useRef(null);
+
   // ---------- INIT ----------
   useEffect(() => {
     checkAuthStatus();
-    initializeServices();
-  }, []);
+  }, []); // Only run once on mount
+
+  useEffect(() => {
+    if (user && user.id && !userInitializedRef.current) {
+      userInitializedRef.current = true;
+      initializeServices();
+      registerDeviceForEmergency();
+    }
+  }, [user?.id]); // Only run when user ID changes, not on every user object change
 
   const checkAuthStatus = async () => {
     try {
@@ -73,7 +128,11 @@ export default function App() {
       if (token && userData) {
         const u = JSON.parse(userData);
         setUser(u);
-        await loadContactsForUser(u, token);
+        // Only load contacts once
+        if (!contactsLoadedRef.current) {
+          contactsLoadedRef.current = true;
+          await loadContactsForUser(u, token);
+        }
       }
     } catch (e) {
       console.error('Error checking auth:', e);
@@ -82,24 +141,31 @@ export default function App() {
 
   const initializeServices = async () => {
     try {
-      console.log('🚀 Initializing Agora…');
-      const ok = await AgoraService.initialize(AGORA_APP_ID);
-      if (ok) {
-        setAgoraInitialized(true);
+      // Only initialize Agora if it's available (not in Expo Go)
+      if (AgoraService) {
+        console.log('🚀 Initializing Agora…');
+        const ok = await AgoraService.initialize(AGORA_APP_ID);
+        if (ok) {
+          setAgoraInitialized(true);
 
-        // Hook Agora events → UI
-        AgoraService.setListener('onUserJoined', (uid) => {
-          setRemoteUsers((prev) => (prev.includes(uid) ? prev : [...prev, uid]));
-        });
-        AgoraService.setListener('onUserLeft', (uid) => {
-          setRemoteUsers((prev) => prev.filter((id) => id !== uid));
-        });
-        AgoraService.setListener('onConnectionStateChanged', (state) => {
-          console.log('Agora state:', state);
-        });
+          // Hook Agora events → UI
+          AgoraService.setListener('onUserJoined', (uid) => {
+            setRemoteUsers((prev) => (prev.includes(uid) ? prev : [...prev, uid]));
+          });
+          AgoraService.setListener('onUserLeft', (uid) => {
+            setRemoteUsers((prev) => prev.filter((id) => id !== uid));
+          });
+          AgoraService.setListener('onConnectionStateChanged', (state) => {
+            console.log('Agora state:', state);
+          });
+        }
+      } else {
+        console.warn('⚠️ Agora not available - running in Expo Go. Video/Audio calls will not work.');
+        console.warn('💡 To enable calls, create a development build: npx expo run:ios or npx expo run:android');
       }
     } catch (e) {
       console.error('❌ Failed to init services:', e);
+      console.warn('⚠️ Agora initialization failed - calls will not work');
     }
   };
 
@@ -107,18 +173,37 @@ export default function App() {
   const login = async () => {
     setLoading(true);
     try {
+      console.log('🔐 Attempting login to:', `${API_BASE_URL}/auth/login`);
       const resp = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
+      console.log('📡 Login response status:', resp.status, resp.statusText);
+      
       const data = await resp.json();
       if (resp.ok && data.success) {
         await AsyncStorage.setItem('userToken', data.token);
         await AsyncStorage.setItem('currentUser', JSON.stringify(data.user));
+        
+        // Reset flags for new login BEFORE setting user
+        contactsLoadedRef.current = false;
+        userInitializedRef.current = false;
+        lastLoadedUserIdRef.current = null;
+        loadingContactsRef.current = false;
+        lastCallTimeRef.current = 0; // Reset to allow first call
+        hasContactsRef.current = false; // Reset contacts flag
+        
         setUser(data.user);
-
-        await loadContactsForUser(data.user, data.token);
+        
+        // Load contacts after a small delay to ensure state is set
+        // and to avoid race conditions with useEffect
+        setTimeout(async () => {
+          if (!loadingContactsRef.current && lastLoadedUserIdRef.current !== data.user.id) {
+            await loadContactsForUser(data.user, data.token);
+          }
+        }, 300); // Slightly longer delay to ensure everything is ready
+        
         await loadAvailablePatients(data.user, data.token);
         await initializeSignalR(data.token);
 
@@ -128,8 +213,29 @@ export default function App() {
         Alert.alert('Error', data.message || 'Login failed');
       }
     } catch (e) {
-      console.error('Login error:', e);
-      Alert.alert('Connection Error', `Cannot reach ${API_BASE_URL}`);
+      console.error('❌ Login error:', e);
+      console.error('❌ Error details:', {
+        message: e.message,
+        name: e.name,
+        stack: e.stack
+      });
+      
+      // Provide helpful error message
+      let errorMsg = `Cannot reach server at ${API_BASE_URL}`;
+      if (e.message && e.message.includes('Network request failed')) {
+        errorMsg += '\n\nPossible causes:\n';
+        errorMsg += '• Server not running\n';
+        errorMsg += '• SSL certificate not trusted (self-signed cert)\n';
+        errorMsg += '• App needs to be rebuilt after certificate bypass config\n';
+        errorMsg += '• Wrong IP address\n';
+        errorMsg += '• Firewall blocking connection\n\n';
+        errorMsg += '🔧 Solution: Rebuild the app to apply certificate bypass:\n';
+        errorMsg += '   npx expo run:android  (or run:ios)\n\n';
+        errorMsg += '⚠️  Note: Certificate bypass config requires a native rebuild.\n';
+        errorMsg += '   Expo Go won\'t work - you need a development build.';
+      }
+      
+      Alert.alert('Connection Error', errorMsg);
     } finally {
       setLoading(false);
     }
@@ -158,8 +264,15 @@ export default function App() {
     try {
       await SignalRService.disconnect();
       setSignalRConnected(false);
-      await AgoraService.leaveChannel();
-      await AgoraService.destroy();
+      // Clean up Agora if available
+      if (AgoraService && agoraInitialized) {
+        try {
+          await AgoraService.leaveChannel();
+          await AgoraService.destroy();
+        } catch (e) {
+          console.warn('Agora cleanup error:', e);
+        }
+      }
 
       await AsyncStorage.removeItem('userToken');
       await AsyncStorage.removeItem('currentUser');
@@ -170,6 +283,7 @@ export default function App() {
       setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
       setCurrentView('login');
       setAvailablePatients([]);
+      setAgoraInitialized(false);
       setRemoteUsers([]);
     } catch (e) {
       console.error('Logout error:', e);
@@ -206,26 +320,145 @@ export default function App() {
   };
 
   // ---------- CONTACTS ----------
-  const loadContactsForUser = async (userData, token) => {
+  const loadingContactsRef = useRef(false);
+  const lastCallTimeRef = useRef(0);
+  const hasContactsRef = useRef(false);
+  
+  const loadContactsForUser = useCallback(async (userData, token) => {
+    const callId = Math.random().toString(36).substring(7);
+    const now = Date.now();
+    
+    console.log(`🔍 [${callId}] loadContactsForUser called:`, {
+      userId: userData?.id,
+      loadingContacts: loadingContactsRef.current,
+      lastLoadedUserId: lastLoadedUserIdRef.current,
+      timeSinceLastCall: now - lastCallTimeRef.current,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Client-side rate limiting: prevent calls more than once per 2 seconds
+    // But allow the first call (when lastCallTimeRef is 0)
+    if (lastCallTimeRef.current > 0 && (now - lastCallTimeRef.current) < 2000) {
+      console.log(`⏸️ [${callId}] Rate limited: Only ${now - lastCallTimeRef.current}ms since last call. Skipping...`);
+      return;
+    }
+    
+    // Prevent multiple simultaneous calls
+    if (loadingContactsRef.current) {
+      console.log(`⏸️ [${callId}] Contacts already loading, skipping...`);
+      return;
+    }
+    
+    // Prevent loading for the same user ID multiple times (unless it's been more than 10 seconds)
+    // This allows refreshing contacts after a delay, but prevents spam
+    if (lastLoadedUserIdRef.current === userData?.id && lastCallTimeRef.current > 0 && (now - lastCallTimeRef.current) < 10000) {
+      console.log(`⏸️ [${callId}] Contacts already loaded for user ${userData.id} recently, skipping...`);
+      return;
+    }
+    
+    lastCallTimeRef.current = now;
+    
     try {
+      console.log(`✅ [${callId}] Starting to load contacts for user ${userData?.id}`);
+      loadingContactsRef.current = true;
+      lastLoadedUserIdRef.current = userData?.id; // Mark as loading for this user
+      
       let endpoint;
       if (userData.roleId === 2 || userData.roleName === 'Doctor') {
         endpoint = `${API_BASE_URL}/mobile/doctor/patients`;
       } else {
         endpoint = `${API_BASE_URL}/mobile/patient/doctors`;
       }
-      const resp = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      console.log(`📞 [${callId}] Loading contacts from:`, endpoint);
+      console.log(`📞 [${callId}] Using token:`, token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+      
+      let resp;
+      try {
+        resp = await fetch(endpoint, { 
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          } 
+        });
+        console.log(`📞 [${callId}] Contacts response status:`, resp.status, resp.statusText);
+      } catch (fetchError) {
+        console.error(`📞 [${callId}] Fetch error details:`, {
+          message: fetchError.message,
+          name: fetchError.name,
+          stack: fetchError.stack,
+          endpoint: endpoint
+        });
+        
+        // Check if it's an SSL/certificate error
+        if (fetchError.message && (
+          fetchError.message.includes('Network request failed') ||
+          fetchError.message.includes('SSL') ||
+          fetchError.message.includes('certificate')
+        )) {
+          console.error(`🔒 [${callId}] SSL/Certificate error detected!`);
+          console.error(`💡 This usually means the certificate isn't trusted. Check:`);
+          console.error(`   - iOS: App Transport Security settings`);
+          console.error(`   - Android: network_security_config.xml`);
+          console.error(`   - Make sure you rebuilt the app after native config changes`);
+        }
+        
+        throw fetchError;
+      }
+      
       if (resp.ok) {
         const arr = await resp.json();
-        setContacts(Array.isArray(arr) ? arr : []);
+        const contactCount = Array.isArray(arr) ? arr.length : 0;
+        console.log(`📞 [${callId}] Contacts loaded:`, contactCount);
+        
+        // Only update contacts if we actually got data
+        // If we got an empty array, it's likely rate-limited - don't overwrite existing contacts
+        if (contactCount > 0) {
+          setContacts(arr);
+          hasContactsRef.current = true;
+          console.log(`✅ [${callId}] Contacts updated with ${contactCount} contacts`);
+        } else {
+          // Empty array - likely rate-limited
+          // If we haven't loaded contacts yet, retry after rate limit period
+          if (!hasContactsRef.current) {
+            console.log(`⚠️ [${callId}] Got empty contacts on first load (likely rate-limited). Will retry in 6 seconds...`);
+            // Reset refs to allow retry after server rate limit (5 seconds) + buffer
+            lastLoadedUserIdRef.current = null;
+            lastCallTimeRef.current = 0;
+            setTimeout(async () => {
+              console.log(`🔄 Retrying contacts load after rate limit...`);
+              await loadContactsForUser(userData, token);
+            }, 6000);
+          } else {
+            // We already have contacts, keep them (don't overwrite with empty)
+            console.log(`⚠️ [${callId}] Got empty contacts (rate-limited). Keeping existing contacts.`);
+          }
+        }
+        
+        // Always mark as loaded to prevent infinite retry loops
+        console.log(`✅ [${callId}] Request completed, lastLoadedUserIdRef set to:`, lastLoadedUserIdRef.current);
       } else {
+        const errorText = await resp.text();
+        console.error(`📞 [${callId}] Contacts API error:`, resp.status, errorText);
         setContacts([]);
+        // Reset ref on error so it can retry
+        lastLoadedUserIdRef.current = null;
+        // Show user-friendly error
+        if (resp.status === 401) {
+          console.warn('⚠️ Authentication failed - token may be invalid');
+        } else if (resp.status === 403) {
+          console.warn('⚠️ Forbidden - user may not have permission');
+        }
       }
     } catch (e) {
-      console.error('Contacts error:', e);
+      console.error(`📞 [${callId}] Contacts fetch error:`, e);
       setContacts([]);
+      // Reset ref on error so it can retry
+      lastLoadedUserIdRef.current = null;
+    } finally {
+      loadingContactsRef.current = false;
+      console.log(`🏁 [${callId}] loadContactsForUser finished, loadingContactsRef set to false`);
     }
-  };
+  }, []); // No dependencies - function is stable
 
   const loadContacts = async () => {
     try {
@@ -394,7 +627,7 @@ export default function App() {
   //       const uid = user?.id || Math.floor(Math.random() * 100000);
   //       const withVideo = callType === 'Video';
 
-  //       // 🟢 get token dynamically from backend (port 5262)
+  //       // 🟢 get token dynamically from backend (server API on port 5262)
   //         const rtcToken = await fetchAgoraToken(channelName, targetUser.id || 0);
   //       console.log('Target User id:', targetUser.id);
   //       console.log('🎫 Agora Token:', rtcToken);
@@ -441,8 +674,11 @@ export default function App() {
       console.warn('Server call notify failed (continuing):', e?.message);
     }
 
-    if (!agoraInitialized) {
-      Alert.alert('Error', 'Agora not initialized');
+    if (!AgoraService || !agoraInitialized) {
+      Alert.alert(
+        'Calls Not Available', 
+        'Video/Audio calls require a development build. Agora is not available in Expo Go.\n\nTo enable calls, run:\nnpx expo run:ios\nor\nnpx expo run:android'
+      );
       setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
       return;
     }
@@ -483,7 +719,9 @@ export default function App() {
 
   const endCall = async () => {
     try {
-      await AgoraService.leaveChannel();
+      if (AgoraService && agoraInitialized) {
+        await AgoraService.leaveChannel();
+      }
     } catch (e) {
       console.error('leave error:', e);
     }
@@ -494,15 +732,156 @@ export default function App() {
   };
 
   const toggleMute = async () => {
+    if (!AgoraService || !agoraInitialized) return;
     const next = !isAudioMuted;
     setIsAudioMuted(next);
     await AgoraService.muteLocalAudio(next);
   };
 
   const toggleVideo = async () => {
+    if (!AgoraService || !agoraInitialized) return;
     const next = !isVideoMuted;
     setIsVideoMuted(next);
     await AgoraService.muteLocalVideo(next);
+  };
+
+  // ---------- EMERGENCY ----------
+  const registerDeviceForEmergency = async () => {
+    if (!user || user.roleId !== 1) return; // Only patients need device registration
+    if (deviceRegisteredRef.current) return; // Already registered or in progress
+
+    try {
+      deviceRegisteredRef.current = true; // Mark as in progress
+      const deviceId = `device_${user.id}_${Platform.OS}`;
+      const deviceName = `${Platform.OS} Device`;
+      
+      // Check if we already have a token stored
+      const storedToken = await AsyncStorage.getItem('emergencyDeviceToken');
+      if (storedToken) {
+        setDeviceToken(storedToken);
+        return;
+      }
+
+      // Register device
+      const response = await fetch(`${API_BASE_URL}/emergency/test-register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          patientId: user.id,
+          deviceId: deviceId,
+          deviceName: deviceName,
+          deviceType: 'mobile',
+          deviceModel: Platform.OS,
+          operatingSystem: Platform.OS
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.deviceToken) {
+        setDeviceToken(data.deviceToken);
+        await AsyncStorage.setItem('emergencyDeviceToken', data.deviceToken);
+        await AsyncStorage.setItem('emergencyDeviceId', deviceId);
+        console.log('✅ Device registered for emergency:', data.deviceToken);
+      } else {
+        console.warn('⚠️ Device registration failed:', data.message);
+      }
+    } catch (error) {
+      console.error('❌ Error registering device:', error);
+      deviceRegisteredRef.current = false; // Reset on error so it can retry
+      // Don't show alert - this is background operation
+    }
+  };
+
+  // Valid emergency types: Fall, Cardiac, PanicAttack, Seizure, Overdose, SelfHarm, Unconscious, Other
+  // Valid severity levels: Low, Medium, High, Critical
+  const sendEmergency = async (emergencyType = 'Cardiac', severity = 'High', message = 'Emergency assistance needed') => {
+    if (!user || user.roleId !== 1) {
+      Alert.alert('Error', 'Only patients can send emergency alerts');
+      return;
+    }
+
+    if (!selectedContactDetail) {
+      Alert.alert('Error', 'Please select a doctor contact first');
+      return;
+    }
+
+    // Make sure device is registered
+    if (!deviceToken) {
+      Alert.alert('Error', 'Device not registered. Please wait a moment and try again.');
+      await registerDeviceForEmergency();
+      return;
+    }
+
+    // Confirm before sending
+    Alert.alert(
+      'Send Emergency Alert?',
+      `This will send an emergency alert to ${selectedContactDetail.firstName} ${selectedContactDetail.lastName} and log an incident. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send Emergency',
+          style: 'destructive',
+          onPress: async () => {
+            setSendingEmergency(true);
+            try {
+              const storedDeviceId = await AsyncStorage.getItem('emergencyDeviceId') || `device_${user.id}_${Platform.OS}`;
+
+              const response = await fetch(`${API_BASE_URL}/emergency/test-emergency`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  deviceToken: deviceToken,
+                  deviceId: storedDeviceId,
+                  emergencyType: emergencyType,
+                  severity: severity,
+                  message: message,
+                  heartRate: Math.floor(Math.random() * 30) + 70, // 70-100
+                  bloodPressure: `${120 + Math.floor(Math.random() * 20)}/${80 + Math.floor(Math.random() * 10)}`,
+                  temperature: parseFloat((98.6 + (Math.random() - 0.5) * 2).toFixed(1)),
+                  oxygenSaturation: Math.floor(Math.random() * 5) + 95, // 95-100
+                  latitude: 0, // TODO: Get actual location if available
+                  longitude: 0
+                })
+              });
+
+              const data = await response.json();
+
+              if (data.success) {
+                Alert.alert(
+                  'Emergency Sent!',
+                  `Emergency alert sent successfully to ${selectedContactDetail.firstName} ${selectedContactDetail.lastName}.\n\nIncident ID: ${data.incidentId}\n\nThe incident has been logged and will appear in the emergency dashboard.`,
+                  [{ text: 'OK' }]
+                );
+              } else {
+                throw new Error(data.message || data.reason || 'Emergency sending failed');
+              }
+            } catch (error) {
+              console.error('Emergency error:', error);
+              let errorMessage = error.message || 'Please check your connection and try again.';
+              
+              // If device token is invalid, try to re-register
+              if (errorMessage.includes('Invalid') || errorMessage.includes('device token')) {
+                console.log('🔄 Device token invalid, re-registering...');
+                await registerDeviceForEmergency();
+                errorMessage = 'Device registration issue. Please try again.';
+              }
+              
+              Alert.alert(
+                'Error',
+                `Failed to send emergency alert: ${errorMessage}`
+              );
+            } finally {
+              setSendingEmergency(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   // ---------- RENDER ----------
@@ -723,6 +1102,19 @@ export default function App() {
               >
                 <Text style={styles.contactDetailButtonIcon}>📱</Text>
                 <Text style={styles.contactDetailButtonText}>SMS</Text>
+              </TouchableOpacity>
+            )}
+
+            {user?.roleId === 1 && (
+              <TouchableOpacity 
+                style={[styles.contactDetailButton, styles.emergencyButton]} 
+                onPress={() => sendEmergency()}
+                disabled={sendingEmergency}
+              >
+                <Text style={styles.contactDetailButtonIcon}>🚨</Text>
+                <Text style={styles.contactDetailButtonText}>
+                  {sendingEmergency ? 'Sending...' : 'Emergency'}
+                </Text>
               </TouchableOpacity>
             )}
 
@@ -1387,6 +1779,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
+  },
+  emergencyButton: {
+    backgroundColor: '#ffebee',
+    borderWidth: 2,
+    borderColor: '#dc3545',
   },
   contactArrow: {
     justifyContent: 'center',
