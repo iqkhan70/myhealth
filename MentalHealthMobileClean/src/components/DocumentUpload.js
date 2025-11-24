@@ -39,7 +39,8 @@ const DocumentUpload = ({
   onDocumentUploaded, 
   showPatientSelector = false,
   availablePatients = [],
-  onPatientSelect 
+  onPatientSelect,
+  user = null // Current user to check role for delete permission
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [documents, setDocuments] = useState([]);
@@ -325,38 +326,45 @@ const DocumentUpload = ({
     );
   };
 
-  const renderDocument = ({ item }) => (
-    <View style={styles.documentCard}>
-      <View style={styles.documentHeader}>
-        <Text style={styles.documentTitle}>{item.title}</Text>
-        <View style={styles.documentActions}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => downloadDocument(item)}
-          >
-            <Text style={styles.actionButtonText}>Download</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.deleteButton]}
-            onPress={() => deleteDocument(item)}
-          >
-            <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Delete</Text>
-          </TouchableOpacity>
+  const renderDocument = ({ item }) => {
+    // Only admins (roleId === 3) can delete documents
+    const canDelete = user?.roleId === 3;
+    
+    return (
+      <View style={styles.documentCard}>
+        <View style={styles.documentHeader}>
+          <Text style={styles.documentTitle}>{item.title}</Text>
+          <View style={styles.documentActions}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => downloadDocument(item)}
+            >
+              <Text style={styles.actionButtonText}>Download</Text>
+            </TouchableOpacity>
+            {canDelete && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.deleteButton]}
+                onPress={() => deleteDocument(item)}
+              >
+                <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Delete</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </View>
       
       {item.description ? (
         <Text style={styles.documentDescription}>{item.description}</Text>
       ) : null}
       
-      <View style={styles.documentMeta}>
-        <Text style={styles.metaText}>File: {item.originalFileName}</Text>
-        <Text style={styles.metaText}>Size: {DocumentUploadService.formatFileSize(item.fileSizeBytes)}</Text>
-        <Text style={styles.metaText}>Added: {new Date(item.createdAt).toLocaleDateString()}</Text>
-        <Text style={styles.metaText}>By: {item.addedByUserName}</Text>
+        <View style={styles.documentMeta}>
+          <Text style={styles.metaText}>File: {item.originalFileName}</Text>
+          <Text style={styles.metaText}>Size: {DocumentUploadService.formatFileSize(item.fileSizeBytes)}</Text>
+          <Text style={styles.metaText}>Added: {new Date(item.createdAt).toLocaleDateString()}</Text>
+          <Text style={styles.metaText}>By: {item.addedByUserName}</Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>

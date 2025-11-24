@@ -1425,6 +1425,7 @@ export default function App() {
           showPatientSelector={user.roleId === 2}
           onPatientSelect={(patient) => console.log('Selected patient:', patient)}
           onDocumentUploaded={() => console.log('Document uploaded')}
+          user={user}
         />
       </SafeAreaView>
     );
