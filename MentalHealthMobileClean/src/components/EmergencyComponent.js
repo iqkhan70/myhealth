@@ -144,11 +144,13 @@ const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, devi
     setEmergencyMessage(quickMsg);
   };
 
+  // For emergency situations, we primarily use High and Critical
+  // Low and Medium are available but less prominent for non-urgent reporting
   const severityOptions = [
-    { label: 'Low', value: 'Low', color: '#28a745' },
-    { label: 'Medium', value: 'Medium', color: '#ffc107' },
-    { label: 'High', value: 'High', color: '#fd7e14' },
-    { label: 'Critical', value: 'Critical', color: '#dc3545' },
+    { label: 'High', value: 'High', color: '#fd7e14', recommended: true },
+    { label: 'Critical', value: 'Critical', color: '#dc3545', recommended: true },
+    { label: 'Medium', value: 'Medium', color: '#ffc107', recommended: false },
+    { label: 'Low', value: 'Low', color: '#28a745', recommended: false },
   ];
 
   return (
@@ -194,6 +196,9 @@ const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, devi
           {/* Severity Selection */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Severity Level</Text>
+            <Text style={styles.sectionSubtitle}>
+              Select the urgency level. High and Critical are recommended for emergencies.
+            </Text>
             <View style={styles.severityContainer}>
               {severityOptions.map((option) => (
                 <TouchableOpacity
@@ -201,16 +206,21 @@ const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, devi
                   style={[
                     styles.severityButton,
                     severity === option.value && styles.selectedSeverityButton,
-                    { borderColor: option.color }
+                    { borderColor: option.color },
+                    !option.recommended && styles.lowPrioritySeverity
                   ]}
                   onPress={() => setSeverity(option.value)}
                 >
                   <Text style={[
                     styles.severityText,
-                    severity === option.value && { color: option.color, fontWeight: '600' }
+                    severity === option.value && { color: option.color, fontWeight: '600' },
+                    !option.recommended && styles.lowPriorityText
                   ]}>
                     {option.label}
                   </Text>
+                  {option.recommended && (
+                    <Text style={styles.recommendedBadge}>Recommended</Text>
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
@@ -386,13 +396,27 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     minWidth: 80,
     alignItems: 'center',
+    position: 'relative',
   },
   selectedSeverityButton: {
     backgroundColor: '#fff3cd',
   },
+  lowPrioritySeverity: {
+    opacity: 0.6,
+    borderStyle: 'dashed',
+  },
   severityText: {
     fontSize: 14,
     color: '#666',
+  },
+  lowPriorityText: {
+    fontSize: 12,
+  },
+  recommendedBadge: {
+    fontSize: 9,
+    color: '#28a745',
+    fontWeight: '600',
+    marginTop: 2,
   },
   quickMessagesContainer: {
     flexDirection: 'row',
