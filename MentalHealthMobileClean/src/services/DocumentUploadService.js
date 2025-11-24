@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy'; // Use legacy API for compatibility
 import AppConfig from '../config/app.config';
 
 // API Configuration - uses centralized config
@@ -42,6 +43,9 @@ class DocumentUploadService {
   async initiateUpload(uploadRequest) {
     try {
       const headers = await this.getHeaders();
+      console.log('📤 Initiating upload request:', JSON.stringify(uploadRequest, null, 2));
+      console.log('📤 API URL:', `${this.baseUrl}/DocumentUpload/initiate`);
+      
       const response = await fetch(`${this.baseUrl}/DocumentUpload/initiate`, {
         method: 'POST',
         headers,
@@ -49,12 +53,29 @@ class DocumentUploadService {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('❌ Upload initiation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.message || errorJson.Message || errorMessage;
+        } catch (e) {
+          errorMessage = errorText || errorMessage;
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      return await response.json();
+      const result = await response.json();
+      console.log('✅ Upload initiated successfully:', result);
+      return result;
     } catch (error) {
-      console.error('Error initiating upload:', error);
+      console.error('❌ Error initiating upload:', error);
       throw error;
     }
   }
@@ -83,28 +104,83 @@ class DocumentUploadService {
   // Upload file to S3
   async uploadToS3(uploadUrl, fileUri, contentType) {
     try {
-      const formData = new FormData();
-      formData.append('file', {
-        uri: fileUri,
-        type: contentType,
-        name: fileUri.split('/').pop(),
+      console.log('📤 Uploading to S3:', { uploadUrl: uploadUrl.substring(0, 50) + '...', fileUri, contentType });
+      
+      // For S3 presigned PUT URLs, we need to upload the raw file content
+      // Read the file as base64 using legacy API
+      const fileBase64 = await FileSystem.readAsStringAsync(fileUri, {
+        encoding: FileSystem.EncodingType?.Base64 ?? 'base64',
       });
-
-      const response = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: formData,
-        headers: {
-          'Content-Type': contentType,
-        },
+      
+      console.log('📤 File read as base64, length:', fileBase64.length);
+      
+      // Convert base64 to binary for S3
+      // Use XMLHttpRequest for better binary support in React Native
+      return new Promise((resolve, reject) => {
+        // Decode base64 to binary
+        let binaryString;
+        if (Platform.OS === 'web' && typeof atob !== 'undefined') {
+          binaryString = atob(fileBase64);
+        } else {
+          // Manual base64 decode for React Native
+          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+          let output = '';
+          let i = 0;
+          const cleanBase64 = fileBase64.replace(/[^A-Za-z0-9\+\/\=]/g, '');
+          while (i < cleanBase64.length) {
+            const enc1 = chars.indexOf(cleanBase64.charAt(i++));
+            const enc2 = chars.indexOf(cleanBase64.charAt(i++));
+            const enc3 = chars.indexOf(cleanBase64.charAt(i++));
+            const enc4 = chars.indexOf(cleanBase64.charAt(i++));
+            const chr1 = (enc1 << 2) | (enc2 >> 4);
+            const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+            const chr3 = ((enc3 & 3) << 6) | enc4;
+            output += String.fromCharCode(chr1);
+            if (enc3 !== 64) output += String.fromCharCode(chr2);
+            if (enc4 !== 64) output += String.fromCharCode(chr3);
+          }
+          binaryString = output;
+        }
+        
+        // Convert to Uint8Array
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        console.log('📤 Uploading', bytes.length, 'bytes to S3...');
+        console.log('📤 Content-Type:', contentType);
+        console.log('📤 Upload URL (first 100 chars):', uploadUrl.substring(0, 100));
+        
+        // For S3 presigned PUT URLs, we must use the EXACT Content-Type
+        // and not add any extra headers, otherwise signature will mismatch
+        // Use fetch with ArrayBuffer directly
+        fetch(uploadUrl, {
+          method: 'PUT',
+          body: bytes.buffer, // Send ArrayBuffer directly
+          headers: {
+            'Content-Type': contentType, // Must match exactly what was used to generate presigned URL
+            // Don't add any other headers - S3 presigned URLs are sensitive to header changes
+          },
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('❌ S3 upload failed:', response.status, response.statusText);
+              console.error('❌ S3 error response:', errorText);
+              throw new Error(`S3 upload failed: ${response.status} - ${errorText}`);
+            }
+            console.log('✅ S3 upload successful');
+            resolve(true);
+          })
+          .catch((error) => {
+            console.error('❌ Error uploading to S3:', error);
+            reject(error);
+          });
       });
-
-      if (!response.ok) {
-        throw new Error(`S3 upload failed: ${response.status}`);
-      }
-
-      return true;
     } catch (error) {
-      console.error('Error uploading to S3:', error);
+      console.error('❌ Error uploading to S3:', error);
+      console.error('❌ Error details:', error.message, error.stack);
       throw error;
     }
   }
@@ -273,12 +349,18 @@ class DocumentUploadService {
       }
 
       // Step 2: Upload to S3
-      await this.uploadToS3(initiateResponse.uploadUrl, fileUri, uploadRequest.contentType);
+      // Use MimeType from uploadRequest (PascalCase) - must match exactly what was used to generate presigned URL
+      await this.uploadToS3(initiateResponse.uploadUrl, fileUri, uploadRequest.MimeType);
 
       // Step 3: Complete upload
+      // Use the S3 key returned from the initiate response
+      // The server generates: documents/{PatientId}/{ContentGuid}/{FileName}
+      if (!initiateResponse.s3Key) {
+        throw new Error('S3 key not returned from initiate upload');
+      }
       const completeResponse = await this.completeUpload(
         initiateResponse.contentId, 
-        `documents/${uploadRequest.patientId}/${uploadRequest.fileName}`
+        initiateResponse.s3Key
       );
 
       if (!completeResponse.success) {

@@ -108,7 +108,8 @@ namespace SM_MentalHealthApp.Server.Services
                     Success = true,
                     Message = "Upload initiated successfully.",
                     ContentId = contentItem.Id,
-                    UploadUrl = uploadUrl
+                    UploadUrl = uploadUrl,
+                    S3Key = s3Key // Return the S3 key so client can use it for completion
                 };
             }
             catch (Exception ex)
@@ -207,12 +208,27 @@ namespace SM_MentalHealthApp.Server.Services
                 // Get total count
                 var totalCount = await query.CountAsync();
 
-                // Apply pagination
-                var documents = await query
+                // Apply pagination and materialize the query first
+                // This avoids EF Core translation issues with instance methods
+                var contentItems = await query
                     .OrderByDescending(c => c.CreatedAt)
                     .Skip((request.Page - 1) * request.PageSize)
                     .Take(request.PageSize)
-                    .Select(c => new DocumentInfo
+                    .ToListAsync();
+
+                // Get content IDs for batch analysis queries
+                var contentIds = contentItems.Select(c => c.Id).ToList();
+
+                // Get analysis data in batch
+                var analyses = await _context.ContentAnalyses
+                    .Where(ca => contentIds.Contains(ca.ContentId))
+                    .ToListAsync();
+
+                // Map to DocumentInfo after materialization
+                var documents = contentItems.Select(c =>
+                {
+                    var analysis = analyses.FirstOrDefault(a => a.ContentId == c.Id);
+                    return new DocumentInfo
                     {
                         Id = c.Id,
                         ContentGuid = c.ContentGuid,
@@ -227,13 +243,10 @@ namespace SM_MentalHealthApp.Server.Services
                         LastAccessedAt = c.LastAccessedAt,
                         IsActive = c.IsActive,
                         AddedByUserName = c.AddedByUser != null ? c.AddedByUser.FullName : "Unknown",
-                        HasAnalysis = _context.ContentAnalyses.Any(ca => ca.ContentId == c.Id),
-                        AnalysisStatus = _context.ContentAnalyses
-                            .Where(ca => ca.ContentId == c.Id)
-                            .Select(ca => ca.ProcessingStatus)
-                            .FirstOrDefault() ?? "Not Analyzed"
-                    })
-                    .ToListAsync();
+                        HasAnalysis = analysis != null,
+                        AnalysisStatus = analysis?.ProcessingStatus ?? "Not Analyzed"
+                    };
+                }).ToList();
 
                 // Generate download URLs
                 foreach (var doc in documents)

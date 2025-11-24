@@ -18,6 +18,22 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import DocumentUploadService from '../services/DocumentUploadService';
 
+// Map file type to ContentTypeEnum (matches server enum)
+// ContentTypeEnum: Document = 1, Image = 2, Video = 3, Audio = 4, Other = 5
+const mapFileTypeToContentTypeEnum = (fileType, mimeType) => {
+  if (fileType === 'image' || mimeType?.startsWith('image/')) {
+    return 2; // Image
+  } else if (fileType === 'video' || mimeType?.startsWith('video/')) {
+    return 3; // Video
+  } else if (fileType === 'audio' || mimeType?.startsWith('audio/')) {
+    return 4; // Audio
+  } else if (fileType === 'Document' || mimeType?.includes('pdf') || mimeType?.includes('word') || mimeType?.includes('document')) {
+    return 1; // Document
+  } else {
+    return 1; // Default to Document for PDFs, Word docs, etc.
+  }
+};
+
 const DocumentUpload = ({ 
   patientId, 
   onDocumentUploaded, 
@@ -232,17 +248,22 @@ const DocumentUpload = ({
 
     setIsUploading(true);
     try {
+      // Map to server's expected property names (PascalCase)
+      // Also need to map file type to ContentTypeEnum
+      const contentTypeEnum = mapFileTypeToContentTypeEnum(selectedFile.type, selectedFile.contentType);
+      
       const uploadRequest = {
-        patientId: selectedPatient,
-        title: uploadForm.title.trim(),
-        description: uploadForm.description.trim(),
-        fileName: selectedFile.name,
-        contentType: selectedFile.contentType,
-        fileSizeBytes: selectedFile.size,
-        type: selectedFile.type,
-        category: uploadForm.category,
+        PatientId: selectedPatient, // PascalCase
+        Title: uploadForm.title.trim(), // PascalCase
+        Description: uploadForm.description.trim() || null, // Optional
+        FileName: selectedFile.name, // PascalCase
+        MimeType: selectedFile.contentType, // PascalCase (was contentType)
+        FileSizeBytes: selectedFile.size, // PascalCase
+        Type: contentTypeEnum, // PascalCase, must be ContentTypeEnum value
+        Category: uploadForm.category || null, // Optional
       };
 
+      console.log('📄 Upload request:', JSON.stringify(uploadRequest, null, 2));
       await DocumentUploadService.uploadDocument(selectedFile.uri, uploadRequest);
       
       Alert.alert('Success', 'Document uploaded successfully!');

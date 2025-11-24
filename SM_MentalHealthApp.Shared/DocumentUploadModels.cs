@@ -37,6 +37,7 @@ namespace SM_MentalHealthApp.Shared
         public string Message { get; set; } = string.Empty;
         public int? ContentId { get; set; }
         public string? UploadUrl { get; set; } // For direct S3 upload
+        public string? S3Key { get; set; } // S3 key for completing upload
         public Dictionary<string, string>? UploadFields { get; set; } // S3 form fields
     }
 
