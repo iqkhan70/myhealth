@@ -20,7 +20,7 @@ const AppConfig = {
   // NOTE: HTTPS is REQUIRED for Agora video/audio calls to work
   // For development with self-signed certificates, the app is configured to bypass
   // certificate validation (see network_security_config.xml for Android and app.json for iOS)
-  USE_HTTPS: true,
+  USE_HTTPS: false,
   
   // Development mode: Allow self-signed certificates (iOS/Android may still reject)
   // This is a flag for documentation - actual handling depends on platform

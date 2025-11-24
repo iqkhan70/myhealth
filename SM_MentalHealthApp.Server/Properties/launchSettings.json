@@ -19,6 +19,15 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "both": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://0.0.0.0:5262;https://0.0.0.0:5263",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "SM_MentalHealthApp.Server": {
       "commandName": "Project",
       "dotnetRunMessages": true,

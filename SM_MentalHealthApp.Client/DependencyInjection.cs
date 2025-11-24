@@ -81,20 +81,22 @@ public static class DependencyInjection
                 }
                 else
                 {
-                    // ✅ Determine server URL based on client location
+                    // ✅ Determine server URL based on client location and scheme
                     var isLocalhost = baseUri.Host == "localhost" || baseUri.Host == "127.0.0.1";
                     var clientPort = baseUri.Port;
+                    var clientScheme = baseUri.Scheme; // http or https
 
                     if (isLocalhost)
                     {
-                        // Localhost: connect directly to server on port 5262 (HTTPS)
-                        serverUrl = $"https://{baseUri.Host}:5262/";
+                        // Localhost: connect to server on port 5262, matching client scheme
+                        serverUrl = $"{clientScheme}://{baseUri.Host}:5262/";
                     }
                     else if (clientPort == 5282 || clientPort == 5283)
                     {
                         // Local network access (macip): client on 5282/5283, server on 5262
-                        // Use HTTPS to match client scheme
-                        serverUrl = $"https://{baseUri.Host}:5262/";
+                        // Match the client's scheme (http or https)
+                        // If client is HTTP, server should be HTTP; if HTTPS, server should be HTTPS
+                        serverUrl = $"{clientScheme}://{baseUri.Host}:5262/";
                     }
                     else
                     {
