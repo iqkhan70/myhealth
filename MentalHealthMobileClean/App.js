@@ -37,6 +37,7 @@ try {
 
 import DocumentUpload from './src/components/DocumentUpload';
 import SmsComponent from './src/components/SmsComponent';
+import EmergencyComponent from './src/components/EmergencyComponent';
 
 // Import app configuration
 import AppConfig from './src/config/app.config';
@@ -101,6 +102,7 @@ export default function App() {
   const [smsModalVisible, setSmsModalVisible] = useState(false);
 
   // 🚨 Emergency state
+  const [emergencyModalVisible, setEmergencyModalVisible] = useState(false);
   const [sendingEmergency, setSendingEmergency] = useState(false);
   const [deviceToken, setDeviceToken] = useState(null);
   const deviceRegisteredRef = useRef(false);
@@ -1308,7 +1310,7 @@ export default function App() {
             {user?.roleId === 1 && (
               <TouchableOpacity 
                 style={[styles.contactDetailButton, styles.emergencyButton]} 
-                onPress={() => sendEmergency()}
+                onPress={() => setEmergencyModalVisible(true)}
                 disabled={sendingEmergency}
               >
                 <Text style={styles.contactDetailButtonIcon}>🚨</Text>
@@ -1440,6 +1442,18 @@ export default function App() {
           user={user}
           contacts={contacts}
           apiBaseUrl={API_BASE_URL}
+        />
+        
+        <EmergencyComponent
+          visible={emergencyModalVisible}
+          onClose={() => setEmergencyModalVisible(false)}
+          user={user}
+          contacts={contacts}
+          apiBaseUrl={API_BASE_URL}
+          deviceToken={deviceToken}
+          onEmergencySent={() => {
+            setSendingEmergency(false);
+          }}
         />
       </View>
     );
