@@ -31,9 +31,12 @@ class SignalRService {
       this.setupEventHandlers();
 
       // Start connection
+      console.log('🔌 SignalR: Starting connection...');
       await this.connection.start();
       this.isConnected = true;
-      console.log('✅ SignalR: Connected successfully');
+      console.log('✅ SignalR: Connected successfully!');
+      console.log('✅ SignalR: Connection ID:', this.connection.connectionId);
+      console.log('✅ SignalR: Connection state:', this.connection.state);
       
       if (this.listeners.onConnectionStateChanged) {
         this.listeners.onConnectionStateChanged('Connected');
@@ -41,7 +44,10 @@ class SignalRService {
 
       return true;
     } catch (error) {
-      console.error('❌ SignalR: Connection failed:', error);
+      console.error('❌ SignalR: Connection failed!');
+      console.error('❌ SignalR: Error message:', error.message);
+      console.error('❌ SignalR: Error stack:', error.stack);
+      console.error('❌ SignalR: Full error:', JSON.stringify(error, null, 2));
       this.isConnected = false;
       
       if (this.listeners.onConnectionStateChanged) {
@@ -57,9 +63,27 @@ class SignalRService {
 
     // Handle incoming messages
     this.connection.on('new-message', (message) => {
-      console.log('📨 SignalR: New message received:', message);
+      console.log('📨 SignalR: New message received:', JSON.stringify(message, null, 2));
+      console.log('📨 SignalR: Message properties:', {
+        hasMessage: !!message.message,
+        hasText: !!message.text,
+        senderId: message.senderId,
+        targetUserId: message.targetUserId,
+        senderName: message.senderName
+      });
+      
       if (this.listeners.onMessageReceived) {
-        this.listeners.onMessageReceived(message);
+        // Handle both 'message' and 'text' property names for compatibility
+        const messageText = message.message || message.text || '';
+        const messageToSend = {
+          ...message,
+          message: messageText,
+          text: messageText
+        };
+        console.log('📨 SignalR: Calling onMessageReceived with:', messageToSend);
+        this.listeners.onMessageReceived(messageToSend);
+      } else {
+        console.warn('⚠️ SignalR: onMessageReceived listener is not set!');
       }
     });
 
@@ -105,7 +129,12 @@ class SignalRService {
 
     // Handle connection state changes
     this.connection.onclose((error) => {
-      console.log('🔌 SignalR: Connection closed:', error);
+      // Log as info, not error - connection close is normal during logout
+      if (error) {
+        console.log('🔌 SignalR: Connection closed (expected during logout):', error.message || error);
+      } else {
+        console.log('🔌 SignalR: Connection closed (expected during logout)');
+      }
       this.isConnected = false;
       if (this.listeners.onConnectionStateChanged) {
         this.listeners.onConnectionStateChanged('Disconnected');
@@ -113,7 +142,11 @@ class SignalRService {
     });
 
     this.connection.onreconnecting((error) => {
-      console.log('🔄 SignalR: Reconnecting:', error);
+      // Automatic reconnection is expected behavior - log as info, not warning
+      console.log('🔄 SignalR: Reconnecting... (this is normal if connection was temporarily lost)');
+      if (error) {
+        console.log('🔄 SignalR: Reconnect reason:', error.message || error);
+      }
       this.isConnected = false;
       if (this.listeners.onConnectionStateChanged) {
         this.listeners.onConnectionStateChanged('Reconnecting');
@@ -121,7 +154,8 @@ class SignalRService {
     });
 
     this.connection.onreconnected((connectionId) => {
-      console.log('✅ SignalR: Reconnected:', connectionId);
+      console.log('✅ SignalR: Reconnected successfully! (automatic reconnection working)');
+      console.log('✅ SignalR: New connection ID:', connectionId);
       this.isConnected = true;
       if (this.listeners.onConnectionStateChanged) {
         this.listeners.onConnectionStateChanged('Connected');
@@ -201,6 +235,9 @@ class SignalRService {
   setEventListener(event, callback) {
     if (this.listeners.hasOwnProperty(event)) {
       this.listeners[event] = callback;
+      console.log(`✅ SignalR: Event listener set for '${event}'`);
+    } else {
+      console.warn(`⚠️ SignalR: Unknown event '${event}'`);
     }
   }
 
@@ -208,10 +245,12 @@ class SignalRService {
   async disconnect() {
     if (this.connection) {
       try {
+        console.log('🔌 SignalR: Disconnecting...');
         await this.connection.stop();
         console.log('🔌 SignalR: Disconnected successfully');
       } catch (error) {
-        console.error('❌ SignalR: Error during disconnect:', error);
+        // Log as warning, not error - disconnect errors are usually harmless
+        console.warn('⚠️ SignalR: Warning during disconnect (this is usually normal):', error.message || error);
       }
       this.connection = null;
       this.isConnected = false;

@@ -13,8 +13,8 @@ namespace SM_MentalHealthApp.Server.Hubs
         private readonly JournalDbContext _context;
         private readonly ILogger<MobileHub> _logger;
 
-        // Store active connections
-        private static readonly ConcurrentDictionary<int, string> UserConnections = new();
+        // Store active connections (made internal so MobileController can access it)
+        internal static readonly ConcurrentDictionary<int, string> UserConnections = new();
         private static readonly ConcurrentDictionary<string, CallSession> ActiveCalls = new();
 
         public MobileHub(JournalDbContext context, ILogger<MobileHub> logger)
@@ -29,13 +29,19 @@ namespace SM_MentalHealthApp.Server.Hubs
             if (int.TryParse(userIdClaim, out int userId))
             {
                 UserConnections[userId] = Context.ConnectionId;
-                _logger.LogInformation("User {UserId} connected with connection {ConnectionId}", userId, Context.ConnectionId);
+                _logger.LogInformation("✅ MobileHub: User {UserId} connected with connection {ConnectionId}", userId, Context.ConnectionId);
+                _logger.LogInformation("📊 MobileHub: Total active connections: {Count}", UserConnections.Count);
+                _logger.LogInformation("📊 MobileHub: Active users: {Users}", string.Join(", ", UserConnections.Select(kvp => $"User {kvp.Key}")));
 
                 // Join user to their personal group
                 await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
 
                 // Notify about online status
                 await NotifyUserStatusChange(userId, true);
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ MobileHub: User connected but userId claim not found or invalid");
             }
 
             await base.OnConnectedAsync();

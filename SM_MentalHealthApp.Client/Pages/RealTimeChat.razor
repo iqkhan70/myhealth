@@ -1030,6 +1030,9 @@
     {
         RealtimeService.OnNewMessage += HandleNewMessage;
         RealtimeService.OnIncomingCall += HandleIncomingCall;
+        
+        // Also listen to SignalRService for messages sent via SignalR (e.g., from mobile app)
+        SignalRService.OnNewMessage += HandleNewMessage;
 
         await LoadUsers();
 
@@ -1043,6 +1046,10 @@
         {
             if (!RealtimeService.IsConnected)
                 await RealtimeService.StartAsync();
+            
+            // Also start SignalRService to receive messages from mobile app
+            if (!SignalRService.IsConnected)
+                await SignalRService.StartAsync();
 
             await JS.InvokeVoidAsync("setupPageVisibilityListener", DotNetObjectReference.Create(this));
             StartAutoRefresh();
@@ -1219,10 +1226,21 @@
 
     private async void HandleNewMessage(ChatMsg message)
     {
-        if (selectedUser == null) return;
+        Console.WriteLine($"📨 HandleNewMessage called: SenderId={message.SenderId}, TargetUserId={message.TargetUserId}, Message='{message.Message}'");
+        Console.WriteLine($"📨 Current user: {AuthService.CurrentUser?.Id}, Selected user: {selectedUser?.Id}");
+        
+        if (selectedUser == null)
+        {
+            Console.WriteLine($"⚠️ HandleNewMessage: selectedUser is null, ignoring message");
+            return;
+        }
 
-        if ((message.SenderId == selectedUser.Id && message.TargetUserId == AuthService.CurrentUser?.Id) ||
-        (message.SenderId == AuthService.CurrentUser?.Id && message.TargetUserId == selectedUser.Id))
+        var isRelevantMessage = (message.SenderId == selectedUser.Id && message.TargetUserId == AuthService.CurrentUser?.Id) ||
+                                (message.SenderId == AuthService.CurrentUser?.Id && message.TargetUserId == selectedUser.Id);
+        
+        Console.WriteLine($"📨 Message relevance check: {isRelevantMessage} (SenderId={message.SenderId} == selectedUser.Id={selectedUser.Id} && TargetUserId={message.TargetUserId} == CurrentUser.Id={AuthService.CurrentUser?.Id}) || (SenderId={message.SenderId} == CurrentUser.Id={AuthService.CurrentUser?.Id} && TargetUserId={message.TargetUserId} == selectedUser.Id={selectedUser.Id})");
+
+        if (isRelevantMessage)
         {
             // ✅ Check if this is a server response for a local message we just sent
             // Match by content, sender, and target (within 5 seconds) to replace local message with server message
@@ -1272,17 +1290,18 @@
             // ✅ Always sort after any modification
             SortMessages();
             
-            // ✅ Force UI update
-            await InvokeAsync(() =>
-            {
-                StateHasChanged();
-                // Scroll to bottom after a short delay to ensure DOM is updated
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(50);
-                    await InvokeAsync(ScrollToBottom);
-                });
-            });
+            // ✅ Force UI update immediately
+            await InvokeAsync(StateHasChanged);
+            
+            // ✅ Scroll to bottom after UI is updated
+            await Task.Delay(100); // Give DOM time to update
+            await InvokeAsync(ScrollToBottom);
+            
+            Console.WriteLine($"✅ Message added to chat. Total messages: {_messages.Count}");
+        }
+        else
+        {
+            Console.WriteLine($"⚠️ Message not relevant to current chat (selectedUser={selectedUser?.Id}, currentUser={AuthService.CurrentUser?.Id})");
         }
     }
 
@@ -1757,6 +1776,7 @@
     {
         RealtimeService.OnNewMessage -= HandleNewMessage;
         RealtimeService.OnIncomingCall -= HandleIncomingCall;
+        SignalRService.OnNewMessage -= HandleNewMessage;
         autoRefreshTimer?.Dispose();
         StopCallTimeoutTimer();
     }

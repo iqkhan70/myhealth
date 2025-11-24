@@ -8,6 +8,7 @@ using System.Security.Claims;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.SignalR;
 using SM_MentalHealthApp.Server.Hubs;
+using System.Collections.Concurrent;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -341,6 +342,15 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return Forbid("No relationship exists with target user");
                 }
 
+                // Get sender info for message data
+                var sender = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == senderId);
+
+                if (sender == null)
+                {
+                    return BadRequest("Sender not found");
+                }
+
                 // Save message to database
                 var smsMessage = new SmsMessage
                 {
@@ -356,6 +366,37 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _logger.LogInformation("Message saved: '{Message}' from {SenderId} to {ReceiverId}",
                     request.Message, senderId, request.TargetUserId);
+
+                // Notify SignalR clients about the new message
+                var messageData = new
+                {
+                    id = smsMessage.Id.ToString(),
+                    senderId = senderId,
+                    targetUserId = request.TargetUserId,
+                    message = request.Message,
+                    senderName = $"{sender.FirstName} {sender.LastName}",
+                    timestamp = smsMessage.SentAt.ToString("O")
+                };
+
+                // Send to target user if they're connected via SignalR
+                // Use the same approach as MobileHub.SendMessage - check UserConnections directly
+                if (MobileHub.UserConnections.TryGetValue(request.TargetUserId, out string? targetConnectionId))
+                {
+                    await _hubContext.Clients.Client(targetConnectionId).SendAsync("new-message", messageData);
+                    _logger.LogInformation("SignalR notification sent to connection {ConnectionId} for message {MessageId} from {SenderId} to {ReceiverId}",
+                        targetConnectionId, smsMessage.Id, senderId, request.TargetUserId);
+                }
+                else
+                {
+                    _logger.LogWarning("Target user {TargetUserId} is not connected via SignalR, message saved but not delivered in real-time",
+                        request.TargetUserId);
+                }
+                
+                // Also send confirmation to sender if they're connected
+                if (MobileHub.UserConnections.TryGetValue(senderId, out string? senderConnectionId))
+                {
+                    await _hubContext.Clients.Client(senderConnectionId).SendAsync("message-sent", messageData);
+                }
 
                 return Ok(new { message = "Message sent successfully", messageId = smsMessage.Id });
             }

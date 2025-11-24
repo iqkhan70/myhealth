@@ -6,6 +6,8 @@ using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using Microsoft.AspNetCore.SignalR;
+using SM_MentalHealthApp.Server.Hubs;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -18,6 +20,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly ILogger<RealtimeController> _logger;
         private readonly IRedisCacheService _cache;
         private readonly AgoraTokenService _agoraTokenService;
+        private readonly IHubContext<MobileHub> _hubContext;
         private readonly bool _useTokens;
 
         private static readonly Dictionary<string, RealtimeConnection> _connections = new();
@@ -34,12 +37,14 @@ namespace SM_MentalHealthApp.Server.Controllers
             ILogger<RealtimeController> logger,
             IRedisCacheService cache,
             AgoraTokenService agoraTokenService,
+            IHubContext<MobileHub> hubContext,
             IConfiguration configuration)
         {
             _context = context;
             _logger = logger;
             _cache = cache;
             _agoraTokenService = agoraTokenService;
+            _hubContext = hubContext;
             _useTokens = configuration.GetValue<bool>("Agora:UseTokens", true);
         }
 
@@ -212,10 +217,21 @@ namespace SM_MentalHealthApp.Server.Controllers
                 _context.SmsMessages.Add(smsMessage);
                 await _context.SaveChangesAsync();
 
+                var messageData = new
+                {
+                    id = smsMessage.Id.ToString(),
+                    senderId = senderConnection.UserId,
+                    targetUserId = request.TargetUserId,
+                    message = request.Message,
+                    senderName = $"{sender.FirstName} {sender.LastName}",
+                    timestamp = smsMessage.SentAt.ToString("O")
+                };
+
+                // Add to polling queue for browsers using RealtimeService
                 if (_userConnections.TryGetValue(request.TargetUserId, out var targetConnectionId) &&
                     _connections.TryGetValue(targetConnectionId, out var targetConnection))
                 {
-                    var messageData = new
+                    var pollingMessageData = new
                     {
                         type = "new-message",
                         id = smsMessage.Id.ToString(),
@@ -225,7 +241,22 @@ namespace SM_MentalHealthApp.Server.Controllers
                         senderName = $"{sender.FirstName} {sender.LastName}",
                         timestamp = smsMessage.SentAt.ToString("O")
                     };
-                    targetConnection.PendingMessages.Add(messageData);
+                    targetConnection.PendingMessages.Add(pollingMessageData);
+                }
+
+                // Also send SignalR notification for mobile apps and browsers using SignalR
+                if (MobileHub.UserConnections.TryGetValue(request.TargetUserId, out string? targetSignalRConnectionId))
+                {
+                    _logger.LogInformation("📨 Sending SignalR notification to user {TargetUserId} via connection {ConnectionId} for message {MessageId} from {SenderId}",
+                        request.TargetUserId, targetSignalRConnectionId, smsMessage.Id, senderConnection.UserId);
+                    await _hubContext.Clients.Client(targetSignalRConnectionId).SendAsync("new-message", messageData);
+                    _logger.LogInformation("✅ SignalR notification sent successfully to connection {ConnectionId} for message {MessageId} from {SenderId} to {ReceiverId}",
+                        targetSignalRConnectionId, smsMessage.Id, senderConnection.UserId, request.TargetUserId);
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Target user {TargetUserId} is not connected via SignalR. Available connections: {Connections}",
+                        request.TargetUserId, string.Join(", ", MobileHub.UserConnections.Select(kvp => $"User {kvp.Key}: {kvp.Value}")));
                 }
 
                 _logger.LogInformation("Message sent from {SenderId} to {ReceiverId}", senderConnection.UserId, request.TargetUserId);

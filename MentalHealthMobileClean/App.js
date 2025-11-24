@@ -113,6 +113,26 @@ export default function App() {
     checkAuthStatus();
   }, []); // Only run once on mount
 
+  // Keep userRef in sync with user state and re-register SignalR listener
+  useEffect(() => {
+    const prevUserId = userRef.current?.id;
+    userRef.current = user;
+    const newUserId = userRef.current?.id;
+    console.log('📱 App: ========== USER REF UPDATED ==========');
+    console.log('📱 App: userRef updated - prev:', prevUserId, 'new:', newUserId);
+    console.log('📱 App: user state:', user);
+    console.log('📱 App: userRef.current:', userRef.current);
+    console.log('📱 App: signalRConnected:', signalRConnected);
+    
+    // Re-register SignalR message listener when user changes to ensure it has current user
+    if (signalRConnected && user?.id) {
+      console.log('📱 App: Re-registering SignalR message listener with new user:', user.id);
+      setupSignalRMessageListener();
+    } else if (signalRConnected && !user?.id) {
+      console.warn('⚠️ App: SignalR connected but no user - listener may not work correctly');
+    }
+  }, [user, signalRConnected]);
+
   useEffect(() => {
     if (user && user.id && !userInitializedRef.current) {
       userInitializedRef.current = true;
@@ -128,6 +148,7 @@ export default function App() {
       if (token && userData) {
         const u = JSON.parse(userData);
         setUser(u);
+        userRef.current = u; // Update ref when restoring user from storage
         // Only load contacts once
         if (!contactsLoadedRef.current) {
           contactsLoadedRef.current = true;
@@ -195,6 +216,7 @@ export default function App() {
         hasContactsRef.current = false; // Reset contacts flag
         
         setUser(data.user);
+        userRef.current = data.user; // Update ref when user is set
         
         // Load contacts after a small delay to ensure state is set
         // and to avoid race conditions with useEffect
@@ -208,6 +230,7 @@ export default function App() {
         await initializeSignalR(data.token);
 
         setCurrentView('main');
+        currentViewRef.current = 'main';
         Alert.alert('Success', 'Login successful!');
       } else {
         Alert.alert('Error', data.message || 'Login failed');
@@ -282,6 +305,7 @@ export default function App() {
       setSelectedContact(null);
       setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
       setCurrentView('login');
+      currentViewRef.current = 'login';
       setAvailablePatients([]);
       setAgoraInitialized(false);
       setRemoteUsers([]);
@@ -290,32 +314,194 @@ export default function App() {
     }
   };
 
+  // Function to set up SignalR message listener
+  const setupSignalRMessageListener = () => {
+    console.log('📱 App: Setting up SignalR message listener. Current userRef:', userRef.current?.id);
+    SignalRService.setEventListener('onMessageReceived', (message) => {
+          console.log('📱 App: ========== MESSAGE RECEIVED ==========');
+          console.log('📱 App: onMessageReceived callback called with:', message);
+          console.log('📱 App: userRef.current at message time:', userRef.current);
+          console.log('📱 App: userRef.current?.id:', userRef.current?.id);
+          const messageText = message.message || message.text || '';
+          console.log('📱 App: Extracted message text:', messageText);
+          
+          if (!messageText) {
+            console.warn('⚠️ App: Received message with no text content:', message);
+            return;
+          }
+          
+          // First check: Message must be for the current user
+          // Use ref to get current user (avoids closure issues)
+          // Also try to access user state directly as fallback
+          let currentUserId = userRef.current?.id;
+          if (!currentUserId) {
+            // Fallback: try to get from state (this might work if state is accessible)
+            console.log('📱 App: userRef.current is null, trying to access user state...');
+            // Since we can't access state directly in closure, we'll use a workaround:
+            // Re-check the ref after a brief moment, or use the message to infer user
+            // Actually, let's just log and see what we have
+            console.log('📱 App: userRef.current:', userRef.current);
+            console.log('📱 App: Message details - targetUserId:', message.targetUserId, 'senderId:', message.senderId);
+            
+            // If we can't get user ID, we can't verify if message is for us
+            // But we can still try to process it if we're in chat view
+            // This is a workaround - ideally userRef should be set
+            console.warn('⚠️ App: Cannot verify user - userRef is null. Message may be ignored.');
+            return;
+          }
+          
+          console.log('📱 App: ✅ Current user ID from ref:', currentUserId);
+          console.log('📱 App: Message - targetUserId:', message.targetUserId, 'senderId:', message.senderId);
+          
+          const isForCurrentUser = (message.targetUserId === currentUserId) || (message.senderId === currentUserId);
+          if (!isForCurrentUser) {
+            console.log('📱 App: Message not for current user (currentUser:', currentUserId, 'message sender:', message.senderId, 'target:', message.targetUserId, ')');
+            return;
+          }
+          
+          // Second check: If we're in chat view, message must be for the selected contact
+          const currentViewState = currentViewRef.current;
+          const currentContact = selectedContactRef.current;
+          
+          if (currentViewState === 'chat') {
+            if (currentContact) {
+              // In chat view with a selected contact - only show messages for that contact
+              const isForCurrentChat = (message.senderId === currentContact.id && message.targetUserId === currentUserId) ||
+                                      (message.targetUserId === currentContact.id && message.senderId === currentUserId);
+              
+              if (!isForCurrentChat) {
+                console.log('📱 App: Message not for current chat (selectedContact:', currentContact.id, 'message sender:', message.senderId, 'target:', message.targetUserId, ')');
+                return;
+              }
+            } else {
+              // In chat view but no contact selected yet - might be loading, allow message
+              console.log('📱 App: In chat view but no contact selected yet, adding message anyway');
+            }
+          } else {
+            // Not in chat view - don't add message to UI (will be loaded when chat opens)
+            console.log('📱 App: Not in chat view (currentView:', currentViewState, '), ignoring message (will load from DB when chat opens)');
+            return;
+          }
+          
+          // Message is valid - add it to messages
+          setMessages((prev) => {
+            // Check if message already exists to prevent duplicates
+            const existingMessage = prev.find(m => 
+              m.id === message.id || 
+              (m.text === messageText && m.senderId === message.senderId && Math.abs((m.timestamp?.getTime() || 0) - (message.timestamp ? new Date(message.timestamp).getTime() : Date.now())) < 5000)
+            );
+            
+            if (existingMessage) {
+              // Duplicate message - this can happen if message is received via SignalR and also loaded from DB
+              // Just skip it silently, no need to log every time
+              return prev;
+            }
+            
+            const newMessage = {
+              id: message.id || Date.now().toString(),
+              text: messageText,
+              isMe: message.senderId === currentUserId,
+              timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
+              senderId: message.senderId,
+              senderName: message.senderName || 'Unknown'
+            };
+            console.log('📱 App: Message isMe check - senderId:', message.senderId, 'currentUserId:', currentUserId, 'isMe:', message.senderId === currentUserId);
+            console.log('📱 App: ✅ Adding new message to chat:', newMessage);
+            const newMessages = [...prev, newMessage];
+            
+            // Auto-scroll to bottom when new message arrives
+            setTimeout(() => {
+              messagesScrollViewRef.current?.scrollToEnd({ animated: true });
+            }, 100);
+            
+            return newMessages;
+          });
+          
+          // Use functional update to access current state
+          setMessages((prev) => {
+            // Check if message already exists to prevent duplicates
+            const existingMessage = prev.find(m => 
+              m.id === message.id || 
+              (m.text === messageText && m.senderId === message.senderId && Math.abs((m.timestamp?.getTime() || 0) - (message.timestamp ? new Date(message.timestamp).getTime() : Date.now())) < 5000)
+            );
+            
+            if (existingMessage) {
+              // Duplicate message - this can happen if message is received via SignalR and also loaded from DB
+              // Just skip it silently, no need to log every time
+              return prev;
+            }
+            
+            const newMessage = {
+              id: message.id || Date.now().toString(),
+              text: messageText,
+              isMe: message.senderId === currentUserId, // Use currentUserId from ref
+              timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
+              senderId: message.senderId,
+              senderName: message.senderName || 'Unknown'
+            };
+            console.log('📱 App: Adding new message to chat:', newMessage);
+            const newMessages = [...prev, newMessage];
+            
+            // Auto-scroll to bottom when new message arrives
+            setTimeout(() => {
+              messagesScrollViewRef.current?.scrollToEnd({ animated: true });
+            }, 100);
+            
+            return newMessages;
+          });
+        });
+  };
+
   // ---------- SIGNALR ----------
   const initializeSignalR = async (token) => {
     try {
+      console.log('🔌 App: ========== INITIALIZING SIGNALR ==========');
+      console.log('🔌 App: SignalR Hub URL:', SIGNALR_HUB_URL);
+      console.log('🔌 App: Token available:', !!token);
+      
       const connected = await SignalRService.initialize(SIGNALR_HUB_URL, token);
+      console.log('🔌 App: SignalR initialization result:', connected);
+      
       if (connected) {
         setSignalRConnected(true);
+        console.log('✅ App: SignalR connected successfully!');
+        console.log('✅ App: SignalR connection state:', SignalRService.getConnectionState());
+        console.log('✅ App: SignalR isConnected:', SignalRService.isConnected);
+        console.log('✅ App: Setting signalRConnected state to true');
+        
+        // Log connection state periodically to verify it stays connected
+        const connectionCheckInterval = setInterval(() => {
+          const state = SignalRService.getConnectionState();
+          const isConnected = SignalRService.isConnected;
+          console.log('🔌 App: SignalR connection state check:', state, 'isConnected:', isConnected);
+          if (!isConnected || state !== 'Connected') {
+            console.warn('⚠️ App: SignalR connection lost! State:', state, 'isConnected:', isConnected);
+            setSignalRConnected(false);
+          }
+        }, 30000); // Every 30 seconds
+        
+        // Store interval ID to clear it later if needed
+        SignalRService.connectionCheckInterval = connectionCheckInterval;
 
-        SignalRService.setEventListener('onMessageReceived', (message) => {
-          setMessages((prev) => [...prev, {
-            id: Date.now().toString(),
-            text: message.message,
-            isMe: false,
-            timestamp: new Date(),
-            senderId: message.senderId,
-            senderName: message.senderName || 'Unknown'
-          }]);
-        });
+        // Set up message listener AFTER connection is confirmed
+        console.log('📱 App: Setting up SignalR message listener...');
+        setupSignalRMessageListener();
+        console.log('✅ App: SignalR message listener set up');
 
         // Optional: wire these if your server emits them
         SignalRService.setEventListener('onIncomingCall', (callData) => {
           // You can auto-open modal or show a dialog
           console.log('Incoming call:', callData);
         });
+      } else {
+        console.error('❌ App: SignalR failed to connect!');
+        console.error('❌ App: Connection result was false');
+        setSignalRConnected(false);
       }
     } catch (e) {
-      console.error('SignalR init error:', e);
+      console.error('❌ App: SignalR init error:', e);
+      console.error('❌ App: Error details:', JSON.stringify(e, null, 2));
+      setSignalRConnected(false);
     }
   };
 
@@ -323,6 +509,10 @@ export default function App() {
   const loadingContactsRef = useRef(false);
   const lastCallTimeRef = useRef(0);
   const hasContactsRef = useRef(false);
+  const messagesScrollViewRef = useRef(null);
+  const selectedContactRef = useRef(null);
+  const currentViewRef = useRef('login');
+  const userRef = useRef(null); // Ref to track current user for SignalR callbacks
   
   const loadContactsForUser = useCallback(async (userData, token) => {
     const callId = Math.random().toString(36).substring(7);
@@ -474,7 +664,9 @@ export default function App() {
   // ---------- CHAT ----------
   const openChat = (contact) => {
     setSelectedContact(contact);
+    selectedContactRef.current = contact; // Update ref
     setCurrentView('chat');
+    currentViewRef.current = 'chat'; // Update ref
     loadChatHistory(contact.id);
   };
 
@@ -482,6 +674,7 @@ export default function App() {
   const openContactDetail = (contact) => {
     setSelectedContactDetail(contact);
     setCurrentView('contact-detail');
+    currentViewRef.current = 'contact-detail';
   };
 
   const loadChatHistory = async (targetUserId) => {
@@ -521,7 +714,14 @@ export default function App() {
       senderId: user?.id,
       senderName: `${user?.firstName} ${user?.lastName}`
     };
-    setMessages((prev) => [...prev, msg]);
+    setMessages((prev) => {
+      const newMessages = [...prev, msg];
+      // Auto-scroll to bottom when sending message
+      setTimeout(() => {
+        messagesScrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+      return newMessages;
+    });
 
     try {
       if (signalRConnected) {
@@ -1044,7 +1244,7 @@ export default function App() {
   const renderContactDetail = () => (
     <SafeAreaView style={styles.container}>
       <View style={styles.chatHeader}>
-        <TouchableOpacity onPress={() => setCurrentView('main')} style={styles.backButton}>
+        <TouchableOpacity onPress={() => { setCurrentView('main'); currentViewRef.current = 'main'; }} style={styles.backButton}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.chatTitle}>Contact Details</Text>
@@ -1123,6 +1323,7 @@ export default function App() {
                 style={styles.contactDetailButton} 
                 onPress={() => {
                   setCurrentView('documents');
+                  currentViewRef.current = 'documents';
                   // Set the selected patient for document upload
                   if (user?.roleId === 2) { // Doctor uploading for patient
                     setAvailablePatients([selectedContactDetail]);
@@ -1145,6 +1346,7 @@ export default function App() {
         <TouchableOpacity style={styles.backButton} onPress={() => {
           setSelectedContact(null);
           setCurrentView('contact-detail');
+    currentViewRef.current = 'contact-detail';
           setMessages([]);
         }}>
           <Text style={styles.backButtonText}>← Back</Text>
@@ -1161,11 +1363,19 @@ export default function App() {
       </View>
 
       <KeyboardAvoidingView style={styles.chatContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-        <ScrollView style={styles.messagesContainer} contentContainerStyle={styles.messagesContent}>
+        <ScrollView 
+          ref={messagesScrollViewRef}
+          style={styles.messagesContainer} 
+          contentContainerStyle={styles.messagesContent}
+          onContentSizeChange={() => {
+            // Auto-scroll to bottom when content size changes (new message added)
+            messagesScrollViewRef.current?.scrollToEnd({ animated: true });
+          }}
+        >
           {messages.map((m) => (
             <View key={m.id} style={[styles.messageItem, m.isMe ? styles.myMessage : styles.otherMessage]}>
-              <Text style={styles.messageText}>{m.text}</Text>
-              <Text style={styles.messageTime}>{m.timestamp?.toLocaleTimeString() || 'Now'}</Text>
+              <Text style={[styles.messageText, m.isMe ? styles.myMessageText : styles.otherMessageText]}>{m.text}</Text>
+              <Text style={[styles.messageTime, m.isMe ? styles.myMessageTime : styles.otherMessageTime]}>{m.timestamp?.toLocaleTimeString() || 'Now'}</Text>
             </View>
           ))}
         </ScrollView>
@@ -1199,7 +1409,7 @@ export default function App() {
       <SafeAreaView style={styles.container}>
         <StatusBar style="auto" />
         <View style={styles.chatHeader}>
-          <TouchableOpacity onPress={() => setCurrentView('contact-detail')} style={styles.backButton}>
+          <TouchableOpacity onPress={() => { setCurrentView('contact-detail'); currentViewRef.current = 'contact-detail'; }} style={styles.backButton}>
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.chatTitle}>Document Management</Text>
@@ -1387,17 +1597,42 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   receivedMessage: {
-    backgroundColor: '#e9ecef',
+    backgroundColor: '#e3f2fd', // Light blue - more visible than gray
     alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#90caf9', // Subtle border for better visibility
+  },
+  myMessage: {
+    backgroundColor: '#007bff',
+    alignSelf: 'flex-end',
+  },
+  otherMessage: {
+    backgroundColor: '#e3f2fd', // Light blue - more visible than gray
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#90caf9', // Subtle border for better visibility
   },
   messageText: {
     fontSize: 16,
     color: '#333',
   },
+  myMessageText: {
+    color: '#fff', // White text on blue background
+  },
+  otherMessageText: {
+    color: '#1a1a1a', // Dark text for better visibility on light blue
+    fontWeight: '500', // Slightly bolder for better readability
+  },
   messageTime: {
     fontSize: 12,
     color: '#666',
     marginTop: 5,
+  },
+  myMessageTime: {
+    color: '#e0e0e0', // Light text on blue background
+  },
+  otherMessageTime: {
+    color: '#555', // Darker text for better visibility
   },
   messageInput: {
     flexDirection: 'row',
@@ -1674,11 +1909,17 @@ const styles = StyleSheet.create({
   },
   otherMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#e9ecef',
+    backgroundColor: '#e3f2fd', // Light blue - more visible than gray
+    borderWidth: 1,
+    borderColor: '#90caf9', // Subtle border for better visibility
   },
   messageText: {
     fontSize: 16,
-    color: '#fff',
+    color: '#fff', // Default for sent messages
+  },
+  otherMessageText: {
+    color: '#1a1a1a', // Dark text for better visibility on light blue
+    fontWeight: '500', // Slightly bolder for better readability
   },
   messageTime: {
     fontSize: 12,
