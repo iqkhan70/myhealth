@@ -69,24 +69,25 @@ const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, devi
               const AsyncStorage = require('@react-native-async-storage/async-storage').default;
               const storedDeviceId = await AsyncStorage.getItem('emergencyDeviceId') || `device_${user.id}_${Platform.OS}`;
 
+              // Build request body - vital signs are optional and not relevant for chiropractor emergencies
+              const requestBody = {
+                deviceToken: deviceToken,
+                deviceId: storedDeviceId,
+                emergencyType: 'Other', // Use 'Other' for custom messages
+                severity: severity,
+                message: emergencyMessage.trim(),
+                // Vital signs removed - not relevant for chiropractor use case
+                // If needed in future, can be added as optional fields
+                latitude: 0, // TODO: Get actual location if available
+                longitude: 0
+              };
+
               const response = await fetch(`${apiBaseUrl}/emergency/test-emergency`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                  deviceToken: deviceToken,
-                  deviceId: storedDeviceId,
-                  emergencyType: 'Other', // Use 'Other' for custom messages
-                  severity: severity,
-                  message: emergencyMessage.trim(),
-                  heartRate: Math.floor(Math.random() * 30) + 70, // 70-100
-                  bloodPressure: `${120 + Math.floor(Math.random() * 20)}/${80 + Math.floor(Math.random() * 10)}`,
-                  temperature: parseFloat((98.6 + (Math.random() - 0.5) * 2).toFixed(1)),
-                  oxygenSaturation: Math.floor(Math.random() * 5) + 95, // 95-100
-                  latitude: 0, // TODO: Get actual location if available
-                  longitude: 0
-                })
+                body: JSON.stringify(requestBody)
               });
 
               const data = await response.json();
