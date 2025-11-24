@@ -59,9 +59,16 @@ const DocumentUpload = ({
   useEffect(() => {
     if (patientId) {
       loadCategories();
-      loadDocuments();
+      setSelectedPatient(patientId); // Sync selectedPatient with patientId prop
     }
   }, [patientId]);
+
+  // Load documents when selectedPatient changes (for doctor selecting different patients)
+  useEffect(() => {
+    if (selectedPatient) {
+      loadDocuments();
+    }
+  }, [selectedPatient]);
 
   const loadCategories = async () => {
     try {
@@ -391,6 +398,7 @@ const DocumentUpload = ({
                   if (onPatientSelect) {
                     onPatientSelect(patient);
                   }
+                  // Documents will be loaded automatically via useEffect when selectedPatient changes
                 }}
               >
                 <Text
