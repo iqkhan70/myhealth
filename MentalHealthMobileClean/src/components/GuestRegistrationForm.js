@@ -102,7 +102,7 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
       if (response.ok) {
         Alert.alert(
           'Request Submitted',
-          'Your registration request has been submitted successfully. You will receive an SMS with your login credentials once your request is approved by an administrator.',
+          'Your registration request has been submitted successfully. You will receive an SMS and email with your login credentials once your request is approved by an administrator.',
           [
             {
               text: 'OK',

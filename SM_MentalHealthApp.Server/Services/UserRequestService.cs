@@ -12,7 +12,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<UserRequest> CreateUserRequestAsync(CreateUserRequestRequest request);
         Task<List<UserRequest>> GetAllUserRequestsAsync();
         Task<UserRequest?> GetUserRequestByIdAsync(int id);
-        Task<UserRequest> ApproveUserRequestAsync(int id, int reviewerUserId, string notes, ISmsService smsService);
+        Task<UserRequest> ApproveUserRequestAsync(int id, int reviewerUserId, string notes, ISmsService smsService, INotificationService notificationService);
         Task<UserRequest> RejectUserRequestAsync(int id, int reviewerUserId, string notes);
         Task<UserRequest> MarkPendingUserRequestAsync(int id, int reviewerUserId, string notes);
         Task<bool> ValidateEmailAndPhoneAsync(string email, string mobilePhone);
@@ -131,7 +131,7 @@ namespace SM_MentalHealthApp.Server.Services
                 .FirstOrDefaultAsync(ur => ur.Id == id);
         }
 
-        public async Task<UserRequest> ApproveUserRequestAsync(int id, int reviewerUserId, string notes, ISmsService smsService)
+        public async Task<UserRequest> ApproveUserRequestAsync(int id, int reviewerUserId, string notes, ISmsService smsService, INotificationService notificationService)
         {
             var userRequest = await _context.UserRequests.FindAsync(id);
             if (userRequest == null)
@@ -192,11 +192,52 @@ namespace SM_MentalHealthApp.Server.Services
 
             await _context.SaveChangesAsync();
 
-            // Send SMS with credentials
-            var smsMessage = $"Welcome to Health App! Your account has been approved.\n\nUsername: {user.Email}\nTemporary Password: {tempPassword}\n\nPlease change your password on first login.";
-            await smsService.SendSmsAsync(user.MobilePhone, smsMessage);
+            // Prepare credentials message
+            var credentialsMessage = $"Welcome to Health App! Your account has been approved.\n\nUsername: {user.Email}\nTemporary Password: {tempPassword}\n\nPlease change your password on first login.\n\nYou will also receive these credentials via email.";
+            var emailSubject = "Health App - Account Approved";
+            var emailBody = $@"
+<html>
+<body>
+    <h2>Welcome to Health App!</h2>
+    <p>Your account has been approved and is ready to use.</p>
+    <p><strong>Username:</strong> {user.Email}</p>
+    <p><strong>Temporary Password:</strong> {tempPassword}</p>
+    <p><strong>Important:</strong> Please change your password on first login for security.</p>
+    <p>You will also receive these credentials via SMS. Both SMS and email have been sent to ensure you receive your login information.</p>
+    <p>Thank you for using Health App!</p>
+</body>
+</html>";
 
-            _logger.LogInformation("User request approved: ID={Id}, User created: ID={UserId}, Email={Email}", 
+            // Send SMS (don't fail approval if SMS fails, but log it)
+            try
+            {
+                var smsSent = await smsService.SendSmsAsync(user.MobilePhone, credentialsMessage);
+                if (smsSent)
+                {
+                    _logger.LogInformation("SMS sent successfully to {Phone} for user {UserId}", user.MobilePhone, user.Id);
+                }
+                else
+                {
+                    _logger.LogWarning("SMS sending failed for {Phone} (user {UserId}), email will still be sent", user.MobilePhone, user.Id);
+                }
+            }
+            catch (Exception smsEx)
+            {
+                _logger.LogError(smsEx, "Error sending SMS to {Phone} (user {UserId}), email will still be sent", user.MobilePhone, user.Id);
+            }
+
+            // Send Email (don't fail approval if email fails, but log it)
+            try
+            {
+                await notificationService.SendEmailNotification(user.Id, emailSubject, emailBody);
+                _logger.LogInformation("Email sent successfully to {Email} for user {UserId}", user.Email, user.Id);
+            }
+            catch (Exception emailEx)
+            {
+                _logger.LogError(emailEx, "Error sending email to {Email} (user {UserId}), SMS was still sent", user.Email, user.Id);
+            }
+
+            _logger.LogInformation("User request approved: ID={Id}, User created: ID={UserId}, Email={Email}, SMS and Email notifications sent", 
                 userRequest.Id, user.Id, user.Email);
 
             return userRequest;

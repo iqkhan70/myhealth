@@ -148,7 +148,7 @@
                 <p><strong>Reason for Request:</strong></p>
                 <p class="reason-text-small">@selectedRequest.Reason</p>
             </div>
-            <p class="text-muted">This will create a patient account and send SMS with login credentials. Use the reason above to assign an appropriate doctor.</p>
+            <p class="text-muted">This will create a patient account and send both SMS and email with login credentials. Both notifications will be sent to ensure delivery. Use the reason above to assign an appropriate doctor.</p>
             
             <RadzenFormField Text="Notes (required, min 10 characters)" class="w-100">
                 <textarea @bind="approveNotes" 

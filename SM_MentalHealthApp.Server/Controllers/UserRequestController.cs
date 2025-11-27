@@ -102,7 +102,8 @@ namespace SM_MentalHealthApp.Server.Controllers
         public async Task<ActionResult<UserRequest>> ApproveUserRequest(
             int id,
             [FromBody] ApproveUserRequestRequest request,
-            [FromServices] ISmsService smsService)
+            [FromServices] ISmsService smsService,
+            [FromServices] INotificationService notificationService)
         {
             try
             {
@@ -113,9 +114,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 var userRequest = await _userRequestService.ApproveUserRequestAsync(
-                    id, reviewerUserId.Value, request.Notes, smsService);
+                    id, reviewerUserId.Value, request.Notes, smsService, notificationService);
 
-                return Ok(new { message = "User request approved successfully. User account created and SMS sent.", userRequest });
+                return Ok(new { message = "User request approved successfully. User account created. SMS and email with login credentials will be sent shortly.", userRequest });
             }
             catch (InvalidOperationException ex)
             {
