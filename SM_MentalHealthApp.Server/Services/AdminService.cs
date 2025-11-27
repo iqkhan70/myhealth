@@ -8,6 +8,7 @@ namespace SM_MentalHealthApp.Server.Services
     {
         Task<List<User>> GetAllDoctorsAsync();
         Task<List<User>> GetAllPatientsAsync();
+        Task<List<User>> GetAllCoordinatorsAsync();
         Task<List<UserAssignment>> GetUserAssignmentsAsync();
         Task<bool> AssignPatientToDoctorAsync(int patientId, int doctorId);
         Task<bool> UnassignPatientFromDoctorAsync(int patientId, int doctorId);
@@ -39,6 +40,16 @@ namespace SM_MentalHealthApp.Server.Services
             return await _context.Users
                 .Include(u => u.Role)
                 .Where(u => u.RoleId == 1 && u.IsActive) // Role 1 = Patient
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
+                .ToListAsync();
+        }
+
+        public async Task<List<User>> GetAllCoordinatorsAsync()
+        {
+            return await _context.Users
+                .Include(u => u.Role)
+                .Where(u => u.RoleId == 4 && u.IsActive) // Role 4 = Coordinator
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .ToListAsync();

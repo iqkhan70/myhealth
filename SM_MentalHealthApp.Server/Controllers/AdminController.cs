@@ -54,6 +54,21 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        [HttpGet("coordinators")]
+        [Authorize(Roles = "Admin")] // Only Admin can view coordinators list
+        public async Task<ActionResult<List<User>>> GetCoordinators()
+        {
+            try
+            {
+                var coordinators = await _adminService.GetAllCoordinatorsAsync();
+                return Ok(coordinators);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error retrieving coordinators: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Perform AI health check on a patient and send alert if severe
         /// </summary>
@@ -710,6 +725,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("assignments")]
+        [Authorize(Roles = "Admin,Coordinator")] // Admin and Coordinator can view assignments
         public async Task<ActionResult<List<UserAssignment>>> GetAssignments()
         {
             try
@@ -724,6 +740,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPost("assign")]
+        [Authorize(Roles = "Admin,Coordinator")] // Admin and Coordinator can create assignments
         public async Task<ActionResult> AssignPatientToDoctor([FromBody] AssignPatientRequest request)
         {
             try
@@ -742,6 +759,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpDelete("unassign")]
+        [Authorize(Roles = "Admin,Coordinator")] // Admin and Coordinator can remove assignments
         public async Task<ActionResult> UnassignPatientFromDoctor([FromBody] UnassignPatientRequest request)
         {
             try
@@ -868,6 +886,48 @@ namespace SM_MentalHealthApp.Server.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, $"Error creating patient: {ex.Message}");
+            }
+        }
+
+        [HttpPost("create-coordinator")]
+        [Authorize(Roles = "Admin")] // Only Admin can create coordinators
+        public async Task<ActionResult> CreateCoordinator([FromBody] CreateCoordinatorRequest request)
+        {
+            try
+            {
+                // Check if email already exists
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+                if (existingUser != null)
+                {
+                    return BadRequest("A coordinator with this email already exists.");
+                }
+
+                // Create new coordinator user
+                var coordinator = new User
+                {
+                    FirstName = request.FirstName,
+                    LastName = request.LastName,
+                    Email = request.Email,
+                    PasswordHash = HashPassword(request.Password),
+                    DateOfBirth = request.DateOfBirth,
+                    Gender = request.Gender,
+                    MobilePhone = request.MobilePhone,
+                    RoleId = 4, // Coordinator role
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true,
+                    MustChangePassword = true // Force password change on first login
+                };
+
+                _context.Users.Add(coordinator);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Coordinator created successfully", coordinatorId = coordinator.Id });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error creating coordinator: {ex.Message}");
             }
         }
 
@@ -1094,6 +1154,136 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        [HttpPut("coordinators/{id}")]
+        [Authorize(Roles = "Admin")] // Only Admin can update coordinators
+        public async Task<ActionResult> UpdateCoordinator(int id, [FromBody] UpdateCoordinatorRequest request)
+        {
+            try
+            {
+                var coordinator = await _context.Users.FindAsync(id);
+                if (coordinator == null)
+                {
+                    return NotFound("Coordinator not found.");
+                }
+
+                if (coordinator.RoleId != 4)
+                {
+                    return BadRequest("User is not a coordinator.");
+                }
+
+                // Check if email already exists (excluding current coordinator)
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email && u.Id != id);
+
+                if (existingUser != null)
+                {
+                    return BadRequest("A user with this email already exists.");
+                }
+
+                // Update coordinator information
+                if (!string.IsNullOrWhiteSpace(request.FirstName) && coordinator.FirstName != request.FirstName)
+                {
+                    coordinator.FirstName = request.FirstName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.LastName) && coordinator.LastName != request.LastName)
+                {
+                    coordinator.LastName = request.LastName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Email) && coordinator.Email != request.Email)
+                {
+                    coordinator.Email = request.Email;
+                }
+
+                if (request.DateOfBirth.HasValue && coordinator.DateOfBirth != request.DateOfBirth.Value)
+                {
+                    coordinator.DateOfBirth = request.DateOfBirth.Value;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Gender) && coordinator.Gender != request.Gender)
+                {
+                    coordinator.Gender = request.Gender;
+                }
+
+                if (request.MobilePhone != null && coordinator.MobilePhone != request.MobilePhone)
+                {
+                    coordinator.MobilePhone = request.MobilePhone;
+                }
+
+                // Update password only if provided
+                if (!string.IsNullOrWhiteSpace(request.Password))
+                {
+                    coordinator.PasswordHash = HashPassword(request.Password);
+                    coordinator.MustChangePassword = true;
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Coordinator updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error updating coordinator: {ex.Message}");
+            }
+        }
+
+        [HttpDelete("coordinators/{id}/deactivate")]
+        [Authorize(Roles = "Admin")] // Only Admin can deactivate coordinators
+        public async Task<ActionResult> DeactivateCoordinator(int id)
+        {
+            try
+            {
+                var coordinator = await _context.Users.FindAsync(id);
+                if (coordinator == null)
+                {
+                    return NotFound("Coordinator not found.");
+                }
+
+                if (coordinator.RoleId != 4)
+                {
+                    return BadRequest("User is not a coordinator.");
+                }
+
+                coordinator.IsActive = false;
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Coordinator deactivated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error deactivating coordinator: {ex.Message}");
+            }
+        }
+
+        [HttpPost("coordinators/{id}/reactivate")]
+        [Authorize(Roles = "Admin")] // Only Admin can reactivate coordinators
+        public async Task<ActionResult> ReactivateCoordinator(int id)
+        {
+            try
+            {
+                var coordinator = await _context.Users.FindAsync(id);
+                if (coordinator == null)
+                {
+                    return NotFound("Coordinator not found.");
+                }
+
+                if (coordinator.RoleId != 4)
+                {
+                    return BadRequest("User is not a coordinator.");
+                }
+
+                coordinator.IsActive = true;
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Coordinator reactivated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error reactivating coordinator: {ex.Message}");
+            }
+        }
+
         private string HashPassword(string password)
         {
             using (var rng = RandomNumberGenerator.Create())
@@ -1163,6 +1353,28 @@ namespace SM_MentalHealthApp.Server.Controllers
     }
 
     public class UpdatePatientRequest
+    {
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? Gender { get; set; }
+        public string? MobilePhone { get; set; }
+        public string? Password { get; set; }
+    }
+
+    public class CreateCoordinatorRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
+    }
+
+    public class UpdateCoordinatorRequest
     {
         public string? FirstName { get; set; }
         public string? LastName { get; set; }

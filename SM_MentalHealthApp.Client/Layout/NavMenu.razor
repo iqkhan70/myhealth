@@ -90,7 +90,7 @@
             </a>
             <a href="/admin" class="nav-item @(GetActiveClass("/admin"))">
                 <i class="nav-icon">⚙️</i>
-                <span>Admin Panel</span>
+                <span>Assignments</span>
             </a>
             <a href="/appointments" class="nav-item @(GetActiveClass("/appointments"))">
                 <i class="nav-icon">📅</i>
@@ -103,6 +103,10 @@
             <a href="/doctors" class="nav-item @(GetActiveClass("/doctors"))">
                 <i class="nav-icon">👨‍⚕️</i>
                 <span>All Doctors</span>
+            </a>
+            <a href="/coordinators" class="nav-item @(GetActiveClass("/coordinators"))">
+                <i class="nav-icon">👥</i>
+                <span>Coordinators</span>
             </a>
             <a href="/chat" class="nav-item @(GetActiveClass("/chat"))">
                 <i class="nav-icon">💬</i>
@@ -119,6 +123,19 @@
             <a href="/clinical-notes" class="nav-item @(GetActiveClass("/clinical-notes"))">
                 <i class="nav-icon">📋</i>
                 <span>Clinical Notes</span>
+            </a>
+        }
+
+        @* Coordinator-specific pages *@
+        @if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
+        {
+            <a href="/admin" class="nav-item @(GetActiveClass("/admin"))">
+                <i class="nav-icon">⚙️</i>
+                <span>Assignments</span>
+            </a>
+            <a href="/appointments" class="nav-item @(GetActiveClass("/appointments"))">
+                <i class="nav-icon">📅</i>
+                <span>Appointments</span>
             </a>
         }
     </nav>

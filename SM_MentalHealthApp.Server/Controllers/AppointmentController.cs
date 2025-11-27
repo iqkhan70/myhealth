@@ -26,7 +26,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Validate an appointment before creating it
         /// </summary>
         [HttpPost("validate")]
-        [Authorize(Roles = "Admin,Doctor")] // Admin and Doctor can create appointments
+        [Authorize(Roles = "Admin,Doctor,Coordinator")] // Admin, Doctor, and Coordinator can create appointments
         public async Task<ActionResult<AppointmentValidationResult>> ValidateAppointment([FromBody] CreateAppointmentRequest request)
         {
             try
@@ -46,11 +46,11 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
-        /// Create a new appointment (Admin or Doctor)
+        /// Create a new appointment (Admin, Doctor, or Coordinator)
         /// Doctors can only create appointments for themselves with their assigned patients
         /// </summary>
         [HttpPost]
-        [Authorize(Roles = "Admin,Doctor")]
+        [Authorize(Roles = "Admin,Doctor,Coordinator")]
         public async Task<ActionResult<AppointmentDto>> CreateAppointment([FromBody] CreateAppointmentRequest request)
         {
             try
@@ -97,11 +97,11 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
-        /// Update an existing appointment (Admin or Doctor)
+        /// Update an existing appointment (Admin, Doctor, or Coordinator)
         /// Doctors can only update their own appointments
         /// </summary>
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin,Doctor")]
+        [Authorize(Roles = "Admin,Doctor,Coordinator")]
         public async Task<ActionResult<AppointmentDto>> UpdateAppointment(int id, [FromBody] UpdateAppointmentRequest request)
         {
             try
@@ -226,16 +226,16 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return Unauthorized("Invalid role");
 
                 // If doctor, only show their appointments
-                if (roleId == 2) // Doctor role
+                if (roleId == Roles.Doctor)
                 {
                     doctorId = userId.Value;
                 }
                 // If patient, only show their appointments
-                else if (roleId == 1) // Patient role
+                else if (roleId == Roles.Patient)
                 {
                     patientId = userId.Value;
                 }
-                // Admin can see all
+                // Admin and Coordinator can see all
 
                 var appointments = await _appointmentService.GetAppointmentsAsync(doctorId, patientId, startDate, endDate);
                 return Ok(appointments);

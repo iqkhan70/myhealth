@@ -8,6 +8,7 @@ public static class Roles
     public const int Patient = 1;
     public const int Doctor = 2;
     public const int Admin = 3;
+    public const int Coordinator = 4;
     
     /// <summary>
     /// Gets the role name for a given role ID
@@ -17,12 +18,13 @@ public static class Roles
         Patient => "Patient",
         Doctor => "Doctor",
         Admin => "Admin",
+        Coordinator => "Coordinator",
         _ => "Unknown"
     };
     
     /// <summary>
     /// Checks if a role ID is valid
     /// </summary>
-    public static bool IsValid(int roleId) => roleId >= Patient && roleId <= Admin;
+    public static bool IsValid(int roleId) => roleId >= Patient && roleId <= Coordinator;
 }
 

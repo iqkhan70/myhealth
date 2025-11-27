@@ -176,7 +176,7 @@
 
     <!-- Filters -->
     <div class="appointment-controls">
-        @if (AuthService.CurrentUser?.RoleId == 3) // Admin only - can filter by doctor
+        @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator - can filter by doctor
         {
             <div class="control-group">
                 <label class="control-label">Doctor</label>
@@ -209,7 +209,7 @@
             <RadzenButton Text="Clear" ButtonStyle="ButtonStyle.Light" 
                 Click="@ClearFilters" Icon="clear" />
         </div>
-        @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) // Doctor or Admin
+        @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Doctor, Admin, or Coordinator
         {
             <div class="control-group">
                 <RadzenButton Text="Manage OOO" ButtonStyle="ButtonStyle.Info" 
@@ -355,7 +355,7 @@
                                 ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
                         </div>
                     }
-                    else // Admin - show dropdown
+                    else // Admin or Coordinator - show dropdown
                     {
                         <div class="form-group">
                             <label class="form-label">Doctor <span class="required-asterisk">*</span></label>
@@ -502,7 +502,7 @@
                         <RadzenTextBox Value="@currentDoctorName" 
                             ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
                     }
-                    else // Admin - show dropdown
+                    else // Admin or Coordinator - show dropdown
                     {
                         <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
                             Value="@oooForm.DoctorId" ValueChanged="@((int? value) => OnOOODoctorChanged(value))" AllowFiltering="true" Placeholder="Select Doctor"
@@ -803,6 +803,7 @@
             var currentUser = AuthService.CurrentUser;
             var isDoctor = currentUser?.RoleId == 2;
             var isAdmin = currentUser?.RoleId == 3;
+            var isCoordinator = currentUser?.RoleId == 4;
 
             if (isDoctor)
             {
@@ -850,7 +851,7 @@
                     appointmentForm.DoctorId = currentUser.Id;
                 }
             }
-            else if (isAdmin)
+            else if (isAdmin || isCoordinator)
             {
                 var doctorsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors");
                 doctors = doctorsResponse ?? new();
@@ -1002,8 +1003,8 @@
         {
             int? doctorId = null;
             // For doctors, don't add doctorId filter - API will automatically filter by doctor
-            // For admins, add doctorId filter if specified
-            if (AuthService.CurrentUser?.RoleId == 3 && filterDoctorId.HasValue)
+            // For admins and coordinators, add doctorId filter if specified
+            if ((AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) && filterDoctorId.HasValue)
             {
                 doctorId = filterDoctorId.Value;
             }

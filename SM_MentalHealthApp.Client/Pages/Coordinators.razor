@@ -1,0 +1,583 @@
+@page "/coordinators"
+@inject HttpClient Http
+@inject NotificationService NotificationService
+@inject IAuthService AuthService
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using System.Net.Http
+
+<div class="coordinators-page">
+    <div class="coordinators-header">
+        @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+        {
+            <h2>Coordinators</h2>
+            <p>Manage coordinator accounts and their information.</p>
+            <button @onclick="ShowAddCoordinatorForm" class="add-coordinator-btn">
+                ➕ Add New Coordinator
+            </button>
+        }
+        else
+        {
+            <h2>Access Denied</h2>
+            <p>You don't have permission to view this page.</p>
+        }
+    </div>
+
+    @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+    {
+        <!-- Coordinators Grid -->
+        <div class="coordinators-content">
+            @if (isLoading)
+            {
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>Loading coordinators...</p>
+                </div>
+            }
+            else
+            {
+                <RadzenDataGrid Data="@coordinators" 
+                               TItem="User" 
+                               AllowPaging="true" 
+                               PageSize="15"
+                               AllowSorting="true" 
+                               FilterMode="FilterMode.Advanced" 
+                               ShowPagingSummary="true"
+                               EmptyText="No coordinators found"
+                               AllowFiltering="true"
+                               FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                               ShowFilterRow="true"
+                               ShowFilterRowButtons="true">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="User" Property="FirstName" Title="Name" Width="200px" Filterable="true">
+                            <Template Context="coordinator">
+                                @if (coordinator != null)
+                                {
+                                    <div>
+                                        <strong>@(coordinator.FirstName ?? "") @(coordinator.LastName ?? "")</strong>
+                                        <br />
+                                        <small class="text-muted">@(coordinator.Email ?? "")</small>
+                                    </div>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="Email" Title="Email" Width="250px" Filterable="true" />
+                        <RadzenDataGridColumn TItem="User" Property="MobilePhone" Title="Phone" Width="150px" Filterable="true">
+                            <Template Context="coordinator">
+                                @(coordinator?.MobilePhone ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="150px" Filterable="true">
+                            <Template Context="coordinator">
+                                @(coordinator?.DateOfBirth.ToString("MM/dd/yyyy") ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="Gender" Title="Gender" Width="100px" Filterable="true">
+                            <Template Context="coordinator">
+                                @(coordinator?.Gender ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="IsActive" Title="Status" Width="100px" Filterable="true">
+                            <Template Context="coordinator">
+                                @if (coordinator != null)
+                                {
+                                    <span class="badge @(coordinator.IsActive ? "badge-success" : "badge-danger")">
+                                        @(coordinator.IsActive ? "Active" : "Inactive")
+                                    </span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="CreatedAt" Title="Created" Width="150px" Filterable="true">
+                            <Template Context="coordinator">
+                                @(coordinator?.CreatedAt.ToString("MM/dd/yyyy") ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Title="Actions" Width="150px" Sortable="false" Filterable="false">
+                            <Template Context="coordinator">
+                                @if (coordinator != null)
+                                {
+                                    <div class="action-buttons">
+                                        <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Info" 
+                                                    Variant="Variant.Flat" Size="ButtonSize.Small"
+                                                    Click="@(() => EditCoordinator(coordinator))" 
+                                                    Title="Edit Coordinator" />
+                                        <RadzenButton Icon="@(coordinator.IsActive ? "block" : "check")" 
+                                                    ButtonStyle="@(coordinator.IsActive ? ButtonStyle.Warning : ButtonStyle.Success)" 
+                                                    Variant="Variant.Flat" Size="ButtonSize.Small"
+                                                    Click="@(() => ToggleCoordinatorStatus(coordinator))" 
+                                                    Title="@(coordinator.IsActive ? "Deactivate" : "Activate")" />
+                                    </div>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </div>
+    }
+</div>
+
+<!-- Add/Edit Coordinator Modal -->
+@if (showCoordinatorForm)
+{
+    <div class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>@(editingCoordinator == null ? "Add New Coordinator" : "Edit Coordinator")</h3>
+                <button @onclick="CloseCoordinatorForm" class="close-btn">✕</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>First Name *</label>
+                        <input @bind="coordinatorForm.FirstName" class="form-input" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Last Name *</label>
+                        <input @bind="coordinatorForm.LastName" class="form-input" />
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Email *</label>
+                        <input @bind="coordinatorForm.Email" type="email" class="form-input" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Password @(editingCoordinator == null ? "*" : "(leave blank to keep current)")</label>
+                        <input @bind="coordinatorForm.Password" type="password" class="form-input" />
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date of Birth *</label>
+                        <input @bind="coordinatorForm.DateOfBirth" type="date" class="form-input" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Gender</label>
+                        <select @bind="coordinatorForm.Gender" class="form-input">
+                            <option value="">Select Gender</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                            <option value="Prefer not to say">Prefer not to say</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Mobile Phone</label>
+                        <input @bind="coordinatorForm.MobilePhone" type="tel" class="form-input" placeholder="+1 (555) 123-4567" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <!-- Empty div for layout balance -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button @onclick="CloseCoordinatorForm" class="btn btn-secondary">Cancel</button>
+                <button @onclick="SaveCoordinator" disabled="@isSaving" class="btn btn-primary">
+                    @(isSaving ? "Saving..." : (editingCoordinator == null ? "Add Coordinator" : "Update Coordinator"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<User> coordinators = new();
+    private bool isLoading = true;
+    private bool showCoordinatorForm = false;
+    private bool isSaving = false;
+    private User? editingCoordinator;
+    private CreateCoordinatorRequest coordinatorForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCoordinators();
+    }
+
+    private async Task LoadCoordinators()
+    {
+        try
+        {
+            isLoading = true;
+            
+            if (AuthService.CurrentUser?.RoleId == 3) // Admin
+            {
+                coordinators = await Http.GetFromJsonAsync<List<User>>("api/admin/coordinators") ?? new();
+            }
+            else
+            {
+                coordinators = new(); // No access
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading coordinators: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load coordinators: " + ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ShowAddCoordinatorForm()
+    {
+        editingCoordinator = null;
+        coordinatorForm = new CreateCoordinatorRequest { DateOfBirth = DateTime.Now.AddYears(-30) };
+        showCoordinatorForm = true;
+    }
+
+    private void EditCoordinator(User coordinator)
+    {
+        if (coordinator == null) return;
+        
+        editingCoordinator = coordinator;
+        coordinatorForm = new CreateCoordinatorRequest
+        {
+            FirstName = coordinator.FirstName ?? string.Empty,
+            LastName = coordinator.LastName ?? string.Empty,
+            Email = coordinator.Email ?? string.Empty,
+            DateOfBirth = coordinator.DateOfBirth,
+            Gender = coordinator.Gender ?? string.Empty,
+            MobilePhone = coordinator.MobilePhone ?? string.Empty,
+            Password = string.Empty // Don't populate password
+        };
+        showCoordinatorForm = true;
+    }
+
+    private void CloseCoordinatorForm()
+    {
+        showCoordinatorForm = false;
+        editingCoordinator = null;
+        coordinatorForm = new CreateCoordinatorRequest();
+    }
+
+    private async Task SaveCoordinator()
+    {
+        if (string.IsNullOrWhiteSpace(coordinatorForm.FirstName) || 
+            string.IsNullOrWhiteSpace(coordinatorForm.LastName) || 
+            string.IsNullOrWhiteSpace(coordinatorForm.Email))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Please fill in all required fields.");
+            return;
+        }
+
+        if (editingCoordinator == null && string.IsNullOrWhiteSpace(coordinatorForm.Password))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Password is required for new coordinators.");
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            
+            if (editingCoordinator == null)
+            {
+                // Create new coordinator
+                var result = await Http.PostAsJsonAsync("api/admin/create-coordinator", coordinatorForm);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Coordinator added successfully!");
+                    await LoadCoordinators(); // Reload the list
+                    CloseCoordinatorForm();
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to add coordinator: " + error);
+                }
+            }
+            else
+            {
+                // Update existing coordinator - use update-patient endpoint structure but for coordinator
+                var updateRequest = new UpdateCoordinatorRequest
+                {
+                    FirstName = coordinatorForm.FirstName,
+                    LastName = coordinatorForm.LastName,
+                    Email = coordinatorForm.Email,
+                    DateOfBirth = coordinatorForm.DateOfBirth,
+                    Gender = coordinatorForm.Gender,
+                    MobilePhone = coordinatorForm.MobilePhone,
+                    Password = string.IsNullOrWhiteSpace(coordinatorForm.Password) ? null : coordinatorForm.Password
+                };
+                
+                var result = await Http.PutAsJsonAsync($"api/admin/coordinators/{editingCoordinator.Id}", updateRequest);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Coordinator updated successfully!");
+                    await LoadCoordinators();
+                    CloseCoordinatorForm();
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update coordinator: " + error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ToggleCoordinatorStatus(User coordinator)
+    {
+        if (coordinator == null) return;
+
+        try
+        {
+            var action = coordinator.IsActive ? "deactivate" : "reactivate";
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to {action} this coordinator?");
+            
+            if (!confirmed) return;
+
+            if (coordinator.IsActive)
+            {
+                var result = await Http.DeleteAsync($"api/admin/coordinators/{coordinator.Id}/deactivate");
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Coordinator deactivated successfully!");
+                    await LoadCoordinators();
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to deactivate coordinator: " + error);
+                }
+            }
+            else
+            {
+                var result = await Http.PostAsync($"api/admin/coordinators/{coordinator.Id}/reactivate", null);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Coordinator reactivated successfully!");
+                    await LoadCoordinators();
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reactivate coordinator: " + error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+    }
+
+    public class CreateCoordinatorRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
+    }
+
+    public class UpdateCoordinatorRequest
+    {
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? Gender { get; set; }
+        public string? MobilePhone { get; set; }
+        public string? Password { get; set; }
+    }
+}
+
+@using Radzen
+@using Radzen.Blazor
+@inject IJSRuntime JSRuntime
+
+<style>
+    .coordinators-page {
+        padding: 20px;
+    }
+
+    .coordinators-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .coordinators-header h2 {
+        margin: 0;
+    }
+
+    .add-coordinator-btn {
+        background-color: #28a745;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 500;
+    }
+
+    .add-coordinator-btn:hover {
+        background-color: #218838;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        padding: 0;
+        max-width: 600px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6c757d;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    .form-group {
+        flex: 1;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 20px;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .badge-success {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .badge-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .loading-spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+

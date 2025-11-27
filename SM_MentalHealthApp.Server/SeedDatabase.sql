@@ -5,7 +5,8 @@
 INSERT INTO Roles (Id, Name, Description, IsActive, CreatedAt) VALUES
 (1, 'Patient', 'Regular patients who use the app for self-care and journaling', 1, NOW()),
 (2, 'Doctor', 'Medical professionals who provide care and consultations', 1, NOW()),
-(3, 'Admin', 'System administrators who manage users and system settings', 1, NOW())
+(3, 'Admin', 'System administrators who manage users and system settings', 1, NOW()),
+(4, 'Coordinator', 'Coordinators who manage appointments and patient-doctor assignments', 1, NOW())
 ON DUPLICATE KEY UPDATE 
     Description = VALUES(Description),
     IsActive = VALUES(IsActive);
