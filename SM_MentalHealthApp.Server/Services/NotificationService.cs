@@ -1,9 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Server.Models;
 using SM_MentalHealthApp.Shared;
 using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Mail;
+using System.Net.Mime;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -12,13 +16,15 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly JournalDbContext _context;
         private readonly ILogger<NotificationService> _logger;
         private readonly ISmsService _smsService;
+        private readonly IConfiguration _configuration;
         private readonly ConcurrentDictionary<int, List<SM_MentalHealthApp.Shared.EmergencyAlert>> _pendingAlerts = new();
 
-        public NotificationService(JournalDbContext context, ILogger<NotificationService> logger, ISmsService smsService)
+        public NotificationService(JournalDbContext context, ILogger<NotificationService> logger, ISmsService smsService, IConfiguration configuration)
         {
             _context = context;
             _logger = logger;
             _smsService = smsService;
+            _configuration = configuration;
         }
 
         public async Task SendEmergencyAlert(int doctorId, SM_MentalHealthApp.Shared.EmergencyAlert alert)
@@ -74,18 +80,79 @@ namespace SM_MentalHealthApp.Server.Services
             try
             {
                 var user = await _context.Users.FindAsync(userId);
-                if (user == null) return;
+                if (user == null)
+                {
+                    _logger.LogWarning("User {UserId} not found for email notification", userId);
+                    return;
+                }
 
-                _logger.LogInformation("Email notification sent to user {UserId}: {Subject}", userId, subject);
+                if (string.IsNullOrEmpty(user.Email))
+                {
+                    _logger.LogWarning("User {UserId} has no email address", userId);
+                    return;
+                }
 
-                // In a real implementation, this would send actual emails
-                // using services like SendGrid, AWS SES, or SMTP
-                // For now, we'll just log it
-                await Task.CompletedTask;
+                // Get SMTP configuration
+                var smtpHost = _configuration["Email:SmtpHost"];
+                var smtpPort = _configuration.GetValue<int>("Email:SmtpPort", 587);
+                var smtpUsername = _configuration["Email:SmtpUsername"];
+                var smtpPassword = _configuration["Email:SmtpPassword"];
+                var smtpFromEmail = _configuration["Email:FromEmail"] ?? "noreply@healthapp.com";
+                var smtpFromName = _configuration["Email:FromName"] ?? "Health App";
+                var smtpEnableSsl = _configuration.GetValue<bool>("Email:EnableSsl", true);
+                var emailEnabled = _configuration.GetValue<bool>("Email:Enabled", false);
+
+                if (!emailEnabled)
+                {
+                    _logger.LogInformation("Email service is disabled. Email notification for user {UserId} ({Email}) would have been sent with subject: {Subject}", 
+                        userId, user.Email, subject);
+                    _logger.LogInformation("Email body: {Body}", body);
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(smtpUsername) || string.IsNullOrEmpty(smtpPassword))
+                {
+                    _logger.LogWarning("SMTP configuration is incomplete. Email notification for user {UserId} ({Email}) not sent. Subject: {Subject}", 
+                        userId, user.Email, subject);
+                    _logger.LogInformation("Email body: {Body}", body);
+                    return;
+                }
+
+                // Create mail message
+                using var mailMessage = new MailMessage();
+                mailMessage.From = new MailAddress(smtpFromEmail, smtpFromName);
+                mailMessage.To.Add(new MailAddress(user.Email, $"{user.FirstName} {user.LastName}"));
+                mailMessage.Subject = subject;
+                
+                // Check if body is HTML
+                if (body.Contains("<html>") || body.Contains("<body>") || body.Contains("<p>"))
+                {
+                    mailMessage.Body = body;
+                    mailMessage.IsBodyHtml = true;
+                }
+                else
+                {
+                    mailMessage.Body = body;
+                    mailMessage.IsBodyHtml = false;
+                }
+
+                // Create SMTP client
+                using var smtpClient = new SmtpClient(smtpHost, smtpPort);
+                smtpClient.EnableSsl = smtpEnableSsl;
+                smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
+                smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+
+                // Send email
+                await smtpClient.SendMailAsync(mailMessage);
+
+                _logger.LogInformation("Email sent successfully to {Email} (user {UserId}): {Subject}", 
+                    user.Email, userId, subject);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending email notification to user {UserId}", userId);
+                _logger.LogError(ex, "Error sending email notification to user {UserId}: {Message}", 
+                    userId, ex.Message);
+                throw; // Re-throw to allow caller to handle
             }
         }
 

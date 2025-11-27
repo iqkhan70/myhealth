@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import AppConfig from '../config/app.config';
@@ -129,11 +130,22 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Guest Registration</Text>
-        <Text style={styles.subtitle}>Please fill in all required information</Text>
-      </View>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={true}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Guest Registration</Text>
+          <Text style={styles.subtitle}>Please fill in all required information</Text>
+        </View>
 
       <View style={styles.form}>
         <View style={styles.inputGroup}>
@@ -215,6 +227,8 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
             value={mobilePhone}
             onChangeText={setMobilePhone}
             keyboardType="phone-pad"
+            returnKeyType="next"
+            blurOnSubmit={false}
           />
           <Text style={styles.hint}>Include country code (e.g., +1234567890)</Text>
         </View>
@@ -229,6 +243,8 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
             multiline
             numberOfLines={4}
             textAlignVertical="top"
+            returnKeyType="done"
+            blurOnSubmit={true}
           />
           <Text style={styles.hint}>Minimum 10 characters. This helps us assign you to the appropriate doctor.</Text>
           <Text style={styles.characterCount}>
@@ -253,10 +269,11 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
 
       <View style={styles.infoBox}>
         <Text style={styles.infoText}>
-          ℹ️ Your request will be reviewed by an administrator. You will receive an SMS with your login credentials once approved.
+          ℹ️ Your request will be reviewed by an administrator. You will receive an SMS and email with your login credentials once approved.
         </Text>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -265,8 +282,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
+  scrollView: {
+    flex: 1,
+  },
   contentContainer: {
     padding: 20,
+    paddingBottom: 40, // Extra padding at bottom to ensure button is visible when keyboard is shown
   },
   header: {
     marginBottom: 30,

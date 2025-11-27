@@ -183,11 +183,21 @@ namespace SM_MentalHealthApp.Server.Services
 
             _context.Users.Add(user);
             
+            // Get reviewer name for notes
+            var reviewer = await _context.Users.FindAsync(reviewerUserId);
+            var reviewerName = reviewer != null ? $"{reviewer.FirstName} {reviewer.LastName}" : "System";
+            
+            // Append notes instead of overwriting
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
+            var newNoteEntry = $"\n\n--- APPROVED on {timestamp} by {reviewerName} ---\n{notes}";
+            userRequest.Notes = string.IsNullOrWhiteSpace(userRequest.Notes) 
+                ? newNoteEntry.TrimStart() 
+                : userRequest.Notes + newNoteEntry;
+            
             // Update user request
             userRequest.Status = UserRequestStatus.Approved;
             userRequest.ReviewedByUserId = reviewerUserId;
             userRequest.ReviewedAt = DateTime.UtcNow;
-            userRequest.Notes = notes;
             userRequest.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -251,10 +261,20 @@ namespace SM_MentalHealthApp.Server.Services
                 throw new InvalidOperationException("User request not found.");
             }
 
+            // Get reviewer name for notes
+            var reviewer = await _context.Users.FindAsync(reviewerUserId);
+            var reviewerName = reviewer != null ? $"{reviewer.FirstName} {reviewer.LastName}" : "System";
+            
+            // Append notes instead of overwriting
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
+            var newNoteEntry = $"\n\n--- REJECTED on {timestamp} by {reviewerName} ---\n{notes}";
+            userRequest.Notes = string.IsNullOrWhiteSpace(userRequest.Notes) 
+                ? newNoteEntry.TrimStart() 
+                : userRequest.Notes + newNoteEntry;
+
             userRequest.Status = UserRequestStatus.Rejected;
             userRequest.ReviewedByUserId = reviewerUserId;
             userRequest.ReviewedAt = DateTime.UtcNow;
-            userRequest.Notes = notes;
             userRequest.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -273,10 +293,20 @@ namespace SM_MentalHealthApp.Server.Services
                 throw new InvalidOperationException("User request not found.");
             }
 
+            // Get reviewer name for notes
+            var reviewer = await _context.Users.FindAsync(reviewerUserId);
+            var reviewerName = reviewer != null ? $"{reviewer.FirstName} {reviewer.LastName}" : "System";
+            
+            // Append notes instead of overwriting
+            var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
+            var newNoteEntry = $"\n\n--- MARKED AS PENDING on {timestamp} by {reviewerName} ---\n{notes}";
+            userRequest.Notes = string.IsNullOrWhiteSpace(userRequest.Notes) 
+                ? newNoteEntry.TrimStart() 
+                : userRequest.Notes + newNoteEntry;
+
             // Update notes and reviewer info, but keep status as Pending
             userRequest.ReviewedByUserId = reviewerUserId;
             userRequest.ReviewedAt = DateTime.UtcNow;
-            userRequest.Notes = notes;
             userRequest.UpdatedAt = DateTime.UtcNow;
             // Status remains Pending
 
