@@ -38,6 +38,7 @@ try {
 import DocumentUpload from './src/components/DocumentUpload';
 import SmsComponent from './src/components/SmsComponent';
 import EmergencyComponent from './src/components/EmergencyComponent';
+import GuestRegistrationForm from './src/components/GuestRegistrationForm';
 
 // Import app configuration
 import AppConfig from './src/config/app.config';
@@ -94,7 +95,7 @@ export default function App() {
   const [agoraInitialized, setAgoraInitialized] = useState(false);
 
   // 📄 Document upload state
-  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail'
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration'
   const [availablePatients, setAvailablePatients] = useState([]);
   const [selectedContactDetail, setSelectedContactDetail] = useState(null);
 
@@ -1096,6 +1097,15 @@ export default function App() {
         <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={login} disabled={loading}>
           <Text style={styles.buttonText}>{loading ? 'Logging in…' : 'Login'}</Text>
         </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.guestButton} 
+          onPress={() => {
+            setCurrentView('guest-registration');
+            currentViewRef.current = 'guest-registration';
+          }}
+        >
+          <Text style={styles.guestButtonText}>Continue as Guest</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -1403,7 +1413,26 @@ export default function App() {
     </SafeAreaView>
   );
 
-  if (!user) return renderLogin();
+  if (!user) {
+    if (currentView === 'guest-registration') {
+      return (
+        <SafeAreaView style={styles.container}>
+          <StatusBar style="auto" />
+          <GuestRegistrationForm
+            onBack={() => {
+              setCurrentView('login');
+              currentViewRef.current = 'login';
+            }}
+            onSuccess={() => {
+              setCurrentView('login');
+              currentViewRef.current = 'login';
+            }}
+          />
+        </SafeAreaView>
+      );
+    }
+    return renderLogin();
+  }
 
   // Render different views based on currentView
   if (currentView === 'documents') {
@@ -1518,6 +1547,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  guestButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#007bff',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  guestButtonText: {
+    color: '#007bff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',

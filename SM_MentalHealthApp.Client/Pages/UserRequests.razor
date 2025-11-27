@@ -1,0 +1,650 @@
+@page "/user-requests"
+@inject HttpClient Http
+@inject NotificationService NotificationService
+@inject IAuthService AuthService
+@inject IJSRuntime JSRuntime
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components.Common
+@using System.Net.Http
+
+<div class="user-requests-page">
+    <div class="user-requests-header">
+        @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator
+        {
+            <h2>User Registration Requests</h2>
+            <p>Review and manage guest registration requests</p>
+        }
+        else
+        {
+            <h2>Access Denied</h2>
+            <p>You don't have permission to view this page.</p>
+        }
+    </div>
+
+    @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator
+    {
+        <!-- Filters -->
+        <div class="filters-section">
+            <RadzenDropDown Data="@statusFilterOptions" TextProperty="Text" ValueProperty="Value"
+                @bind-Value="selectedStatusFilter" Placeholder="All Statuses"
+                Style="width: 200px" />
+            <RadzenButton Text="Clear Filters" ButtonStyle="ButtonStyle.Light" Click="@ClearFilters" />
+        </div>
+
+        <!-- Requests Grid -->
+        <div class="requests-content">
+            @if (isLoading)
+            {
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>Loading requests...</p>
+                </div>
+            }
+            else
+            {
+                <RadzenDataGrid Data="@GetFilteredRequests()" 
+                               TItem="UserRequest" 
+                               AllowPaging="true" 
+                               PageSize="20"
+                               AllowSorting="true" 
+                               ShowPagingSummary="true"
+                               EmptyText="No user requests found"
+                               AllowFiltering="true"
+                               FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                               ShowFilterRow="true">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="UserRequest" Property="RequestedAt" Title="Requested" Width="150px" Filterable="true">
+                            <Template Context="request">
+                                @request.RequestedAt.ToString("MM/dd/yyyy HH:mm")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserRequest" Property="FirstName" Title="Name" Width="200px" Filterable="true">
+                            <Template Context="request">
+                                <strong>@request.FullName</strong>
+                                <br />
+                                <small class="text-muted">@request.Email</small>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserRequest" Property="MobilePhone" Title="Phone" Width="150px" Filterable="true" />
+                        <RadzenDataGridColumn TItem="UserRequest" Property="DateOfBirth" Title="Date of Birth" Width="120px" Filterable="true">
+                            <Template Context="request">
+                                @request.DateOfBirth.ToString("MM/dd/yyyy")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserRequest" Property="Gender" Title="Gender" Width="100px" Filterable="true" />
+                        <RadzenDataGridColumn TItem="UserRequest" Property="Reason" Title="Reason" Width="250px" Filterable="true">
+                            <Template Context="request">
+                                <div style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="@request.Reason">
+                                    @(request.Reason.Length > 50 ? request.Reason.Substring(0, 50) + "..." : request.Reason)
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserRequest" Property="Status" Title="Status" Width="120px" Filterable="true">
+                            <Template Context="request">
+                                <span class="badge @GetStatusBadgeClass(request.Status)">
+                                    @GetStatusText(request.Status)
+                                </span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserRequest" Property="ReviewedByUser" Title="Reviewed By" Width="150px" Filterable="true">
+                            <Template Context="request">
+                                @if (request.ReviewedByUser != null)
+                                {
+                                    <div>
+                                        <small>@request.ReviewedByUser.FullName</small>
+                                        <br />
+                                        <small class="text-muted">@(request.ReviewedAt?.ToString("MM/dd/yyyy") ?? "")</small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Not reviewed</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="UserRequest" Title="Actions" Width="200px" Sortable="false" Filterable="false">
+                            <Template Context="request">
+                                <div class="action-buttons">
+                                    <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Success" 
+                                                Variant="Variant.Flat" Size="ButtonSize.Small"
+                                                Click="@(() => ShowApproveDialog(request))" 
+                                                Title="Approve" />
+                                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Danger" 
+                                                Variant="Variant.Flat" Size="ButtonSize.Small"
+                                                Click="@(() => ShowRejectDialog(request))" 
+                                                Title="Reject"
+                                                Disabled="@(request.Status == UserRequestStatus.Rejected)" />
+                                    <RadzenButton Icon="schedule" ButtonStyle="ButtonStyle.Info" 
+                                                Variant="Variant.Flat" Size="ButtonSize.Small"
+                                                Click="@(() => ShowPendingDialog(request))" 
+                                                Title="Mark Pending" />
+                                    <RadzenButton Icon="info" ButtonStyle="ButtonStyle.Light" 
+                                                Variant="Variant.Flat" Size="ButtonSize.Small"
+                                                Click="@(() => ShowDetailsDialog(request))" 
+                                                Title="View Details" />
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </div>
+    }
+</div>
+
+<!-- Approve Dialog -->
+@if (showApproveDialog && selectedRequest != null)
+{
+    <SMModal IsVisible="@showApproveDialog" 
+             Title="Approve User Request" 
+             OnClose="@(() => { showApproveDialog = false; approveNotes = ""; })"
+             Size="Medium">
+        <Body>
+            <p><strong>Approve request for:</strong> @selectedRequest.FullName</p>
+            <p><strong>Email:</strong> @selectedRequest.Email</p>
+            <p><strong>Phone:</strong> @selectedRequest.MobilePhone</p>
+            <div class="reason-display">
+                <p><strong>Reason for Request:</strong></p>
+                <p class="reason-text-small">@selectedRequest.Reason</p>
+            </div>
+            <p class="text-muted">This will create a patient account and send SMS with login credentials. Use the reason above to assign an appropriate doctor.</p>
+            
+            <RadzenFormField Text="Notes (required, min 10 characters)" class="w-100">
+                <textarea @bind="approveNotes" 
+                         @bind:event="oninput"
+                         class="rz-inputtext rz-textarea-input"
+                         rows="4" 
+                         placeholder="Enter notes explaining why this request is being approved..."
+                         style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;"></textarea>
+            </RadzenFormField>
+            
+            <div class="dialog-actions">
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => { showApproveDialog = false; approveNotes = ""; })" />
+                <RadzenButton Text="Approve" ButtonStyle="ButtonStyle.Success" 
+                            Click="@ApproveRequest" 
+                            Disabled="@(string.IsNullOrWhiteSpace(approveNotes) || approveNotes.Length < 10 || isProcessing)" />
+            </div>
+        </Body>
+    </SMModal>
+}
+
+<!-- Reject Dialog -->
+@if (showRejectDialog && selectedRequest != null)
+{
+    <SMModal IsVisible="@showRejectDialog" 
+             Title="Reject User Request" 
+             OnClose="@(() => { showRejectDialog = false; rejectNotes = ""; })"
+             Size="Medium">
+        <Body>
+            <p><strong>Reject request for:</strong> @selectedRequest.FullName</p>
+            <p><strong>Email:</strong> @selectedRequest.Email</p>
+            <p><strong>Reason:</strong> @selectedRequest.Reason</p>
+            <p class="text-warning">This will reject the request. No user account will be created and no notification will be sent.</p>
+            
+            <RadzenFormField Text="Rejection Notes (required, min 10 characters)" class="w-100">
+                <textarea @bind="rejectNotes" 
+                         @bind:event="oninput"
+                         class="rz-inputtext rz-textarea-input"
+                         rows="4" 
+                         placeholder="Enter notes explaining why this request is being rejected..."
+                         style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;"></textarea>
+            </RadzenFormField>
+            
+            <div class="dialog-actions">
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => { showRejectDialog = false; rejectNotes = ""; })" />
+                <RadzenButton Text="Reject" ButtonStyle="ButtonStyle.Danger" 
+                            Click="@RejectRequest" 
+                            Disabled="@(string.IsNullOrWhiteSpace(rejectNotes) || rejectNotes.Length < 10 || isProcessing)" />
+            </div>
+        </Body>
+    </SMModal>
+}
+
+<!-- Pending Dialog -->
+@if (showPendingDialog && selectedRequest != null)
+{
+    <SMModal IsVisible="@showPendingDialog" 
+             Title="Mark Request as Pending" 
+             OnClose="@(() => { showPendingDialog = false; pendingNotes = ""; })"
+             Size="Medium">
+        <Body>
+            <p><strong>Mark as pending:</strong> @selectedRequest.FullName</p>
+            <p><strong>Email:</strong> @selectedRequest.Email</p>
+            <p><strong>Reason:</strong> @selectedRequest.Reason</p>
+            <p class="text-info">This will mark the request for further review. No action will be taken.</p>
+            
+            <RadzenFormField Text="Notes (required, min 10 characters)" class="w-100">
+                <textarea @bind="pendingNotes" 
+                         @bind:event="oninput"
+                         class="rz-inputtext rz-textarea-input"
+                         rows="4" 
+                         placeholder="Enter notes for your reference..."
+                         style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;"></textarea>
+            </RadzenFormField>
+            
+            <div class="dialog-actions">
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => { showPendingDialog = false; pendingNotes = ""; })" />
+                <RadzenButton Text="Mark Pending" ButtonStyle="ButtonStyle.Info" 
+                            Click="@MarkPendingRequest" 
+                            Disabled="@(string.IsNullOrWhiteSpace(pendingNotes) || pendingNotes.Length < 10 || isProcessing)" />
+            </div>
+        </Body>
+    </SMModal>
+}
+
+<!-- Details Dialog -->
+@if (showDetailsDialog && selectedRequest != null)
+{
+    <SMModal IsVisible="@showDetailsDialog" 
+             Title="Request Details" 
+             OnClose="@(() => showDetailsDialog = false)"
+             Size="Large">
+        <Body>
+            <div class="details-section">
+                <h4>Personal Information</h4>
+                <p><strong>Name:</strong> @selectedRequest.FullName</p>
+                <p><strong>Email:</strong> @selectedRequest.Email</p>
+                <p><strong>Phone:</strong> @selectedRequest.MobilePhone</p>
+                <p><strong>Date of Birth:</strong> @selectedRequest.DateOfBirth.ToString("MM/dd/yyyy")</p>
+                <p><strong>Gender:</strong> @selectedRequest.Gender</p>
+            </div>
+            
+            <div class="details-section">
+                <h4>Reason for Request</h4>
+                <p class="reason-text">@selectedRequest.Reason</p>
+            </div>
+            
+            <div class="details-section">
+                <h4>Request Information</h4>
+                <p><strong>Status:</strong> <span class="badge @GetStatusBadgeClass(selectedRequest.Status)">@GetStatusText(selectedRequest.Status)</span></p>
+                <p><strong>Requested At:</strong> @selectedRequest.RequestedAt.ToString("MM/dd/yyyy HH:mm")</p>
+                @if (selectedRequest.ReviewedByUser != null)
+                {
+                    <p><strong>Reviewed By:</strong> @selectedRequest.ReviewedByUser.FullName</p>
+                    <p><strong>Reviewed At:</strong> @selectedRequest.ReviewedAt?.ToString("MM/dd/yyyy HH:mm")</p>
+                }
+            </div>
+            
+            @if (!string.IsNullOrEmpty(selectedRequest.Notes))
+            {
+                <div class="details-section">
+                    <h4>Notes</h4>
+                    <p class="notes-text">@selectedRequest.Notes</p>
+                </div>
+            }
+            
+            <div class="dialog-actions">
+                <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@(() => showDetailsDialog = false)" />
+            </div>
+        </Body>
+    </SMModal>
+}
+
+@code {
+    private List<UserRequest> userRequests = new();
+    private bool isLoading = true;
+    private UserRequest? selectedRequest;
+    private bool showApproveDialog = false;
+    private bool showRejectDialog = false;
+    private bool showPendingDialog = false;
+    private bool showDetailsDialog = false;
+    private bool isProcessing = false;
+    private string approveNotes = "";
+    private string rejectNotes = "";
+    private string pendingNotes = "";
+    private UserRequestStatus? selectedStatusFilter = null;
+
+    private class StatusFilterOption
+    {
+        public UserRequestStatus? Value { get; set; }
+        public string Text { get; set; } = string.Empty;
+    }
+
+    private readonly List<StatusFilterOption> statusFilterOptions = new()
+    {
+        new StatusFilterOption { Value = null, Text = "All Statuses" },
+        new StatusFilterOption { Value = UserRequestStatus.Pending, Text = "Pending" },
+        new StatusFilterOption { Value = UserRequestStatus.Approved, Text = "Approved" },
+        new StatusFilterOption { Value = UserRequestStatus.Rejected, Text = "Rejected" }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthService.InitializeAsync();
+        await LoadUserRequests();
+    }
+
+    private async Task LoadUserRequests()
+    {
+        try
+        {
+            isLoading = true;
+            userRequests = await Http.GetFromJsonAsync<List<UserRequest>>("api/UserRequest") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading user requests: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load user requests: " + ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private List<UserRequest> GetFilteredRequests()
+    {
+        var filtered = userRequests.AsEnumerable();
+        
+        if (selectedStatusFilter.HasValue)
+        {
+            filtered = filtered.Where(r => r.Status == selectedStatusFilter.Value);
+        }
+        
+        return filtered.ToList();
+    }
+
+    private void ClearFilters()
+    {
+        selectedStatusFilter = null;
+        StateHasChanged();
+    }
+
+    private string GetStatusText(UserRequestStatus status)
+    {
+        return status switch
+        {
+            UserRequestStatus.Pending => "Pending",
+            UserRequestStatus.Approved => "Approved",
+            UserRequestStatus.Rejected => "Rejected",
+            _ => "Unknown"
+        };
+    }
+
+    private string GetStatusBadgeClass(UserRequestStatus status)
+    {
+        return status switch
+        {
+            UserRequestStatus.Pending => "badge-warning",
+            UserRequestStatus.Approved => "badge-success",
+            UserRequestStatus.Rejected => "badge-danger",
+            _ => "badge-secondary"
+        };
+    }
+
+    private void ShowApproveDialog(UserRequest request)
+    {
+        selectedRequest = request;
+        approveNotes = "";
+        showApproveDialog = true;
+    }
+
+    private void ShowRejectDialog(UserRequest request)
+    {
+        selectedRequest = request;
+        rejectNotes = "";
+        showRejectDialog = true;
+    }
+
+    private void ShowPendingDialog(UserRequest request)
+    {
+        selectedRequest = request;
+        pendingNotes = "";
+        showPendingDialog = true;
+    }
+
+    private void ShowDetailsDialog(UserRequest request)
+    {
+        selectedRequest = request;
+        showDetailsDialog = true;
+    }
+
+    private async Task ApproveRequest()
+    {
+        if (selectedRequest == null || string.IsNullOrWhiteSpace(approveNotes) || approveNotes.Length < 10)
+        {
+            return;
+        }
+
+        try
+        {
+            isProcessing = true;
+            var response = await Http.PostAsJsonAsync($"api/UserRequest/{selectedRequest.Id}/approve", 
+                new { Notes = approveNotes });
+
+            if (response.IsSuccessStatusCode)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "User request approved successfully. Patient account created and SMS sent.");
+                await LoadUserRequests();
+                showApproveDialog = false;
+                approveNotes = "";
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to approve request: " + error);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private async Task RejectRequest()
+    {
+        if (selectedRequest == null || string.IsNullOrWhiteSpace(rejectNotes) || rejectNotes.Length < 10)
+        {
+            return;
+        }
+
+        try
+        {
+            isProcessing = true;
+            var response = await Http.PostAsJsonAsync($"api/UserRequest/{selectedRequest.Id}/reject", 
+                new { Notes = rejectNotes });
+
+            if (response.IsSuccessStatusCode)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "User request rejected successfully.");
+                await LoadUserRequests();
+                showRejectDialog = false;
+                rejectNotes = "";
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reject request: " + error);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private async Task MarkPendingRequest()
+    {
+        if (selectedRequest == null || string.IsNullOrWhiteSpace(pendingNotes) || pendingNotes.Length < 10)
+        {
+            return;
+        }
+
+        try
+        {
+            isProcessing = true;
+            var response = await Http.PostAsJsonAsync($"api/UserRequest/{selectedRequest.Id}/pending", 
+                new { Notes = pendingNotes });
+
+            if (response.IsSuccessStatusCode)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "User request marked as pending for further review.");
+                await LoadUserRequests();
+                showPendingDialog = false;
+                pendingNotes = "";
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update request: " + error);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+}
+
+@using Radzen
+@using Radzen.Blazor
+
+<style>
+    .user-requests-page {
+        padding: 20px;
+    }
+
+    .user-requests-header {
+        margin-bottom: 20px;
+    }
+
+    .filters-section {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+        align-items: center;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .badge-success {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .badge-warning {
+        background-color: #ffc107;
+        color: #333;
+    }
+
+    .badge-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+
+    .badge-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .dialog-content {
+        padding: 20px;
+    }
+
+    .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 20px;
+    }
+
+    .details-section {
+        margin-bottom: 20px;
+    }
+
+    .details-section h4 {
+        margin-bottom: 10px;
+        color: #333;
+    }
+
+    .notes-text {
+        background-color: #f5f5f5;
+        padding: 10px;
+        border-radius: 4px;
+        white-space: pre-wrap;
+    }
+
+    .reason-text {
+        background-color: #e3f2fd;
+        padding: 12px;
+        border-radius: 4px;
+        border-left: 4px solid #2196f3;
+        white-space: pre-wrap;
+        line-height: 1.6;
+    }
+
+    .reason-display {
+        margin: 15px 0;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-radius: 4px;
+    }
+
+    .reason-text-small {
+        background-color: #e3f2fd;
+        padding: 8px;
+        border-radius: 4px;
+        border-left: 3px solid #2196f3;
+        margin-top: 5px;
+        white-space: pre-wrap;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .loading-spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .text-muted {
+        color: #6c757d;
+    }
+
+    .text-warning {
+        color: #ffc107;
+    }
+
+    .text-info {
+        color: #17a2b8;
+    }
+</style>
+

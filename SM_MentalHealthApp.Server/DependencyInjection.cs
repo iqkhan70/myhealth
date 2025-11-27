@@ -118,6 +118,7 @@ public static class DependencyInjection
         // Interface-based Services
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IAdminService, AdminService>();
+        services.AddScoped<IUserRequestService, UserRequestService>();
         services.AddScoped<IDoctorService, DoctorService>();
         services.AddScoped<IContentAnalysisService, ContentAnalysisService>();
         services.AddScoped<IClinicalNotesService, ClinicalNotesService>();

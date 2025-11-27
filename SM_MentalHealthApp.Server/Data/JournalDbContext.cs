@@ -11,6 +11,7 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<Role> Roles { get; set; }
             public DbSet<User> Users { get; set; }
             public DbSet<UserAssignment> UserAssignments { get; set; }
+            public DbSet<UserRequest> UserRequests { get; set; }
             public DbSet<JournalEntry> JournalEntries { get; set; }
             public DbSet<ChatSession> ChatSessions { get; set; }
             public DbSet<ChatMessage> ChatMessages { get; set; }
@@ -87,6 +88,28 @@ namespace SM_MentalHealthApp.Server.Data
                         .WithMany(r => r.Users)
                         .HasForeignKey(e => e.RoleId)
                         .OnDelete(DeleteBehavior.Restrict);
+                  });
+
+                  // Configure UserRequest entity
+                  modelBuilder.Entity<UserRequest>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
+                        entity.HasIndex(e => e.Email);
+                        entity.Property(e => e.MobilePhone).IsRequired().HasMaxLength(20);
+                        entity.HasIndex(e => e.MobilePhone);
+                        entity.Property(e => e.Gender).IsRequired().HasMaxLength(20);
+                        entity.Property(e => e.Reason).IsRequired().HasMaxLength(1000);
+                        entity.Property(e => e.Status).HasConversion<int>(); // Store enum as int
+                        entity.Property(e => e.Notes).HasMaxLength(2000);
+                        
+                        // Foreign key relationship to User (reviewer)
+                        entity.HasOne(e => e.ReviewedByUser)
+                        .WithMany()
+                        .HasForeignKey(e => e.ReviewedByUserId)
+                        .OnDelete(DeleteBehavior.SetNull);
                   });
 
                   // Configure UserAssignment junction table (User-to-User relationships)

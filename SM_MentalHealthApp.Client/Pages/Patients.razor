@@ -1325,7 +1325,7 @@
                 "JournalEntry" => $"api/journal/entry/{source.SourceId}/toggle-ignore",
                 "ClinicalNote" => $"api/clinicalnotes/{source.SourceId}/toggle-ignore", // Fixed: was clinical-notes, should be clinicalnotes
                 "Content" => $"api/content/{source.SourceId}/toggle-ignore",
-                "Emergency" => $"api/emergency/{source.SourceId}/acknowledge", // Acknowledge instead of ignore
+                "Emergency" => $"api/emergency/acknowledge/{source.SourceId}", // Acknowledge instead of ignore
                 "ChatSession" => $"api/chathistory/sessions/{source.SourceId}/toggle-ignore", // Fixed: was chat-history, should be chathistory
                 _ => null
             };
@@ -1336,19 +1336,34 @@
                 return;
             }
 
-            // Create request message with authorization header
-            var token = AuthService.Token;
-            var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-            
-            if (!string.IsNullOrEmpty(token))
+            // For emergency incidents, we need to send AcknowledgeRequest body
+            HttpResponseMessage response;
+            if (source.SourceType == "Emergency")
             {
-                request.Headers.Authorization = 
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                var currentUserId = AuthService.CurrentUser?.Id ?? 0;
+                var acknowledgeRequest = new
+                {
+                    DoctorId = currentUserId,
+                    Response = "Marked as not applicable for AI analysis",
+                    ActionTaken = "Excluded from health check"
+                };
+                response = await Http.PostAsJsonAsync(endpoint, acknowledgeRequest);
             }
-
-            // Use StringContent with empty body instead of null
-            request.Content = new StringContent("", System.Text.Encoding.UTF8, "application/json");
-            var response = await Http.SendAsync(request);
+            else
+            {
+                // For other source types, send empty body
+                var token = AuthService.Token;
+                var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                
+                if (!string.IsNullOrEmpty(token))
+                {
+                    request.Headers.Authorization = 
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+                
+                request.Content = new StringContent("", System.Text.Encoding.UTF8, "application/json");
+                response = await Http.SendAsync(request);
+            }
             
             if (response.IsSuccessStatusCode)
             {
