@@ -7,6 +7,7 @@
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Client.Components.Common
 @using System.Net.Http
+@implements IDisposable
 
 <div class="user-requests-page">
     <div class="user-requests-header">
@@ -24,12 +25,22 @@
 
     @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator
     {
-        <!-- Filters -->
-        <div class="filters-section">
-            <RadzenDropDown Data="@statusFilterOptions" TextProperty="Text" ValueProperty="Value"
-                @bind-Value="selectedStatusFilter" Placeholder="All Statuses"
-                Style="width: 200px" />
-            <RadzenButton Text="Clear Filters" ButtonStyle="ButtonStyle.Light" Click="@ClearFilters" />
+        <!-- Controls -->
+        <div class="controls-section mb-4">
+            <div class="filters-section">
+                <RadzenDropDown Data="@statusFilterOptions" TextProperty="Text" ValueProperty="Value"
+                    @bind-Value="selectedStatusFilter" Placeholder="All Statuses"
+                    Style="width: 200px" />
+                <RadzenButton Text="Clear Filters" ButtonStyle="ButtonStyle.Light" Click="@ClearFilters" />
+            </div>
+            <div class="refresh-controls">
+                <RadzenButton Text="🔄 Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" 
+                    Click="@RefreshRequests" Disabled="@isLoading" />
+                <div class="auto-refresh-indicator">
+                    <span class="refresh-icon">⚡</span>
+                    <span>Auto-refresh every 30s</span>
+                </div>
+            </div>
         </div>
 
         <!-- Requests Grid -->
@@ -52,7 +63,8 @@
                                EmptyText="No user requests found"
                                AllowFiltering="true"
                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                               ShowFilterRow="true">
+                               ShowFilterRow="true"
+                               @ref="dataGrid">
                     <Columns>
                         <RadzenDataGridColumn TItem="UserRequest" Property="RequestedAt" Title="Requested" Width="150px" Filterable="true">
                             <Template Context="request">
@@ -294,6 +306,8 @@
     private string rejectNotes = "";
     private string pendingNotes = "";
     private UserRequestStatus? selectedStatusFilter = null;
+    private System.Threading.Timer? _refreshTimer;
+    private RadzenDataGrid<UserRequest>? dataGrid;
 
     private class StatusFilterOption
     {
@@ -313,6 +327,7 @@
     {
         await AuthService.InitializeAsync();
         await LoadUserRequests();
+        StartAutoRefresh();
     }
 
     private async Task LoadUserRequests()
@@ -320,7 +335,18 @@
         try
         {
             isLoading = true;
-            userRequests = await Http.GetFromJsonAsync<List<UserRequest>>("api/UserRequest") ?? new();
+            
+            var newRequests = await Http.GetFromJsonAsync<List<UserRequest>>("api/UserRequest") ?? new();
+            
+            // Update the list in place to avoid full re-render
+            userRequests.Clear();
+            userRequests.AddRange(newRequests);
+            
+            // Refresh the grid without full page reload
+            if (dataGrid != null)
+            {
+                await dataGrid.Reload();
+            }
         }
         catch (Exception ex)
         {
@@ -330,6 +356,7 @@
         finally
         {
             isLoading = false;
+            StateHasChanged();
         }
     }
 
@@ -507,6 +534,51 @@
             isProcessing = false;
         }
     }
+
+    private async Task RefreshRequests()
+    {
+        await LoadUserRequests();
+        StateHasChanged();
+    }
+
+    private void StartAutoRefresh()
+    {
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                if (!isLoading && !isProcessing)
+                {
+                    try
+                    {
+                        // Silently refresh without showing loading state
+                        var newRequests = await Http.GetFromJsonAsync<List<UserRequest>>("api/UserRequest") ?? new();
+                        
+                        // Update the list in place
+                        userRequests.Clear();
+                        userRequests.AddRange(newRequests);
+                        
+                        // Refresh only the grid
+                        if (dataGrid != null)
+                        {
+                            await dataGrid.Reload();
+                        }
+                        
+                        StateHasChanged();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error during auto-refresh: {ex.Message}");
+                    }
+                }
+            });
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
 }
 
 @using Radzen
@@ -521,11 +593,45 @@
         margin-bottom: 20px;
     }
 
+    .controls-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
     .filters-section {
         display: flex;
         gap: 15px;
-        margin-bottom: 20px;
         align-items: center;
+    }
+
+    .refresh-controls {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    .auto-refresh-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #27ae60;
+        font-size: 0.9em;
+        font-weight: 500;
+    }
+
+    .refresh-icon {
+        animation: pulse 2s infinite;
+    }
+
+    @@keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
     }
 
     .action-buttons {
