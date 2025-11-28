@@ -39,6 +39,7 @@ import DocumentUpload from './src/components/DocumentUpload';
 import SmsComponent from './src/components/SmsComponent';
 import EmergencyComponent from './src/components/EmergencyComponent';
 import GuestRegistrationForm from './src/components/GuestRegistrationForm';
+import ChangePassword from './src/components/ChangePassword';
 
 // Import app configuration
 import AppConfig from './src/config/app.config';
@@ -95,7 +96,7 @@ export default function App() {
   const [agoraInitialized, setAgoraInitialized] = useState(false);
 
   // 📄 Document upload state
-  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration'
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password'
   const [availablePatients, setAvailablePatients] = useState([]);
   const [selectedContactDetail, setSelectedContactDetail] = useState(null);
 
@@ -220,6 +221,14 @@ export default function App() {
         
         setUser(data.user);
         userRef.current = data.user; // Update ref when user is set
+        
+        // Check if user must change password on first login
+        if (data.user.mustChangePassword) {
+          setCurrentView('change-password');
+          currentViewRef.current = 'change-password';
+          Alert.alert('Password Change Required', 'Please change your password to continue.');
+          return;
+        }
         
         // Load contacts after a small delay to ensure state is set
         // and to avoid race conditions with useEffect
@@ -1432,6 +1441,86 @@ export default function App() {
       );
     }
     return renderLogin();
+  }
+
+  // Check if user must change password (force password change on first login)
+  if (currentView === 'change-password' || user.mustChangePassword) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="auto" />
+        <ChangePassword
+          user={user}
+          onPasswordChanged={async () => {
+            // Reload user data to get updated mustChangePassword flag
+            try {
+              const token = await AsyncStorage.getItem('userToken');
+              const resp = await fetch(`${API_BASE_URL}/auth/user`, {
+                headers: { 'Authorization': `Bearer ${token}` },
+              });
+              if (resp.ok) {
+                const userData = await resp.json();
+                await AsyncStorage.setItem('currentUser', JSON.stringify(userData));
+                setUser(userData);
+                userRef.current = userData;
+                
+                // Initialize services after password change
+                await loadAvailablePatients(userData, token);
+                await initializeSignalR(token);
+                
+                setCurrentView('main');
+                currentViewRef.current = 'main';
+              }
+            } catch (error) {
+              console.error('Error reloading user after password change:', error);
+              // Still proceed to main view
+              setCurrentView('main');
+              currentViewRef.current = 'main';
+            }
+          }}
+          onCancel={async () => {
+            // Logout and return to login screen
+            try {
+              const token = await AsyncStorage.getItem('userToken');
+              // Call logout endpoint if available
+              try {
+                await fetch(`${API_BASE_URL}/auth/logout`, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                  },
+                });
+              } catch (e) {
+                // Continue with logout even if server call fails
+                console.log('Logout API call failed, continuing with local logout');
+              }
+              
+              // Clear local storage
+              await AsyncStorage.removeItem('userToken');
+              await AsyncStorage.removeItem('currentUser');
+              
+              // Disconnect SignalR
+              await SignalRService.disconnect();
+              
+              // Clear state
+              setUser(null);
+              userRef.current = null;
+              setCurrentView('login');
+              currentViewRef.current = 'login';
+            } catch (error) {
+              console.error('Error during logout:', error);
+              // Still clear state and go to login
+              await AsyncStorage.removeItem('userToken');
+              await AsyncStorage.removeItem('currentUser');
+              setUser(null);
+              userRef.current = null;
+              setCurrentView('login');
+              currentViewRef.current = 'login';
+            }
+          }}
+        />
+      </SafeAreaView>
+    );
   }
 
   // Render different views based on currentView

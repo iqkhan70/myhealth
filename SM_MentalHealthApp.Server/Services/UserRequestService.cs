@@ -4,6 +4,7 @@ using SM_MentalHealthApp.Shared;
 using SM_MentalHealthApp.Shared.Constants;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -320,11 +321,20 @@ namespace SM_MentalHealthApp.Server.Services
 
         private string HashPassword(string password)
         {
-            using (var sha256 = SHA256.Create())
-            {
-                var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-                return Convert.ToBase64String(hashedBytes);
-            }
+            // Use the same PBKDF2 hashing method as AuthService for consistency
+            // This ensures passwords created here can be verified by AuthService
+            using var rng = RandomNumberGenerator.Create();
+            var salt = new byte[32];
+            rng.GetBytes(salt);
+
+            using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 100000, HashAlgorithmName.SHA256);
+            var hash = pbkdf2.GetBytes(32);
+
+            var hashBytes = new byte[64];
+            Array.Copy(salt, 0, hashBytes, 0, 32);
+            Array.Copy(hash, 0, hashBytes, 32, 32);
+
+            return Convert.ToBase64String(hashBytes);
         }
 
         private string GenerateTemporaryPassword()

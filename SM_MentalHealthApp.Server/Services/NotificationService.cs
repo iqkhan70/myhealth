@@ -8,6 +8,8 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Mail;
 using System.Net.Mime;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -104,7 +106,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 if (!emailEnabled)
                 {
-                    _logger.LogInformation("Email service is disabled. Email notification for user {UserId} ({Email}) would have been sent with subject: {Subject}", 
+                    _logger.LogInformation("Email service is disabled. Email notification for user {UserId} ({Email}) would have been sent with subject: {Subject}",
                         userId, user.Email, subject);
                     _logger.LogInformation("Email body: {Body}", body);
                     return;
@@ -112,7 +114,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(smtpUsername) || string.IsNullOrEmpty(smtpPassword))
                 {
-                    _logger.LogWarning("SMTP configuration is incomplete. Email notification for user {UserId} ({Email}) not sent. Subject: {Subject}", 
+                    _logger.LogWarning("SMTP configuration is incomplete. Email notification for user {UserId} ({Email}) not sent. Subject: {Subject}",
                         userId, user.Email, subject);
                     _logger.LogInformation("Email body: {Body}", body);
                     return;
@@ -123,7 +125,7 @@ namespace SM_MentalHealthApp.Server.Services
                 mailMessage.From = new MailAddress(smtpFromEmail, smtpFromName);
                 mailMessage.To.Add(new MailAddress(user.Email, $"{user.FirstName} {user.LastName}"));
                 mailMessage.Subject = subject;
-                
+
                 // Check if body is HTML
                 if (body.Contains("<html>") || body.Contains("<body>") || body.Contains("<p>"))
                 {
@@ -138,15 +140,59 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Create SMTP client
                 using var smtpClient = new SmtpClient(smtpHost, smtpPort);
-                smtpClient.EnableSsl = smtpEnableSsl;
-                smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
-                smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+                
+                // For Gmail, configure TLS properly
+                if (smtpHost.Contains("gmail.com"))
+                {
+                    // Gmail requires TLS 1.2 or higher
+                    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
+                    ServicePointManager.ServerCertificateValidationCallback = 
+                        delegate (object s, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) 
+                        { return true; };
+                    
+                    smtpClient.EnableSsl = true;
+                    smtpClient.UseDefaultCredentials = false;
+                    
+                    // Gmail requires the username to be the full email address
+                    smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
+                    smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+                    smtpClient.Timeout = 30000; // 30 second timeout
+                }
+                else
+                {
+                    smtpClient.EnableSsl = smtpEnableSsl;
+                    smtpClient.UseDefaultCredentials = false;
+                    smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
+                    smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+                    smtpClient.Timeout = 30000;
+                }
+
+                // Log configuration (without password)
+                _logger.LogInformation("Attempting to send email via SMTP: Host={Host}, Port={Port}, Username={Username}, SSL={Ssl}", 
+                    smtpHost, smtpPort, smtpUsername, smtpClient.EnableSsl);
 
                 // Send email
                 await smtpClient.SendMailAsync(mailMessage);
 
-                _logger.LogInformation("Email sent successfully to {Email} (user {UserId}): {Subject}", 
+                _logger.LogInformation("Email sent successfully to {Email} (user {UserId}): {Subject}",
                     user.Email, userId, subject);
+            }
+            catch (SmtpException smtpEx)
+            {
+                var errorMessage = smtpEx.Message;
+                if (errorMessage.Contains("Authentication Required") || errorMessage.Contains("5.7.0"))
+                {
+                    _logger.LogError(smtpEx, 
+                        "Gmail authentication failed for user {UserId}. This usually means you need to use a Gmail App Password instead of your regular password. " +
+                        "Go to https://myaccount.google.com/apppasswords to generate one. Error: {Message}", 
+                        userId, smtpEx.Message);
+                }
+                else
+                {
+                    _logger.LogError(smtpEx, "SMTP error sending email notification to user {UserId}: {Message}", 
+                        userId, smtpEx.Message);
+                }
+                throw; // Re-throw to allow caller to handle
             }
             catch (Exception ex)
             {
