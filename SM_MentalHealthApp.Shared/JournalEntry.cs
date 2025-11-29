@@ -21,7 +21,27 @@ namespace SM_MentalHealthApp.Shared
         public string LastName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
-        public DateTime DateOfBirth { get; set; }
+        
+        // Encrypted DateOfBirth stored in database (not sent to client for security)
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string DateOfBirthEncrypted { get; set; } = string.Empty;
+        
+        // Computed property for decrypted DateOfBirth (not stored in DB, sent to client)
+        // This will be populated by the service layer after decryption
+        private DateTime _decryptedDateOfBirth = DateTime.MinValue;
+        public DateTime DateOfBirth 
+        { 
+            get 
+            {
+                // This will be set by the service layer after decryption
+                return _decryptedDateOfBirth;
+            }
+            set 
+            {
+                _decryptedDateOfBirth = value;
+            }
+        }
+        
         public string? Gender { get; set; }
         public string? MobilePhone { get; set; } // Mobile phone for SMS alerts
         public int RoleId { get; set; } = 1; // Default to Patient role

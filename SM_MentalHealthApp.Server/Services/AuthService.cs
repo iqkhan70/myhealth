@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Server.Data;
+using SM_MentalHealthApp.Server.Helpers;
 using SM_MentalHealthApp.Shared;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -22,11 +23,13 @@ namespace SM_MentalHealthApp.Server.Services
     {
         private readonly JournalDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly IPiiEncryptionService _encryptionService;
 
-        public AuthService(JournalDbContext context, IConfiguration configuration)
+        public AuthService(JournalDbContext context, IConfiguration configuration, IPiiEncryptionService encryptionService)
         {
             _context = context;
             _configuration = configuration;
+            _encryptionService = encryptionService;
         }
 
         public async Task<LoginResponse> LoginAsync(LoginRequest request)
@@ -57,6 +60,9 @@ namespace SM_MentalHealthApp.Server.Services
                         user.MustChangePassword = true; // Force password change on first login
                     }
                     await _context.SaveChangesAsync();
+
+                    // Decrypt PII data before returning
+                    UserEncryptionHelper.DecryptUserData(user, _encryptionService);
 
                     var token = GenerateJwtToken(user.Id, user.Email, user.FirstName, user.LastName, user.RoleId, user.Role?.Name ?? "User", user.IsFirstLogin, user.MustChangePassword);
 
@@ -108,15 +114,21 @@ namespace SM_MentalHealthApp.Server.Services
                     LastName = request.LastName,
                     Email = request.Email,
                     PasswordHash = HashPassword(request.Password),
-                    DateOfBirth = request.DateOfBirth,
+                    DateOfBirth = request.DateOfBirth, // Will be encrypted before save
                     Gender = request.Gender,
                     RoleId = 1, // Default to Patient role
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true
                 };
 
+                // Encrypt PII data before saving
+                UserEncryptionHelper.EncryptUserData(user, _encryptionService);
+
                 _context.Users.Add(user);
                 await _context.SaveChangesAsync();
+
+                // Decrypt PII data after saving for response
+                UserEncryptionHelper.DecryptUserData(user, _encryptionService);
 
                 var token = GenerateJwtToken(user.Id, user.Email, user.FirstName, user.LastName, user.RoleId, user.Role?.Name ?? "Patient", user.IsFirstLogin, user.MustChangePassword);
 

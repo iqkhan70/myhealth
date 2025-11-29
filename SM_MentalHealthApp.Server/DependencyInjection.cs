@@ -33,7 +33,7 @@ public static class DependencyInjection
         services.AddInfrastructureServices(configuration);
 
         // Application Services
-        services.AddApplicationServicesInternal();
+        services.AddApplicationServicesInternal(configuration);
 
         // Framework Services
         services.AddFrameworkServices(configuration, environment);
@@ -108,8 +108,11 @@ public static class DependencyInjection
     /// <summary>
     /// Registers application business logic services
     /// </summary>
-    private static IServiceCollection AddApplicationServicesInternal(this IServiceCollection services)
+    private static IServiceCollection AddApplicationServicesInternal(this IServiceCollection services, IConfiguration configuration)
     {
+        // PII Encryption Service (must be singleton to maintain consistent encryption key)
+        services.AddSingleton<IPiiEncryptionService, PiiEncryptionService>();
+
         // Core Services
         services.AddScoped<UserService>();
         services.AddScoped<JournalService>();
@@ -193,6 +196,7 @@ public static class DependencyInjection
                 options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
                 options.JsonSerializerOptions.WriteIndented = true;
                 options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+                options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.Never; // Include all properties, even if default values
             });
 
         // API Versioning

@@ -1,4 +1,5 @@
 using SM_MentalHealthApp.Server.Data;
+using SM_MentalHealthApp.Server.Helpers;
 using SM_MentalHealthApp.Shared;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,10 +8,12 @@ namespace SM_MentalHealthApp.Server.Services
     public class UserService
     {
         private readonly JournalDbContext _context;
+        private readonly IPiiEncryptionService _encryptionService;
 
-        public UserService(JournalDbContext context)
+        public UserService(JournalDbContext context, IPiiEncryptionService encryptionService)
         {
             _context = context;
+            _encryptionService = encryptionService;
         }
 
         public async Task<User> CreateUserAsync(User user)
@@ -24,32 +27,53 @@ namespace SM_MentalHealthApp.Server.Services
                 throw new InvalidOperationException("A user with this email already exists.");
             }
 
+            // Encrypt DateOfBirth before saving
+            UserEncryptionHelper.EncryptUserData(user, _encryptionService);
+
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
+            
+            // Decrypt DateOfBirth after saving for return value
+            UserEncryptionHelper.DecryptUserData(user, _encryptionService);
+            
             return user;
         }
 
         public async Task<User?> GetUserByIdAsync(int id)
         {
-            return await _context.Users
+            var user = await _context.Users
                 .Include(u => u.Role)
                 .Include(u => u.JournalEntries.OrderByDescending(j => j.CreatedAt))
                 .Include(u => u.ChatSessions)
                 .FirstOrDefaultAsync(u => u.Id == id && u.IsActive);
+            
+            if (user != null)
+            {
+                UserEncryptionHelper.DecryptUserData(user, _encryptionService);
+            }
+            
+            return user;
         }
 
         public async Task<User?> GetUserByEmailAsync(string email)
         {
-            return await _context.Users
+            var user = await _context.Users
                 .Include(u => u.Role)
                 .Include(u => u.JournalEntries.OrderByDescending(j => j.CreatedAt))
                 .Include(u => u.ChatSessions)
                 .FirstOrDefaultAsync(u => u.Email == email && u.IsActive);
+            
+            if (user != null)
+            {
+                UserEncryptionHelper.DecryptUserData(user, _encryptionService);
+            }
+            
+            return user;
         }
 
         public async Task<List<User>> GetAllUsersAsync()
         {
-            return await _context.Users
+            var users = await _context.Users
                 .Include(u => u.Role)
                 .Include(u => u.JournalEntries)
                 .Include(u => u.ChatSessions)
@@ -57,6 +81,10 @@ namespace SM_MentalHealthApp.Server.Services
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .ToListAsync();
+            
+            UserEncryptionHelper.DecryptUserData(users, _encryptionService);
+            
+            return users;
         }
 
         public async Task<User> UpdateUserAsync(User user)
@@ -70,7 +98,7 @@ namespace SM_MentalHealthApp.Server.Services
             existingUser.FirstName = user.FirstName;
             existingUser.LastName = user.LastName;
             existingUser.Email = user.Email;
-            existingUser.DateOfBirth = user.DateOfBirth;
+            existingUser.DateOfBirth = user.DateOfBirth; // Set the date
             existingUser.Gender = user.Gender;
             existingUser.RoleId = user.RoleId;
             existingUser.IsActive = user.IsActive;
@@ -83,7 +111,14 @@ namespace SM_MentalHealthApp.Server.Services
                 existingUser.LicenseNumber = user.LicenseNumber;
             }
 
+            // Encrypt DateOfBirth before saving
+            UserEncryptionHelper.EncryptUserData(existingUser, _encryptionService);
+
             await _context.SaveChangesAsync();
+            
+            // Decrypt DateOfBirth after saving for return value
+            UserEncryptionHelper.DecryptUserData(existingUser, _encryptionService);
+            
             return existingUser;
         }
 
@@ -121,6 +156,9 @@ namespace SM_MentalHealthApp.Server.Services
                     IsActive = true
                 };
 
+                // Encrypt DateOfBirth before saving
+                UserEncryptionHelper.EncryptUserData(demoUser, _encryptionService);
+
                 _context.Users.Add(demoUser);
                 await _context.SaveChangesAsync();
             }
@@ -143,6 +181,9 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 throw new InvalidOperationException("User not found.");
             }
+            
+            // Decrypt DateOfBirth for stats calculation
+            UserEncryptionHelper.DecryptUserData(user, _encryptionService);
 
             var entries = user.JournalEntries;
             var totalEntries = entries.Count;

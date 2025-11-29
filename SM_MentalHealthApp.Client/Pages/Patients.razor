@@ -1042,7 +1042,11 @@
                         updateRequest.Email = patientForm.Email;
                     }
                     
-                    if (patientForm.DateOfBirth != _originalUser.DateOfBirth)
+                    // Always include DateOfBirth if it's been set (not DateTime.MinValue)
+                    // Compare dates by date component only (ignore time) to handle timezone issues
+                    var originalDate = _originalUser.DateOfBirth.Date;
+                    var formDate = patientForm.DateOfBirth.Date;
+                    if (formDate != originalDate || (formDate != DateTime.MinValue.Date && originalDate == DateTime.MinValue.Date))
                     {
                         updateRequest.DateOfBirth = patientForm.DateOfBirth;
                     }

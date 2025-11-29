@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SM_MentalHealthApp.Server.Data;
 
@@ -11,9 +12,11 @@ using SM_MentalHealthApp.Server.Data;
 namespace SM_MentalHealthApp.Server.Migrations
 {
     [DbContext(typeof(JournalDbContext))]
-    partial class JournalDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251129161350_EncryptDateOfBirth")]
+    partial class EncryptDateOfBirth
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1736,10 +1739,8 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<string>("DateOfBirthEncrypted")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                    b.Property<DateTime>("DateOfBirth")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Email")
                         .IsRequired()

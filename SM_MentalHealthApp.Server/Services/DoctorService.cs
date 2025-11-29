@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Server.Data;
+using SM_MentalHealthApp.Server.Helpers;
+using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 
 namespace SM_MentalHealthApp.Server.Services
@@ -16,15 +18,17 @@ namespace SM_MentalHealthApp.Server.Services
     public class DoctorService : IDoctorService
     {
         private readonly JournalDbContext _context;
+        private readonly IPiiEncryptionService _encryptionService;
 
-        public DoctorService(JournalDbContext context)
+        public DoctorService(JournalDbContext context, IPiiEncryptionService encryptionService)
         {
             _context = context;
+            _encryptionService = encryptionService;
         }
 
         public async Task<List<User>> GetMyPatientsAsync(int doctorId)
         {
-            return await _context.UserAssignments
+            var patients = await _context.UserAssignments
                 .Where(ua => ua.AssignerId == doctorId)
                 .Include(ua => ua.Assignee)
                 .ThenInclude(a => a.Role)
@@ -33,6 +37,11 @@ namespace SM_MentalHealthApp.Server.Services
                 .OrderBy(p => p.LastName)
                 .ThenBy(p => p.FirstName)
                 .ToListAsync();
+            
+            // Decrypt DateOfBirth for all patients
+            UserEncryptionHelper.DecryptUserData(patients, _encryptionService);
+            
+            return patients;
         }
 
         public async Task<List<User>> GetAllDoctorsAsync()

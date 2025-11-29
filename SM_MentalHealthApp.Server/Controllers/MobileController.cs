@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Server.Services;
+using SM_MentalHealthApp.Server.Helpers;
 using SM_MentalHealthApp.Shared;
 using System.Security.Claims;
 using Microsoft.Extensions.Logging;
@@ -21,12 +22,14 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly JournalDbContext _context;
         private readonly ILogger<MobileController> _logger;
         private readonly IHubContext<MobileHub> _hubContext;
+        private readonly IPiiEncryptionService _encryptionService;
 
-        public MobileController(JournalDbContext context, ILogger<MobileController> logger, IHubContext<MobileHub> hubContext)
+        public MobileController(JournalDbContext context, ILogger<MobileController> logger, IHubContext<MobileHub> hubContext, IPiiEncryptionService encryptionService)
         {
             _context = context;
             _logger = logger;
             _hubContext = hubContext;
+            _encryptionService = encryptionService;
         }
 
         /// <summary>
@@ -54,6 +57,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                     .OrderBy(p => p.LastName)
                     .ThenBy(p => p.FirstName)
                     .ToListAsync();
+
+                // Decrypt DateOfBirth for all patients
+                UserEncryptionHelper.DecryptUserData(patients, _encryptionService);
 
                 _logger.LogInformation("Found {PatientCount} patients for doctor {DoctorId}", patients.Count, doctorId);
 

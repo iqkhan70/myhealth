@@ -2,6 +2,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Shared;
 using SM_MentalHealthApp.Server.Data;
+using SM_MentalHealthApp.Server.Helpers;
+using SM_MentalHealthApp.Server.Services;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Linq;
@@ -22,17 +24,20 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly JournalDbContext _context;
         private readonly LlmClient _llmClient;
         private readonly IContentAnalysisService _contentAnalysisService;
+        private readonly IPiiEncryptionService _encryptionService;
 
         public ClinicalDecisionSupportService(
             ILogger<ClinicalDecisionSupportService> logger,
             JournalDbContext context,
             LlmClient llmClient,
-            IContentAnalysisService contentAnalysisService)
+            IContentAnalysisService contentAnalysisService,
+            IPiiEncryptionService encryptionService)
         {
             _logger = logger;
             _context = context;
             _llmClient = llmClient;
             _contentAnalysisService = contentAnalysisService;
+            _encryptionService = encryptionService;
         }
 
         /// <summary>
@@ -79,6 +84,9 @@ namespace SM_MentalHealthApp.Server.Services
                 {
                     throw new ArgumentException("Patient or doctor not found");
                 }
+
+                // Decrypt DateOfBirth for patient (needed for age calculation)
+                UserEncryptionHelper.DecryptUserData(patient, _encryptionService);
 
                 // Get recent patient data for context (excluding ignored entries)
                 var recentJournalEntries = await _context.JournalEntries

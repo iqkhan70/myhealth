@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Server.Data;
+using SM_MentalHealthApp.Server.Helpers;
 using SM_MentalHealthApp.Shared;
 using System.Security.Cryptography;
 using System.Text;
@@ -18,12 +19,14 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly IAdminService _adminService;
         private readonly JournalDbContext _context;
         private readonly ILogger<AdminController> _logger;
+        private readonly IPiiEncryptionService _encryptionService;
 
-        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger)
+        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger, IPiiEncryptionService encryptionService)
         {
             _adminService = adminService;
             _context = context;
             _logger = logger;
+            _encryptionService = encryptionService;
         }
 
         [HttpGet("doctors")]
@@ -838,6 +841,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                     MustChangePassword = true // Force password change on first login
                 };
 
+                // Encrypt DateOfBirth before saving
+                UserEncryptionHelper.EncryptUserData(doctor, _encryptionService);
+
                 _context.Users.Add(doctor);
                 await _context.SaveChangesAsync();
 
@@ -878,6 +884,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                     IsActive = true,
                     MustChangePassword = true // Force password change on first login
                 };
+
+                // Encrypt DateOfBirth before saving
+                UserEncryptionHelper.EncryptUserData(patient, _encryptionService);
 
                 _context.Users.Add(patient);
                 await _context.SaveChangesAsync();
@@ -921,6 +930,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                     MustChangePassword = true // Force password change on first login
                 };
 
+                // Encrypt DateOfBirth before saving
+                UserEncryptionHelper.EncryptUserData(coordinator, _encryptionService);
+
                 _context.Users.Add(coordinator);
                 await _context.SaveChangesAsync();
 
@@ -933,6 +945,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPut("update-patient/{id}")]
+        [Authorize(Roles = "Admin,Doctor")] // Admin and Doctor can update patients
         public async Task<ActionResult> UpdatePatient(int id, [FromBody] UpdatePatientRequest request)
         {
             try
@@ -981,9 +994,12 @@ namespace SM_MentalHealthApp.Server.Controllers
                     patient.Email = request.Email;
                 }
 
-                if (request.DateOfBirth.HasValue && patient.DateOfBirth != request.DateOfBirth.Value)
+                if (request.DateOfBirth.HasValue)
                 {
+                    // Always update DateOfBirth when provided and encrypt it
                     patient.DateOfBirth = request.DateOfBirth.Value;
+                    // Encrypt before saving
+                    UserEncryptionHelper.EncryptUserData(patient, _encryptionService);
                 }
 
                 if (!string.IsNullOrWhiteSpace(request.Gender) && patient.Gender != request.Gender)
@@ -1004,7 +1020,22 @@ namespace SM_MentalHealthApp.Server.Controllers
                     patient.MustChangePassword = true;
                 }
 
+                // Ensure DateOfBirth is encrypted before saving (only if DateOfBirth was set but not encrypted above)
+                // This handles the case where DateOfBirth wasn't in the request but we need to ensure existing data is encrypted
+                if (!request.DateOfBirth.HasValue && !string.IsNullOrEmpty(patient.DateOfBirthEncrypted))
+                {
+                    // Decrypt existing DateOfBirth to ensure it's valid, then re-encrypt
+                    UserEncryptionHelper.DecryptUserData(patient, _encryptionService);
+                    if (patient.DateOfBirth != DateTime.MinValue)
+                    {
+                        UserEncryptionHelper.EncryptUserData(patient, _encryptionService);
+                    }
+                }
+
                 await _context.SaveChangesAsync();
+                
+                // Decrypt after saving for response
+                UserEncryptionHelper.DecryptUserData(patient, _encryptionService);
 
                 // Debug logging after update
                 _logger.LogInformation("UpdatePatient - After: FirstName='{FirstName}', LastName='{LastName}', Email='{Email}', MobilePhone='{MobilePhone}', MustChangePassword={MustChangePassword}",
@@ -1059,9 +1090,16 @@ namespace SM_MentalHealthApp.Server.Controllers
                     doctor.Email = request.Email;
                 }
 
-                if (request.DateOfBirth.HasValue && doctor.DateOfBirth != request.DateOfBirth.Value)
+                if (request.DateOfBirth.HasValue)
                 {
-                    doctor.DateOfBirth = request.DateOfBirth.Value;
+                    // Decrypt current DateOfBirth for comparison
+                    UserEncryptionHelper.DecryptUserData(doctor, _encryptionService);
+                    if (doctor.DateOfBirth != request.DateOfBirth.Value)
+                    {
+                        doctor.DateOfBirth = request.DateOfBirth.Value;
+                        // Encrypt before saving
+                        UserEncryptionHelper.EncryptUserData(doctor, _encryptionService);
+                    }
                 }
 
                 if (!string.IsNullOrWhiteSpace(request.Gender) && doctor.Gender != request.Gender)
@@ -1197,9 +1235,16 @@ namespace SM_MentalHealthApp.Server.Controllers
                     coordinator.Email = request.Email;
                 }
 
-                if (request.DateOfBirth.HasValue && coordinator.DateOfBirth != request.DateOfBirth.Value)
+                if (request.DateOfBirth.HasValue)
                 {
-                    coordinator.DateOfBirth = request.DateOfBirth.Value;
+                    // Decrypt current DateOfBirth for comparison
+                    UserEncryptionHelper.DecryptUserData(coordinator, _encryptionService);
+                    if (coordinator.DateOfBirth != request.DateOfBirth.Value)
+                    {
+                        coordinator.DateOfBirth = request.DateOfBirth.Value;
+                        // Encrypt before saving
+                        UserEncryptionHelper.EncryptUserData(coordinator, _encryptionService);
+                    }
                 }
 
                 if (!string.IsNullOrWhiteSpace(request.Gender) && coordinator.Gender != request.Gender)
@@ -1219,7 +1264,13 @@ namespace SM_MentalHealthApp.Server.Controllers
                     coordinator.MustChangePassword = true;
                 }
 
+                // Ensure DateOfBirth is encrypted before saving (in case it wasn't updated above)
+                UserEncryptionHelper.EncryptUserData(coordinator, _encryptionService);
+
                 await _context.SaveChangesAsync();
+                
+                // Decrypt after saving for response
+                UserEncryptionHelper.DecryptUserData(coordinator, _encryptionService);
 
                 return Ok(new { message = "Coordinator updated successfully" });
             }

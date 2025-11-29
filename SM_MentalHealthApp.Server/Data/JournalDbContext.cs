@@ -82,6 +82,14 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.MobilePhone).HasMaxLength(20);
                         entity.Property(e => e.Specialization).HasMaxLength(100);
                         entity.Property(e => e.LicenseNumber).HasMaxLength(50);
+                        
+                        // DateOfBirth is stored encrypted as string
+                        entity.Property(e => e.DateOfBirthEncrypted)
+                            .IsRequired()
+                            .HasMaxLength(500); // Enough for encrypted DateTime
+                        
+                        // Ignore the computed DateOfBirth property (not stored in DB)
+                        entity.Ignore(e => e.DateOfBirth);
 
                         // Foreign key relationship to Role
                         entity.HasOne(e => e.Role)
@@ -104,6 +112,14 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Reason).IsRequired().HasMaxLength(1000);
                         entity.Property(e => e.Status).HasConversion<int>(); // Store enum as int
                         entity.Property(e => e.Notes).HasMaxLength(2000);
+                        
+                        // DateOfBirth is stored encrypted as string
+                        entity.Property(e => e.DateOfBirthEncrypted)
+                            .IsRequired()
+                            .HasMaxLength(500); // Enough for encrypted DateTime
+                        
+                        // Ignore the computed DateOfBirth property (not stored in DB)
+                        entity.Ignore(e => e.DateOfBirth);
                         
                         // Foreign key relationship to User (reviewer)
                         entity.HasOne(e => e.ReviewedByUser)

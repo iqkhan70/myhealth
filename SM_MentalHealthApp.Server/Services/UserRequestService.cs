@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Server.Data;
+using SM_MentalHealthApp.Server.Helpers;
 using SM_MentalHealthApp.Shared;
 using SM_MentalHealthApp.Shared.Constants;
 using System.Security.Cryptography;
@@ -23,11 +24,13 @@ namespace SM_MentalHealthApp.Server.Services
     {
         private readonly JournalDbContext _context;
         private readonly ILogger<UserRequestService> _logger;
+        private readonly IPiiEncryptionService _encryptionService;
 
-        public UserRequestService(JournalDbContext context, ILogger<UserRequestService> logger)
+        public UserRequestService(JournalDbContext context, ILogger<UserRequestService> logger, IPiiEncryptionService encryptionService)
         {
             _context = context;
             _logger = logger;
+            _encryptionService = encryptionService;
         }
 
         public async Task<bool> ValidateEmailAndPhoneAsync(string email, string mobilePhone)
@@ -61,12 +64,15 @@ namespace SM_MentalHealthApp.Server.Services
                 throw new InvalidOperationException("A pending request with this email or phone number already exists.");
             }
 
+            // Normalize DateOfBirth to date-only (midnight, no timezone) to avoid timezone conversion issues
+            var dateOfBirthDateOnly = request.DateOfBirth.Date; // Extract date part only, discarding time
+            
             var userRequest = new UserRequest
             {
                 FirstName = request.FirstName,
                 LastName = request.LastName,
                 Email = request.Email,
-                DateOfBirth = request.DateOfBirth,
+                DateOfBirth = dateOfBirthDateOnly, // Use date-only to avoid timezone issues
                 Gender = request.Gender,
                 MobilePhone = request.MobilePhone,
                 Reason = request.Reason,
@@ -76,11 +82,30 @@ namespace SM_MentalHealthApp.Server.Services
                 UpdatedAt = DateTime.UtcNow
             };
 
+            // Store the original DateOfBirth before encryption (for return value)
+            var originalDateOfBirth = userRequest.DateOfBirth;
+
+            // Encrypt DateOfBirth before saving
+            UserEncryptionHelper.EncryptUserRequestData(userRequest, _encryptionService);
+
             _context.UserRequests.Add(userRequest);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("User request created: ID={Id}, Email={Email}, Phone={Phone}", 
-                userRequest.Id, userRequest.Email, userRequest.MobilePhone);
+            // After SaveChanges, EF Core might reset the computed DateOfBirth property
+            // Reload from database to get the encrypted value, then decrypt
+            await _context.Entry(userRequest).ReloadAsync();
+            
+            // Decrypt DateOfBirth after saving for return value
+            UserEncryptionHelper.DecryptUserRequestData(userRequest, _encryptionService);
+            
+            // If decryption failed or returned MinValue, use the original date we stored
+            if (userRequest.DateOfBirth == DateTime.MinValue && originalDateOfBirth != DateTime.MinValue)
+            {
+                userRequest.DateOfBirth = originalDateOfBirth;
+            }
+
+            _logger.LogInformation("User request created: ID={Id}, Email={Email}, Phone={Phone}, DateOfBirth={DateOfBirth}", 
+                userRequest.Id, userRequest.Email, userRequest.MobilePhone, userRequest.DateOfBirth);
 
             return userRequest;
         }
@@ -122,14 +147,25 @@ namespace SM_MentalHealthApp.Server.Services
                 })
                 .ToList();
 
+            // Decrypt DateOfBirth for all requests
+            UserEncryptionHelper.DecryptUserRequestData(filteredRequests, _encryptionService);
+
             return filteredRequests;
         }
 
         public async Task<UserRequest?> GetUserRequestByIdAsync(int id)
         {
-            return await _context.UserRequests
+            var userRequest = await _context.UserRequests
                 .Include(ur => ur.ReviewedByUser)
                 .FirstOrDefaultAsync(ur => ur.Id == id);
+            
+            if (userRequest != null)
+            {
+                // Decrypt DateOfBirth after loading
+                UserEncryptionHelper.DecryptUserRequestData(userRequest, _encryptionService);
+            }
+            
+            return userRequest;
         }
 
         public async Task<UserRequest> ApproveUserRequestAsync(int id, int reviewerUserId, string notes, ISmsService smsService, INotificationService notificationService)
@@ -139,6 +175,9 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 throw new InvalidOperationException("User request not found.");
             }
+            
+            // Decrypt DateOfBirth before using it
+            UserEncryptionHelper.DecryptUserRequestData(userRequest, _encryptionService);
 
             // If already approved, check if user exists (might have been approved before)
             if (userRequest.Status == UserRequestStatus.Approved)

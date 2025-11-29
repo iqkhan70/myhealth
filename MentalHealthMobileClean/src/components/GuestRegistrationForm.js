@@ -75,13 +75,24 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
     try {
       const apiUrl = getApiBaseUrl();
       // Parse and validate date
-      const dateObj = new Date(dateOfBirth);
+      const dateObj = new Date(dateOfBirth + 'T00:00:00'); // Add time to avoid timezone issues
       if (isNaN(dateObj.getTime())) {
         Alert.alert('Validation Error', 'Please enter a valid date in YYYY-MM-DD format');
         setSubmitting(false);
         return;
       }
 
+      // Format as YYYY-MM-DD to avoid timezone conversion issues
+      // Extract year, month, day from the input string directly
+      const dateParts = dateOfBirth.split('-');
+      if (dateParts.length !== 3) {
+        Alert.alert('Validation Error', 'Please enter a valid date in YYYY-MM-DD format');
+        setSubmitting(false);
+        return;
+      }
+      
+      // Send as date-only string (YYYY-MM-DD) to avoid timezone issues
+      // The server will parse it as a date-only value
       const response = await fetch(`${apiUrl}/UserRequest/create`, {
         method: 'POST',
         headers: {
@@ -91,7 +102,7 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           email: email.trim().toLowerCase(),
-          dateOfBirth: dateObj.toISOString(),
+          dateOfBirth: dateOfBirth + 'T00:00:00', // Send as date with midnight time, no timezone
           gender: gender.trim(),
           mobilePhone: mobilePhone.trim(),
           reason: reason.trim(),
