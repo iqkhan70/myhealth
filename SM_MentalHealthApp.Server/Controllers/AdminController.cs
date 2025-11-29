@@ -792,6 +792,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("patient/{patientId}/doctors")]
+        [Authorize(Roles = "Admin,Doctor,Coordinator")] // Admin, Doctor, and Coordinator can view assigners for a patient
         public async Task<ActionResult<List<User>>> GetDoctorsForPatient(int patientId)
         {
             try

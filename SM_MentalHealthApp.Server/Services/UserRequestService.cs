@@ -201,7 +201,33 @@ namespace SM_MentalHealthApp.Server.Services
             userRequest.ReviewedAt = DateTime.UtcNow;
             userRequest.UpdatedAt = DateTime.UtcNow;
 
+            // Save changes first to get the user ID
             await _context.SaveChangesAsync();
+
+            // If reviewer is a Coordinator, automatically assign the new patient to the Coordinator
+            if (reviewer != null && reviewer.RoleId == Roles.Coordinator)
+            {
+                // Check if assignment already exists (shouldn't, but be safe)
+                var existingAssignment = await _context.UserAssignments
+                    .FirstOrDefaultAsync(ua => ua.AssignerId == reviewerUserId && ua.AssigneeId == user.Id);
+                
+                if (existingAssignment == null)
+                {
+                    var assignment = new UserAssignment
+                    {
+                        AssignerId = reviewerUserId,
+                        AssigneeId = user.Id,
+                        AssignedAt = DateTime.UtcNow,
+                        IsActive = true
+                    };
+                    
+                    _context.UserAssignments.Add(assignment);
+                    await _context.SaveChangesAsync();
+                    
+                    _logger.LogInformation("Patient {PatientId} automatically assigned to Coordinator {CoordinatorId} upon approval", 
+                        user.Id, reviewerUserId);
+                }
+            }
 
             // Prepare credentials message
             var credentialsMessage = $"Welcome to Health App! Your account has been approved.\n\nUsername: {user.Email}\nTemporary Password: {tempPassword}\n\nPlease change your password on first login.\n\nYou will also receive these credentials via email.";

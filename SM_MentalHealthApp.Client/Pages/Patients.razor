@@ -14,6 +14,7 @@
 @using Radzen
 @using Radzen.Blazor
 @using System.Net.Http
+@using System.Net.Http.Json
 
 @code {
     // Track original values for dirty field detection
@@ -36,6 +37,11 @@
                 ➕ Add New Patient
             </button>
         }
+        else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
+        {
+            <h2>My Patients</h2>
+            <p>View and assign patients to doctors.</p>
+        }
         else
         {
             <h2>Access Denied</h2>
@@ -43,7 +49,7 @@
         }
     </div>
 
-    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) // Doctor or Admin
+    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Doctor, Admin, or Coordinator
     {
         <!-- Custom Filters -->
         <div class="custom-filters">
@@ -502,6 +508,43 @@
     </SMModal>
 }
 
+<!-- Unassign From Doctor Modal (Coordinator) -->
+@if (showUnassignFromDoctorModal && selectedUser != null)
+{
+    <div class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Unassign Patient from Doctor/Coordinator</h3>
+                <button @onclick="CloseUnassignFromDoctorModal" class="close-btn">✕</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="assignment-info">
+                    <p><strong>Patient:</strong> @selectedUser.FirstName @selectedUser.LastName</p>
+                    <p><strong>Email:</strong> @selectedUser.Email</p>
+                </div>
+                
+                <div class="form-group">
+                    <label>Select Doctor/Coordinator to Unassign From:</label>
+                    <RadzenDropDown Data="@assignedDoctorsForUnassign"
+                                   ValueProperty="Id"
+                                   TextProperty="FullName"
+                                   @bind-Value="selectedDoctorId"
+                                   Placeholder="Choose a doctor/coordinator..."
+                                   Style="width: 100%" />
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button @onclick="CloseUnassignFromDoctorModal" class="btn btn-secondary">Cancel</button>
+                <button @onclick="UnassignPatientFromDoctor" disabled="@isUnassigning" class="btn btn-danger">
+                    @(isUnassigning ? "Unassigning..." : "Unassign Patient")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 <!-- Unassign Confirmation Modal -->
 @if (showUnassignConfirmation && selectedUser != null)
 {
@@ -554,6 +597,8 @@
     private bool showPatientStats = false;
     private bool showAssignModal = false;
     private bool showUnassignConfirmation = false;
+    private bool showUnassignFromDoctorModal = false;
+    private List<User> assignedDoctorsForUnassign = new();
     private bool showHealthCheckDialog = false;
     private bool isSaving = false;
     private bool isAssigning = false;
@@ -702,46 +747,50 @@
 
     private void InitializeActions()
     {
-        _actions.Add(new SMDataGridActionButton<User>
+        // View, Edit, Stats, and AI Health Check actions (not for Coordinator)
+        if (AuthService.CurrentUser?.RoleId != 4) // Coordinator can only assign/unassign
         {
-            Icon = "visibility",
-            ButtonStyle = ButtonStyle.Info,
-            Variant = Variant.Flat,
-            Size = ButtonSize.Small,
-            Tooltip = "View patient details",
-            OnClick = async (row, ct) => await ViewUserDetailsAsync(row, ct)
-        });
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "visibility",
+                ButtonStyle = ButtonStyle.Info,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "View patient details",
+                OnClick = async (row, ct) => await ViewUserDetailsAsync(row, ct)
+            });
 
-        _actions.Add(new SMDataGridActionButton<User>
-        {
-            Icon = "edit",
-            ButtonStyle = ButtonStyle.Success,
-            Variant = Variant.Flat,
-            Size = ButtonSize.Small,
-            Tooltip = "Edit patient information",
-            OnClick = async (row, ct) => await EditUserAsync(row, ct)
-        });
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "edit",
+                ButtonStyle = ButtonStyle.Success,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Edit patient information",
+                OnClick = async (row, ct) => await EditUserAsync(row, ct)
+            });
 
-        _actions.Add(new SMDataGridActionButton<User>
-        {
-            Icon = "analytics",
-            ButtonStyle = ButtonStyle.Primary,
-            Variant = Variant.Flat,
-            Size = ButtonSize.Small,
-            Tooltip = "View patient statistics",
-            OnClick = async (row, ct) => await ViewUserStatsAsync(row, ct)
-        });
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "analytics",
+                ButtonStyle = ButtonStyle.Primary,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "View patient statistics",
+                OnClick = async (row, ct) => await ViewUserStatsAsync(row, ct)
+            });
 
-        _actions.Add(new SMDataGridActionButton<User>
-        {
-            Icon = "psychology",
-            ButtonStyle = ButtonStyle.Warning,
-            Variant = Variant.Flat,
-            Size = ButtonSize.Small,
-            Tooltip = "Perform AI health check analysis",
-            OnClick = async (row, ct) => await PerformAiHealthCheckAsync(row, ct),
-            Disabled = (user) => isPerformingHealthCheck
-        });
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "psychology",
+                ButtonStyle = ButtonStyle.Warning,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Perform AI health check analysis",
+                OnClick = async (row, ct) => await PerformAiHealthCheckAsync(row, ct),
+                Disabled = (user) => isPerformingHealthCheck
+            });
+        }
 
         // Doctor-specific actions
         if (AuthService.CurrentUser?.RoleId == 2)
@@ -770,6 +819,32 @@
                     ShowUnassignConfirmation(row);
                     await Task.CompletedTask;
                 }
+            });
+        }
+
+        // Coordinator-specific actions (only assign/unassign)
+        if (AuthService.CurrentUser?.RoleId == 4)
+        {
+            // For coordinators: allow assigning to a doctor
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "person_add",
+                ButtonStyle = ButtonStyle.Warning,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Assign patient to a doctor",
+                OnClick = async (row, ct) => await ShowAssignPatientModalAsync(row, ct)
+            });
+
+            // For coordinators: allow unassigning from a doctor (using Admin endpoint)
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "person_remove",
+                ButtonStyle = ButtonStyle.Danger,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Unassign patient from doctor",
+                OnClick = async (row, ct) => await ShowUnassignFromDoctorModalAsync(row, ct)
             });
         }
 
@@ -1236,13 +1311,30 @@
         {
             isAssigning = true;
             
-            var request = new DoctorAssignPatientRequest
+            // Use different endpoint based on role
+            if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
             {
-                PatientId = selectedUser.Id,
-                ToDoctorId = selectedDoctorId
-            };
-
-            await PatientService.AssignToDoctorAsync(request);
+                var request = new AssignPatientRequest
+                {
+                    PatientId = selectedUser.Id,
+                    DoctorId = selectedDoctorId
+                };
+                var response = await Http.PostAsJsonAsync("api/admin/assign", request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    throw new Exception(errorContent);
+                }
+            }
+            else // Doctor
+            {
+                var request = new DoctorAssignPatientRequest
+                {
+                    PatientId = selectedUser.Id,
+                    ToDoctorId = selectedDoctorId
+                };
+                await PatientService.AssignToDoctorAsync(request);
+            }
             
             NotificationService.ShowSuccess("Patient assigned to doctor successfully!");
             CloseAssignModal();
@@ -1474,6 +1566,163 @@
         {
             isUnassigning = false;
         }
+    }
+
+    private async Task ShowUnassignFromDoctorModalAsync(User user, CancellationToken ct)
+    {
+        if (user == null) return;
+        
+        try
+        {
+            selectedUser = user;
+            
+            // Get all assigners (doctors and coordinators) for this patient
+            var response = await Http.GetAsync($"api/admin/patient/{user.Id}/doctors");
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.ShowError($"Failed to load assigners: {response.StatusCode} - {errorContent}");
+                return;
+            }
+            
+            var assignersResponse = await response.Content.ReadFromJsonAsync<List<User>>();
+            if (assignersResponse != null && assignersResponse.Any())
+            {
+                assignedDoctorsForUnassign = assignersResponse;
+                
+                // For Coordinator: Check if patient is assigned to them
+                if (AuthService.CurrentUser?.RoleId == 4)
+                {
+                    var isAssignedToCoordinator = assignedDoctorsForUnassign.Any(a => a.Id == AuthService.CurrentUser.Id);
+                    if (!isAssignedToCoordinator)
+                    {
+                        NotificationService.ShowWarning("This patient is not assigned to you. You can only unassign patients that are assigned to you.");
+                        return;
+                    }
+                    
+                    // For Coordinator: Only show themselves in the dropdown (they can only unassign themselves)
+                    assignedDoctorsForUnassign = assignedDoctorsForUnassign
+                        .Where(a => a.Id == AuthService.CurrentUser.Id)
+                        .ToList();
+                }
+            }
+            else
+            {
+                assignedDoctorsForUnassign = new();
+                NotificationService.ShowWarning("This patient is not assigned to any doctor or coordinator.");
+                return;
+            }
+            
+            selectedDoctorId = assignedDoctorsForUnassign.FirstOrDefault()?.Id ?? 0;
+            showUnassignFromDoctorModal = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to load assigned doctors/coordinators: {ex.Message}");
+            Console.WriteLine($"Error in ShowUnassignFromDoctorModalAsync: {ex}");
+        }
+    }
+
+    private void CloseUnassignFromDoctorModal()
+    {
+        showUnassignFromDoctorModal = false;
+        selectedUser = null;
+        selectedDoctorId = 0;
+        assignedDoctorsForUnassign.Clear();
+        StateHasChanged();
+    }
+
+    private async Task UnassignPatientFromDoctor()
+    {
+        if (selectedUser == null || selectedDoctorId == 0)
+        {
+            NotificationService.ShowWarning("Please select a doctor/coordinator to unassign the patient from.");
+            return;
+        }
+
+        try
+        {
+            // For Coordinator: Validate that patient has at least one doctor assigned (not just coordinators)
+            if (AuthService.CurrentUser?.RoleId == 4)
+            {
+                // Get all current assigners to check if at least one doctor will remain
+                var allAssigners = await Http.GetFromJsonAsync<List<User>>($"api/admin/patient/{selectedUser.Id}/doctors");
+                if (allAssigners != null)
+                {
+                    // Count doctors (excluding the one being unassigned if it's a doctor)
+                    var remainingDoctors = allAssigners
+                        .Where(a => a.RoleId == 2 && a.Id != selectedDoctorId) // RoleId 2 = Doctor, exclude the one being unassigned
+                        .ToList();
+                    
+                    if (!remainingDoctors.Any())
+                    {
+                        NotificationService.ShowWarning("This patient must be assigned to at least one doctor. You cannot unassign yourself if the patient will have no doctors assigned.");
+                        return;
+                    }
+                }
+            }
+            
+            isUnassigning = true;
+            
+            var request = new UnassignPatientRequest
+            {
+                PatientId = selectedUser.Id,
+                DoctorId = selectedDoctorId
+            };
+
+            var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/admin/unassign")
+            {
+                Content = JsonContent.Create(request)
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                NotificationService.ShowSuccess("Patient unassigned successfully!");
+                CloseUnassignFromDoctorModal();
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.ShowError($"Failed to unassign patient: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error unassigning patient: {ex.Message}");
+        }
+        finally
+        {
+            isUnassigning = false;
+        }
+    }
+
+    public class AssignPatientRequest
+    {
+        public int PatientId { get; set; }
+        public int DoctorId { get; set; }
+    }
+
+    public class UnassignPatientRequest
+    {
+        public int PatientId { get; set; }
+        public int DoctorId { get; set; }
+    }
+
+    public class AssignmentDisplayModel
+    {
+        public int PatientId { get; set; }
+        public string PatientName { get; set; } = string.Empty;
+        public string PatientEmail { get; set; } = string.Empty;
+        public int DoctorId { get; set; }
+        public string DoctorName { get; set; } = string.Empty;
+        public string DoctorEmail { get; set; } = string.Empty;
+        public string? DoctorSpecialization { get; set; }
+        public DateTime AssignedDate { get; set; }
     }
 }
 

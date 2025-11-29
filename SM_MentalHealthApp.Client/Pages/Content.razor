@@ -30,6 +30,11 @@
             <h2>All Content</h2>
             <p>Manage all content across the platform.</p>
         }
+        else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
+        {
+            <h2>Patient Content</h2>
+            <p>View patient content and documents.</p>
+        }
         else
         {
             <h2>Access Denied</h2>
@@ -38,12 +43,15 @@
     </div>
 
     @if (AuthService.CurrentUser?.RoleId == 1 || AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId
-        == 3)
+        == 3 || AuthService.CurrentUser?.RoleId == 4)
     {
-        <!-- Add Content Button -->
-        <div class="add-content-section">
-            <RadzenButton Text="Add New Content" ButtonStyle="ButtonStyle.Primary" Icon="add" Click="@ShowAddContentForm" />
-        </div>
+        <!-- Add Content Button (hidden for Coordinator) -->
+        @if (AuthService.CurrentUser?.RoleId != 4)
+        {
+            <div class="add-content-section">
+                <RadzenButton Text="Add New Content" ButtonStyle="ButtonStyle.Primary" Icon="add" Click="@ShowAddContentForm" />
+            </div>
+        }
 
         <!-- Content Grid -->
         <div class="content-grid">
@@ -182,6 +190,12 @@
                 Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients");
                 patients = patientsResponse ?? new();
             }
+            else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator - only assigned patients
+            {
+                var patientsResponse = await
+                Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients");
+                patients = patientsResponse ?? new();
+            }
             else if (AuthService.CurrentUser?.RoleId == 3) // Admin - all patients
             {
                 var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
@@ -198,8 +212,8 @@
     {
         try
         {
-            // Ensure patients are loaded for doctors before loading content
-            if ((AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) && !patients.Any())
+            // Ensure patients are loaded for doctors/admins/coordinators before loading content
+            if ((AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) && !patients.Any())
             {
                 await LoadPatients();
             }
@@ -210,7 +224,7 @@
                 var response = await Http.GetFromJsonAsync<List<ContentItemDto>>($"api/content/patient/{AuthService.CurrentUser.Id}");
                 return response ?? new List<ContentItemDto>();
             }
-            else if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+            else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
             {
                 // Load content only for assigned patients
                 var assignedPatientIds = patients.Select(p => p.Id).ToList();
@@ -221,7 +235,7 @@
                 var allContentResponse = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
                 return allContentResponse?.Where(c => assignedPatientIds.Contains(c.PatientId)).ToList() ?? new List<ContentItemDto>();
             }
-            else if (AuthService.CurrentUser?.RoleId == 3) // Admin
+            else if (AuthService.CurrentUser?.RoleId == 3) // Admin - all content
             {
                 var response = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
                 return response ?? new List<ContentItemDto>();
@@ -384,15 +398,19 @@
             OnClick = async (row, ct) => await ViewContent(row)
         });
 
-        _actions.Add(new SMDataGridActionButton<ContentItemDto>
+        // Edit action (not for Coordinator)
+        if (AuthService.CurrentUser?.RoleId != 4) // Coordinator can only view
         {
-            Icon = "edit",
-            ButtonStyle = ButtonStyle.Success,
-            Variant = Variant.Flat,
-            Size = ButtonSize.Small,
-            Tooltip = "Edit",
-            OnClick = async (row, ct) => await EditContent(row)
-        });
+            _actions.Add(new SMDataGridActionButton<ContentItemDto>
+            {
+                Icon = "edit",
+                ButtonStyle = ButtonStyle.Success,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Edit",
+                OnClick = async (row, ct) => await EditContent(row)
+            });
+        }
 
         if (AuthService.CurrentUser?.RoleId == 2) // Doctor can ignore/unignore
         {
@@ -409,7 +427,7 @@
             });
         }
 
-        if (AuthService.CurrentUser?.RoleId == 3) // Only admin can delete
+        if (AuthService.CurrentUser?.RoleId == 3) // Only admin can delete (not Coordinator)
         {
             _actions.Add(new SMDataGridActionButton<ContentItemDto>
             {
