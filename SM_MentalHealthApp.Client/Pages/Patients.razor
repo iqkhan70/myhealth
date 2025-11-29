@@ -860,14 +860,14 @@
         // Coordinator-specific actions (only assign/unassign)
         if (AuthService.CurrentUser?.RoleId == 4)
         {
-            // For coordinators: allow assigning to a doctor
+            // For coordinators: allow assigning to a doctor or attorney
             _actions.Add(new SMDataGridActionButton<User>
             {
                 Icon = "person_add",
                 ButtonStyle = ButtonStyle.Warning,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Assign patient to a doctor",
+                Tooltip = "Assign patient to a doctor or attorney",
                 OnClick = async (row, ct) => await ShowAssignPatientModalAsync(row, ct)
             });
 
@@ -1320,13 +1320,15 @@
                 var attorneys = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys") ?? new List<User>();
                 availableDoctors = doctors.Concat(attorneys).ToList();
             }
+            else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator - can assign to doctors or attorneys
+            {
+                var doctors = await PatientService.GetDoctorsAsync(ct);
+                var attorneys = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys") ?? new List<User>();
+                availableDoctors = doctors.Concat(attorneys).ToList();
+            }
             else if (AuthService.CurrentUser?.RoleId == 5) // Attorney - can only assign to other attorneys
             {
                 availableDoctors = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys") ?? new List<User>();
-            }
-            else // Coordinator - can assign to doctors
-            {
-                availableDoctors = await PatientService.GetDoctorsAsync(ct);
             }
             
             if (AuthService.CurrentUser?.Id != null)
@@ -1389,7 +1391,9 @@
                 await PatientService.AssignToDoctorAsync(request);
             }
             
-            var assignerType = AuthService.CurrentUser?.RoleId == 5 ? "attorney" : "doctor";
+            // Determine assigner type based on selected assigner's role
+            var selectedAssigner = availableDoctors.FirstOrDefault(d => d.Id == selectedDoctorId);
+            var assignerType = selectedAssigner?.RoleId == 5 ? "attorney" : "doctor";
             NotificationService.ShowSuccess($"Patient assigned to {assignerType} successfully!");
             CloseAssignModal();
             if (_grid != null)

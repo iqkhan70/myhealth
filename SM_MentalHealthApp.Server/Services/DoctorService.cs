@@ -74,13 +74,13 @@ namespace SM_MentalHealthApp.Server.Services
                 return false; // Already assigned to target doctor
             }
 
-            // Check if target doctor exists and is active
+            // Check if target doctor or attorney exists and is active
             var targetDoctor = await _context.Users
-                .FirstOrDefaultAsync(u => u.Id == toDoctorId && u.RoleId == 2 && u.IsActive);
+                .FirstOrDefaultAsync(u => u.Id == toDoctorId && (u.RoleId == 2 || u.RoleId == 5) && u.IsActive);
 
             if (targetDoctor == null)
             {
-                return false; // Invalid target doctor
+                return false; // Invalid target doctor or attorney
             }
 
             // Create new assignment to target doctor

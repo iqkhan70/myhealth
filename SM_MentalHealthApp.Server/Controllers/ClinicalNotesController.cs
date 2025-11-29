@@ -1,25 +1,29 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
+using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Shared;
+using Microsoft.EntityFrameworkCore;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
     [ApiController]
     [ApiVersion("1.0")]
     [Route("api/[controller]")]
-    [Authorize(Roles = "Doctor,Admin")]
+    [Authorize(Roles = "Doctor,Admin,Attorney")]
     public class ClinicalNotesController : BaseController
     {
         private readonly IClinicalNotesService _clinicalNotesService;
         private readonly IContentAnalysisService _contentAnalysisService;
         private readonly ILogger<ClinicalNotesController> _logger;
+        private readonly JournalDbContext _context;
 
-        public ClinicalNotesController(IClinicalNotesService clinicalNotesService, IContentAnalysisService contentAnalysisService, ILogger<ClinicalNotesController> logger)
+        public ClinicalNotesController(IClinicalNotesService clinicalNotesService, IContentAnalysisService contentAnalysisService, ILogger<ClinicalNotesController> logger, JournalDbContext context)
         {
             _clinicalNotesService = clinicalNotesService;
             _contentAnalysisService = contentAnalysisService;
             _logger = logger;
+            _context = context;
         }
 
         /// <summary>
@@ -32,6 +36,30 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
+                var currentUserId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+                
+                // For attorneys, filter by assigned patients
+                if (currentRoleId == Shared.Constants.Roles.Attorney && currentUserId.HasValue)
+                {
+                    // Get assigned patient IDs for this attorney
+                    var assignedPatientIds = await _context.UserAssignments
+                        .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
+                        .Select(ua => ua.AssigneeId)
+                        .ToListAsync();
+                    
+                    if (!assignedPatientIds.Any())
+                    {
+                        // No assigned patients, return empty list
+                        return Ok(new List<ClinicalNoteDto>());
+                    }
+                    
+                    // Filter notes to only include assigned patients
+                    var allNotes = await _clinicalNotesService.GetClinicalNotesAsync(patientId, doctorId);
+                    var filteredNotes = allNotes?.Where(n => assignedPatientIds.Contains(n.PatientId)).ToList() ?? new List<ClinicalNoteDto>();
+                    return Ok(filteredNotes);
+                }
+                
                 var notes = await _clinicalNotesService.GetClinicalNotesAsync(patientId, doctorId);
                 // Always return OK with list (empty list if no notes) - never error on empty
                 return Ok(notes ?? new List<ClinicalNoteDto>());

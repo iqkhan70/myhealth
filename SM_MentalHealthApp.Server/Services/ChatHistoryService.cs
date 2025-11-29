@@ -404,6 +404,30 @@ namespace SM_MentalHealthApp.Server.Services
                         query = query.Where(s => s.PatientId == patientId.Value);
                     }
                 }
+                else if (user.RoleId == Shared.Constants.Roles.Attorney)
+                {
+                    // Attorneys see sessions only for patients assigned to them
+                    var assignedPatientIds = await _context.UserAssignments
+                        .Where(ua => ua.AssignerId == userId && ua.IsActive)
+                        .Select(ua => ua.AssigneeId)
+                        .ToListAsync();
+
+                    if (assignedPatientIds.Any())
+                    {
+                        query = query.Where(s => s.PatientId.HasValue && assignedPatientIds.Contains(s.PatientId.Value));
+                    }
+                    else
+                    {
+                        // No assigned patients, return empty result
+                        query = query.Where(s => false);
+                    }
+
+                    // If patientId is specified, further filter to only sessions about that patient
+                    if (patientId.HasValue)
+                    {
+                        query = query.Where(s => s.PatientId == patientId.Value);
+                    }
+                }
 
                 // Return all active sessions (both ignored and non-ignored)
                 // IsActive = soft delete flag (only show active sessions)

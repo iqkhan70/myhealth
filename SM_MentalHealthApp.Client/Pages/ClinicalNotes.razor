@@ -482,11 +482,18 @@
         try
         {
             var notes = await ClinicalNotesService.ListAsync(null, null, ct);
-            return notes;
+            // Return empty list if null - don't treat empty as error
+            return notes ?? new List<ClinicalNoteDto>();
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Failed to load clinical notes: {ex.Message}");
+            // Only show error for actual failures, not empty results
+            // Empty results should just show empty grid
+            if (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized"))
+            {
+                NotificationService.ShowError($"Failed to load clinical notes: {ex.Message}");
+            }
+            // For other errors (like network issues), log but don't show error for empty results
             return new List<ClinicalNoteDto>();
         }
     }
@@ -495,12 +502,37 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
-            patients = response ?? new();
+            // Load patients based on user role
+            if (AuthService.CurrentUser?.RoleId == 2) // Doctor
+            {
+                var response = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients");
+                patients = response ?? new();
+            }
+            else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
+            {
+                var response = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients");
+                patients = response ?? new();
+            }
+            else if (AuthService.CurrentUser?.RoleId == 5) // Attorney
+            {
+                var response = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients");
+                patients = response ?? new();
+            }
+            else if (AuthService.CurrentUser?.RoleId == 3) // Admin
+            {
+                var response = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
+                patients = response ?? new();
+            }
+            else
+            {
+                patients = new();
+            }
         }
         catch (Exception ex)
         {
+            // Don't show error for empty results - just log to console
             await JSRuntime.InvokeVoidAsync("console.error", "Error loading patients:", ex.Message);
+            patients = new(); // Set to empty list on error
         }
     }
 

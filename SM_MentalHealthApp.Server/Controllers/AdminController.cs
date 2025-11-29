@@ -73,7 +73,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("attorneys")]
-        [Authorize(Roles = "Admin")] // Only Admin can view attorneys list
+        [Authorize(Roles = "Admin,Coordinator,Doctor")] // Admin, Coordinator, and Doctor can view attorneys list (for assignment purposes)
         public async Task<ActionResult<List<User>>> GetAttorneys()
         {
             try

@@ -75,9 +75,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var success = await _doctorService.AssignMyPatientToDoctorAsync(request.PatientId, fromDoctorId.Value, request.ToDoctorId);
                 if (success)
                 {
-                    return Ok(new { message = "Patient assigned to doctor successfully" });
+                    return Ok(new { message = "Patient assigned successfully" });
                 }
-                return BadRequest("Failed to assign patient to doctor. Target doctor may not exist, or assignment may already exist.");
+                return BadRequest("Failed to assign patient. Target doctor or attorney may not exist, or assignment may already exist.");
             }
             catch (Exception ex)
             {

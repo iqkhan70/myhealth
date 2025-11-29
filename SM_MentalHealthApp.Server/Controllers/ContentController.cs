@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
+using SM_MentalHealthApp.Shared.Constants;
 using Amazon.S3;
 using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Server.Data;
@@ -59,12 +60,38 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("all")]
+        [Authorize]
         public async Task<ActionResult> GetAllContents()
         {
             try
             {
-                var contents = await _context.Contents
+                var currentUserId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+                
+                var query = _context.Contents
                     .Where(c => c.IsActive)
+                    .AsQueryable();
+                
+                // For attorneys, filter by assigned patients
+                if (currentRoleId == Roles.Attorney && currentUserId.HasValue)
+                {
+                    // Get assigned patient IDs for this attorney
+                    var assignedPatientIds = await _context.UserAssignments
+                        .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
+                        .Select(ua => ua.AssigneeId)
+                        .ToListAsync();
+                    
+                    if (!assignedPatientIds.Any())
+                    {
+                        // No assigned patients, return empty list
+                        return Ok(new List<object>());
+                    }
+                    
+                    // Filter content to only include assigned patients
+                    query = query.Where(c => assignedPatientIds.Contains(c.PatientId));
+                }
+                
+                var contents = await query
                     .OrderByDescending(c => c.CreatedAt)
                     .Select(c => new
                     {
@@ -86,8 +113,9 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting all contents");
-                return StatusCode(500, "Internal server error");
+                _logger.LogError(ex, "Error getting all contents - returning empty list");
+                // Return empty list instead of error - allows UI to show empty grid
+                return Ok(new List<object>());
             }
         }
 

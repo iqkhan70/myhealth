@@ -36,7 +36,7 @@
                          Icon="fas fa-comments" 
                          Description="View and search your conversation history with the AI assistant" />
 
-            @if (currentUserRole == "Doctor" && patients != null && patients.Any())
+            @if ((currentUserRole == "Doctor" || currentUserRole == "Attorney") && patients != null && patients.Any())
             {
                 <div class="row mb-3">
                     <div class="col-md-6">

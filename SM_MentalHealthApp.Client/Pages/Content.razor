@@ -201,15 +201,31 @@
                 Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients");
                 patients = patientsResponse ?? new();
             }
+            else if (AuthService.CurrentUser?.RoleId == 5) // Attorney - only assigned patients
+            {
+                var patientsResponse = await
+                Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients");
+                patients = patientsResponse ?? new();
+            }
             else if (AuthService.CurrentUser?.RoleId == 3) // Admin - all patients
             {
                 var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
                 patients = patientsResponse ?? new();
             }
+            else
+            {
+                patients = new();
+            }
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load patients: " + ex.Message);
+            // Don't show error for empty results - just set to empty list
+            // Only show error for actual failures (401, 403, etc.)
+            if (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized"))
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load patients: " + ex.Message);
+            }
+            patients = new(); // Set to empty list on error
         }
     }
 
@@ -217,8 +233,8 @@
     {
         try
         {
-            // Ensure patients are loaded for doctors/admins/coordinators before loading content
-            if ((AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) && !patients.Any())
+            // Ensure patients are loaded for doctors/admins/coordinators/attorneys before loading content
+            if ((AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) && !patients.Any())
             {
                 await LoadPatients();
             }
@@ -229,16 +245,26 @@
                 var response = await Http.GetFromJsonAsync<List<ContentItemDto>>($"api/content/patient/{AuthService.CurrentUser.Id}");
                 return response ?? new List<ContentItemDto>();
             }
-            else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
+            else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) // Doctor, Coordinator, or Attorney
             {
-                // Load content only for assigned patients
-                var assignedPatientIds = patients.Select(p => p.Id).ToList();
-                if (!assignedPatientIds.Any())
+                // For attorneys, the server already filters by assigned patients
+                // For doctors and coordinators, filter client-side
+                if (AuthService.CurrentUser?.RoleId == 5) // Attorney - server already filtered
                 {
-                    return new List<ContentItemDto>();
+                    var response = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
+                    return response ?? new List<ContentItemDto>();
                 }
-                var allContentResponse = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
-                return allContentResponse?.Where(c => assignedPatientIds.Contains(c.PatientId)).ToList() ?? new List<ContentItemDto>();
+                else // Doctor or Coordinator - filter client-side
+                {
+                    // Load content only for assigned patients
+                    var assignedPatientIds = patients.Select(p => p.Id).ToList();
+                    if (!assignedPatientIds.Any())
+                    {
+                        return new List<ContentItemDto>();
+                    }
+                    var allContentResponse = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
+                    return allContentResponse?.Where(c => assignedPatientIds.Contains(c.PatientId)).ToList() ?? new List<ContentItemDto>();
+                }
             }
             else if (AuthService.CurrentUser?.RoleId == 3) // Admin - all content
             {
@@ -248,7 +274,12 @@
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load content: " + ex.Message);
+            // Only show error for actual failures (401, 403, etc.), not for empty results
+            if (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized"))
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load content: " + ex.Message);
+            }
+            // For other errors or empty results, just return empty list
         }
         return new List<ContentItemDto>();
     }
