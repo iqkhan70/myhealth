@@ -133,10 +133,6 @@
         @* Coordinator-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
         {
-            <a href="/admin" class="nav-item @(GetActiveClass("/admin"))">
-                <i class="nav-icon">⚙️</i>
-                <span>Assignments</span>
-            </a>
             <a href="/appointments" class="nav-item @(GetActiveClass("/appointments"))">
                 <i class="nav-icon">📅</i>
                 <span>Appointments</span>
