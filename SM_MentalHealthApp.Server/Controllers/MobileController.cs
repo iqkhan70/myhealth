@@ -100,20 +100,50 @@ namespace SM_MentalHealthApp.Server.Controllers
                     _lastRequestTime[patientId] = DateTime.UtcNow;
                 }
 
-                _logger.LogInformation("Getting doctors for patient {PatientId}", patientId);
+                _logger.LogInformation("Getting doctors and coordinators for patient {PatientId}", patientId);
 
-                var doctors = await _context.UserAssignments
+                // Get all assigners (doctors and coordinators) for this patient
+                var assigners = await _context.UserAssignments
                     .Where(ua => ua.AssigneeId == patientId)
                     .Include(ua => ua.Assigner)
-                    .Select(ua => ua.Assigner)
-                    .Where(d => d.IsActive && d.RoleId == 2) // Active doctors only
+                        .ThenInclude(a => a.Role)
+                    .Where(ua => ua.Assigner != null && 
+                                 ua.Assigner.IsActive && 
+                                 (ua.Assigner.RoleId == 2 || ua.Assigner.RoleId == 4)) // Active doctors and coordinators
+                    .Select(ua => new
+                    {
+                        ua.Assigner.Id,
+                        ua.Assigner.FirstName,
+                        ua.Assigner.LastName,
+                        ua.Assigner.Email,
+                        ua.Assigner.MobilePhone,
+                        ua.Assigner.Specialization,
+                        ua.Assigner.RoleId,
+                        RoleName = ua.Assigner.Role != null ? ua.Assigner.Role.Name : "Unknown",
+                        ua.Assigner.IsActive
+                    })
                     .OrderBy(d => d.LastName)
                     .ThenBy(d => d.FirstName)
                     .ToListAsync();
 
-                _logger.LogInformation("Found {DoctorCount} doctors for patient {PatientId}", doctors.Count, patientId);
+                _logger.LogInformation("Found {AssignerCount} assigners (doctors/coordinators) for patient {PatientId}", assigners.Count, patientId);
 
-                return Ok(doctors);
+                // Create response objects with roleName included
+                // ASP.NET Core will serialize these with camelCase by default
+                var response = assigners.Select(a => new
+                {
+                    Id = a.Id,
+                    FirstName = a.FirstName,
+                    LastName = a.LastName,
+                    Email = a.Email,
+                    MobilePhone = a.MobilePhone,
+                    Specialization = a.Specialization,
+                    RoleId = a.RoleId,
+                    RoleName = a.RoleName,
+                    IsActive = a.IsActive
+                }).ToList();
+
+                return Ok(response);
             }
             catch (Exception ex)
             {

@@ -1241,7 +1241,9 @@ export default function App() {
       </View>
 
       <View style={styles.contactsHeader}>
-        <Text style={styles.contactsTitle}>{user?.roleId === 2 ? 'Your Patients' : 'Your Doctors'}</Text>
+        <Text style={styles.contactsTitle}>
+          {user?.roleId === 2 ? 'Your Patients' : 'Your Doctors & Coordinators'}
+        </Text>
         <Text style={styles.contactsCount}>({contacts.length})</Text>
       </View>
 
@@ -1249,8 +1251,13 @@ export default function App() {
         {contacts.map((contact) => (
           <TouchableOpacity key={contact.id} style={styles.contactItem} onPress={() => openContactDetail(contact)}>
             <View style={styles.contactInfo}>
-              <Text style={styles.contactName}>{contact.firstName} {contact.lastName}</Text>
-              <Text style={styles.contactRole}>{contact.specialization || contact.roleName || 'User'}</Text>
+              <Text style={styles.contactName}>
+                {contact.roleId === 2 ? 'Dr. ' : contact.roleId === 4 ? 'Coord. ' : ''}
+                {contact.firstName} {contact.lastName}
+              </Text>
+              <Text style={styles.contactRole}>
+                {contact.specialization || contact.roleName || 'User'}
+              </Text>
               {contact.mobilePhone && <Text style={styles.contactPhone}>{contact.mobilePhone}</Text>}
             </View>
             <View style={styles.contactArrow}>
