@@ -375,13 +375,22 @@
     </div>
 }
 
-<!-- Doctor Assignment Modal -->
+<!-- Doctor/Attorney Assignment Modal -->
 @if (showAssignModal && selectedUser != null)
 {
     <div class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Assign Patient to Another Doctor</h3>
+                <h3>
+                    @if (AuthService.CurrentUser?.RoleId == 5) // Attorney
+                    {
+                        <text>Assign Patient to Another Attorney</text>
+                    }
+                    else // Doctor or Coordinator
+                    {
+                        <text>Assign Patient to Doctor or Attorney</text>
+                    }
+                </h3>
                 <button @onclick="CloseAssignModal" class="close-btn">✕</button>
             </div>
             
@@ -392,12 +401,21 @@
                 </div>
                 
                 <div class="form-group">
-                    <label>Select Doctor to Assign To:</label>
+                    <label>
+                        @if (AuthService.CurrentUser?.RoleId == 5) // Attorney
+                        {
+                            <text>Select Attorney to Assign To:</text>
+                        }
+                        else // Doctor or Coordinator
+                        {
+                            <text>Select Doctor or Attorney to Assign To:</text>
+                        }
+                    </label>
                     <RadzenDropDown Data="@availableDoctors"
                                    ValueProperty="Id"
                                    TextProperty="FullName"
                                    @bind-Value="selectedDoctorId"
-                                   Placeholder="Choose a doctor..."
+                                   Placeholder="@(AuthService.CurrentUser?.RoleId == 5 ? "Choose an attorney..." : "Choose a doctor or attorney...")"
                                    Style="width: 100%" />
                 </div>
             </div>

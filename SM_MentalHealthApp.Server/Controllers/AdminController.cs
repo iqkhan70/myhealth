@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Server.Helpers;
+using SM_MentalHealthApp.Server.Controllers;
 using SM_MentalHealthApp.Shared;
 using System.Security.Cryptography;
 using System.Text;
@@ -14,7 +15,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     [ApiController]
     [ApiVersion("1.0")]
     [Route("api/[controller]")]
-    public class AdminController : ControllerBase
+    public class AdminController : BaseController
     {
         private readonly IAdminService _adminService;
         private readonly JournalDbContext _context;
@@ -73,7 +74,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("attorneys")]
-        [Authorize(Roles = "Admin,Coordinator,Doctor")] // Admin, Coordinator, and Doctor can view attorneys list (for assignment purposes)
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney")] // Admin, Coordinator, Doctor, and Attorney can view attorneys list (for assignment purposes)
         public async Task<ActionResult<List<User>>> GetAttorneys()
         {
             try
@@ -763,16 +764,35 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
+                // Get current user's role to validate assignment rules
+                var currentUserId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+                
+                // For attorneys: validate they can only assign to other attorneys
+                if (currentRoleId == Shared.Constants.Roles.Attorney)
+                {
+                    // Verify target is an attorney
+                    var targetUser = await _context.Users
+                        .FirstOrDefaultAsync(u => u.Id == request.DoctorId && u.IsActive);
+                    
+                    if (targetUser == null || targetUser.RoleId != Shared.Constants.Roles.Attorney)
+                    {
+                        return BadRequest("Attorneys can only assign patients to other attorneys.");
+                    }
+                }
+                // For doctors: they can assign to doctors or attorneys (no restriction needed)
+                // For coordinators and admins: they can assign to anyone (no restriction needed)
+                
                 var success = await _adminService.AssignPatientToDoctorAsync(request.PatientId, request.DoctorId);
                 if (success)
                 {
-                    return Ok(new { message = "Patient assigned to doctor successfully" });
+                    return Ok(new { message = "Patient assigned successfully" });
                 }
-                return BadRequest("Failed to assign patient to doctor. Patient or doctor may not exist, or assignment may already exist.");
+                return BadRequest("Failed to assign patient. Patient or assigner may not exist, or assignment may already exist.");
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Error assigning patient to doctor: {ex.Message}");
+                return StatusCode(500, $"Error assigning patient: {ex.Message}");
             }
         }
 
