@@ -422,15 +422,19 @@
             OnClick = async (row, ct) => await ViewNoteAsync(row, ct)
         });
 
-        _actions.Add(new SMDataGridActionButton<ClinicalNoteDto>
+        // Edit action (not for Attorney - read-only)
+        if (AuthService.CurrentUser?.RoleId != 5) // Attorney can only view
         {
-            Icon = "edit",
-            ButtonStyle = ButtonStyle.Success,
-            Variant = Variant.Flat,
-            Size = ButtonSize.Small,
-            Tooltip = "Edit clinical note",
-            OnClick = async (row, ct) => await EditNoteAsync(row, ct)
-        });
+            _actions.Add(new SMDataGridActionButton<ClinicalNoteDto>
+            {
+                Icon = "edit",
+                ButtonStyle = ButtonStyle.Success,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Edit clinical note",
+                OnClick = async (row, ct) => await EditNoteAsync(row, ct)
+            });
+        }
 
         // Add ignore/unignore button for doctors (not for Attorney - read-only)
         if (AuthService.CurrentUser?.RoleId == 2) // Doctor

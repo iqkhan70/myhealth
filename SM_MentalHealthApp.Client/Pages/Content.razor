@@ -434,8 +434,8 @@
             OnClick = async (row, ct) => await ViewContent(row)
         });
 
-        // Edit action (not for Coordinator)
-        if (AuthService.CurrentUser?.RoleId != 4) // Coordinator can only view
+        // Edit action (not for Coordinator or Attorney - read-only)
+        if (AuthService.CurrentUser?.RoleId != 4 && AuthService.CurrentUser?.RoleId != 5) // Coordinator and Attorney can only view
         {
             _actions.Add(new SMDataGridActionButton<ContentItemDto>
             {

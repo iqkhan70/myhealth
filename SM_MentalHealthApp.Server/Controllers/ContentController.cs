@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Server.Services;
+using SM_MentalHealthApp.Server.Controllers;
 using SM_MentalHealthApp.Shared;
 using SM_MentalHealthApp.Shared.Constants;
 using Amazon.S3;
@@ -257,10 +258,18 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPut("{id}")]
+        [Authorize]
         public async Task<ActionResult> UpdateContent(int id, [FromBody] ContentUpdateRequest request)
         {
             try
             {
+                // Attorneys cannot edit content (read-only access)
+                var currentRoleId = GetCurrentRoleId();
+                if (currentRoleId == Roles.Attorney)
+                {
+                    return Forbid("Attorneys have read-only access to patient content and cannot edit it.");
+                }
+
                 _logger.LogInformation("Starting update for content {ContentId}", id);
 
                 var content = await _context.Contents

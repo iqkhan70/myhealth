@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Server.Data;
+using SM_MentalHealthApp.Server.Controllers;
 using SM_MentalHealthApp.Shared;
+using SM_MentalHealthApp.Shared.Constants;
 using Microsoft.EntityFrameworkCore;
 
 namespace SM_MentalHealthApp.Server.Controllers
@@ -101,6 +103,13 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
+                // Attorneys cannot create clinical notes (read-only access)
+                var currentRoleId = GetCurrentRoleId();
+                if (currentRoleId == Roles.Attorney)
+                {
+                    return Forbid("Attorneys have read-only access to clinical notes and cannot create them.");
+                }
+
                 if (!ModelState.IsValid)
                     return BadRequest(ModelState);
 
@@ -132,6 +141,13 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
+                // Attorneys cannot edit clinical notes (read-only access)
+                var currentRoleId = GetCurrentRoleId();
+                if (currentRoleId == Roles.Attorney)
+                {
+                    return Forbid("Attorneys have read-only access to clinical notes and cannot edit them.");
+                }
+
                 if (!ModelState.IsValid)
                     return BadRequest(ModelState);
 
