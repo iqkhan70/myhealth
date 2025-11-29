@@ -21,7 +21,7 @@
     <div class="chat-header">
         <div class="header-left">
             <h3>
-                @if (AuthService.CurrentUser?.RoleId == 2)
+                @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
                 {
                     <text>💬 Patient Chat</text>
                 }
@@ -103,7 +103,7 @@
         <div class="chat-sidebar">
             <div class="sidebar-header">
                 <h4>
-                    @if (AuthService.CurrentUser?.RoleId == 2)
+                    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
                     {
                         <text>My Patients</text>
                     }
@@ -166,7 +166,7 @@
                     <div class="empty-state">
                         <i class="fas fa-users"></i>
                         <p>
-                            @if (AuthService.CurrentUser?.RoleId == 2)
+                            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
                             {
                                 <text>No patients assigned</text>
                             }
@@ -199,7 +199,7 @@
                                 </div>
                             }
                             <div class="selected-user-role">
-                                @if (AuthService.CurrentUser?.RoleId == 2)
+                                @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
                                 {
                                     <text>Patient</text>
                                 }
@@ -269,7 +269,7 @@
                     <i class="fas fa-comment-dots"></i>
                     <h4>Select a conversation</h4>
                     <p>
-                        @if (AuthService.CurrentUser?.RoleId == 2)
+                        @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
                         {
                             <text>Choose a patient from the sidebar to start chatting</text>
                         }
@@ -1073,7 +1073,9 @@
 
         try
         {
-            string endpoint = AuthService.CurrentUser?.RoleId == 2
+            // Doctors and Coordinators load their assigned patients
+            // Patients load their assigned doctors/coordinators
+            string endpoint = (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4)
             ? "/api/mobile/doctor/patients"
             : "/api/mobile/patient/doctors";
 

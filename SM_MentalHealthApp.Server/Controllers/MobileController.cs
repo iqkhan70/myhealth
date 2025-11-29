@@ -30,10 +30,10 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
-        /// Get assigned patients for a doctor (mobile app)
+        /// Get assigned patients for a doctor or coordinator (mobile app)
         /// </summary>
         [HttpGet("doctor/patients")]
-        [Authorize(Roles = "Doctor")]
+        [Authorize(Roles = "Doctor,Coordinator")]
         public async Task<ActionResult<List<User>>> GetDoctorPatients()
         {
             try
