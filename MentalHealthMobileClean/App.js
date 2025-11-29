@@ -1242,7 +1242,7 @@ export default function App() {
 
       <View style={styles.contactsHeader}>
         <Text style={styles.contactsTitle}>
-          {user?.roleId === 2 ? 'Your Patients' : 'Your Doctors & Coordinators'}
+          {user?.roleId === 2 ? 'Your Patients' : 'Your Doctors, Coordinators & Attorneys'}
         </Text>
         <Text style={styles.contactsCount}>({contacts.length})</Text>
       </View>
@@ -1252,7 +1252,7 @@ export default function App() {
           <TouchableOpacity key={contact.id} style={styles.contactItem} onPress={() => openContactDetail(contact)}>
             <View style={styles.contactInfo}>
               <Text style={styles.contactName}>
-                {contact.roleId === 2 ? 'Dr. ' : contact.roleId === 4 ? 'Coord. ' : ''}
+                {contact.roleId === 2 ? 'Dr. ' : contact.roleId === 4 ? 'Coord. ' : contact.roleId === 5 ? 'Atty. ' : ''}
                 {contact.firstName} {contact.lastName}
               </Text>
               <Text style={styles.contactRole}>

@@ -21,7 +21,7 @@
     <div class="chat-header">
         <div class="header-left">
             <h3>
-                @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
+                @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) // Doctor, Coordinator, or Attorney
                 {
                     <text>💬 Patient Chat</text>
                 }
@@ -103,7 +103,7 @@
         <div class="chat-sidebar">
             <div class="sidebar-header">
                 <h4>
-                    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
+                    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) // Doctor, Coordinator, or Attorney
                     {
                         <text>My Patients</text>
                     }
@@ -166,7 +166,7 @@
                     <div class="empty-state">
                         <i class="fas fa-users"></i>
                         <p>
-                            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
+                            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) // Doctor, Coordinator, or Attorney
                             {
                                 <text>No patients assigned</text>
                             }
@@ -199,7 +199,7 @@
                                 </div>
                             }
                             <div class="selected-user-role">
-                                @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
+                                @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) // Doctor, Coordinator, or Attorney
                                 {
                                     <text>Patient</text>
                                 }
@@ -269,7 +269,7 @@
                     <i class="fas fa-comment-dots"></i>
                     <h4>Select a conversation</h4>
                     <p>
-                        @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4) // Doctor or Coordinator
+                        @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) // Doctor, Coordinator, or Attorney
                         {
                             <text>Choose a patient from the sidebar to start chatting</text>
                         }

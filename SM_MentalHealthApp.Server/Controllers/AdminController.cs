@@ -72,6 +72,21 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        [HttpGet("attorneys")]
+        [Authorize(Roles = "Admin")] // Only Admin can view attorneys list
+        public async Task<ActionResult<List<User>>> GetAttorneys()
+        {
+            try
+            {
+                var attorneys = await _adminService.GetAllAttorneysAsync();
+                return Ok(attorneys);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error retrieving attorneys: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Perform AI health check on a patient and send alert if severe
         /// </summary>
@@ -743,7 +758,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPost("assign")]
-        [Authorize(Roles = "Admin,Coordinator")] // Admin and Coordinator can create assignments
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney")] // Admin, Coordinator, Doctor, and Attorney can create assignments
         public async Task<ActionResult> AssignPatientToDoctor([FromBody] AssignPatientRequest request)
         {
             try
@@ -762,7 +777,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpDelete("unassign")]
-        [Authorize(Roles = "Admin,Coordinator")] // Admin and Coordinator can remove assignments
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney")] // Admin, Coordinator, Doctor, and Attorney can remove assignments
         public async Task<ActionResult> UnassignPatientFromDoctor([FromBody] UnassignPatientRequest request)
         {
             try
@@ -795,7 +810,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("patient/{patientId}/doctors")]
-        [Authorize(Roles = "Admin,Doctor,Coordinator")] // Admin, Doctor, and Coordinator can view assigners for a patient
+        [Authorize(Roles = "Admin,Doctor,Coordinator,Attorney")] // Admin, Doctor, Coordinator, and Attorney can view assigners for a patient
         public async Task<ActionResult<List<User>>> GetDoctorsForPatient(int patientId)
         {
             try
@@ -896,6 +911,51 @@ namespace SM_MentalHealthApp.Server.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, $"Error creating patient: {ex.Message}");
+            }
+        }
+
+        [HttpPost("create-attorney")]
+        [Authorize(Roles = "Admin")] // Only Admin can create attorneys
+        public async Task<ActionResult> CreateAttorney([FromBody] CreateAttorneyRequest request)
+        {
+            try
+            {
+                // Check if email already exists
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+                if (existingUser != null)
+                {
+                    return BadRequest("An attorney with this email already exists.");
+                }
+
+                // Create new attorney user
+                var attorney = new User
+                {
+                    FirstName = request.FirstName,
+                    LastName = request.LastName,
+                    Email = request.Email,
+                    PasswordHash = HashPassword(request.Password),
+                    DateOfBirth = request.DateOfBirth,
+                    Gender = request.Gender,
+                    MobilePhone = request.MobilePhone,
+                    RoleId = 5, // Attorney role
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true,
+                    MustChangePassword = true // Force password change on first login
+                };
+
+                // Encrypt DateOfBirth before saving
+                UserEncryptionHelper.EncryptUserData(attorney, _encryptionService);
+
+                _context.Users.Add(attorney);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Attorney created successfully", attorneyId = attorney.Id });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error creating attorney: {ex.Message}");
             }
         }
 
@@ -1336,6 +1396,149 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        [HttpPut("update-attorney/{id}")]
+        [Authorize(Roles = "Admin")] // Only Admin can update attorneys
+        public async Task<ActionResult> UpdateAttorney(int id, [FromBody] UpdateAttorneyRequest request)
+        {
+            try
+            {
+                var attorney = await _context.Users.FindAsync(id);
+                if (attorney == null)
+                {
+                    return NotFound("Attorney not found.");
+                }
+
+                if (attorney.RoleId != 5)
+                {
+                    return BadRequest("User is not an attorney.");
+                }
+
+                // Check if email already exists (excluding current attorney)
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email && u.Id != id);
+
+                if (existingUser != null)
+                {
+                    return BadRequest("A user with this email already exists.");
+                }
+
+                // Update attorney information
+                if (!string.IsNullOrWhiteSpace(request.FirstName) && attorney.FirstName != request.FirstName)
+                {
+                    attorney.FirstName = request.FirstName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.LastName) && attorney.LastName != request.LastName)
+                {
+                    attorney.LastName = request.LastName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Email) && attorney.Email != request.Email)
+                {
+                    attorney.Email = request.Email;
+                }
+
+                if (request.DateOfBirth.HasValue)
+                {
+                    // Decrypt current DateOfBirth for comparison
+                    UserEncryptionHelper.DecryptUserData(attorney, _encryptionService);
+                    if (attorney.DateOfBirth != request.DateOfBirth.Value)
+                    {
+                        attorney.DateOfBirth = request.DateOfBirth.Value;
+                        // Encrypt before saving
+                        UserEncryptionHelper.EncryptUserData(attorney, _encryptionService);
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Gender) && attorney.Gender != request.Gender)
+                {
+                    attorney.Gender = request.Gender;
+                }
+
+                if (request.MobilePhone != null && attorney.MobilePhone != request.MobilePhone)
+                {
+                    attorney.MobilePhone = request.MobilePhone;
+                }
+
+                // Update password only if provided
+                if (!string.IsNullOrWhiteSpace(request.Password))
+                {
+                    attorney.PasswordHash = HashPassword(request.Password);
+                    attorney.MustChangePassword = true;
+                }
+
+                // Ensure DateOfBirth is encrypted before saving (in case it wasn't updated above)
+                UserEncryptionHelper.EncryptUserData(attorney, _encryptionService);
+
+                await _context.SaveChangesAsync();
+                
+                // Decrypt after saving for response
+                UserEncryptionHelper.DecryptUserData(attorney, _encryptionService);
+
+                return Ok(new { message = "Attorney updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error updating attorney: {ex.Message}");
+            }
+        }
+
+        [HttpDelete("attorneys/{id}/deactivate")]
+        [Authorize(Roles = "Admin")] // Only Admin can deactivate attorneys
+        public async Task<ActionResult> DeactivateAttorney(int id)
+        {
+            try
+            {
+                var attorney = await _context.Users.FindAsync(id);
+                if (attorney == null)
+                {
+                    return NotFound("Attorney not found.");
+                }
+
+                if (attorney.RoleId != 5)
+                {
+                    return BadRequest("User is not an attorney.");
+                }
+
+                attorney.IsActive = false;
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Attorney deactivated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error deactivating attorney: {ex.Message}");
+            }
+        }
+
+        [HttpPost("attorneys/{id}/reactivate")]
+        [Authorize(Roles = "Admin")] // Only Admin can reactivate attorneys
+        public async Task<ActionResult> ReactivateAttorney(int id)
+        {
+            try
+            {
+                var attorney = await _context.Users.FindAsync(id);
+                if (attorney == null)
+                {
+                    return NotFound("Attorney not found.");
+                }
+
+                if (attorney.RoleId != 5)
+                {
+                    return BadRequest("User is not an attorney.");
+                }
+
+                attorney.IsActive = true;
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Attorney reactivated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error reactivating attorney: {ex.Message}");
+            }
+        }
+
         private string HashPassword(string password)
         {
             using (var rng = RandomNumberGenerator.Create())
@@ -1427,6 +1630,28 @@ namespace SM_MentalHealthApp.Server.Controllers
     }
 
     public class UpdateCoordinatorRequest
+    {
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? Gender { get; set; }
+        public string? MobilePhone { get; set; }
+        public string? Password { get; set; }
+    }
+
+    public class CreateAttorneyRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
+    }
+
+    public class UpdateAttorneyRequest
     {
         public string? FirstName { get; set; }
         public string? LastName { get; set; }

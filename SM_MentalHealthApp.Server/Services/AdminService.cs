@@ -10,6 +10,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<List<User>> GetAllDoctorsAsync();
         Task<List<User>> GetAllPatientsAsync();
         Task<List<User>> GetAllCoordinatorsAsync();
+        Task<List<User>> GetAllAttorneysAsync();
         Task<List<UserAssignment>> GetUserAssignmentsAsync();
         Task<bool> AssignPatientToDoctorAsync(int patientId, int doctorId);
         Task<bool> UnassignPatientFromDoctorAsync(int patientId, int doctorId);
@@ -67,6 +68,19 @@ namespace SM_MentalHealthApp.Server.Services
             return coordinators;
         }
 
+        public async Task<List<User>> GetAllAttorneysAsync()
+        {
+            var attorneys = await _context.Users
+                .Include(u => u.Role)
+                .Where(u => u.RoleId == 5 && u.IsActive) // Role 5 = Attorney
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
+                .ToListAsync();
+            
+            UserEncryptionHelper.DecryptUserData(attorneys, _encryptionService);
+            return attorneys;
+        }
+
         public async Task<List<UserAssignment>> GetUserAssignmentsAsync()
         {
             return await _context.UserAssignments
@@ -86,15 +100,22 @@ namespace SM_MentalHealthApp.Server.Services
                 return false; // Already assigned
             }
 
-            // Check if patient and doctor exist and are active
+            // Check if patient exists and is active
             var patient = await _context.Users
                 .FirstOrDefaultAsync(u => u.Id == patientId && u.RoleId == 1 && u.IsActive);
-            var doctor = await _context.Users
-                .FirstOrDefaultAsync(u => u.Id == doctorId && u.RoleId == 2 && u.IsActive);
 
-            if (patient == null || doctor == null)
+            if (patient == null)
             {
-                return false; // Invalid patient or doctor
+                return false; // Invalid patient
+            }
+
+            // Check if assigner is a doctor (RoleId == 2) or attorney (RoleId == 5) and is active
+            var assigner = await _context.Users
+                .FirstOrDefaultAsync(u => u.Id == doctorId && (u.RoleId == 2 || u.RoleId == 5) && u.IsActive);
+
+            if (assigner == null)
+            {
+                return false; // Invalid doctor or attorney
             }
 
             var assignment = new UserAssignment
@@ -144,18 +165,18 @@ namespace SM_MentalHealthApp.Server.Services
 
         public async Task<List<User>> GetDoctorsForPatientAsync(int patientId)
         {
-            var doctors = await _context.UserAssignments
+            var assigners = await _context.UserAssignments
                 .Where(ua => ua.AssigneeId == patientId)
                 .Include(ua => ua.Assigner)
                 .ThenInclude(a => a.Role)
                 .Select(ua => ua.Assigner)
-                .Where(d => d.IsActive)
+                .Where(d => d.IsActive && (d.RoleId == 2 || d.RoleId == 4 || d.RoleId == 5)) // Doctors, Coordinators, and Attorneys
                 .OrderBy(d => d.LastName)
                 .ThenBy(d => d.FirstName)
                 .ToListAsync();
             
-            UserEncryptionHelper.DecryptUserData(doctors, _encryptionService);
-            return doctors;
+            UserEncryptionHelper.DecryptUserData(assigners, _encryptionService);
+            return assigners;
         }
     }
 }

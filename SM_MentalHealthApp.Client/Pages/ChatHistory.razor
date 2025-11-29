@@ -287,10 +287,19 @@
             var userResponse = await Http.GetFromJsonAsync<AuthUser>("api/auth/me");
             currentUserRole = userResponse?.RoleName;
 
-            if (userResponse?.RoleId == 2)
+            if (userResponse?.RoleId == 2 || userResponse?.RoleId == 5) // Doctor or Attorney
             {
-                var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/doctor/patients");
-                patients = patientsResponse ?? new List<User>();
+                if (userResponse?.RoleId == 2)
+                {
+                    var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/doctor/patients");
+                    patients = patientsResponse ?? new List<User>();
+                }
+                else if (userResponse?.RoleId == 5) // Attorney
+                {
+                    // For Attorney, get patients assigned to them
+                    var patientsResponse = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{userResponse.Id}/patients");
+                    patients = patientsResponse ?? new List<User>();
+                }
             }
         }
         catch (Exception ex)

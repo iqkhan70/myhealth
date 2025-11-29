@@ -1,0 +1,627 @@
+@page "/attorneys"
+@inject HttpClient Http
+@inject NotificationService NotificationService
+@inject IAuthService AuthService
+@inject IJSRuntime JSRuntime
+@inject DialogService DialogService
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using System.Net.Http
+@using Radzen
+@using Radzen.Blazor
+
+<div class="coordinators-page">
+    <div class="coordinators-header">
+        @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+        {
+            <h2>Attorneys</h2>
+            <p>Manage attorney accounts and their information.</p>
+            <button @onclick="ShowAddAttorneyForm" class="add-coordinator-btn">
+                ➕ Add New Attorney
+            </button>
+        }
+        else
+        {
+            <h2>Access Denied</h2>
+            <p>You don't have permission to view this page.</p>
+        }
+    </div>
+
+    @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+    {
+        <!-- Attorneys Grid -->
+        <div class="coordinators-content">
+            @if (isLoading)
+            {
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>Loading attorneys...</p>
+                </div>
+            }
+            else
+            {
+                <RadzenDataGrid @ref="_grid" Data="@GetFilteredAttorneys()" 
+                               TItem="User" 
+                               AllowPaging="true" 
+                               PageSize="15"
+                               AllowSorting="true" 
+                               FilterMode="FilterMode.Advanced" 
+                               ShowPagingSummary="true"
+                               EmptyText="No attorneys found"
+                               AllowFiltering="true"
+                               FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                               ShowFilterRow="true"
+                               ShowFilterRowButtons="true">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="User" Property="FirstName" Title="Name" Width="200px" Filterable="true">
+                            <Template Context="attorney">
+                                @if (attorney != null)
+                                {
+                                    <div>
+                                        <strong>@(attorney.FirstName ?? "") @(attorney.LastName ?? "")</strong>
+                                        <br />
+                                        <small class="text-muted">@(attorney.Email ?? "")</small>
+                                    </div>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="Email" Title="Email" Width="250px" Filterable="true" />
+                        <RadzenDataGridColumn TItem="User" Property="MobilePhone" Title="Phone" Width="150px" Filterable="true">
+                            <Template Context="attorney">
+                                @(attorney?.MobilePhone ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="150px" Filterable="true">
+                            <Template Context="attorney">
+                                @(attorney?.DateOfBirth.ToString("MM/dd/yyyy") ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="Gender" Title="Gender" Width="100px" Filterable="true">
+                            <Template Context="attorney">
+                                @(attorney?.Gender ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="IsActive" Title="Status" Width="100px" Filterable="true">
+                            <Template Context="attorney">
+                                @if (attorney != null)
+                                {
+                                    <span class="badge @(attorney.IsActive ? "badge-success" : "badge-danger")">
+                                        @(attorney.IsActive ? "Active" : "Inactive")
+                                    </span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="CreatedAt" Title="Created" Width="150px" Filterable="true">
+                            <Template Context="attorney">
+                                @(attorney?.CreatedAt.ToString("MM/dd/yyyy") ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Title="Actions" Width="150px" Sortable="false" Filterable="false">
+                            <Template Context="attorney">
+                                @if (attorney != null)
+                                {
+                                    <div class="action-buttons">
+                                        <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Info" 
+                                                     Variant="Variant.Flat" 
+                                                     Size="ButtonSize.Small"
+                                                     Title="Edit attorney"
+                                                     Click="@(() => EditAttorney(attorney))" />
+                                        <RadzenButton Icon="@(attorney.IsActive ? "block" : "check")" 
+                                                     ButtonStyle="@(attorney.IsActive ? ButtonStyle.Warning : ButtonStyle.Success)" 
+                                                     Variant="Variant.Flat" 
+                                                     Size="ButtonSize.Small"
+                                                     Title="@(attorney.IsActive ? "Deactivate" : "Activate")"
+                                                     Click="@(() => ToggleAttorneyStatus(attorney))" />
+                                    </div>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </div>
+
+        <!-- Add/Edit Attorney Form Modal -->
+        @if (showAttorneyForm)
+        {
+            <div class="modal-overlay">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>@(editingAttorney == null ? "Add New Attorney" : "Edit Attorney")</h3>
+                        <button @onclick="CloseAttorneyForm" class="close-btn">✕</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>First Name *</label>
+                                <input @bind="attorneyForm.FirstName" class="form-input" />
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Last Name *</label>
+                                <input @bind="attorneyForm.LastName" class="form-input" />
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Email *</label>
+                                <input @bind="attorneyForm.Email" type="email" class="form-input" />
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Password @(editingAttorney == null ? "*" : "(leave blank to keep current)")</label>
+                                <input @bind="attorneyForm.Password" type="password" class="form-input" />
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Date of Birth *</label>
+                                <input @bind="attorneyForm.DateOfBirth" type="date" class="form-input" />
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Gender</label>
+                                <select @bind="attorneyForm.Gender" class="form-input">
+                                    <option value="">Select Gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                    <option value="Prefer not to say">Prefer not to say</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Mobile Phone</label>
+                                <input @bind="attorneyForm.MobilePhone" type="tel" class="form-input" placeholder="+1 (555) 123-4567" />
+                            </div>
+                            
+                            <div class="form-group">
+                                <!-- Empty div for layout balance -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <button @onclick="CloseAttorneyForm" class="btn btn-secondary">Cancel</button>
+                        <button @onclick="SaveAttorney" disabled="@isSaving" class="btn btn-primary">
+                            @(isSaving ? "Saving..." : (editingAttorney == null ? "Add Attorney" : "Update Attorney"))
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private RadzenDataGrid<User>? _grid;
+    private List<User> attorneys = new();
+    private bool isLoading = true;
+    private bool showAttorneyForm = false;
+    private bool isSaving = false;
+    private User? editingAttorney;
+    private CreateAttorneyRequest attorneyForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAttorneys();
+    }
+
+    private async Task LoadAttorneys()
+    {
+        try
+        {
+            isLoading = true;
+            
+            if (AuthService.CurrentUser?.RoleId == 3) // Admin
+            {
+                // Ensure authorization header is set
+                var token = AuthService.Token;
+                if (!string.IsNullOrEmpty(token))
+                {
+                    Http.DefaultRequestHeaders.Authorization = 
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+                
+                attorneys = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys") ?? new();
+                
+                // Debug: Check for null attorneys
+                var nullAttorneys = attorneys.Where(a => a == null).Count();
+                if (nullAttorneys > 0)
+                {
+                    Console.WriteLine($"Warning: Found {nullAttorneys} null attorneys in the list");
+                }
+                
+                Console.WriteLine($"Loaded {attorneys.Count} attorneys");
+            }
+            else
+            {
+                attorneys = new(); // No access
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading attorneys: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load attorneys: " + ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged(); // Ensure UI updates
+        }
+    }
+
+    private void ShowAddAttorneyForm()
+    {
+        editingAttorney = null;
+        attorneyForm = new CreateAttorneyRequest { DateOfBirth = DateTime.Now.AddYears(-30) };
+        showAttorneyForm = true;
+    }
+
+    private void EditAttorney(User attorney)
+    {
+        if (attorney == null) return;
+        
+        editingAttorney = attorney;
+        attorneyForm = new CreateAttorneyRequest
+        {
+            FirstName = attorney.FirstName ?? string.Empty,
+            LastName = attorney.LastName ?? string.Empty,
+            Email = attorney.Email ?? string.Empty,
+            DateOfBirth = attorney.DateOfBirth,
+            Gender = attorney.Gender ?? string.Empty,
+            MobilePhone = attorney.MobilePhone ?? string.Empty,
+            Password = string.Empty // Don't populate password
+        };
+        showAttorneyForm = true;
+    }
+
+    private void CloseAttorneyForm()
+    {
+        showAttorneyForm = false;
+        editingAttorney = null;
+        attorneyForm = new CreateAttorneyRequest();
+    }
+
+    private async Task SaveAttorney()
+    {
+        if (string.IsNullOrWhiteSpace(attorneyForm.FirstName) || 
+            string.IsNullOrWhiteSpace(attorneyForm.LastName) || 
+            string.IsNullOrWhiteSpace(attorneyForm.Email))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Please fill in all required fields.");
+            return;
+        }
+
+        if (editingAttorney == null && string.IsNullOrWhiteSpace(attorneyForm.Password))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Password is required for new attorneys.");
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            
+            if (editingAttorney == null)
+            {
+                // Create new attorney
+                var result = await Http.PostAsJsonAsync("api/admin/create-attorney", attorneyForm);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Attorney added successfully!");
+                    CloseAttorneyForm();
+                    await LoadAttorneys(); // Reload the list after closing form
+                    if (_grid != null)
+                    {
+                        await _grid.Reload();
+                    }
+                    StateHasChanged(); // Force UI update
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to add attorney: " + error);
+                }
+            }
+            else
+            {
+                // Update existing attorney
+                var updateRequest = new UpdateAttorneyRequest
+                {
+                    FirstName = attorneyForm.FirstName,
+                    LastName = attorneyForm.LastName,
+                    Email = attorneyForm.Email,
+                    DateOfBirth = attorneyForm.DateOfBirth,
+                    Gender = attorneyForm.Gender,
+                    MobilePhone = attorneyForm.MobilePhone,
+                    Password = string.IsNullOrWhiteSpace(attorneyForm.Password) ? null : attorneyForm.Password
+                };
+                
+                var result = await Http.PutAsJsonAsync($"api/admin/update-attorney/{editingAttorney.Id}", updateRequest);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Attorney updated successfully!");
+                    CloseAttorneyForm();
+                    await LoadAttorneys();
+                    if (_grid != null)
+                    {
+                        await _grid.Reload();
+                    }
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update attorney: " + error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private List<User> GetFilteredAttorneys()
+    {
+        var filtered = attorneys.Where(a => a != null && a.RoleId == 5).AsEnumerable(); // Only attorneys
+        
+        return filtered.ToList();
+    }
+
+    private async Task ToggleAttorneyStatus(User attorney)
+    {
+        if (attorney == null) return;
+
+        try
+        {
+            var action = attorney.IsActive ? "deactivate" : "reactivate";
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to {action} this attorney?");
+            
+            if (!confirmed) return;
+
+            if (attorney.IsActive)
+            {
+                var result = await Http.DeleteAsync($"api/admin/attorneys/{attorney.Id}/deactivate");
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Attorney deactivated successfully!");
+                    await LoadAttorneys();
+                    if (_grid != null)
+                    {
+                        await _grid.Reload();
+                    }
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to deactivate attorney: " + error);
+                }
+            }
+            else
+            {
+                var result = await Http.PostAsync($"api/admin/attorneys/{attorney.Id}/reactivate", null);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Attorney reactivated successfully!");
+                    await LoadAttorneys();
+                    if (_grid != null)
+                    {
+                        await _grid.Reload();
+                    }
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reactivate attorney: " + error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+    }
+
+    public class CreateAttorneyRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
+    }
+
+    public class UpdateAttorneyRequest
+    {
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? Gender { get; set; }
+        public string? MobilePhone { get; set; }
+        public string? Password { get; set; }
+    }
+}
+
+<style>
+    .coordinators-page {
+        padding: 20px;
+    }
+
+    .coordinators-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .coordinators-header h2 {
+        margin: 0;
+    }
+
+    .add-coordinator-btn {
+        background-color: #28a745;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 500;
+    }
+
+    .add-coordinator-btn:hover {
+        background-color: #218838;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        padding: 0;
+        max-width: 600px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6c757d;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    .form-group {
+        flex: 1;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 20px;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .badge-success {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .badge-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .loading-spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>

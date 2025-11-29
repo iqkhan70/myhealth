@@ -36,7 +36,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get assigned patients for a doctor or coordinator (mobile app)
         /// </summary>
         [HttpGet("doctor/patients")]
-        [Authorize(Roles = "Doctor,Coordinator")]
+        [Authorize(Roles = "Doctor,Coordinator,Attorney")]
         public async Task<ActionResult<List<User>>> GetDoctorPatients()
         {
             try
@@ -115,7 +115,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                         .ThenInclude(a => a.Role)
                     .Where(ua => ua.Assigner != null && 
                                  ua.Assigner.IsActive && 
-                                 (ua.Assigner.RoleId == 2 || ua.Assigner.RoleId == 4)) // Active doctors and coordinators
+                                 (ua.Assigner.RoleId == 2 || ua.Assigner.RoleId == 4 || ua.Assigner.RoleId == 5)) // Active doctors, coordinators, and attorneys
                     .Select(ua => new
                     {
                         ua.Assigner.Id,
@@ -132,7 +132,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     .ThenBy(d => d.FirstName)
                     .ToListAsync();
 
-                _logger.LogInformation("Found {AssignerCount} assigners (doctors/coordinators) for patient {PatientId}", assigners.Count, patientId);
+                _logger.LogInformation("Found {AssignerCount} assigners (doctors/coordinators/attorneys) for patient {PatientId}", assigners.Count, patientId);
 
                 // Create response objects with roleName included
                 // ASP.NET Core will serialize these with camelCase by default

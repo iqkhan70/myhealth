@@ -35,6 +35,11 @@
             <h2>Patient Content</h2>
             <p>View patient content and documents.</p>
         }
+        else if (AuthService.CurrentUser?.RoleId == 5) // Attorney
+        {
+            <h2>Patient Content</h2>
+            <p>View patient content and documents.</p>
+        }
         else
         {
             <h2>Access Denied</h2>
@@ -43,10 +48,10 @@
     </div>
 
     @if (AuthService.CurrentUser?.RoleId == 1 || AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId
-        == 3 || AuthService.CurrentUser?.RoleId == 4)
+        == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5)
     {
-        <!-- Add Content Button (hidden for Coordinator) -->
-        @if (AuthService.CurrentUser?.RoleId != 4)
+        <!-- Add Content Button (hidden for Coordinator and Attorney) -->
+        @if (AuthService.CurrentUser?.RoleId != 4 && AuthService.CurrentUser?.RoleId != 5)
         {
             <div class="add-content-section">
                 <RadzenButton Text="Add New Content" ButtonStyle="ButtonStyle.Primary" Icon="add" Click="@ShowAddContentForm" />

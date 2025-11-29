@@ -432,7 +432,7 @@
             OnClick = async (row, ct) => await EditNoteAsync(row, ct)
         });
 
-        // Add ignore/unignore button for doctors
+        // Add ignore/unignore button for doctors (not for Attorney - read-only)
         if (AuthService.CurrentUser?.RoleId == 2) // Doctor
         {
             _actions.Add(new SMDataGridActionButton<ClinicalNoteDto>

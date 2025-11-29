@@ -108,6 +108,10 @@
                 <i class="nav-icon">👥</i>
                 <span>Coordinators</span>
             </a>
+            <a href="/attorneys" class="nav-item @(GetActiveClass("/attorneys"))">
+                <i class="nav-icon">⚖️</i>
+                <span>Attorneys</span>
+            </a>
             <a href="/user-requests" class="nav-item @(GetActiveClass("/user-requests"))">
                 <i class="nav-icon">📋</i>
                 <span>User Requests</span>
@@ -153,6 +157,32 @@
             <a href="/user-requests" class="nav-item @(GetActiveClass("/user-requests"))">
                 <i class="nav-icon">📋</i>
                 <span>User Requests</span>
+            </a>
+        }
+
+        @* Attorney-specific pages *@
+        @if (AuthService.CurrentUser?.RoleId == 5) // Attorney
+        {
+            <a href="/users" class="nav-item @(GetActiveClass("/users"))">
+                <i class="nav-icon">👥</i>
+                <span>My Patients</span>
+            </a>
+            <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
+                <i class="nav-icon">💬</i>
+                <span>Patient Chat</span>
+                <div class="nav-badge">Live</div>
+            </a>
+            <a href="/chat-history" class="nav-item @(GetActiveClass("/chat-history"))">
+                <i class="nav-icon">📜</i>
+                <span>Chat History</span>
+            </a>
+            <a href="/clinical-notes" class="nav-item @(GetActiveClass("/clinical-notes"))">
+                <i class="nav-icon">📋</i>
+                <span>Clinical Notes</span>
+            </a>
+            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                <i class="nav-icon">📁</i>
+                <span>Patient Content</span>
             </a>
         }
     </nav>

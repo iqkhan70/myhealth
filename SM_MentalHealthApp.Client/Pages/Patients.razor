@@ -42,6 +42,11 @@
             <h2>My Patients</h2>
             <p>View and assign patients to doctors.</p>
         }
+        else if (AuthService.CurrentUser?.RoleId == 5) // Attorney
+        {
+            <h2>My Patients</h2>
+            <p>View your assigned patients.</p>
+        }
         else
         {
             <h2>Access Denied</h2>
@@ -49,7 +54,7 @@
         }
     </div>
 
-    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Doctor, Admin, or Coordinator
+    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) // Doctor, Admin, Coordinator, or Attorney
     {
         <!-- Custom Filters -->
         <div class="custom-filters">
@@ -747,8 +752,8 @@
 
     private void InitializeActions()
     {
-        // View, Edit, Stats, and AI Health Check actions (not for Coordinator)
-        if (AuthService.CurrentUser?.RoleId != 4) // Coordinator can only assign/unassign
+        // View, Edit, Stats, and AI Health Check actions (not for Coordinator or Attorney - read-only)
+        if (AuthService.CurrentUser?.RoleId != 4 && AuthService.CurrentUser?.RoleId != 5) // Coordinator and Attorney can only assign/unassign
         {
             _actions.Add(new SMDataGridActionButton<User>
             {
@@ -795,18 +800,48 @@
         // Doctor-specific actions
         if (AuthService.CurrentUser?.RoleId == 2)
         {
-            // For doctors: allow reassigning to another doctor
+            // For doctors: allow reassigning to another doctor or attorney
             _actions.Add(new SMDataGridActionButton<User>
             {
                 Icon = "person_add",
                 ButtonStyle = ButtonStyle.Warning,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Assign patient to another doctor",
+                Tooltip = "Assign patient to another doctor or attorney",
                 OnClick = async (row, ct) => await ShowAssignPatientModalAsync(row, ct)
             });
 
             // For doctors: allow unassigning from themselves
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "person_remove",
+                ButtonStyle = ButtonStyle.Danger,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Unassign patient from me",
+                OnClick = async (row, ct) => 
+                {
+                    ShowUnassignConfirmation(row);
+                    await Task.CompletedTask;
+                }
+            });
+        }
+
+        // Attorney-specific actions
+        if (AuthService.CurrentUser?.RoleId == 5)
+        {
+            // For attorneys: allow assigning to another attorney
+            _actions.Add(new SMDataGridActionButton<User>
+            {
+                Icon = "person_add",
+                ButtonStyle = ButtonStyle.Warning,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Assign patient to another attorney",
+                OnClick = async (row, ct) => await ShowAssignPatientModalAsync(row, ct)
+            });
+
+            // For attorneys: allow unassigning from themselves
             _actions.Add(new SMDataGridActionButton<User>
             {
                 Icon = "person_remove",
@@ -1278,7 +1313,21 @@
             selectedUser = user;
             selectedDoctorId = 0;
             
-            availableDoctors = await PatientService.GetDoctorsAsync(ct);
+            // Load assigners based on current user's role
+            if (AuthService.CurrentUser?.RoleId == 2) // Doctor - can assign to doctors or attorneys
+            {
+                var doctors = await PatientService.GetDoctorsAsync(ct);
+                var attorneys = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys") ?? new List<User>();
+                availableDoctors = doctors.Concat(attorneys).ToList();
+            }
+            else if (AuthService.CurrentUser?.RoleId == 5) // Attorney - can only assign to other attorneys
+            {
+                availableDoctors = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys") ?? new List<User>();
+            }
+            else // Coordinator - can assign to doctors
+            {
+                availableDoctors = await PatientService.GetDoctorsAsync(ct);
+            }
             
             if (AuthService.CurrentUser?.Id != null)
             {
@@ -1290,7 +1339,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Failed to load doctors: {ex.Message}");
+            NotificationService.ShowError($"Failed to load assigners: {ex.Message}");
         }
     }
 
@@ -1316,7 +1365,7 @@
             isAssigning = true;
             
             // Use different endpoint based on role
-            if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
+            if (AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) // Coordinator or Attorney
             {
                 var request = new AssignPatientRequest
                 {
@@ -1340,7 +1389,8 @@
                 await PatientService.AssignToDoctorAsync(request);
             }
             
-            NotificationService.ShowSuccess("Patient assigned to doctor successfully!");
+            var assignerType = AuthService.CurrentUser?.RoleId == 5 ? "attorney" : "doctor";
+            NotificationService.ShowSuccess($"Patient assigned to {assignerType} successfully!");
             CloseAssignModal();
             if (_grid != null)
             {
@@ -1548,12 +1598,38 @@
         {
             isUnassigning = true;
             
-            var request = new DoctorUnassignPatientRequest
+            // Use different endpoint based on role
+            if (AuthService.CurrentUser?.RoleId == 5) // Attorney - use admin endpoint
             {
-                PatientId = selectedUser.Id
-            };
-
-            await PatientService.UnassignFromDoctorAsync(request);
+                if (AuthService.CurrentUser == null || AuthService.CurrentUser.Id == 0)
+                {
+                    NotificationService.ShowError("Unable to identify current user.");
+                    return;
+                }
+                
+                var request = new UnassignPatientRequest
+                {
+                    PatientId = selectedUser.Id,
+                    DoctorId = AuthService.CurrentUser.Id
+                };
+                var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/admin/unassign")
+                {
+                    Content = JsonContent.Create(request)
+                });
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    throw new Exception(errorContent);
+                }
+            }
+            else // Doctor - use doctor endpoint
+            {
+                var request = new DoctorUnassignPatientRequest
+                {
+                    PatientId = selectedUser.Id
+                };
+                await PatientService.UnassignFromDoctorAsync(request);
+            }
             
             NotificationService.ShowSuccess("Patient unassigned from you successfully!");
             CloseUnassignConfirmation();
@@ -1594,17 +1670,18 @@
             {
                 assignedDoctorsForUnassign = assignersResponse;
                 
-                // For Coordinator: Check if patient is assigned to them
-                if (AuthService.CurrentUser?.RoleId == 4)
+                // For Coordinator or Attorney: Check if patient is assigned to them
+                if (AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5)
                 {
-                    var isAssignedToCoordinator = assignedDoctorsForUnassign.Any(a => a.Id == AuthService.CurrentUser.Id);
-                    if (!isAssignedToCoordinator)
+                    var isAssignedToUser = assignedDoctorsForUnassign.Any(a => a.Id == AuthService.CurrentUser.Id);
+                    if (!isAssignedToUser)
                     {
-                        NotificationService.ShowWarning("This patient is not assigned to you. You can only unassign patients that are assigned to you.");
+                        var roleName = AuthService.CurrentUser?.RoleId == 4 ? "coordinator" : "attorney";
+                        NotificationService.ShowWarning($"This patient is not assigned to you. You can only unassign patients that are assigned to you.");
                         return;
                     }
                     
-                    // For Coordinator: Only show themselves in the dropdown (they can only unassign themselves)
+                    // For Coordinator or Attorney: Only show themselves in the dropdown (they can only unassign themselves)
                     assignedDoctorsForUnassign = assignedDoctorsForUnassign
                         .Where(a => a.Id == AuthService.CurrentUser.Id)
                         .ToList();
@@ -1647,8 +1724,8 @@
 
         try
         {
-            // For Coordinator: Validate that patient has at least one doctor assigned (not just coordinators)
-            if (AuthService.CurrentUser?.RoleId == 4)
+            // For Coordinator or Attorney: Validate that patient has at least one doctor assigned (not just coordinators/attorneys)
+            if (AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5)
             {
                 // Get all current assigners to check if at least one doctor will remain
                 var allAssigners = await Http.GetFromJsonAsync<List<User>>($"api/admin/patient/{selectedUser.Id}/doctors");
