@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import AppConfig from '../config/app.config';
 
 const GuestRegistrationForm = ({ onBack, onSuccess }) => {
@@ -17,6 +18,8 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  const [dateOfBirthDate, setDateOfBirthDate] = useState(new Date(2000, 0, 1)); // Default date for picker
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [gender, setGender] = useState('');
   const [mobilePhone, setMobilePhone] = useState('');
   const [reason, setReason] = useState('');
@@ -44,7 +47,7 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
       return false;
     }
     if (!dateOfBirth) {
-      Alert.alert('Validation Error', 'Date of birth is required');
+      Alert.alert('Validation Error', 'Please select your date of birth');
       return false;
     }
     if (!gender.trim()) {
@@ -74,25 +77,9 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
     setSubmitting(true);
     try {
       const apiUrl = getApiBaseUrl();
-      // Parse and validate date
-      const dateObj = new Date(dateOfBirth + 'T00:00:00'); // Add time to avoid timezone issues
-      if (isNaN(dateObj.getTime())) {
-        Alert.alert('Validation Error', 'Please enter a valid date in YYYY-MM-DD format');
-        setSubmitting(false);
-        return;
-      }
-
-      // Format as YYYY-MM-DD to avoid timezone conversion issues
-      // Extract year, month, day from the input string directly
-      const dateParts = dateOfBirth.split('-');
-      if (dateParts.length !== 3) {
-        Alert.alert('Validation Error', 'Please enter a valid date in YYYY-MM-DD format');
-        setSubmitting(false);
-        return;
-      }
       
-      // Send as date-only string (YYYY-MM-DD) to avoid timezone issues
-      // The server will parse it as a date-only value
+      // dateOfBirth is already in YYYY-MM-DD format from the date picker
+      // Send as date with midnight time, no timezone to avoid timezone conversion issues
       const response = await fetch(`${apiUrl}/UserRequest/create`, {
         method: 'POST',
         headers: {
@@ -195,14 +182,71 @@ const GuestRegistrationForm = ({ onBack, onSuccess }) => {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Date of Birth *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="YYYY-MM-DD"
-            value={dateOfBirth}
-            onChangeText={setDateOfBirth}
-            keyboardType="default"
-          />
-          <Text style={styles.hint}>Format: YYYY-MM-DD (e.g., 1990-01-15)</Text>
+          <TouchableOpacity
+            style={styles.datePickerButton}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={[styles.datePickerText, !dateOfBirth && styles.datePickerPlaceholder]}>
+              {dateOfBirth || 'Select Date of Birth'}
+            </Text>
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={dateOfBirthDate}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={(event, selectedDate) => {
+                // On Android, only close when user confirms (OK) or cancels (Cancel)
+                // event.type can be 'set' (confirmed), 'dismissed' (cancelled), or undefined (during selection)
+                if (Platform.OS === 'android') {
+                  if (event.type === 'set' && selectedDate) {
+                    // User clicked OK - update date and close
+                    setDateOfBirthDate(selectedDate);
+                    const year = selectedDate.getFullYear();
+                    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(selectedDate.getDate()).padStart(2, '0');
+                    setDateOfBirth(`${year}-${month}-${day}`);
+                    setShowDatePicker(false);
+                  } else if (event.type === 'dismissed') {
+                    // User clicked Cancel or dismissed - just close without updating
+                    setShowDatePicker(false);
+                  }
+                  // If event.type is undefined, user is still selecting - don't close
+                } else {
+                  // iOS behavior - update date as user scrolls, but don't close until Done is clicked
+                  if (selectedDate) {
+                    setDateOfBirthDate(selectedDate);
+                    const year = selectedDate.getFullYear();
+                    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(selectedDate.getDate()).padStart(2, '0');
+                    setDateOfBirth(`${year}-${month}-${day}`);
+                  }
+                  if (event.type === 'dismissed') {
+                    setShowDatePicker(false);
+                  }
+                }
+              }}
+              maximumDate={new Date()} // Can't select future dates
+              minimumDate={new Date(1900, 0, 1)} // Can't select dates before 1900
+            />
+          )}
+          {Platform.OS === 'ios' && showDatePicker && (
+            <View style={styles.iosDatePickerActions}>
+              <TouchableOpacity
+                style={styles.iosDatePickerButton}
+                onPress={() => {
+                  // Update the date one final time when Done is clicked
+                  const year = dateOfBirthDate.getFullYear();
+                  const month = String(dateOfBirthDate.getMonth() + 1).padStart(2, '0');
+                  const day = String(dateOfBirthDate.getDate()).padStart(2, '0');
+                  setDateOfBirth(`${year}-${month}-${day}`);
+                  setShowDatePicker(false);
+                }}
+              >
+                <Text style={styles.iosDatePickerButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <View style={styles.inputGroup}>
@@ -358,6 +402,39 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  datePickerButton: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: '#fff',
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  datePickerText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  datePickerPlaceholder: {
+    color: '#999',
+  },
+  iosDatePickerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: 10,
+    backgroundColor: '#f5f5f5',
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+  },
+  iosDatePickerButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  iosDatePickerButtonText: {
+    color: '#007bff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   genderContainer: {
     flexDirection: 'row',
