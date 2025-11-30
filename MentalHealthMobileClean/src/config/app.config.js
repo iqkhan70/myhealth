@@ -10,7 +10,7 @@ const AppConfig = {
   // Update this when your Mac's IP address changes
   // For local development: use your Mac's local IP (e.g., 192.168.86.25)
   // For production: use your DigitalOcean server IP
-  SERVER_IP: '192.168.86.35',
+  SERVER_IP: '192.168.86.25',
   
   // Server Port
   // Mobile app connects directly to the server API (not through the Blazor client)

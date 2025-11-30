@@ -1,5 +1,6 @@
 using SM_MentalHealthApp.Shared;
 using SM_MentalHealthApp.Server.Services;
+using System.Linq;
 
 namespace SM_MentalHealthApp.Server.Helpers
 {
@@ -88,36 +89,40 @@ namespace SM_MentalHealthApp.Server.Helpers
             {
                 try
                 {
+                    // Always try to decrypt first
                     var decryptedPhone = encryptionService.Decrypt(user.MobilePhoneEncrypted);
+                    
                     // Check if decryption actually worked (if it returns the same string, decryption failed)
                     if (decryptedPhone != user.MobilePhoneEncrypted && !string.IsNullOrWhiteSpace(decryptedPhone))
                     {
+                        // Decryption succeeded
                         user.MobilePhone = decryptedPhone;
                     }
                     else
                     {
-                        // Decryption failed - might be plain text or wrong key
-                        // If it looks like a phone number (contains digits and + or -), treat as plain text
-                        if (user.MobilePhoneEncrypted.Any(char.IsDigit) && 
-                            (user.MobilePhoneEncrypted.Contains("+") || user.MobilePhoneEncrypted.Contains("-") || 
-                             user.MobilePhoneEncrypted.Length >= 10))
+                        // Decryption failed - might be plain text
+                        // Only treat as plain text if it looks like a phone number (all digits or digits with + at start)
+                        var isLikelyPhone = user.MobilePhoneEncrypted.All(c => char.IsDigit(c) || c == '+') && 
+                                           user.MobilePhoneEncrypted.Length >= 10;
+                        
+                        if (isLikelyPhone)
                         {
                             user.MobilePhone = user.MobilePhoneEncrypted;
-                            // Re-encrypt with current key
-                            user.MobilePhoneEncrypted = encryptionService.Encrypt(user.MobilePhoneEncrypted);
                         }
                         else
                         {
+                            // Doesn't look like a phone number - set to null
                             user.MobilePhone = null;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    // Try treating as plain text as fallback
-                    if (user.MobilePhoneEncrypted.Any(char.IsDigit) && 
-                        (user.MobilePhoneEncrypted.Contains("+") || user.MobilePhoneEncrypted.Contains("-") || 
-                         user.MobilePhoneEncrypted.Length >= 10))
+                    // On exception, only treat as plain text if it looks like a phone number
+                    var isLikelyPhone = user.MobilePhoneEncrypted.All(c => char.IsDigit(c) || c == '+') && 
+                                       user.MobilePhoneEncrypted.Length >= 10;
+                    
+                    if (isLikelyPhone)
                     {
                         user.MobilePhone = user.MobilePhoneEncrypted;
                     }
@@ -228,36 +233,40 @@ namespace SM_MentalHealthApp.Server.Helpers
             {
                 try
                 {
+                    // Always try to decrypt first
                     var decryptedPhone = encryptionService.Decrypt(userRequest.MobilePhoneEncrypted);
+                    
                     // Check if decryption actually worked (if it returns the same string, decryption failed)
                     if (decryptedPhone != userRequest.MobilePhoneEncrypted && !string.IsNullOrWhiteSpace(decryptedPhone))
                     {
+                        // Decryption succeeded
                         userRequest.MobilePhone = decryptedPhone;
                     }
                     else
                     {
-                        // Decryption failed - might be plain text or wrong key
-                        // If it looks like a phone number (contains digits and + or -), treat as plain text
-                        if (userRequest.MobilePhoneEncrypted.Any(char.IsDigit) && 
-                            (userRequest.MobilePhoneEncrypted.Contains("+") || userRequest.MobilePhoneEncrypted.Contains("-") || 
-                             userRequest.MobilePhoneEncrypted.Length >= 10))
+                        // Decryption failed - might be plain text
+                        // Only treat as plain text if it looks like a phone number (all digits or digits with + at start)
+                        var isLikelyPhone = userRequest.MobilePhoneEncrypted.All(c => char.IsDigit(c) || c == '+') && 
+                                           userRequest.MobilePhoneEncrypted.Length >= 10;
+                        
+                        if (isLikelyPhone)
                         {
                             userRequest.MobilePhone = userRequest.MobilePhoneEncrypted;
-                            // Re-encrypt with current key
-                            userRequest.MobilePhoneEncrypted = encryptionService.Encrypt(userRequest.MobilePhoneEncrypted);
                         }
                         else
                         {
+                            // Doesn't look like a phone number - set to empty
                             userRequest.MobilePhone = string.Empty;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    // Try treating as plain text as fallback
-                    if (userRequest.MobilePhoneEncrypted.Any(char.IsDigit) && 
-                        (userRequest.MobilePhoneEncrypted.Contains("+") || userRequest.MobilePhoneEncrypted.Contains("-") || 
-                         userRequest.MobilePhoneEncrypted.Length >= 10))
+                    // On exception, only treat as plain text if it looks like a phone number
+                    var isLikelyPhone = userRequest.MobilePhoneEncrypted.All(c => char.IsDigit(c) || c == '+') && 
+                                       userRequest.MobilePhoneEncrypted.Length >= 10;
+                    
+                    if (isLikelyPhone)
                     {
                         userRequest.MobilePhone = userRequest.MobilePhoneEncrypted;
                     }
