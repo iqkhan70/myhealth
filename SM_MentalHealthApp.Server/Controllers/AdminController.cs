@@ -1088,9 +1088,18 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // MobilePhone can be null, so check if it's provided and different
+                // Decrypt current MobilePhone for comparison
+                UserEncryptionHelper.DecryptUserData(patient, _encryptionService);
                 if (request.MobilePhone != null && patient.MobilePhone != request.MobilePhone)
                 {
                     patient.MobilePhone = request.MobilePhone;
+                    // Encrypt before saving
+                    UserEncryptionHelper.EncryptUserData(patient, _encryptionService);
+                }
+                else if (!request.DateOfBirth.HasValue)
+                {
+                    // If MobilePhone wasn't updated but DateOfBirth wasn't either, ensure encryption is still applied
+                    UserEncryptionHelper.EncryptUserData(patient, _encryptionService);
                 }
 
                 // Update password only if provided and not empty
@@ -1187,9 +1196,20 @@ namespace SM_MentalHealthApp.Server.Controllers
                     doctor.Gender = request.Gender;
                 }
 
-                if (request.MobilePhone != null && doctor.MobilePhone != request.MobilePhone)
+                // Decrypt current MobilePhone for comparison
+                if (request.MobilePhone != null)
                 {
-                    doctor.MobilePhone = request.MobilePhone;
+                    if (doctor.MobilePhone != request.MobilePhone)
+                    {
+                        doctor.MobilePhone = request.MobilePhone;
+                    }
+                    // Encrypt before saving
+                    UserEncryptionHelper.EncryptUserData(doctor, _encryptionService);
+                }
+                else if (!request.DateOfBirth.HasValue)
+                {
+                    // If MobilePhone wasn't updated but DateOfBirth wasn't either, ensure encryption is still applied
+                    UserEncryptionHelper.EncryptUserData(doctor, _encryptionService);
                 }
 
                 if (!string.IsNullOrWhiteSpace(request.Specialization) && doctor.Specialization != request.Specialization)
@@ -1332,9 +1352,20 @@ namespace SM_MentalHealthApp.Server.Controllers
                     coordinator.Gender = request.Gender;
                 }
 
-                if (request.MobilePhone != null && coordinator.MobilePhone != request.MobilePhone)
+                // Decrypt current MobilePhone for comparison
+                if (request.MobilePhone != null)
                 {
-                    coordinator.MobilePhone = request.MobilePhone;
+                    if (coordinator.MobilePhone != request.MobilePhone)
+                    {
+                        coordinator.MobilePhone = request.MobilePhone;
+                    }
+                    // Encrypt before saving
+                    UserEncryptionHelper.EncryptUserData(coordinator, _encryptionService);
+                }
+                else if (!request.DateOfBirth.HasValue)
+                {
+                    // If MobilePhone wasn't updated but DateOfBirth wasn't either, ensure encryption is still applied
+                    UserEncryptionHelper.EncryptUserData(coordinator, _encryptionService);
                 }
 
                 // Update password only if provided
@@ -1475,9 +1506,20 @@ namespace SM_MentalHealthApp.Server.Controllers
                     attorney.Gender = request.Gender;
                 }
 
-                if (request.MobilePhone != null && attorney.MobilePhone != request.MobilePhone)
+                // Decrypt current MobilePhone for comparison
+                if (request.MobilePhone != null)
                 {
-                    attorney.MobilePhone = request.MobilePhone;
+                    if (attorney.MobilePhone != request.MobilePhone)
+                    {
+                        attorney.MobilePhone = request.MobilePhone;
+                    }
+                    // Encrypt before saving
+                    UserEncryptionHelper.EncryptUserData(attorney, _encryptionService);
+                }
+                else if (!request.DateOfBirth.HasValue)
+                {
+                    // If MobilePhone wasn't updated but DateOfBirth wasn't either, ensure encryption is still applied
+                    UserEncryptionHelper.EncryptUserData(attorney, _encryptionService);
                 }
 
                 // Update password only if provided

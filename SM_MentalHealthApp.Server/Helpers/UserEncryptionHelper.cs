@@ -9,7 +9,7 @@ namespace SM_MentalHealthApp.Server.Helpers
     public static class UserEncryptionHelper
     {
         /// <summary>
-        /// Encrypts DateOfBirth and stores it in DateOfBirthEncrypted before saving to database
+        /// Encrypts DateOfBirth and MobilePhone, storing them in encrypted fields before saving to database
         /// </summary>
         public static void EncryptUserData(User user, IPiiEncryptionService encryptionService)
         {
@@ -21,10 +21,16 @@ namespace SM_MentalHealthApp.Server.Helpers
             {
                 user.DateOfBirthEncrypted = encryptionService.EncryptDateTime(user.DateOfBirth);
             }
+
+            // Encrypt MobilePhone if it's been set
+            if (!string.IsNullOrEmpty(user.MobilePhone))
+            {
+                user.MobilePhoneEncrypted = encryptionService.Encrypt(user.MobilePhone);
+            }
         }
 
         /// <summary>
-        /// Decrypts DateOfBirthEncrypted and populates DateOfBirth after loading from database
+        /// Decrypts DateOfBirthEncrypted and MobilePhoneEncrypted, populating computed properties after loading from database
         /// </summary>
         public static void DecryptUserData(User user, IPiiEncryptionService encryptionService)
         {
@@ -76,6 +82,56 @@ namespace SM_MentalHealthApp.Server.Helpers
                 // Empty DateOfBirthEncrypted - user needs to set it
                 user.DateOfBirth = DateTime.MinValue;
             }
+
+            // Decrypt MobilePhoneEncrypted if it exists
+            if (!string.IsNullOrEmpty(user.MobilePhoneEncrypted))
+            {
+                try
+                {
+                    var decryptedPhone = encryptionService.Decrypt(user.MobilePhoneEncrypted);
+                    // Check if decryption actually worked (if it returns the same string, decryption failed)
+                    if (decryptedPhone != user.MobilePhoneEncrypted && !string.IsNullOrWhiteSpace(decryptedPhone))
+                    {
+                        user.MobilePhone = decryptedPhone;
+                    }
+                    else
+                    {
+                        // Decryption failed - might be plain text or wrong key
+                        // If it looks like a phone number (contains digits and + or -), treat as plain text
+                        if (user.MobilePhoneEncrypted.Any(char.IsDigit) && 
+                            (user.MobilePhoneEncrypted.Contains("+") || user.MobilePhoneEncrypted.Contains("-") || 
+                             user.MobilePhoneEncrypted.Length >= 10))
+                        {
+                            user.MobilePhone = user.MobilePhoneEncrypted;
+                            // Re-encrypt with current key
+                            user.MobilePhoneEncrypted = encryptionService.Encrypt(user.MobilePhoneEncrypted);
+                        }
+                        else
+                        {
+                            user.MobilePhone = null;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Try treating as plain text as fallback
+                    if (user.MobilePhoneEncrypted.Any(char.IsDigit) && 
+                        (user.MobilePhoneEncrypted.Contains("+") || user.MobilePhoneEncrypted.Contains("-") || 
+                         user.MobilePhoneEncrypted.Length >= 10))
+                    {
+                        user.MobilePhone = user.MobilePhoneEncrypted;
+                    }
+                    else
+                    {
+                        user.MobilePhone = null;
+                    }
+                }
+            }
+            else
+            {
+                // Empty MobilePhoneEncrypted - no phone number
+                user.MobilePhone = null;
+            }
         }
 
         /// <summary>
@@ -93,7 +149,7 @@ namespace SM_MentalHealthApp.Server.Helpers
         }
 
         /// <summary>
-        /// Encrypts DateOfBirth and stores it in DateOfBirthEncrypted before saving to database
+        /// Encrypts DateOfBirth and MobilePhone, storing them in encrypted fields before saving to database
         /// </summary>
         public static void EncryptUserRequestData(UserRequest userRequest, IPiiEncryptionService encryptionService)
         {
@@ -105,10 +161,16 @@ namespace SM_MentalHealthApp.Server.Helpers
             {
                 userRequest.DateOfBirthEncrypted = encryptionService.EncryptDateTime(userRequest.DateOfBirth);
             }
+
+            // Encrypt MobilePhone if it's been set
+            if (!string.IsNullOrEmpty(userRequest.MobilePhone))
+            {
+                userRequest.MobilePhoneEncrypted = encryptionService.Encrypt(userRequest.MobilePhone);
+            }
         }
 
         /// <summary>
-        /// Decrypts DateOfBirthEncrypted and populates DateOfBirth after loading from database
+        /// Decrypts DateOfBirthEncrypted and MobilePhoneEncrypted, populating computed properties after loading from database
         /// </summary>
         public static void DecryptUserRequestData(UserRequest userRequest, IPiiEncryptionService encryptionService)
         {
@@ -159,6 +221,56 @@ namespace SM_MentalHealthApp.Server.Helpers
             {
                 // Empty DateOfBirthEncrypted - user needs to set it
                 userRequest.DateOfBirth = DateTime.MinValue;
+            }
+
+            // Decrypt MobilePhoneEncrypted if it exists
+            if (!string.IsNullOrEmpty(userRequest.MobilePhoneEncrypted))
+            {
+                try
+                {
+                    var decryptedPhone = encryptionService.Decrypt(userRequest.MobilePhoneEncrypted);
+                    // Check if decryption actually worked (if it returns the same string, decryption failed)
+                    if (decryptedPhone != userRequest.MobilePhoneEncrypted && !string.IsNullOrWhiteSpace(decryptedPhone))
+                    {
+                        userRequest.MobilePhone = decryptedPhone;
+                    }
+                    else
+                    {
+                        // Decryption failed - might be plain text or wrong key
+                        // If it looks like a phone number (contains digits and + or -), treat as plain text
+                        if (userRequest.MobilePhoneEncrypted.Any(char.IsDigit) && 
+                            (userRequest.MobilePhoneEncrypted.Contains("+") || userRequest.MobilePhoneEncrypted.Contains("-") || 
+                             userRequest.MobilePhoneEncrypted.Length >= 10))
+                        {
+                            userRequest.MobilePhone = userRequest.MobilePhoneEncrypted;
+                            // Re-encrypt with current key
+                            userRequest.MobilePhoneEncrypted = encryptionService.Encrypt(userRequest.MobilePhoneEncrypted);
+                        }
+                        else
+                        {
+                            userRequest.MobilePhone = string.Empty;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Try treating as plain text as fallback
+                    if (userRequest.MobilePhoneEncrypted.Any(char.IsDigit) && 
+                        (userRequest.MobilePhoneEncrypted.Contains("+") || userRequest.MobilePhoneEncrypted.Contains("-") || 
+                         userRequest.MobilePhoneEncrypted.Length >= 10))
+                    {
+                        userRequest.MobilePhone = userRequest.MobilePhoneEncrypted;
+                    }
+                    else
+                    {
+                        userRequest.MobilePhone = string.Empty;
+                    }
+                }
+            }
+            else
+            {
+                // Empty MobilePhoneEncrypted - no phone number
+                userRequest.MobilePhone = string.Empty;
             }
         }
 

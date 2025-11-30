@@ -510,6 +510,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return NotFound("Target user not found");
                 }
 
+                // Decrypt PII data (including MobilePhone) before using for SMS
+                UserEncryptionHelper.DecryptUserData(targetUser, _encryptionService);
+
                 if (targetUser.RoleId != 2) // RoleId 2 = Doctor
                 {
                     return BadRequest("Target user is not a doctor");

@@ -1,0 +1,70 @@
+-- =============================================
+-- Script: Encrypt Existing MobilePhone Data
+-- Description: Encrypts plain text phone numbers in MobilePhoneEncrypted column
+--              This should be run AFTER the migration script and AFTER the application
+--              has been updated with the encryption service
+-- =============================================
+-- 
+-- IMPORTANT: This script uses a temporary stored procedure to encrypt data
+--            You need to have the encryption key configured in appsettings.json
+--            The encryption is done using AES-256, same as DateOfBirth encryption
+--
+-- NOTE: This script is provided as a reference. In practice, you should:
+--       1. Use the C# encryption service to encrypt the data
+--       2. Or use a one-time script similar to EncryptExistingDateOfBirthData.cs
+--       3. This SQL script cannot perform AES-256 encryption directly
+--
+-- RECOMMENDED APPROACH: Use the C# script EncryptExistingMobilePhoneData.cs instead
+-- =============================================
+
+-- =============================================
+-- Alternative: Manual Update Query (if you have encrypted values ready)
+-- =============================================
+-- If you have already encrypted the phone numbers using the C# service,
+-- you can update them directly:
+--
+-- UPDATE `Users`
+-- SET `MobilePhoneEncrypted` = 'ENCRYPTED_VALUE_HERE'
+-- WHERE `Id` = USER_ID_HERE;
+--
+-- =============================================
+-- Verification: Check for plain text phone numbers (before encryption)
+-- =============================================
+-- Plain text phone numbers typically:
+-- - Contain digits, +, -, spaces, parentheses
+-- - Are between 10-20 characters
+-- - Don't contain = (which is in base64 encoded strings)
+-- - Don't start with base64-like patterns
+--
+-- SELECT Id, FirstName, LastName, MobilePhoneEncrypted
+-- FROM `Users`
+-- WHERE MobilePhoneEncrypted IS NOT NULL
+--   AND MobilePhoneEncrypted != ''
+--   AND (
+--     -- Check if it looks like plain text (contains + or - or spaces, and is short)
+--     (MobilePhoneEncrypted LIKE '%+%' OR MobilePhoneEncrypted LIKE '%-%' OR MobilePhoneEncrypted LIKE '% %')
+--     OR
+--     -- Check if it doesn't look like base64 (no = at the end, short length)
+--     (MobilePhoneEncrypted NOT LIKE '%=%' AND LENGTH(MobilePhoneEncrypted) < 30)
+--   )
+-- LIMIT 10;
+
+-- =============================================
+-- After encryption, verify encrypted values
+-- =============================================
+-- Encrypted phone numbers typically:
+-- - Are base64 encoded (contain = at the end)
+-- - Are longer (typically 40+ characters)
+-- - Don't contain phone number characters like +, -, spaces
+--
+-- SELECT Id, FirstName, LastName, 
+--        LENGTH(MobilePhoneEncrypted) as EncryptedLength,
+--        CASE 
+--          WHEN MobilePhoneEncrypted LIKE '%=%' THEN 'Likely Encrypted'
+--          ELSE 'Likely Plain Text'
+--        END as EncryptionStatus
+-- FROM `Users`
+-- WHERE MobilePhoneEncrypted IS NOT NULL
+--   AND MobilePhoneEncrypted != ''
+-- LIMIT 10;
+

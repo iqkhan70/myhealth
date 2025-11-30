@@ -43,7 +43,27 @@ namespace SM_MentalHealthApp.Shared
         }
         
         public string? Gender { get; set; }
-        public string? MobilePhone { get; set; } // Mobile phone for SMS alerts
+        
+        // Encrypted MobilePhone stored in database (not sent to client for security)
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? MobilePhoneEncrypted { get; set; }
+        
+        // Computed property for decrypted MobilePhone (not stored in DB, sent to client)
+        // This will be populated by the service layer after decryption
+        private string? _decryptedMobilePhone;
+        public string? MobilePhone 
+        { 
+            get 
+            {
+                // This will be set by the service layer after decryption
+                return _decryptedMobilePhone;
+            }
+            set 
+            {
+                _decryptedMobilePhone = value;
+            }
+        }
+        
         public int RoleId { get; set; } = 1; // Default to Patient role
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastLoginAt { get; set; }

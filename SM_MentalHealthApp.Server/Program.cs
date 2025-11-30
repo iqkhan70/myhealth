@@ -1,5 +1,13 @@
 using SM_MentalHealthApp.Server;
+using SM_MentalHealthApp.Server.Scripts;
 using StackExchange.Redis;
+
+// Check for encryption script argument
+if (args.Contains("--encrypt-mobilephones"))
+{
+    await EncryptExistingMobilePhoneData.RunAsync();
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 

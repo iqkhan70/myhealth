@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Server.Models;
+using SM_MentalHealthApp.Server.Helpers;
 using SM_MentalHealthApp.Shared;
 using System.Collections.Concurrent;
 using System.Net;
@@ -19,14 +20,16 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly ILogger<NotificationService> _logger;
         private readonly ISmsService _smsService;
         private readonly IConfiguration _configuration;
+        private readonly IPiiEncryptionService _encryptionService;
         private readonly ConcurrentDictionary<int, List<SM_MentalHealthApp.Shared.EmergencyAlert>> _pendingAlerts = new();
 
-        public NotificationService(JournalDbContext context, ILogger<NotificationService> logger, ISmsService smsService, IConfiguration configuration)
+        public NotificationService(JournalDbContext context, ILogger<NotificationService> logger, ISmsService smsService, IConfiguration configuration, IPiiEncryptionService encryptionService)
         {
             _context = context;
             _logger = logger;
             _smsService = smsService;
             _configuration = configuration;
+            _encryptionService = encryptionService;
         }
 
         public async Task SendEmergencyAlert(int doctorId, SM_MentalHealthApp.Shared.EmergencyAlert alert)
@@ -247,6 +250,9 @@ namespace SM_MentalHealthApp.Server.Services
                     _logger.LogWarning("Doctor {DoctorId} not found for SMS notification", doctorId);
                     return;
                 }
+
+                // Decrypt PII data (including MobilePhone) before using for SMS
+                UserEncryptionHelper.DecryptUserData(doctor, _encryptionService);
 
                 if (string.IsNullOrEmpty(doctor.MobilePhone))
                 {

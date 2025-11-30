@@ -45,9 +45,25 @@ namespace SM_MentalHealthApp.Shared
         [MaxLength(20)]
         public string Gender { get; set; } = string.Empty;
         
-        [Required]
-        [MaxLength(20)]
-        public string MobilePhone { get; set; } = string.Empty;
+        // Encrypted MobilePhone stored in database (not sent to client for security)
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string MobilePhoneEncrypted { get; set; } = string.Empty;
+        
+        // Computed property for decrypted MobilePhone (not stored in DB, sent to client)
+        // This will be populated by the service layer after decryption
+        private string _decryptedMobilePhone = string.Empty;
+        public string MobilePhone 
+        { 
+            get 
+            {
+                // This will be set by the service layer after decryption
+                return _decryptedMobilePhone;
+            }
+            set 
+            {
+                _decryptedMobilePhone = value;
+            }
+        }
         
         [Required]
         [MaxLength(1000)]

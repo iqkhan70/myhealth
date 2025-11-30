@@ -79,7 +79,14 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
                         entity.HasIndex(e => e.Email).IsUnique();
                         entity.Property(e => e.Gender).HasMaxLength(20);
-                        entity.Property(e => e.MobilePhone).HasMaxLength(20);
+                        
+                        // MobilePhone is stored encrypted as string
+                        entity.Property(e => e.MobilePhoneEncrypted)
+                            .HasMaxLength(500); // Enough for encrypted phone number
+                        
+                        // Ignore the computed MobilePhone property (not stored in DB)
+                        entity.Ignore(e => e.MobilePhone);
+                        
                         entity.Property(e => e.Specialization).HasMaxLength(100);
                         entity.Property(e => e.LicenseNumber).HasMaxLength(50);
                         
@@ -106,8 +113,16 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
                         entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
                         entity.HasIndex(e => e.Email);
-                        entity.Property(e => e.MobilePhone).IsRequired().HasMaxLength(20);
-                        entity.HasIndex(e => e.MobilePhone);
+                        
+                        // MobilePhone is stored encrypted as string
+                        entity.Property(e => e.MobilePhoneEncrypted)
+                            .IsRequired()
+                            .HasMaxLength(500); // Enough for encrypted phone number
+                        
+                        // Note: We can't index encrypted data, so we remove the index on MobilePhone
+                        // Ignore the computed MobilePhone property (not stored in DB)
+                        entity.Ignore(e => e.MobilePhone);
+                        
                         entity.Property(e => e.Gender).IsRequired().HasMaxLength(20);
                         entity.Property(e => e.Reason).IsRequired().HasMaxLength(1000);
                         entity.Property(e => e.Status).HasConversion<int>(); // Store enum as int

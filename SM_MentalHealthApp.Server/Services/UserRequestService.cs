@@ -35,13 +35,36 @@ namespace SM_MentalHealthApp.Server.Services
 
         public async Task<bool> ValidateEmailAndPhoneAsync(string email, string mobilePhone)
         {
-            // Check if email or phone already exists in Users table
-            var existingUser = await _context.Users
-                .FirstOrDefaultAsync(u => 
-                    (u.Email.ToLower() == email.ToLower()) || 
-                    (u.MobilePhone != null && u.MobilePhone == mobilePhone));
+            // Check if email already exists (email is not encrypted, so direct comparison is fine)
+            var existingUserByEmail = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
 
-            return existingUser == null; // Returns true if email/phone is available
+            if (existingUserByEmail != null)
+            {
+                return false; // Email already exists
+            }
+
+            // Check if phone number already exists
+            // Since MobilePhone is encrypted, we need to decrypt all users' phone numbers and compare
+            if (!string.IsNullOrEmpty(mobilePhone))
+            {
+                var allUsers = await _context.Users
+                    .Where(u => u.MobilePhoneEncrypted != null)
+                    .ToListAsync();
+
+                // Decrypt all users' phone numbers for comparison
+                UserEncryptionHelper.DecryptUserData(allUsers, _encryptionService);
+
+                var existingUserByPhone = allUsers
+                    .FirstOrDefault(u => !string.IsNullOrEmpty(u.MobilePhone) && u.MobilePhone == mobilePhone);
+
+                if (existingUserByPhone != null)
+                {
+                    return false; // Phone number already exists
+                }
+            }
+
+            return true; // Email and phone are available
         }
 
         public async Task<UserRequest> CreateUserRequestAsync(CreateUserRequestRequest request)
@@ -54,10 +77,18 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             // Check if there's already a pending request with same email or phone
-            var existingRequest = await _context.UserRequests
-                .FirstOrDefaultAsync(ur => 
-                    (ur.Email.ToLower() == request.Email.ToLower() || ur.MobilePhone == request.MobilePhone) &&
-                    ur.Status == UserRequestStatus.Pending);
+            // Load all pending requests and decrypt them for comparison
+            var allPendingRequests = await _context.UserRequests
+                .Where(ur => ur.Status == UserRequestStatus.Pending)
+                .ToListAsync();
+            
+            // Decrypt phone numbers for comparison
+            UserEncryptionHelper.DecryptUserRequestData(allPendingRequests, _encryptionService);
+            
+            var existingRequest = allPendingRequests
+                .FirstOrDefault(ur => 
+                    (ur.Email.ToLower() == request.Email.ToLower() || 
+                     (!string.IsNullOrEmpty(ur.MobilePhone) && ur.MobilePhone == request.MobilePhone)));
 
             if (existingRequest != null)
             {
@@ -182,14 +213,31 @@ namespace SM_MentalHealthApp.Server.Services
             // If already approved, check if user exists (might have been approved before)
             if (userRequest.Status == UserRequestStatus.Approved)
             {
-                var existingUser = await _context.Users
-                    .FirstOrDefaultAsync(u => 
-                        (u.Email.ToLower() == userRequest.Email.ToLower()) || 
-                        (u.MobilePhone != null && u.MobilePhone == userRequest.MobilePhone));
+                // Check email first (not encrypted)
+                var existingUserByEmail = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email.ToLower() == userRequest.Email.ToLower());
                 
-                if (existingUser != null)
+                if (existingUserByEmail != null)
                 {
                     throw new InvalidOperationException("This request was already approved and a user account already exists.");
+                }
+                
+                // Check phone number (need to decrypt all users' phones for comparison)
+                if (!string.IsNullOrEmpty(userRequest.MobilePhone))
+                {
+                    var allUsersWithPhones = await _context.Users
+                        .Where(u => u.MobilePhoneEncrypted != null)
+                        .ToListAsync();
+                    
+                    UserEncryptionHelper.DecryptUserData(allUsersWithPhones, _encryptionService);
+                    
+                    var existingUserByPhone = allUsersWithPhones
+                        .FirstOrDefault(u => !string.IsNullOrEmpty(u.MobilePhone) && u.MobilePhone == userRequest.MobilePhone);
+                    
+                    if (existingUserByPhone != null)
+                    {
+                        throw new InvalidOperationException("This request was already approved and a user account already exists.");
+                    }
                 }
                 // If approved but user doesn't exist, allow re-approval (edge case)
             }
@@ -213,13 +261,16 @@ namespace SM_MentalHealthApp.Server.Services
                 PasswordHash = HashPassword(tempPassword),
                 DateOfBirth = userRequest.DateOfBirth,
                 Gender = userRequest.Gender,
-                MobilePhone = userRequest.MobilePhone,
+                MobilePhone = userRequest.MobilePhone, // Will be encrypted before save
                 RoleId = Roles.Patient, // Create as Patient
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true,
                 IsFirstLogin = true,
                 MustChangePassword = true // Force password change on first login
             };
+
+            // Encrypt PII data (DateOfBirth and MobilePhone) before saving
+            UserEncryptionHelper.EncryptUserData(user, _encryptionService);
 
             _context.Users.Add(user);
             
