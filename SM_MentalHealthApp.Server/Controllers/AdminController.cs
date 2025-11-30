@@ -1103,10 +1103,17 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // Update password only if provided and not empty
+                // Don't change MustChangePassword for existing users - preserve existing value
                 if (!string.IsNullOrWhiteSpace(request.Password))
                 {
                     patient.PasswordHash = HashPassword(request.Password);
-                    patient.MustChangePassword = true;
+                    // Only set MustChangePassword if it's a new user (IsFirstLogin is true)
+                    // For existing users, preserve the current MustChangePassword value
+                    if (patient.IsFirstLogin)
+                    {
+                        patient.MustChangePassword = true;
+                    }
+                    // Otherwise, keep the existing MustChangePassword value unchanged
                 }
 
                 // Ensure DateOfBirth is encrypted before saving (only if DateOfBirth was set but not encrypted above)
@@ -1223,10 +1230,17 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // Update password only if provided and not empty
+                // Don't change MustChangePassword for existing users - preserve existing value
                 if (!string.IsNullOrWhiteSpace(request.Password))
                 {
                     doctor.PasswordHash = HashPassword(request.Password);
-                    doctor.MustChangePassword = true;
+                    // Only set MustChangePassword if it's a new user (IsFirstLogin is true)
+                    // For existing users, preserve the current MustChangePassword value
+                    if (doctor.IsFirstLogin)
+                    {
+                        doctor.MustChangePassword = true;
+                    }
+                    // Otherwise, keep the existing MustChangePassword value unchanged
                 }
 
                 await _context.SaveChangesAsync();
@@ -1369,10 +1383,17 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // Update password only if provided
+                // Don't change MustChangePassword for existing users - preserve existing value
                 if (!string.IsNullOrWhiteSpace(request.Password))
                 {
                     coordinator.PasswordHash = HashPassword(request.Password);
-                    coordinator.MustChangePassword = true;
+                    // Only set MustChangePassword if it's a new user (IsFirstLogin is true)
+                    // For existing users, preserve the current MustChangePassword value
+                    if (coordinator.IsFirstLogin)
+                    {
+                        coordinator.MustChangePassword = true;
+                    }
+                    // Otherwise, keep the existing MustChangePassword value unchanged
                 }
 
                 // Ensure DateOfBirth is encrypted before saving (in case it wasn't updated above)
@@ -1523,10 +1544,17 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // Update password only if provided
+                // Don't change MustChangePassword for existing users - preserve existing value
                 if (!string.IsNullOrWhiteSpace(request.Password))
                 {
                     attorney.PasswordHash = HashPassword(request.Password);
-                    attorney.MustChangePassword = true;
+                    // Only set MustChangePassword if it's a new user (IsFirstLogin is true)
+                    // For existing users, preserve the current MustChangePassword value
+                    if (attorney.IsFirstLogin)
+                    {
+                        attorney.MustChangePassword = true;
+                    }
+                    // Otherwise, keep the existing MustChangePassword value unchanged
                 }
 
                 // Ensure DateOfBirth is encrypted before saving (in case it wasn't updated above)
@@ -1601,22 +1629,26 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        /// <summary>
+        /// Hash password using the same method as AuthService for consistency
+        /// This ensures passwords created here can be verified by AuthService
+        /// </summary>
         private string HashPassword(string password)
         {
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                var salt = new byte[16];
-                rng.GetBytes(salt);
+            // Use the same PBKDF2 hashing method as AuthService for consistency
+            // 32-byte salt, 100,000 iterations, SHA256, 64-byte output
+            using var rng = RandomNumberGenerator.Create();
+            var salt = new byte[32];
+            rng.GetBytes(salt);
 
-                using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 10000, HashAlgorithmName.SHA256))
-                {
-                    var hash = pbkdf2.GetBytes(32);
-                    var hashBytes = new byte[48];
-                    Array.Copy(salt, 0, hashBytes, 0, 16);
-                    Array.Copy(hash, 0, hashBytes, 16, 32);
-                    return Convert.ToBase64String(hashBytes);
-                }
-            }
+            using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 100000, HashAlgorithmName.SHA256);
+            var hash = pbkdf2.GetBytes(32);
+
+            var hashBytes = new byte[64];
+            Array.Copy(salt, 0, hashBytes, 0, 32);
+            Array.Copy(hash, 0, hashBytes, 32, 32);
+
+            return Convert.ToBase64String(hashBytes);
         }
     }
 
