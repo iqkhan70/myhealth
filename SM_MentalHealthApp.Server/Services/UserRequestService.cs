@@ -61,7 +61,6 @@ namespace SM_MentalHealthApp.Server.Services
 
             if (existingUserByEmail != null)
             {
-                _logger.LogWarning("ValidateEmailAndPhoneAsync: Email already exists - {Email}", email);
                 return false; // Email already exists
             }
 
@@ -70,13 +69,10 @@ namespace SM_MentalHealthApp.Server.Services
             if (!string.IsNullOrEmpty(mobilePhone))
             {
                 var normalizedInputPhone = NormalizePhoneNumber(mobilePhone);
-                _logger.LogInformation("ValidateEmailAndPhoneAsync: Checking phone - Input: {InputPhone}, Normalized: {NormalizedPhone}", mobilePhone, normalizedInputPhone);
                 
                 var allUsers = await _context.Users
                     .Where(u => u.MobilePhoneEncrypted != null && u.MobilePhoneEncrypted != string.Empty)
                     .ToListAsync();
-
-                _logger.LogInformation("ValidateEmailAndPhoneAsync: Found {Count} users with phone numbers", allUsers.Count);
 
                 // Decrypt all users' phone numbers for comparison
                 UserEncryptionHelper.DecryptUserData(allUsers, _encryptionService);
@@ -88,25 +84,15 @@ namespace SM_MentalHealthApp.Server.Services
                             return false;
                         
                         var normalizedUserPhone = NormalizePhoneNumber(u.MobilePhone);
-                        var matches = normalizedUserPhone == normalizedInputPhone;
-                        
-                        if (matches)
-                        {
-                            _logger.LogWarning("ValidateEmailAndPhoneAsync: Phone match found - UserId: {UserId}, UserPhone: {UserPhone}, NormalizedUserPhone: {NormalizedUserPhone}, InputPhone: {InputPhone}, NormalizedInputPhone: {NormalizedInputPhone}", 
-                                u.Id, u.MobilePhone, normalizedUserPhone, mobilePhone, normalizedInputPhone);
-                        }
-                        
-                        return matches;
+                        return normalizedUserPhone == normalizedInputPhone;
                     });
 
                 if (existingUserByPhone != null)
                 {
-                    _logger.LogWarning("ValidateEmailAndPhoneAsync: Phone number already exists - UserId: {UserId}, Phone: {Phone}", existingUserByPhone.Id, existingUserByPhone.MobilePhone);
                     return false; // Phone number already exists
                 }
             }
 
-            _logger.LogInformation("ValidateEmailAndPhoneAsync: Email and phone are available - Email: {Email}, Phone: {Phone}", email, mobilePhone);
             return true; // Email and phone are available
         }
 
@@ -125,37 +111,22 @@ namespace SM_MentalHealthApp.Server.Services
                 .Where(ur => ur.Status == UserRequestStatus.Pending)
                 .ToListAsync();
             
-            _logger.LogInformation("CreateUserRequestAsync: Found {Count} pending requests to check", allPendingRequests.Count);
-            
             // Decrypt phone numbers for comparison
             UserEncryptionHelper.DecryptUserRequestData(allPendingRequests, _encryptionService);
             
             var normalizedInputPhone = NormalizePhoneNumber(request.MobilePhone);
-            _logger.LogInformation("CreateUserRequestAsync: Checking for existing request - Email: {Email}, Phone: {Phone}, NormalizedPhone: {NormalizedPhone}", 
-                request.Email, request.MobilePhone, normalizedInputPhone);
             
             var existingRequest = allPendingRequests
                 .FirstOrDefault(ur => 
                 {
                     var emailMatch = ur.Email.ToLower() == request.Email.ToLower();
                     if (emailMatch)
-                    {
-                        _logger.LogWarning("CreateUserRequestAsync: Found pending request with matching email - RequestId: {RequestId}, Email: {Email}", ur.Id, ur.Email);
                         return true;
-                    }
                     
                     if (!string.IsNullOrEmpty(ur.MobilePhone) && !string.IsNullOrEmpty(request.MobilePhone))
                     {
                         var normalizedRequestPhone = NormalizePhoneNumber(ur.MobilePhone);
-                        var phoneMatch = normalizedRequestPhone == normalizedInputPhone;
-                        
-                        if (phoneMatch)
-                        {
-                            _logger.LogWarning("CreateUserRequestAsync: Found pending request with matching phone - RequestId: {RequestId}, RequestPhone: {RequestPhone}, NormalizedRequestPhone: {NormalizedRequestPhone}, InputPhone: {InputPhone}, NormalizedInputPhone: {NormalizedInputPhone}", 
-                                ur.Id, ur.MobilePhone, normalizedRequestPhone, request.MobilePhone, normalizedInputPhone);
-                        }
-                        
-                        return phoneMatch;
+                        return normalizedRequestPhone == normalizedInputPhone;
                     }
                     
                     return false;
