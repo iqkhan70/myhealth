@@ -1470,6 +1470,14 @@ export default function App() {
                 setUser(userData);
                 userRef.current = userData;
                 
+                // Load contacts for patients (doctors/coordinators/attorneys)
+                // Use setTimeout to ensure state is set and avoid race conditions
+                setTimeout(async () => {
+                  if (!loadingContactsRef.current && lastLoadedUserIdRef.current !== userData.id) {
+                    await loadContactsForUser(userData, token);
+                  }
+                }, 300);
+                
                 // Initialize services after password change
                 await loadAvailablePatients(userData, token);
                 await initializeSignalR(token);

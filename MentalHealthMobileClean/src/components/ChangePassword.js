@@ -77,25 +77,15 @@ const ChangePassword = ({ user, onPasswordChanged, onCancel }) => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        Alert.alert(
-          'Success',
-          'Password changed successfully!',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Update user in storage to clear mustChangePassword flag
-                if (user) {
-                  const updatedUser = { ...user, mustChangePassword: false };
-                  AsyncStorage.setItem('currentUser', JSON.stringify(updatedUser));
-                }
-                if (onPasswordChanged) {
-                  onPasswordChanged();
-                }
-              },
-            },
-          ]
-        );
+        // Update user in storage to clear mustChangePassword flag
+        if (user) {
+          const updatedUser = { ...user, mustChangePassword: false };
+          AsyncStorage.setItem('currentUser', JSON.stringify(updatedUser));
+        }
+        // Automatically proceed to welcome page without requiring user to click OK
+        if (onPasswordChanged) {
+          onPasswordChanged();
+        }
       } else {
         Alert.alert('Error', data.message || 'Failed to change password');
       }
