@@ -74,7 +74,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     .AsQueryable();
                 
                 // For attorneys, filter by assigned patients
-                if (currentRoleId == Roles.Attorney && currentUserId.HasValue)
+                if (currentRoleId.HasValue && currentRoleId.Value == Shared.Constants.Roles.Attorney && currentUserId.HasValue)
                 {
                     // Get assigned patient IDs for this attorney
                     var assignedPatientIds = await _context.UserAssignments
@@ -84,7 +84,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     
                     if (!assignedPatientIds.Any())
                     {
-                        // No assigned patients, return empty list
+                        // No assigned patients, return empty list (same structure as successful query)
                         return Ok(new List<object>());
                     }
                     
@@ -265,7 +265,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 // Attorneys cannot edit content (read-only access)
                 var currentRoleId = GetCurrentRoleId();
-                if (currentRoleId == Roles.Attorney)
+                if (currentRoleId == Shared.Constants.Roles.Attorney)
                 {
                     return Forbid("Attorneys have read-only access to patient content and cannot edit it.");
                 }

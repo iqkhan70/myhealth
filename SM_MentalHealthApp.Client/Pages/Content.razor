@@ -251,8 +251,22 @@
                 // For doctors and coordinators, filter client-side
                 if (AuthService.CurrentUser?.RoleId == 5) // Attorney - server already filtered
                 {
-                    var response = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
-                    return response ?? new List<ContentItemDto>();
+                    try
+                    {
+                        var response = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
+                        return response ?? new List<ContentItemDto>();
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log the error for debugging
+                        Console.WriteLine($"Error loading content for attorney: {ex.Message}");
+                        // Only show error for actual failures (401, 403, etc.), not for empty results
+                        if (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized"))
+                        {
+                            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load content: " + ex.Message);
+                        }
+                        return new List<ContentItemDto>();
+                    }
                 }
                 else // Doctor or Coordinator - filter client-side
                 {
