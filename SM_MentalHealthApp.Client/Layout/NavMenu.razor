@@ -1,9 +1,13 @@
 ﻿<div class="nav-menu">
     <nav class="nav-menu-items">
-        <a href="/" class="nav-item @(GetActiveClass("/"))">
-            <i class="nav-icon">🏠</i>
-            <span>Home</span>
-        </a>
+        @* Hide Home link for Coordinator *@
+        @if (AuthService.CurrentUser?.RoleId != 4)
+        {
+            <a href="/" class="nav-item @(GetActiveClass("/"))">
+                <i class="nav-icon">🏠</i>
+                <span>Home</span>
+            </a>
+        }
 
         @* Patient-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 1) // Patient
@@ -143,16 +147,16 @@
             </a>
             <a href="/users" class="nav-item @(GetActiveClass("/users"))">
                 <i class="nav-icon">👥</i>
-                <span>My Patients</span>
+                <span>My Clients</span>
             </a>
             <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
                 <i class="nav-icon">💬</i>
-                <span>Patient Chat</span>
+                <span>Client Chat</span>
                 <div class="nav-badge">Live</div>
             </a>
             <a href="/content" class="nav-item @(GetActiveClass("/content"))">
                 <i class="nav-icon">📁</i>
-                <span>Patient Content</span>
+                <span>Client Content</span>
             </a>
             <a href="/user-requests" class="nav-item @(GetActiveClass("/user-requests"))">
                 <i class="nav-icon">📋</i>

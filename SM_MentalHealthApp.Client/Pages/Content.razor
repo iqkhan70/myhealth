@@ -32,8 +32,8 @@
         }
         else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
         {
-            <h2>Patient Content</h2>
-            <p>View patient content and documents.</p>
+            <h2>Client Content</h2>
+            <p>View client content and documents.</p>
         }
         else if (AuthService.CurrentUser?.RoleId == 5) // Attorney
         {
@@ -325,13 +325,20 @@
             new SMDataGridTemplateColumn<ContentItemDto>
             {
                 Property = nameof(ContentItemDto.PatientId),
-                Title = "Patient",
+                Title = AuthService.CurrentUser?.RoleId == 4 ? "Client" : "Patient", // Coordinator sees "Client", others see "Patient"
                 Width = "150px",
                 Template = content => builder =>
                 {
                     builder.OpenElement(0, "div");
                     builder.OpenElement(1, "strong");
-                    builder.AddContent(2, $"Patient #{content.PatientId}");
+                    if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
+                    {
+                        builder.AddContent(2, $"Client #{content.PatientId}");
+                    }
+                    else
+                    {
+                        builder.AddContent(2, $"Patient #{content.PatientId}");
+                    }
                     builder.CloseElement();
                     builder.OpenElement(3, "br");
                     builder.CloseElement();
