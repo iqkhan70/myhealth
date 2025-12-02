@@ -64,6 +64,7 @@
                                AllowFiltering="true"
                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                ShowFilterRow="true"
+                               RowExpand="@(async (UserRequest request) => await OnRowExpand(request))"
                                @ref="dataGrid">
                     <Columns>
                         <RadzenDataGridColumn TItem="UserRequest" Property="RequestedAt" Title="Requested" Width="150px" Filterable="true">
@@ -139,6 +140,74 @@
                             </Template>
                         </RadzenDataGridColumn>
                     </Columns>
+                    <Template Context="request">
+                        @if (expandedRequests.ContainsKey(request.Id))
+                        {
+                            var expandedRequest = expandedRequests[request.Id];
+                            <div class="p-4" style="background-color: #f8f9fa; border-top: 2px solid #dee2e6;">
+                                <h6 class="mb-3">Accident Information</h6>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label"><strong>Age:</strong></label>
+                                        <div>@(expandedRequest.Age?.ToString() ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label"><strong>Race:</strong></label>
+                                        <div>@(expandedRequest.Race ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label"><strong>Accident Address:</strong></label>
+                                        <div>@(expandedRequest.AccidentAddress ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label"><strong>Accident Date:</strong></label>
+                                        <div>@(expandedRequest.AccidentDate?.ToString("MM/dd/yyyy") ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label"><strong>Date Reported:</strong></label>
+                                        <div>@(expandedRequest.DateReported?.ToString("MM/dd/yyyy") ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label"><strong>Vehicle Details:</strong></label>
+                                        <div>@(expandedRequest.VehicleDetails ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label"><strong>Police Case Number:</strong></label>
+                                        <div>@(expandedRequest.PoliceCaseNumber ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label"><strong>Road Conditions:</strong></label>
+                                        <div>@(expandedRequest.RoadConditions ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label"><strong>Accident Details:</strong></label>
+                                        <div style="white-space: pre-wrap;">@(expandedRequest.AccidentDetails ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label"><strong>Doctor's Information:</strong></label>
+                                        <div style="white-space: pre-wrap;">@(expandedRequest.DoctorsInformation ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label"><strong>Lawyer's Information:</strong></label>
+                                        <div style="white-space: pre-wrap;">@(expandedRequest.LawyersInformation ?? "Not provided")</div>
+                                    </div>
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label"><strong>Additional Notes:</strong></label>
+                                        <div style="white-space: pre-wrap;">@(expandedRequest.AdditionalNotes ?? "Not provided")</div>
+                                    </div>
+                                    @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator can edit
+                                    {
+                                        <div class="col-12 mt-3">
+                                            <RadzenButton Text="Edit Accident Information" 
+                                                         ButtonStyle="ButtonStyle.Primary" 
+                                                         Size="ButtonSize.Small"
+                                                         Click="@(() => ShowEditAccidentInfoDialog(expandedRequest))" />
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </Template>
                 </RadzenDataGrid>
             }
         </div>
@@ -293,6 +362,91 @@
     </SMModal>
 }
 
+<!-- Edit Accident Information Dialog -->
+@if (showEditAccidentInfoDialog && selectedRequest != null)
+{
+    <SMModal IsVisible="@showEditAccidentInfoDialog" 
+             Title="Edit Accident Information" 
+             OnClose="@(() => { showEditAccidentInfoDialog = false; selectedRequest = null; })"
+             Size="Large">
+        <Body>
+            <div class="dialog-content">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Age" class="w-100">
+                            <RadzenNumeric @bind-Value="editAge" Min="0" Max="150" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Race" class="w-100">
+                            <RadzenTextBox @bind-Value="editRace" MaxLength="100" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Accident Address" class="w-100">
+                            <RadzenTextArea @bind-Value="editAccidentAddress" MaxLength="500" Rows="2" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Accident Date" class="w-100">
+                            <RadzenDatePicker @bind-Value="editAccidentDate" DateFormat="MM/dd/yyyy" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Date Reported" class="w-100">
+                            <RadzenDatePicker @bind-Value="editDateReported" DateFormat="MM/dd/yyyy" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Vehicle Details" class="w-100">
+                            <RadzenTextArea @bind-Value="editVehicleDetails" MaxLength="1000" Rows="3" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Police Case Number" class="w-100">
+                            <RadzenTextBox @bind-Value="editPoliceCaseNumber" MaxLength="100" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Road Conditions" class="w-100">
+                            <RadzenTextBox @bind-Value="editRoadConditions" MaxLength="200" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Accident Details" class="w-100">
+                            <RadzenTextArea @bind-Value="editAccidentDetails" MaxLength="2000" Rows="4" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Doctor's Information" class="w-100">
+                            <RadzenTextArea @bind-Value="editDoctorsInformation" MaxLength="1000" Rows="3" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Lawyer's Information" class="w-100">
+                            <RadzenTextArea @bind-Value="editLawyersInformation" MaxLength="1000" Rows="3" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Additional Notes" class="w-100">
+                            <RadzenTextArea @bind-Value="editAdditionalNotes" MaxLength="2000" Rows="4" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                </div>
+                
+                <div class="dialog-actions">
+                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" 
+                                 Click="@(() => { showEditAccidentInfoDialog = false; selectedRequest = null; })" 
+                                 Disabled="@isProcessing" />
+                    <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Primary" 
+                                 Click="@SaveAccidentInfo" 
+                                 Disabled="@isProcessing" />
+                </div>
+            </div>
+        </Body>
+    </SMModal>
+}
+
 @code {
     private List<UserRequest> userRequests = new();
     private bool isLoading = true;
@@ -301,6 +455,7 @@
     private bool showRejectDialog = false;
     private bool showPendingDialog = false;
     private bool showDetailsDialog = false;
+    private bool showEditAccidentInfoDialog = false;
     private bool isProcessing = false;
     private string approveNotes = "";
     private string rejectNotes = "";
@@ -308,6 +463,21 @@
     private UserRequestStatus? selectedStatusFilter = null;
     private System.Threading.Timer? _refreshTimer;
     private RadzenDataGrid<UserRequest>? dataGrid;
+    private Dictionary<int, UserRequest> expandedRequests = new();
+    
+    // Accident information form
+    private int? editAge;
+    private string editRace = "";
+    private string editAccidentAddress = "";
+    private DateTime? editAccidentDate;
+    private string editVehicleDetails = "";
+    private DateTime? editDateReported;
+    private string editPoliceCaseNumber = "";
+    private string editAccidentDetails = "";
+    private string editRoadConditions = "";
+    private string editDoctorsInformation = "";
+    private string editLawyersInformation = "";
+    private string editAdditionalNotes = "";
 
     private class StatusFilterOption
     {
@@ -425,6 +595,102 @@
     {
         selectedRequest = request;
         showDetailsDialog = true;
+    }
+    
+    private async Task OnRowExpand(UserRequest request)
+    {
+        if (!expandedRequests.ContainsKey(request.Id))
+        {
+            // Fetch full request details
+            try
+            {
+                var fullRequest = await Http.GetFromJsonAsync<UserRequest>($"api/UserRequest/{request.Id}");
+                if (fullRequest != null)
+                {
+                    expandedRequests[request.Id] = fullRequest;
+                    StateHasChanged();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading request details: {ex.Message}");
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load request details: " + ex.Message);
+            }
+        }
+    }
+    
+    private void ShowEditAccidentInfoDialog(UserRequest request)
+    {
+        selectedRequest = request;
+        editAge = request.Age;
+        editRace = request.Race ?? "";
+        editAccidentAddress = request.AccidentAddress ?? "";
+        editAccidentDate = request.AccidentDate;
+        editVehicleDetails = request.VehicleDetails ?? "";
+        editDateReported = request.DateReported;
+        editPoliceCaseNumber = request.PoliceCaseNumber ?? "";
+        editAccidentDetails = request.AccidentDetails ?? "";
+        editRoadConditions = request.RoadConditions ?? "";
+        editDoctorsInformation = request.DoctorsInformation ?? "";
+        editLawyersInformation = request.LawyersInformation ?? "";
+        editAdditionalNotes = request.AdditionalNotes ?? "";
+        showEditAccidentInfoDialog = true;
+    }
+    
+    private async Task SaveAccidentInfo()
+    {
+        if (selectedRequest == null) return;
+        
+        try
+        {
+            isProcessing = true;
+            StateHasChanged();
+            
+            var updateRequest = new
+            {
+                Age = editAge,
+                Race = editRace,
+                AccidentAddress = editAccidentAddress,
+                AccidentDate = editAccidentDate,
+                VehicleDetails = editVehicleDetails,
+                DateReported = editDateReported,
+                PoliceCaseNumber = editPoliceCaseNumber,
+                AccidentDetails = editAccidentDetails,
+                RoadConditions = editRoadConditions,
+                DoctorsInformation = editDoctorsInformation,
+                LawyersInformation = editLawyersInformation,
+                AdditionalNotes = editAdditionalNotes
+            };
+            
+            var response = await Http.PutAsJsonAsync($"api/UserRequest/{selectedRequest.Id}/accident-info", updateRequest);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Accident information updated successfully");
+                showEditAccidentInfoDialog = false;
+                // Refresh the request
+                await LoadUserRequests();
+                // Clear expanded cache for this request
+                if (expandedRequests.ContainsKey(selectedRequest.Id))
+                {
+                    expandedRequests.Remove(selectedRequest.Id);
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to update accident information: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Error updating accident information: {ex.Message}");
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
     }
 
     private async Task ApproveRequest()

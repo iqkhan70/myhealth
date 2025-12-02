@@ -19,6 +19,23 @@ namespace SM_MentalHealthApp.Server.Services
         Task<UserRequest> RejectUserRequestAsync(int id, int reviewerUserId, string notes);
         Task<UserRequest> MarkPendingUserRequestAsync(int id, int reviewerUserId, string notes);
         Task<bool> ValidateEmailAndPhoneAsync(string email, string mobilePhone);
+        Task<UserRequest> UpdateAccidentInfoAsync(int id, UpdateAccidentInfoRequest request);
+    }
+
+    public class UpdateAccidentInfoRequest
+    {
+        public int? Age { get; set; }
+        public string? Race { get; set; }
+        public string? AccidentAddress { get; set; }
+        public DateTime? AccidentDate { get; set; }
+        public string? VehicleDetails { get; set; }
+        public DateTime? DateReported { get; set; }
+        public string? PoliceCaseNumber { get; set; }
+        public string? AccidentDetails { get; set; }
+        public string? RoadConditions { get; set; }
+        public string? DoctorsInformation { get; set; }
+        public string? LawyersInformation { get; set; }
+        public string? AdditionalNotes { get; set; }
     }
 
     public class UserRequestService : IUserRequestService
@@ -38,7 +55,7 @@ namespace SM_MentalHealthApp.Server.Services
         {
             if (string.IsNullOrWhiteSpace(phone))
                 return string.Empty;
-            
+
             // Remove all non-digit characters except + at the start
             var normalized = phone.Trim();
             if (normalized.StartsWith("+"))
@@ -49,7 +66,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 normalized = new string(normalized.Where(char.IsDigit).ToArray());
             }
-            
+
             return normalized;
         }
 
@@ -69,7 +86,7 @@ namespace SM_MentalHealthApp.Server.Services
             if (!string.IsNullOrEmpty(mobilePhone))
             {
                 var normalizedInputPhone = NormalizePhoneNumber(mobilePhone);
-                
+
                 var allUsers = await _context.Users
                     .Where(u => u.MobilePhoneEncrypted != null && u.MobilePhoneEncrypted != string.Empty)
                     .ToListAsync();
@@ -78,11 +95,11 @@ namespace SM_MentalHealthApp.Server.Services
                 UserEncryptionHelper.DecryptUserData(allUsers, _encryptionService);
 
                 var existingUserByPhone = allUsers
-                    .FirstOrDefault(u => 
+                    .FirstOrDefault(u =>
                     {
                         if (string.IsNullOrEmpty(u.MobilePhone))
                             return false;
-                        
+
                         var normalizedUserPhone = NormalizePhoneNumber(u.MobilePhone);
                         return normalizedUserPhone == normalizedInputPhone;
                     });
@@ -110,25 +127,25 @@ namespace SM_MentalHealthApp.Server.Services
             var allPendingRequests = await _context.UserRequests
                 .Where(ur => ur.Status == UserRequestStatus.Pending)
                 .ToListAsync();
-            
+
             // Decrypt phone numbers for comparison
             UserEncryptionHelper.DecryptUserRequestData(allPendingRequests, _encryptionService);
-            
+
             var normalizedInputPhone = NormalizePhoneNumber(request.MobilePhone);
-            
+
             var existingRequest = allPendingRequests
-                .FirstOrDefault(ur => 
+                .FirstOrDefault(ur =>
                 {
                     var emailMatch = ur.Email.ToLower() == request.Email.ToLower();
                     if (emailMatch)
                         return true;
-                    
+
                     if (!string.IsNullOrEmpty(ur.MobilePhone) && !string.IsNullOrEmpty(request.MobilePhone))
                     {
                         var normalizedRequestPhone = NormalizePhoneNumber(ur.MobilePhone);
                         return normalizedRequestPhone == normalizedInputPhone;
                     }
-                    
+
                     return false;
                 });
 
@@ -139,7 +156,7 @@ namespace SM_MentalHealthApp.Server.Services
 
             // Normalize DateOfBirth to date-only (midnight, no timezone) to avoid timezone conversion issues
             var dateOfBirthDateOnly = request.DateOfBirth.Date; // Extract date part only, discarding time
-            
+
             var userRequest = new UserRequest
             {
                 FirstName = request.FirstName,
@@ -167,17 +184,17 @@ namespace SM_MentalHealthApp.Server.Services
             // After SaveChanges, EF Core might reset the computed DateOfBirth property
             // Reload from database to get the encrypted value, then decrypt
             await _context.Entry(userRequest).ReloadAsync();
-            
+
             // Decrypt DateOfBirth after saving for return value
             UserEncryptionHelper.DecryptUserRequestData(userRequest, _encryptionService);
-            
+
             // If decryption failed or returned MinValue, use the original date we stored
             if (userRequest.DateOfBirth == DateTime.MinValue && originalDateOfBirth != DateTime.MinValue)
             {
                 userRequest.DateOfBirth = originalDateOfBirth;
             }
 
-            _logger.LogInformation("User request created: ID={Id}, Email={Email}, Phone={Phone}, DateOfBirth={DateOfBirth}", 
+            _logger.LogInformation("User request created: ID={Id}, Email={Email}, Phone={Phone}, DateOfBirth={DateOfBirth}",
                 userRequest.Id, userRequest.Email, userRequest.MobilePhone, userRequest.DateOfBirth);
 
             return userRequest;
@@ -204,10 +221,10 @@ namespace SM_MentalHealthApp.Server.Services
             var allUsersWithPhones = await _context.Users
                 .Where(u => u.IsActive && u.MobilePhoneEncrypted != null)
                 .ToListAsync();
-            
+
             // Decrypt phone numbers for comparison
             UserEncryptionHelper.DecryptUserData(allUsersWithPhones, _encryptionService);
-            
+
             var existingUserPhones = allUsersWithPhones
                 .Where(u => !string.IsNullOrEmpty(u.MobilePhone))
                 .Select(u => NormalizePhoneNumber(u.MobilePhone!))
@@ -215,7 +232,7 @@ namespace SM_MentalHealthApp.Server.Services
 
             // Filter out requests where a user already exists with the same email or phone
             var filteredRequests = allRequests
-                .Where(ur => 
+                .Where(ur =>
                 {
                     // If request is approved, check if user exists
                     if (ur.Status == UserRequestStatus.Approved)
@@ -238,13 +255,13 @@ namespace SM_MentalHealthApp.Server.Services
             var userRequest = await _context.UserRequests
                 .Include(ur => ur.ReviewedByUser)
                 .FirstOrDefaultAsync(ur => ur.Id == id);
-            
+
             if (userRequest != null)
             {
                 // Decrypt DateOfBirth after loading
                 UserEncryptionHelper.DecryptUserRequestData(userRequest, _encryptionService);
             }
-            
+
             return userRequest;
         }
 
@@ -255,7 +272,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 throw new InvalidOperationException("User request not found.");
             }
-            
+
             // Decrypt DateOfBirth before using it
             UserEncryptionHelper.DecryptUserRequestData(userRequest, _encryptionService);
 
@@ -265,33 +282,33 @@ namespace SM_MentalHealthApp.Server.Services
                 // Check email first (not encrypted)
                 var existingUserByEmail = await _context.Users
                     .FirstOrDefaultAsync(u => u.Email.ToLower() == userRequest.Email.ToLower());
-                
+
                 if (existingUserByEmail != null)
                 {
                     throw new InvalidOperationException("This request was already approved and a user account already exists.");
                 }
-                
+
                 // Check phone number (need to decrypt all users' phones for comparison)
                 if (!string.IsNullOrEmpty(userRequest.MobilePhone))
                 {
                     var normalizedRequestPhone = NormalizePhoneNumber(userRequest.MobilePhone);
-                    
+
                     var allUsersWithPhones = await _context.Users
                         .Where(u => u.MobilePhoneEncrypted != null && u.MobilePhoneEncrypted != string.Empty)
                         .ToListAsync();
-                    
+
                     UserEncryptionHelper.DecryptUserData(allUsersWithPhones, _encryptionService);
-                    
+
                     var existingUserByPhone = allUsersWithPhones
-                        .FirstOrDefault(u => 
+                        .FirstOrDefault(u =>
                         {
                             if (string.IsNullOrEmpty(u.MobilePhone))
                                 return false;
-                            
+
                             var normalizedUserPhone = NormalizePhoneNumber(u.MobilePhone);
                             return normalizedUserPhone == normalizedRequestPhone;
                         });
-                    
+
                     if (existingUserByPhone != null)
                     {
                         throw new InvalidOperationException("This request was already approved and a user account already exists.");
@@ -324,25 +341,38 @@ namespace SM_MentalHealthApp.Server.Services
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true,
                 IsFirstLogin = true,
-                MustChangePassword = true // Force password change on first login
+                MustChangePassword = true, // Force password change on first login
+                // Copy accident-related fields from user request
+                Age = userRequest.Age,
+                Race = userRequest.Race,
+                AccidentAddress = userRequest.AccidentAddress,
+                AccidentDate = userRequest.AccidentDate,
+                VehicleDetails = userRequest.VehicleDetails,
+                DateReported = userRequest.DateReported,
+                PoliceCaseNumber = userRequest.PoliceCaseNumber,
+                AccidentDetails = userRequest.AccidentDetails,
+                RoadConditions = userRequest.RoadConditions,
+                DoctorsInformation = userRequest.DoctorsInformation,
+                LawyersInformation = userRequest.LawyersInformation,
+                AdditionalNotes = userRequest.AdditionalNotes
             };
 
             // Encrypt PII data (DateOfBirth and MobilePhone) before saving
             UserEncryptionHelper.EncryptUserData(user, _encryptionService);
 
             _context.Users.Add(user);
-            
+
             // Get reviewer name for notes
             var reviewer = await _context.Users.FindAsync(reviewerUserId);
             var reviewerName = reviewer != null ? $"{reviewer.FirstName} {reviewer.LastName}" : "System";
-            
+
             // Append notes instead of overwriting
             var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
             var newNoteEntry = $"\n\n--- APPROVED on {timestamp} by {reviewerName} ---\n{notes}";
-            userRequest.Notes = string.IsNullOrWhiteSpace(userRequest.Notes) 
-                ? newNoteEntry.TrimStart() 
+            userRequest.Notes = string.IsNullOrWhiteSpace(userRequest.Notes)
+                ? newNoteEntry.TrimStart()
                 : userRequest.Notes + newNoteEntry;
-            
+
             // Update user request
             userRequest.Status = UserRequestStatus.Approved;
             userRequest.ReviewedByUserId = reviewerUserId;
@@ -358,7 +388,7 @@ namespace SM_MentalHealthApp.Server.Services
                 // Check if assignment already exists (shouldn't, but be safe)
                 var existingAssignment = await _context.UserAssignments
                     .FirstOrDefaultAsync(ua => ua.AssignerId == reviewerUserId && ua.AssigneeId == user.Id);
-                
+
                 if (existingAssignment == null)
                 {
                     var assignment = new UserAssignment
@@ -368,11 +398,11 @@ namespace SM_MentalHealthApp.Server.Services
                         AssignedAt = DateTime.UtcNow,
                         IsActive = true
                     };
-                    
+
                     _context.UserAssignments.Add(assignment);
                     await _context.SaveChangesAsync();
-                    
-                    _logger.LogInformation("Patient {PatientId} automatically assigned to Coordinator {CoordinatorId} upon approval", 
+
+                    _logger.LogInformation("Patient {PatientId} automatically assigned to Coordinator {CoordinatorId} upon approval",
                         user.Id, reviewerUserId);
                 }
             }
@@ -422,7 +452,7 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogError(emailEx, "Error sending email to {Email} (user {UserId}), SMS was still sent", user.Email, user.Id);
             }
 
-            _logger.LogInformation("User request approved: ID={Id}, User created: ID={UserId}, Email={Email}, SMS and Email notifications sent", 
+            _logger.LogInformation("User request approved: ID={Id}, User created: ID={UserId}, Email={Email}, SMS and Email notifications sent",
                 userRequest.Id, user.Id, user.Email);
 
             return userRequest;
@@ -439,12 +469,12 @@ namespace SM_MentalHealthApp.Server.Services
             // Get reviewer name for notes
             var reviewer = await _context.Users.FindAsync(reviewerUserId);
             var reviewerName = reviewer != null ? $"{reviewer.FirstName} {reviewer.LastName}" : "System";
-            
+
             // Append notes instead of overwriting
             var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
             var newNoteEntry = $"\n\n--- REJECTED on {timestamp} by {reviewerName} ---\n{notes}";
-            userRequest.Notes = string.IsNullOrWhiteSpace(userRequest.Notes) 
-                ? newNoteEntry.TrimStart() 
+            userRequest.Notes = string.IsNullOrWhiteSpace(userRequest.Notes)
+                ? newNoteEntry.TrimStart()
                 : userRequest.Notes + newNoteEntry;
 
             userRequest.Status = UserRequestStatus.Rejected;
@@ -454,7 +484,7 @@ namespace SM_MentalHealthApp.Server.Services
 
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("User request rejected: ID={Id}, Reviewer={ReviewerId}", 
+            _logger.LogInformation("User request rejected: ID={Id}, Reviewer={ReviewerId}",
                 userRequest.Id, reviewerUserId);
 
             return userRequest;
@@ -471,23 +501,23 @@ namespace SM_MentalHealthApp.Server.Services
             // Get reviewer name for notes
             var reviewer = await _context.Users.FindAsync(reviewerUserId);
             var reviewerName = reviewer != null ? $"{reviewer.FirstName} {reviewer.LastName}" : "System";
-            
+
             // Append notes instead of overwriting
             var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
             var newNoteEntry = $"\n\n--- MARKED AS PENDING on {timestamp} by {reviewerName} ---\n{notes}";
-            userRequest.Notes = string.IsNullOrWhiteSpace(userRequest.Notes) 
-                ? newNoteEntry.TrimStart() 
+            userRequest.Notes = string.IsNullOrWhiteSpace(userRequest.Notes)
+                ? newNoteEntry.TrimStart()
                 : userRequest.Notes + newNoteEntry;
 
-            // Update notes and reviewer info, but keep status as Pending
+            // Update status to Pending and reviewer info
+            userRequest.Status = UserRequestStatus.Pending;
             userRequest.ReviewedByUserId = reviewerUserId;
             userRequest.ReviewedAt = DateTime.UtcNow;
             userRequest.UpdatedAt = DateTime.UtcNow;
-            // Status remains Pending
 
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("User request marked as pending: ID={Id}, Reviewer={ReviewerId}", 
+            _logger.LogInformation("User request marked as pending: ID={Id}, Reviewer={ReviewerId}",
                 userRequest.Id, reviewerUserId);
 
             return userRequest;
@@ -518,6 +548,37 @@ namespace SM_MentalHealthApp.Server.Services
             var random = new Random();
             return new string(Enumerable.Repeat(chars, 8)
                 .Select(s => s[random.Next(s.Length)]).ToArray());
+        }
+
+        public async Task<UserRequest> UpdateAccidentInfoAsync(int id, UpdateAccidentInfoRequest request)
+        {
+            var userRequest = await _context.UserRequests.FindAsync(id);
+            if (userRequest == null)
+            {
+                throw new InvalidOperationException("User request not found.");
+            }
+
+            // Update accident-related fields
+            userRequest.Age = request.Age;
+            userRequest.Race = request.Race;
+            userRequest.AccidentAddress = request.AccidentAddress;
+            userRequest.AccidentDate = request.AccidentDate;
+            userRequest.VehicleDetails = request.VehicleDetails;
+            userRequest.DateReported = request.DateReported;
+            userRequest.PoliceCaseNumber = request.PoliceCaseNumber;
+            userRequest.AccidentDetails = request.AccidentDetails;
+            userRequest.RoadConditions = request.RoadConditions;
+            userRequest.DoctorsInformation = request.DoctorsInformation;
+            userRequest.LawyersInformation = request.LawyersInformation;
+            userRequest.AdditionalNotes = request.AdditionalNotes;
+            userRequest.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            // Decrypt for return
+            UserEncryptionHelper.DecryptUserRequestData(userRequest, _encryptionService);
+
+            return userRequest;
         }
     }
 }

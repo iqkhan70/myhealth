@@ -164,6 +164,104 @@
                                         <span class="meta-value">@expandedUser.ChatSessions.Count</span>
                                     </div>
                                 </div>
+                                
+                                @* Accident Information Section *@
+                                @if (expandedUser.Age.HasValue || !string.IsNullOrEmpty(expandedUser.Race) || 
+                                     !string.IsNullOrEmpty(expandedUser.AccidentAddress) || expandedUser.AccidentDate.HasValue ||
+                                     !string.IsNullOrEmpty(expandedUser.VehicleDetails) || expandedUser.DateReported.HasValue ||
+                                     !string.IsNullOrEmpty(expandedUser.PoliceCaseNumber) || !string.IsNullOrEmpty(expandedUser.AccidentDetails) ||
+                                     !string.IsNullOrEmpty(expandedUser.RoadConditions) || !string.IsNullOrEmpty(expandedUser.DoctorsInformation) ||
+                                     !string.IsNullOrEmpty(expandedUser.LawyersInformation) || !string.IsNullOrEmpty(expandedUser.AdditionalNotes))
+                                {
+                                    <hr class="my-3" />
+                                    <h6 class="mt-3 mb-2">Accident Information</h6>
+                                    <div class="patient-meta mb-3">
+                                        @if (expandedUser.Age.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Age:</strong></span>
+                                                <span class="meta-value">@expandedUser.Age</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedUser.Race))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Race:</strong></span>
+                                                <span class="meta-value">@expandedUser.Race</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedUser.AccidentAddress))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Accident Address:</strong></span>
+                                                <span class="meta-value">@expandedUser.AccidentAddress</span>
+                                            </div>
+                                        }
+                                        @if (expandedUser.AccidentDate.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Accident Date:</strong></span>
+                                                <span class="meta-value">@expandedUser.AccidentDate.Value.ToString("MMM dd, yyyy")</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedUser.VehicleDetails))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Vehicle Details:</strong></span>
+                                                <span class="meta-value" style="white-space: pre-wrap;">@expandedUser.VehicleDetails</span>
+                                            </div>
+                                        }
+                                        @if (expandedUser.DateReported.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Date Reported:</strong></span>
+                                                <span class="meta-value">@expandedUser.DateReported.Value.ToString("MMM dd, yyyy")</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedUser.PoliceCaseNumber))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Police Case Number:</strong></span>
+                                                <span class="meta-value">@expandedUser.PoliceCaseNumber</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedUser.AccidentDetails))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Accident Details:</strong></span>
+                                                <span class="meta-value" style="white-space: pre-wrap;">@expandedUser.AccidentDetails</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedUser.RoadConditions))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Road Conditions:</strong></span>
+                                                <span class="meta-value">@expandedUser.RoadConditions</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedUser.DoctorsInformation))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Doctor's Information:</strong></span>
+                                                <span class="meta-value" style="white-space: pre-wrap;">@expandedUser.DoctorsInformation</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedUser.LawyersInformation))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Lawyer's Information:</strong></span>
+                                                <span class="meta-value" style="white-space: pre-wrap;">@expandedUser.LawyersInformation</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedUser.AdditionalNotes))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Additional Notes:</strong></span>
+                                                <span class="meta-value" style="white-space: pre-wrap;">@expandedUser.AdditionalNotes</span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
                             </div>
                         </div>
                     </div>

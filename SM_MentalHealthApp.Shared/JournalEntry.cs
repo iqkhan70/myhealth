@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.ComponentModel.DataAnnotations;
 
 namespace SM_MentalHealthApp.Shared
 {
@@ -74,6 +75,40 @@ namespace SM_MentalHealthApp.Shared
         // Doctor-specific fields (nullable for non-doctors)
         public string? Specialization { get; set; }
         public string? LicenseNumber { get; set; }
+        
+        // Accident-related fields (captured from user requests)
+        public int? Age { get; set; }
+        
+        [MaxLength(100)]
+        public string? Race { get; set; }
+        
+        [MaxLength(500)]
+        public string? AccidentAddress { get; set; }
+        
+        public DateTime? AccidentDate { get; set; }
+        
+        [MaxLength(1000)]
+        public string? VehicleDetails { get; set; }
+        
+        public DateTime? DateReported { get; set; }
+        
+        [MaxLength(100)]
+        public string? PoliceCaseNumber { get; set; }
+        
+        [MaxLength(2000)]
+        public string? AccidentDetails { get; set; }
+        
+        [MaxLength(200)]
+        public string? RoadConditions { get; set; }
+        
+        [MaxLength(1000)]
+        public string? DoctorsInformation { get; set; }
+        
+        [MaxLength(1000)]
+        public string? LawyersInformation { get; set; }
+        
+        [MaxLength(2000)]
+        public string? AdditionalNotes { get; set; }
 
         // Navigation properties
         [JsonIgnore]

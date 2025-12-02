@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Controllers;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
+using UpdateAccidentInfoRequest = SM_MentalHealthApp.Server.Services.UpdateAccidentInfoRequest;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -192,6 +193,31 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 _logger.LogError(ex, "Error marking user request as pending {Id}", id);
                 return StatusCode(500, new { message = "An error occurred while updating the user request." });
+            }
+        }
+
+        /// <summary>
+        /// Update accident information for a user request - Admin and Coordinator only
+        /// </summary>
+        [HttpPut("{id}/accident-info")]
+        [Authorize(Roles = "Admin,Coordinator")]
+        public async Task<ActionResult<UserRequest>> UpdateAccidentInfo(
+            int id,
+            [FromBody] UpdateAccidentInfoRequest request)
+        {
+            try
+            {
+                var userRequest = await _userRequestService.UpdateAccidentInfoAsync(id, request);
+                return Ok(userRequest);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating accident information for user request {Id}", id);
+                return StatusCode(500, new { message = "An error occurred while updating accident information." });
             }
         }
     }

@@ -80,6 +80,40 @@ namespace SM_MentalHealthApp.Shared
         [MaxLength(2000)]
         public string? Notes { get; set; }
         
+        // Accident-related fields for coordinators to capture
+        public int? Age { get; set; }
+        
+        [MaxLength(100)]
+        public string? Race { get; set; }
+        
+        [MaxLength(500)]
+        public string? AccidentAddress { get; set; }
+        
+        public DateTime? AccidentDate { get; set; }
+        
+        [MaxLength(1000)]
+        public string? VehicleDetails { get; set; }
+        
+        public DateTime? DateReported { get; set; }
+        
+        [MaxLength(100)]
+        public string? PoliceCaseNumber { get; set; }
+        
+        [MaxLength(2000)]
+        public string? AccidentDetails { get; set; }
+        
+        [MaxLength(200)]
+        public string? RoadConditions { get; set; }
+        
+        [MaxLength(1000)]
+        public string? DoctorsInformation { get; set; }
+        
+        [MaxLength(1000)]
+        public string? LawyersInformation { get; set; }
+        
+        [MaxLength(2000)]
+        public string? AdditionalNotes { get; set; }
+        
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

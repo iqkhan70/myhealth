@@ -90,6 +90,20 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Specialization).HasMaxLength(100);
                         entity.Property(e => e.LicenseNumber).HasMaxLength(50);
                         
+                        // Accident-related fields (captured from user requests)
+                        entity.Property(e => e.Age);
+                        entity.Property(e => e.Race).HasMaxLength(100);
+                        entity.Property(e => e.AccidentAddress).HasMaxLength(500);
+                        entity.Property(e => e.AccidentDate);
+                        entity.Property(e => e.VehicleDetails).HasMaxLength(1000);
+                        entity.Property(e => e.DateReported);
+                        entity.Property(e => e.PoliceCaseNumber).HasMaxLength(100);
+                        entity.Property(e => e.AccidentDetails).HasMaxLength(2000);
+                        entity.Property(e => e.RoadConditions).HasMaxLength(200);
+                        entity.Property(e => e.DoctorsInformation).HasMaxLength(1000);
+                        entity.Property(e => e.LawyersInformation).HasMaxLength(1000);
+                        entity.Property(e => e.AdditionalNotes).HasMaxLength(2000);
+                        
                         // DateOfBirth is stored encrypted as string
                         entity.Property(e => e.DateOfBirthEncrypted)
                             .IsRequired()
@@ -127,6 +141,20 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Reason).IsRequired().HasMaxLength(1000);
                         entity.Property(e => e.Status).HasConversion<int>(); // Store enum as int
                         entity.Property(e => e.Notes).HasMaxLength(2000);
+                        
+                        // Accident-related fields
+                        entity.Property(e => e.Age);
+                        entity.Property(e => e.Race).HasMaxLength(100);
+                        entity.Property(e => e.AccidentAddress).HasMaxLength(500);
+                        entity.Property(e => e.AccidentDate);
+                        entity.Property(e => e.VehicleDetails).HasMaxLength(1000);
+                        entity.Property(e => e.DateReported);
+                        entity.Property(e => e.PoliceCaseNumber).HasMaxLength(100);
+                        entity.Property(e => e.AccidentDetails).HasMaxLength(2000);
+                        entity.Property(e => e.RoadConditions).HasMaxLength(200);
+                        entity.Property(e => e.DoctorsInformation).HasMaxLength(1000);
+                        entity.Property(e => e.LawyersInformation).HasMaxLength(1000);
+                        entity.Property(e => e.AdditionalNotes).HasMaxLength(2000);
                         
                         // DateOfBirth is stored encrypted as string
                         entity.Property(e => e.DateOfBirthEncrypted)
