@@ -1145,6 +1145,54 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        /// <summary>
+        /// Update accident information for a patient - Admin only
+        /// </summary>
+        [HttpPut("update-patient/{id}/accident-info")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> UpdatePatientAccidentInfo(int id, [FromBody] UpdateUserAccidentInfoRequest request)
+        {
+            try
+            {
+                var patient = await _context.Users.FindAsync(id);
+                if (patient == null)
+                {
+                    return NotFound("Patient not found.");
+                }
+
+                if (patient.RoleId != 1)
+                {
+                    return BadRequest("User is not a patient.");
+                }
+
+                // Update accident-related fields
+                patient.Age = request.Age;
+                patient.Race = request.Race;
+                patient.AccidentAddress = request.AccidentAddress;
+                patient.AccidentDate = request.AccidentDate;
+                patient.VehicleDetails = request.VehicleDetails;
+                patient.DateReported = request.DateReported;
+                patient.PoliceCaseNumber = request.PoliceCaseNumber;
+                patient.AccidentDetails = request.AccidentDetails;
+                patient.RoadConditions = request.RoadConditions;
+                patient.DoctorsInformation = request.DoctorsInformation;
+                patient.LawyersInformation = request.LawyersInformation;
+                patient.AdditionalNotes = request.AdditionalNotes;
+
+                await _context.SaveChangesAsync();
+
+                // Decrypt for return
+                UserEncryptionHelper.DecryptUserData(patient, _encryptionService);
+
+                return Ok(patient);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating patient accident information");
+                return StatusCode(500, $"Error updating patient accident information: {ex.Message}");
+            }
+        }
+
         [HttpPut("doctors/{id}")]
         public async Task<ActionResult> UpdateDoctor(int id, [FromBody] UpdateDoctorRequest request)
         {
@@ -1710,6 +1758,22 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? Gender { get; set; }
         public string? MobilePhone { get; set; }
         public string? Password { get; set; }
+    }
+    
+    public class UpdateUserAccidentInfoRequest
+    {
+        public int? Age { get; set; }
+        public string? Race { get; set; }
+        public string? AccidentAddress { get; set; }
+        public DateTime? AccidentDate { get; set; }
+        public string? VehicleDetails { get; set; }
+        public DateTime? DateReported { get; set; }
+        public string? PoliceCaseNumber { get; set; }
+        public string? AccidentDetails { get; set; }
+        public string? RoadConditions { get; set; }
+        public string? DoctorsInformation { get; set; }
+        public string? LawyersInformation { get; set; }
+        public string? AdditionalNotes { get; set; }
     }
 
     public class CreateCoordinatorRequest

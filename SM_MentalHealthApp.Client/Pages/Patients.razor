@@ -262,6 +262,23 @@
                                         }
                                     </div>
                                 }
+                                
+                                @* Edit Accident Information Button (Admin only) *@
+                                @if ((AuthService.CurrentUser?.RoleId == 3) && // Admin only
+                                     (expandedUser.Age.HasValue || !string.IsNullOrEmpty(expandedUser.Race) || 
+                                      !string.IsNullOrEmpty(expandedUser.AccidentAddress) || expandedUser.AccidentDate.HasValue ||
+                                      !string.IsNullOrEmpty(expandedUser.VehicleDetails) || expandedUser.DateReported.HasValue ||
+                                      !string.IsNullOrEmpty(expandedUser.PoliceCaseNumber) || !string.IsNullOrEmpty(expandedUser.AccidentDetails) ||
+                                      !string.IsNullOrEmpty(expandedUser.RoadConditions) || !string.IsNullOrEmpty(expandedUser.DoctorsInformation) ||
+                                      !string.IsNullOrEmpty(expandedUser.LawyersInformation) || !string.IsNullOrEmpty(expandedUser.AdditionalNotes)))
+                                {
+                                    <div class="col-12 mt-3">
+                                        <RadzenButton Text="Edit Accident Information" 
+                                                     ButtonStyle="ButtonStyle.Primary" 
+                                                     Size="ButtonSize.Small"
+                                                     Click="@(() => ShowEditPatientAccidentInfoDialog(expandedUser))" />
+                                    </div>
+                                }
                             </div>
                         </div>
                     </div>
@@ -709,6 +726,91 @@
     </div>
 }
 
+<!-- Edit Patient Accident Information Dialog (Admin only) -->
+@if (showEditPatientAccidentInfoDialog && selectedUserForAccidentEdit != null)
+{
+    <SMModal IsVisible="@showEditPatientAccidentInfoDialog" 
+             Title="Edit Accident Information" 
+             OnClose="@(() => { showEditPatientAccidentInfoDialog = false; selectedUserForAccidentEdit = null; })"
+             Size="Large">
+        <Body>
+            <div class="dialog-content">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Age" class="w-100">
+                            <RadzenNumeric @bind-Value="editPatientAge" Min="0" Max="150" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Race" class="w-100">
+                            <RadzenTextBox @bind-Value="editPatientRace" MaxLength="100" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Accident Address" class="w-100">
+                            <RadzenTextArea @bind-Value="editPatientAccidentAddress" MaxLength="500" Rows="2" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Accident Date" class="w-100">
+                            <RadzenDatePicker @bind-Value="editPatientAccidentDate" DateFormat="MM/dd/yyyy" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Date Reported" class="w-100">
+                            <RadzenDatePicker @bind-Value="editPatientDateReported" DateFormat="MM/dd/yyyy" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Vehicle Details" class="w-100">
+                            <RadzenTextArea @bind-Value="editPatientVehicleDetails" MaxLength="1000" Rows="3" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Police Case Number" class="w-100">
+                            <RadzenTextBox @bind-Value="editPatientPoliceCaseNumber" MaxLength="100" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Road Conditions" class="w-100">
+                            <RadzenTextBox @bind-Value="editPatientRoadConditions" MaxLength="200" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Accident Details" class="w-100">
+                            <RadzenTextArea @bind-Value="editPatientAccidentDetails" MaxLength="2000" Rows="4" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Doctor's Information" class="w-100">
+                            <RadzenTextArea @bind-Value="editPatientDoctorsInformation" MaxLength="1000" Rows="3" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Lawyer's Information" class="w-100">
+                            <RadzenTextArea @bind-Value="editPatientLawyersInformation" MaxLength="1000" Rows="3" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Additional Notes" class="w-100">
+                            <RadzenTextArea @bind-Value="editPatientAdditionalNotes" MaxLength="2000" Rows="4" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                </div>
+                
+                <div class="dialog-actions">
+                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" 
+                                 Click="@(() => { showEditPatientAccidentInfoDialog = false; selectedUserForAccidentEdit = null; })" 
+                                 Disabled="@isSavingAccidentInfo" />
+                    <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Primary" 
+                                 Click="@SavePatientAccidentInfo" 
+                                 Disabled="@isSavingAccidentInfo" />
+                </div>
+            </div>
+        </Body>
+    </SMModal>
+}
+
 @code {
     private SMDataGrid<User>? _grid;
     private Dictionary<int, User> expandedUsers = new Dictionary<int, User>();
@@ -736,6 +838,23 @@
     private CreatePatientRequest patientForm = new();
     private List<User> availableDoctors = new();
     private int selectedDoctorId = 0;
+    private bool showEditPatientAccidentInfoDialog = false;
+    private bool isSavingAccidentInfo = false;
+    private User? selectedUserForAccidentEdit;
+    
+    // Patient accident information form
+    private int? editPatientAge;
+    private string editPatientRace = "";
+    private string editPatientAccidentAddress = "";
+    private DateTime? editPatientAccidentDate;
+    private string editPatientVehicleDetails = "";
+    private DateTime? editPatientDateReported;
+    private string editPatientPoliceCaseNumber = "";
+    private string editPatientAccidentDetails = "";
+    private string editPatientRoadConditions = "";
+    private string editPatientDoctorsInformation = "";
+    private string editPatientLawyersInformation = "";
+    private string editPatientAdditionalNotes = "";
     
     // Custom filter variables
     private bool? selectedStatusFilter = null;
@@ -1279,6 +1398,91 @@
         showPatientStats = false;
         selectedUser = null;
         userStats = null;
+    }
+    
+    private void ShowEditPatientAccidentInfoDialog(User user)
+    {
+        selectedUserForAccidentEdit = user;
+        editPatientAge = user.Age;
+        editPatientRace = user.Race ?? "";
+        editPatientAccidentAddress = user.AccidentAddress ?? "";
+        editPatientAccidentDate = user.AccidentDate;
+        editPatientVehicleDetails = user.VehicleDetails ?? "";
+        editPatientDateReported = user.DateReported;
+        editPatientPoliceCaseNumber = user.PoliceCaseNumber ?? "";
+        editPatientAccidentDetails = user.AccidentDetails ?? "";
+        editPatientRoadConditions = user.RoadConditions ?? "";
+        editPatientDoctorsInformation = user.DoctorsInformation ?? "";
+        editPatientLawyersInformation = user.LawyersInformation ?? "";
+        editPatientAdditionalNotes = user.AdditionalNotes ?? "";
+        showEditPatientAccidentInfoDialog = true;
+    }
+    
+    private async Task SavePatientAccidentInfo()
+    {
+        if (selectedUserForAccidentEdit == null) return;
+        
+        try
+        {
+            isSavingAccidentInfo = true;
+            StateHasChanged();
+            
+            var updateRequest = new
+            {
+                Age = editPatientAge,
+                Race = editPatientRace,
+                AccidentAddress = editPatientAccidentAddress,
+                AccidentDate = editPatientAccidentDate,
+                VehicleDetails = editPatientVehicleDetails,
+                DateReported = editPatientDateReported,
+                PoliceCaseNumber = editPatientPoliceCaseNumber,
+                AccidentDetails = editPatientAccidentDetails,
+                RoadConditions = editPatientRoadConditions,
+                DoctorsInformation = editPatientDoctorsInformation,
+                LawyersInformation = editPatientLawyersInformation,
+                AdditionalNotes = editPatientAdditionalNotes
+            };
+            
+            // Add authorization header
+            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", AuthService.Token);
+            
+            var response = await Http.PutAsJsonAsync($"api/admin/update-patient/{selectedUserForAccidentEdit.Id}/accident-info", updateRequest);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                NotificationService.ShowSuccess("Accident information updated successfully");
+                showEditPatientAccidentInfoDialog = false;
+                
+                // Refresh the patient data
+                var userId = selectedUserForAccidentEdit.Id;
+                if (expandedUsers.ContainsKey(userId))
+                {
+                    expandedUsers.Remove(userId);
+                }
+                
+                selectedUserForAccidentEdit = null;
+                
+                // Refresh the grid
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.ShowError($"Failed to update accident information: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error updating accident information: {ex.Message}");
+        }
+        finally
+        {
+            isSavingAccidentInfo = false;
+            StateHasChanged();
+        }
     }
 
     private async Task PerformAiHealthCheckAsync(User user, CancellationToken ct)
