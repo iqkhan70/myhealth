@@ -3,6 +3,7 @@
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 @inject IAuthService AuthService
+@inject NavigationManager Navigation
 
 <PageTitle>Home</PageTitle>
 
@@ -70,6 +71,13 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Redirect Coordinators to user requests page since they don't have access to home
+        if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
+        {
+            Navigation.NavigateTo("/user-requests");
+            return;
+        }
+        
         await LoadRecentEntries();
     }
 

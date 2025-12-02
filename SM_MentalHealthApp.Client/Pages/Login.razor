@@ -186,7 +186,15 @@
         // Check if user is already authenticated
         if (AuthService.IsAuthenticated)
         {
-            Navigation.NavigateTo("/");
+            // Redirect Coordinators to user requests page, others to home
+            if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
+            {
+                Navigation.NavigateTo("/user-requests");
+            }
+            else
+            {
+                Navigation.NavigateTo("/");
+            }
         }
     }
 
@@ -219,7 +227,16 @@
             {
                 successMessage = "Login successful! Redirecting...";
                 await Task.Delay(1000);
-                Navigation.NavigateTo("/");
+                
+                // Redirect Coordinators to user requests page, others to home
+                if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
+                {
+                    Navigation.NavigateTo("/user-requests");
+                }
+                else
+                {
+                    Navigation.NavigateTo("/");
+                }
             }
             else
             {
