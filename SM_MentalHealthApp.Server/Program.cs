@@ -2,10 +2,20 @@ using SM_MentalHealthApp.Server;
 using SM_MentalHealthApp.Server.Scripts;
 using StackExchange.Redis;
 
-// Check for encryption script argument
+// Check for encryption script arguments
 if (args.Contains("--encrypt-mobilephones"))
 {
     await EncryptExistingMobilePhoneData.RunAsync();
+    return;
+}
+
+if (args.Contains("--encrypt-dob"))
+{
+    var tempBuilder = WebApplication.CreateBuilder(args);
+    tempBuilder.Services.AddApplicationServices(tempBuilder.Configuration, tempBuilder.Environment);
+    var tempApp = tempBuilder.Build();
+    var serviceProvider = tempApp.Services;
+    await EncryptExistingDateOfBirthData.RunAsync(serviceProvider);
     return;
 }
 
