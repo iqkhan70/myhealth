@@ -10,20 +10,22 @@ const AppConfig = {
   // Update this when your Mac's IP address changes
   // For local development: use your Mac's local IP (e.g., 192.168.86.25)
   // For production: use your DigitalOcean server IP (159.65.242.79)
-  SERVER_IP: '159.65.242.79',  // DigitalOcean server
+  SERVER_IP: '192.168.86.25',  // DigitalOcean server
   
   // Server Port
   // Mobile app connects directly to the server API (not through the Blazor client)
   // For DigitalOcean: use port 443 (HTTPS via Nginx)
   // For local: use port 5262
-  SERVER_PORT: 443,  // DigitalOcean uses 443, local uses 5262
+  //SERVER_PORT: 443,  // DigitalOcean uses 443, local uses 5262
   
+  SERVER_PORT: 5262, // local server
+
   // Use HTTPS (true) or HTTP (false)
   // NOTE: HTTPS is REQUIRED for Agora video/audio calls to work
   // DigitalOcean server uses HTTPS on port 443
   // For development with self-signed certificates, the app is configured to bypass
   // certificate validation (see network_security_config.xml for Android and app.json for iOS)
-  USE_HTTPS: true,  // DigitalOcean uses HTTPS
+  USE_HTTPS: false,  // DigitalOcean uses HTTPS
   
   // Development mode: Allow self-signed certificates (iOS/Android may still reject)
   // This is a flag for documentation - actual handling depends on platform
