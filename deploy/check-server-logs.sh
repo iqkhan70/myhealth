@@ -1,8 +1,9 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Quick script to check server logs for errors
 
-DROPLET_IP="159.65.242.79"
 
 echo "📋 Recent server logs (last 50 lines):"
 echo "======================================"

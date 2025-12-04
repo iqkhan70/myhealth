@@ -1,8 +1,9 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Check if database schema matches what code expects
 
-DROPLET_IP="159.65.242.79"
 APP_DIR="/opt/mental-health-app"
 
 echo "🔍 Checking database schema on server..."

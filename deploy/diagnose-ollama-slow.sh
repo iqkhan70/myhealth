@@ -1,8 +1,9 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Diagnose why Ollama is slow on DigitalOcean
 
-DROPLET_IP="159.65.242.79"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 
 chmod 600 "$SSH_KEY_PATH" 2>/dev/null

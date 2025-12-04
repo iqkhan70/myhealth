@@ -1,4 +1,6 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Script to encrypt existing DateOfBirth data on DigitalOcean server
 # This can be run after migrations are applied to encrypt any plain text dates
@@ -13,7 +15,6 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-SERVER_IP="159.65.242.79"
 SSH_KEY="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app/server"
 

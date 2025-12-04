@@ -1,4 +1,6 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # SSL Certificate Setup Script for DigitalOcean
 # This script sets up Let's Encrypt SSL certificates using certbot
@@ -12,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration
-DROPLET_IP="159.65.242.79"  # Your DigitalOcean droplet IP
+DROPLET_IP="${DROPLET_IP}"  # Your DigitalOcean droplet IP
 DROPLET_USER="root"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 DOMAIN=""  # Your domain name

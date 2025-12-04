@@ -1,8 +1,9 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Quick script to add Ollama config to appsettings.Production.json
 
-DROPLET_IP="159.65.242.79"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app"
 CONFIG_FILE="$APP_DIR/server/appsettings.Production.json"

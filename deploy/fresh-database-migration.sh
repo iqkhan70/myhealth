@@ -1,4 +1,6 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Fresh database migration script - drops and recreates database with all migrations
 # Use this when you want to start from scratch and ensure schema matches local
@@ -12,7 +14,6 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # Configuration
-DROPLET_IP="159.65.242.79"
 DROPLET_USER="root"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app"

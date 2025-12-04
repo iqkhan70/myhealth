@@ -1,8 +1,9 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Direct fix for JWT configuration - no questions asked
 
-DROPLET_IP="159.65.242.79"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app"
 
@@ -69,7 +70,7 @@ if [ $? -eq 0 ]; then
     echo "✅ DONE! Service restarted."
     echo ""
     echo "🧪 Test it now:"
-    echo "   1. Login on https://159.65.242.79/login"
+    echo "   1. Login on https://${DROPLET_IP}/login"
     echo "   2. Try accessing the journal page"
     echo "   3. Check browser console - 401 should be gone!"
 else

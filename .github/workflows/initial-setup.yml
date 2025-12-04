@@ -9,7 +9,6 @@ on:
         type: string
 
 env:
-  SERVER_IP: 159.65.242.79
   SSH_USER: root
 
 jobs:
@@ -21,6 +20,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Load server IP
+        run: |
+          SERVER_IP=$(cat deploy/DROPLET_IP | tr -d '[:space:]')
+          echo "SERVER_IP=$SERVER_IP" >> $GITHUB_ENV
+          echo "🌐 Server IP: $SERVER_IP"
+
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:

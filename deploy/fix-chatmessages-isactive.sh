@@ -1,6 +1,7 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
-DROPLET_IP="159.65.242.79"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app"
 

@@ -1,4 +1,6 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 cd /Users/mohammedkhan/iq/health && ./deploy/generate-migration-sql.sh
 
@@ -10,27 +12,27 @@ cd /Users/mohammedkhan/iq/health && ./deploy/query-database.sh 2>&1 | head -80
 
 ./deploy/fix-ssh-permissions.sh
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "which dotnet && dotnet --version" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "which dotnet && dotnet --version" 2>/dev/null
 
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "cat /etc/systemd/system/mental-health-app.service" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "cat /etc/systemd/system/mental-health-app.service" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "test -f /root/.dotnet/dotnet && echo 'exists' || echo 'NOT FOUND'; test -f /usr/bin/dotnet && echo '/usr/bin/dotnet exists' || echo '/usr/bin/dotnet NOT FOUND'" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "test -f /root/.dotnet/dotnet && echo 'exists' || echo 'NOT FOUND'; test -f /usr/bin/dotnet && echo '/usr/bin/dotnet exists' || echo '/usr/bin/dotnet NOT FOUND'" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "ls -la /root/.dotnet/dotnet && /root/.dotnet/dotnet --version" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "ls -la /root/.dotnet/dotnet && /root/.dotnet/dotnet --version" 2>/dev/null
 
 
-cd /Users/mohammedkhan/iq/health && sleep 2 && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "systemctl status mental-health-app --no-pager | head -15" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && sleep 2 && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "systemctl status mental-health-app --no-pager | head -15" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 'mkdir -p /usr/local/bin
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} 'mkdir -p /usr/local/bin
 ln -sf /root/.dotnet/dotnet /usr/local/bin/dotnet
 chmod +x /usr/local/bin/dotnet
 which dotnet
 dotnet --version' 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && sleep 3 && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "journalctl -u mental-health-app --no-pager -n 20 | tail -20" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && sleep 3 && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "journalctl -u mental-health-app --no-pager -n 20 | tail -20" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 'wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} 'wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh
 chmod +x /tmp/dotnet-install.sh
 /tmp/dotnet-install.sh --channel 9.0 --install-dir /usr/share/dotnet
 ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet
@@ -38,41 +40,41 @@ export PATH="$PATH:/usr/share/dotnet"
 dotnet --version' 2>/dev/null
 
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 'su - appuser -c "dotnet --version" 2>&1' 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} 'su - appuser -c "dotnet --version" 2>&1' 2>/dev/null
 
 
-cd /Users/mohammedkhan/iq/health && sleep 3 && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "journalctl -u mental-health-app --no-pager -n 15 | tail -15" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && sleep 3 && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "journalctl -u mental-health-app --no-pager -n 15 | tail -15" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "journalctl -u mental-health-app --no-pager -n 30 | grep -i -E '(certificate|cert|ssl|kestrel|error|exception)' | head -20" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "journalctl -u mental-health-app --no-pager -n 30 | grep -i -E '(certificate|cert|ssl|kestrel|error|exception)' | head -20" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "cat /etc/systemd/system/mental-health-app.service | grep -A 5 'Environment='" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "cat /etc/systemd/system/mental-health-app.service | grep -A 5 'Environment='" 2>/dev/null
 
 cd /Users/mohammedkhan/iq/health && ./deploy/setup-https-server.sh 2>&1 | tail -30
 
-cd /Users/mohammedkhan/iq/health && sleep 3 && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "systemctl status mental-health-app --no-pager | head -15" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && sleep 3 && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "systemctl status mental-health-app --no-pager | head -15" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && curl -k https://159.65.242.79/api/health 2>&1
+cd /Users/mohammedkhan/iq/health && curl -k https://${DROPLET_IP}/api/health 2>&1
 
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "netstat -tlnp | grep -E ':(80|443|5262)'" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "netstat -tlnp | grep -E ':(80|443|5262)'" 2>/dev/null
 
 #still unable to connect
-cd /Users/mohammedkhan/iq/health && curl -k https://159.65.242.79:5262/api/health 2>&1
+cd /Users/mohammedkhan/iq/health && curl -k https://${DROPLET_IP}:5262/api/health 2>&1
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "systemctl status nginx --no-pager | head -10" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "systemctl status nginx --no-pager | head -10" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && curl -k http://159.65.242.79/api/health 2>&1
+cd /Users/mohammedkhan/iq/health && curl -k http://${DROPLET_IP}/api/health 2>&1
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "ss -tlnp | grep 5262" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "ss -tlnp | grep 5262" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "cat /etc/systemd/system/mental-health-app.service | grep ASPNETCORE_URLS" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "cat /etc/systemd/system/mental-health-app.service | grep ASPNETCORE_URLS" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "curl -k https://localhost:5262/api/health 2>&1" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "curl -k https://localhost:5262/api/health 2>&1" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "cat /etc/nginx/sites-available/mental-health-app | head -60" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "cat /etc/nginx/sites-available/mental-health-app | head -60" 2>/dev/null
 
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 'cat > /etc/systemd/system/mental-health-app.service << "EOFSERVICE"
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} 'cat > /etc/systemd/system/mental-health-app.service << "EOFSERVICE"
 [Unit]
 Description=Mental Health App Server
 After=network.target redis-server.service mysql.service
@@ -104,13 +106,13 @@ systemctl status mental-health-app --no-pager | head -10' 2>/dev/null
 cd /Users/mohammedkhan/iq/health && ./deploy/setup-nginx-https.sh 2>&1 | tail -20
 
 
-cd /Users/mohammedkhan/iq/health && sleep 3 && curl -k https://159.65.242.79/api/health 2>&1
+cd /Users/mohammedkhan/iq/health && sleep 3 && curl -k https://${DROPLET_IP}/api/health 2>&1
 
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "ss -tlnp | grep -E ':(80|443|5262)'" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "ss -tlnp | grep -E ':(80|443|5262)'" 2>/dev/null
 
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 'cat > /etc/nginx/sites-available/mental-health-app << "ENDOFFILE"
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} 'cat > /etc/nginx/sites-available/mental-health-app << "ENDOFFILE"
 # Upstream for API server (HTTPS backend) - use IPv4 explicitly
 upstream api_backend {
     server 127.0.0.1:5262;
@@ -119,7 +121,7 @@ upstream api_backend {
 # HTTP server - redirect to HTTPS
 server {
     listen 80;
-    server_name 159.65.242.79;
+    server_name ${DROPLET_IP};
     
     # Allow Let'\''s Encrypt validation
     location /.well-known/acme-challenge/ {
@@ -135,7 +137,7 @@ server {
 # HTTPS server
 server {
     listen 443 ssl http2;
-    server_name 159.65.242.79;
+    server_name ${DROPLET_IP};
     
     # SSL certificates
     ssl_certificate /etc/nginx/ssl/nginx-selfsigned.crt;
@@ -208,17 +210,17 @@ ENDOFFILE
 nginx -t && systemctl reload nginx && echo "✅ Nginx reloaded"' 2>/dev/null
 
 
-cd /Users/mohammedkhan/iq/health && sleep 2 && curl -k https://159.65.242.79/api/health 2>&1
+cd /Users/mohammedkhan/iq/health && sleep 2 && curl -k https://${DROPLET_IP}/api/health 2>&1
 
-cd /Users/mohammedkhan/iq/health && curl -k https://159.65.242.79/login 2>&1 | head -20 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "find /opt/mental-health-app/client -name 'index.html' -type f 2>/dev/null" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && curl -k https://${DROPLET_IP}/login 2>&1 | head -20 
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "find /opt/mental-health-app/client -name 'index.html' -type f 2>/dev/null" 2>/dev/null
 
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "tail -10 /var/log/nginx/error.log" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "tail -10 /var/log/nginx/error.log" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 "ls -la /opt/mental-health-app/client/wwwroot/wwwroot/index.html 2>/dev/null || ls -la /opt/mental-health-app/client/wwwroot/index.html 2>/dev/null || echo 'index.html not found'" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} "ls -la /opt/mental-health-app/client/wwwroot/wwwroot/index.html 2>/dev/null || ls -la /opt/mental-health-app/client/wwwroot/index.html 2>/dev/null || echo 'index.html not found'" 2>/dev/null
 
-cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@159.65.242.79 'cat > /etc/nginx/sites-available/mental-health-app << "ENDOFFILE"
+cd /Users/mohammedkhan/iq/health && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@${DROPLET_IP} 'cat > /etc/nginx/sites-available/mental-health-app << "ENDOFFILE"
 # Upstream for API server (HTTPS backend) - use IPv4 explicitly
 upstream api_backend {
     server 127.0.0.1:5262;
@@ -227,7 +229,7 @@ upstream api_backend {
 # HTTP server - redirect to HTTPS
 server {
     listen 80;
-    server_name 159.65.242.79;
+    server_name ${DROPLET_IP};
     
     # Allow Let'\''s Encrypt validation
     location /.well-known/acme-challenge/ {
@@ -243,7 +245,7 @@ server {
 # HTTPS server
 server {
     listen 443 ssl http2;
-    server_name 159.65.242.79;
+    server_name ${DROPLET_IP};
     
     # SSL certificates
     ssl_certificate /etc/nginx/ssl/nginx-selfsigned.crt;
@@ -318,10 +320,10 @@ nginx -t && systemctl reload nginx && echo "✅ Nginx reloaded"' 2>/dev/null
 
 
 
-cd /Users/mohammedkhan/iq/health && sleep 2 && curl -k https://159.65.242.79/login 2>&1 | head -20
+cd /Users/mohammedkhan/iq/health && sleep 2 && curl -k https://${DROPLET_IP}/login 2>&1 | head -20
 
 
-cd /Users/mohammedkhan/iq/health && curl -k https://159.65.242.79/ 2>&1 | head -20
+cd /Users/mohammedkhan/iq/health && curl -k https://${DROPLET_IP}/ 2>&1 | head -20
 
 
 
@@ -366,6 +368,6 @@ cd /Users/mohammedkhan/iq/health && curl -k https://159.65.242.79/ 2>&1 | head -
 ./deploy/encrypt-existing-mobilephone-data.sh
 
 echo "this is for reference in case you want to see the logs"
-echo "ssh -i ~/.ssh/id_rsa root@159.65.242.79 'journalctl -u mental-health-app -f --no-pager'"
+echo "ssh -i ~/.ssh/id_rsa root@${DROPLET_IP} 'journalctl -u mental-health-app -f --no-pager'"
 
 

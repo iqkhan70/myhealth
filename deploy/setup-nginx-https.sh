@@ -1,4 +1,6 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Setup HTTPS for Nginx (self-signed certificate)
 # This allows the application to be accessed via HTTPS
@@ -12,7 +14,6 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # Configuration
-DROPLET_IP="159.65.242.79"
 DROPLET_USER="root"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_NAME="mental-health-app"
@@ -67,7 +68,7 @@ upstream api_backend {
 # HTTP server - redirect to HTTPS
 server {
     listen 80;
-    server_name 159.65.242.79;
+    server_name ${DROPLET_IP};
     
     # Allow Let's Encrypt validation
     location /.well-known/acme-challenge/ {
@@ -83,7 +84,7 @@ server {
 # HTTPS server
 server {
     listen 443 ssl http2;
-    server_name 159.65.242.79;
+    server_name ${DROPLET_IP};
     
     # SSL certificates
     ssl_certificate /etc/nginx/ssl/nginx-selfsigned.crt;

@@ -1,4 +1,6 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Export data from local database and import to DigitalOcean database
 # This script handles the complete data migration process
@@ -13,7 +15,6 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration - UPDATE THESE
-DROPLET_IP="159.65.242.79"
 DROPLET_USER="root"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app"

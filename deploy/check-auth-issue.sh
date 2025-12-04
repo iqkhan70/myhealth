@@ -1,8 +1,9 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Script to diagnose 401 Unauthorized issue on DigitalOcean server
 
-DROPLET_IP="159.65.242.79"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 
 echo "🔍 Diagnosing 401 Unauthorized Issue..."

@@ -1,4 +1,6 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # ============================================================================
 # Complete DigitalOcean Deployment Script
@@ -20,7 +22,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration - UPDATE THESE VALUES
-DROPLET_IP="${DROPLET_IP:-159.65.242.79}"  # Your DigitalOcean droplet IP address (can override with env var)
+DROPLET_IP="${DROPLET_IP:-${DROPLET_IP}}"  # Your DigitalOcean droplet IP address (can override with env var)
 DROPLET_USER="root"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_NAME="mental-health-app"

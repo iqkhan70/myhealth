@@ -1,8 +1,9 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 echo "🔧 Fixing production certificate configuration..."
 
-SERVER_IP="159.65.242.79"
 SSH_KEY="$HOME/.ssh/id_rsa"
 
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no root@$SERVER_IP << 'ENDSSH'
@@ -106,4 +107,4 @@ echo "✅ Certificate configuration fix complete!"
 echo ""
 echo "Testing backend health endpoint (from local machine)..."
 sleep 2
-curl -k https://159.65.242.79/api/health 2>&1 | head -10
+curl -k https://${DROPLET_IP}/api/health 2>&1 | head -10

@@ -1,8 +1,9 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Simple script to fix JWT configuration on server
 
-DROPLET_IP="159.65.242.79"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app"
 
@@ -51,6 +52,6 @@ else
     echo "2. Use that token in the Authorization header"
     echo ""
     echo "Example:"
-    echo '  curl -k -H "Authorization: Bearer YOUR_TOKEN_HERE" https://159.65.242.79/api/journal/user/3'
+    echo '  curl -k -H "Authorization: Bearer YOUR_TOKEN_HERE" https://${DROPLET_IP}/api/journal/user/3'
 fi
 

@@ -1,4 +1,6 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Setup HTTPS for the .NET server (port 5262)
 # This creates a self-signed certificate for the IP address
@@ -12,7 +14,6 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # Configuration
-DROPLET_IP="159.65.242.79"
 DROPLET_USER="root"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app"

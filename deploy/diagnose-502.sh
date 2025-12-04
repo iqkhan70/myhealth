@@ -1,9 +1,10 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 echo "🔍 Diagnosing 502 Bad Gateway issue..."
 echo ""
 
-SERVER_IP="159.65.242.79"
 SSH_KEY="$HOME/.ssh/id_rsa"
 
 echo "1. Checking if backend service is running..."

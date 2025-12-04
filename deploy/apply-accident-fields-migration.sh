@@ -1,4 +1,8 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Script to apply Accident Fields migration on DigitalOcean
 # This script is idempotent - safe to run multiple times
@@ -13,7 +17,6 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-SERVER_IP="159.65.242.79"
 SSH_KEY="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app/server"
 PROJECT_DIR="/Users/mohammedkhan/iq/health"

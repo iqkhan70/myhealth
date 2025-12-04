@@ -1,4 +1,6 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Generate SQL migration script from local database and apply to remote server
 # This works around the issue of not having .NET SDK on the server
@@ -12,7 +14,6 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # Configuration - UPDATE THESE
-DROPLET_IP="159.65.242.79"
 DROPLET_USER="root"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app"

@@ -1,9 +1,10 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Script to create/update /opt/mental-health-app/server/appsettings.Production.json on DigitalOcean server
 # Preserves ConnectionStrings section if it exists, overwrites everything else
 
-SERVER_IP="159.65.242.79"
 SSH_KEY="$HOME/.ssh/id_rsa"
 
 echo "🔧 Creating/updating appsettings.Production.json file on DigitalOcean server..."
