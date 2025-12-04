@@ -1,0 +1,46 @@
+name: Run Tests
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - dev
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      
+      - name: Restore dependencies
+        run: |
+          dotnet restore
+      
+      - name: Build
+        run: |
+          dotnet build --configuration Release --no-restore
+      
+      - name: Run tests
+        run: |
+          # Add your test projects here
+          # dotnet test --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+          echo "No test projects configured yet"
+        continue-on-error: true
+      
+      - name: Check code quality
+        run: |
+          # Add linting/static analysis here
+          echo "Code quality checks skipped"
+        continue-on-error: true
+

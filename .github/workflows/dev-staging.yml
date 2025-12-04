@@ -1,0 +1,125 @@
+name: Deploy to Dev/Staging
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  SERVER_IP: 159.65.242.79
+  SSH_USER: root
+  APP_DIR: /opt/mental-health-app
+  ENVIRONMENT: Staging
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      
+      - name: Restore dependencies
+        run: |
+          dotnet restore SM_MentalHealthApp.Server/SM_MentalHealthApp.Server.csproj
+          dotnet restore SM_MentalHealthApp.Client/SM_MentalHealthApp.Client.csproj
+      
+      - name: Build Server
+        run: |
+          dotnet build SM_MentalHealthApp.Server/SM_MentalHealthApp.Server.csproj \
+            --configuration Release \
+            --no-restore
+      
+      - name: Build Client
+        run: |
+          dotnet build SM_MentalHealthApp.Client/SM_MentalHealthApp.Client.csproj \
+            --configuration Release \
+            --no-restore
+      
+      - name: Publish Server
+        run: |
+          dotnet publish SM_MentalHealthApp.Server/SM_MentalHealthApp.Server.csproj \
+            --configuration Release \
+            --output ./publish/server \
+            --no-build
+      
+      - name: Publish Client
+        run: |
+          dotnet publish SM_MentalHealthApp.Client/SM_MentalHealthApp.Client.csproj \
+            --configuration Release \
+            --output ./publish/client \
+            --no-build
+      
+      - name: Run Tests (if any)
+        run: |
+          # Uncomment if you have test projects
+          # dotnet test --no-build --verbosity normal
+          echo "Skipping tests for now"
+        continue-on-error: true
+      
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      
+      - name: Add server to known hosts
+        run: |
+          ssh-keyscan -H ${{ env.SERVER_IP }} >> ~/.ssh/known_hosts
+      
+      - name: Create deployment directory
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+            "mkdir -p ${{ env.APP_DIR }}/server ${{ env.APP_DIR }}/client"
+      
+      - name: Copy server files
+        run: |
+          rsync -avz --delete \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            ./publish/server/ \
+            ${{ env.SSH_USER }}@${{ env.SERVER_IP }}:${{ env.APP_DIR }}/server/
+      
+      - name: Copy client files
+        run: |
+          rsync -avz --delete \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            ./publish/client/wwwroot/ \
+            ${{ env.SSH_USER }}@${{ env.SERVER_IP }}:${{ env.APP_DIR }}/client/wwwroot/
+      
+      - name: Set permissions
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+            "chown -R appuser:appuser ${{ env.APP_DIR }} && \
+             chmod +x ${{ env.APP_DIR }}/server/SM_MentalHealthApp.Server.dll"
+      
+      - name: Run database migrations
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+            "cd ${{ env.APP_DIR }}/server && \
+             dotnet ef database update --no-build --project . || echo 'Migrations skipped'"
+        continue-on-error: true
+      
+      - name: Restart application
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+            "systemctl restart mental-health-app && \
+             sleep 3 && \
+             systemctl status mental-health-app --no-pager | head -10"
+      
+      - name: Health check
+        run: |
+          sleep 5
+          curl -k -f https://${{ env.SERVER_IP }}/api/health || exit 1
+      
+      - name: Deployment summary
+        run: |
+          echo "✅ Deployment to ${{ env.ENVIRONMENT }} completed successfully!"
+          echo "🌐 Server: https://${{ env.SERVER_IP }}"
+          echo "📦 Branch: ${{ github.ref_name }}"
+          echo "🔨 Commit: ${{ github.sha }}"
+

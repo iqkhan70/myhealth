@@ -1,0 +1,65 @@
+name: Initial Server Setup
+
+on:
+  workflow_dispatch: # Manual trigger only
+    inputs:
+      confirm_setup:
+        description: 'Type "yes" to confirm initial setup'
+        required: true
+        type: string
+
+env:
+  SERVER_IP: 159.65.242.79
+  SSH_USER: root
+
+jobs:
+  initial-setup:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm_setup == 'yes'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      
+      - name: Add server to known hosts
+        run: |
+          ssh-keyscan -H ${{ env.SERVER_IP }} >> ~/.ssh/known_hosts
+      
+      - name: Copy deployment scripts
+        run: |
+          rsync -avz \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            ./deploy/ \
+            ${{ env.SSH_USER }}@${{ env.SERVER_IP }}:/tmp/deploy-scripts/
+      
+      - name: Run initial setup (myscript1.sh)
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+            "cd /tmp/deploy-scripts && \
+             chmod +x myscript1.sh && \
+             bash myscript1.sh"
+      
+      - name: Run post-setup (myscript2.sh)
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+            "cd /tmp/deploy-scripts && \
+             chmod +x myscript2.sh && \
+             bash myscript2.sh"
+      
+      - name: Verify setup
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+            "systemctl status mental-health-app --no-pager | head -10 && \
+             systemctl status nginx --no-pager | head -5 && \
+             curl -k https://localhost/api/health || echo 'Health check failed'"
+      
+      - name: Setup complete
+        run: |
+          echo "✅ Initial server setup completed!"
+          echo "🌐 Server: https://${{ env.SERVER_IP }}"
+

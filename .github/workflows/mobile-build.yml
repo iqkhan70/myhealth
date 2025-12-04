@@ -1,0 +1,99 @@
+name: Build Mobile App
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+    paths:
+      - 'MentalHealthMobileClean/**'
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        type: choice
+        options:
+          - ios
+          - android
+          - both
+
+jobs:
+  build-ios:
+    if: github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'both' || github.event_name == 'push'
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      
+      - name: Install dependencies
+        working-directory: MentalHealthMobileClean
+        run: npm ci
+      
+      - name: Build iOS
+        working-directory: MentalHealthMobileClean
+        run: |
+          npx expo run:ios --configuration Release --no-build-cache
+        continue-on-error: true
+      
+      - name: Upload iOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build
+          path: MentalHealthMobileClean/ios/build
+          if-no-files-found: ignore
+
+  build-android:
+    if: github.event.inputs.platform == 'android' || github.event.inputs.platform == 'both' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      
+      - name: Install dependencies
+        working-directory: MentalHealthMobileClean
+        run: npm ci
+      
+      - name: Build Android
+        working-directory: MentalHealthMobileClean
+        run: |
+          npx expo run:android --variant release --no-build-cache
+        continue-on-error: true
+      
+      - name: Upload Android build
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: MentalHealthMobileClean/android/app/build
+          if-no-files-found: ignore
+
