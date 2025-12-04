@@ -16,7 +16,13 @@ echo "Updating scripts to use DROPLET_IP from file: $DROPLET_IP"
 
 # Find all shell scripts in deploy directory that contain the IP
 find "$SCRIPT_DIR" -name "*.sh" -type f | while read script; do
-    if grep -q "159.65.242.79\|DROPLET_IP=\"159.65.242.79\"\|SERVER_IP=\"159.65.242.79\"" "$script" 2>/dev/null; then
+    # Skip this script itself
+    if [[ "$script" == *"update-scripts-with-ip.sh" ]] || \
+       [[ "$script" == *"update-all-scripts-ip.sh" ]]; then
+        continue
+    fi
+    
+    if grep -qE "159\.65\.242\.79|DROPLET_IP=\"159\.65\.242\.79\"|SERVER_IP=\"159\.65\.242\.79\"" "$script" 2>/dev/null; then
         echo "Found IP in: $script"
         # Add source line at the top if not present
         if ! grep -q "load-droplet-ip.sh" "$script"; then

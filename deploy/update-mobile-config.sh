@@ -22,8 +22,13 @@ DROPLET_IP=$(cat "$DROPLET_IP_FILE" | tr -d '[:space:]')
 echo "Updating mobile app config with DROPLET_IP: $DROPLET_IP"
 
 # Update SERVER_IP in app.config.js
-sed -i.bak "s/SERVER_IP: '[^']*'/SERVER_IP: '$DROPLET_IP'/" "$MOBILE_CONFIG"
-rm -f "${MOBILE_CONFIG}.bak"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    sed -i '' "s/SERVER_IP: '[^']*'/SERVER_IP: '$DROPLET_IP'/" "$MOBILE_CONFIG"
+else
+    # Linux
+    sed -i "s/SERVER_IP: '[^']*'/SERVER_IP: '$DROPLET_IP'/" "$MOBILE_CONFIG"
+fi
 
 echo "✅ Mobile app config updated"
 echo "   SERVER_IP: $DROPLET_IP"
