@@ -129,6 +129,21 @@ jobs:
             "chown -R appuser:appuser ${{ env.APP_DIR }} && \
              chmod +x ${{ env.APP_DIR }}/server/SM_MentalHealthApp.Server.dll"
       
+      - name: Create/update appsettings.Staging.json
+        run: |
+          # Run the script locally (it will SSH into the server)
+          chmod +x ./deploy/create-appsettingsstaging.sh
+          ./deploy/create-appsettingsstaging.sh
+        continue-on-error: true
+      
+      - name: Update systemd service for Staging environment
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+            "sed -i 's/Environment=ASPNETCORE_ENVIRONMENT=Production/Environment=ASPNETCORE_ENVIRONMENT=Staging/' /etc/systemd/system/mental-health-app.service && \
+             systemctl daemon-reload && \
+             echo '✅ Updated systemd service to use Staging environment'"
+        continue-on-error: true
+      
       - name: Run database migrations
         run: |
           ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
