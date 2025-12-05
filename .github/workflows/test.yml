@@ -12,20 +12,6 @@ on:
       - 'SM_MentalHealthApp.Shared/**'
       - 'MentalHealthMobileClean/**'
       - '.github/workflows/**'
-    paths-ignore:
-      # Ignore non-code files
-      - '**.md'
-      - '**.sh'
-      - 'deploy/DROPLET_IP'
-      - 'deploy/*.md'
-      - 'deploy/*.sql'
-      - 'deploy/*.py'
-      - '**/*.txt'
-      - '**/*.log'
-      - '**/.gitignore'
-      - '**/.gitattributes'
-      - '**/README.md'
-      - '**/LICENSE'
   push:
     branches:
       - dev
@@ -37,20 +23,6 @@ on:
       - 'SM_MentalHealthApp.Shared/**'
       - 'MentalHealthMobileClean/**'
       - '.github/workflows/**'
-    paths-ignore:
-      # Ignore non-code files
-      - '**.md'
-      - '**.sh'
-      - 'deploy/DROPLET_IP'
-      - 'deploy/*.md'
-      - 'deploy/*.sql'
-      - 'deploy/*.py'
-      - '**/*.txt'
-      - '**/*.log'
-      - '**/.gitignore'
-      - '**/.gitattributes'
-      - '**/README.md'
-      - '**/LICENSE'
 
 jobs:
   test:

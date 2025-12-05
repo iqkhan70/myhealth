@@ -11,20 +11,6 @@ on:
       - 'SM_MentalHealthApp.Shared/**'
       - 'MentalHealthMobileClean/**'
       - '.github/workflows/**' # Workflow changes should trigger
-    paths-ignore:
-      # Ignore non-code files
-      - '**.md'
-      - '**.sh'
-      - 'deploy/DROPLET_IP'
-      - 'deploy/*.md'
-      - 'deploy/*.sql'
-      - 'deploy/*.py'
-      - '**/*.txt'
-      - '**/*.log'
-      - '**/.gitignore'
-      - '**/.gitattributes'
-      - '**/README.md'
-      - '**/LICENSE'
   workflow_dispatch: # Allow manual trigger
 
 env:
