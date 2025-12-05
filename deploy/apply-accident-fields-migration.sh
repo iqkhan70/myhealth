@@ -1,8 +1,6 @@
 #!/bin/bash
 # Load centralized DROPLET_IP
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
-# Load centralized DROPLET_IP
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # Script to apply Accident Fields migration on DigitalOcean
 # This script is idempotent - safe to run multiple times

@@ -63,42 +63,145 @@ ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no root@$SERVER_IP << 'ENDSSH'
 ENDSSH
 
 echo ""
-echo -e "${BLUE}Step 2: Running encryption script on server...${NC}"
+echo -e "${BLUE}Step 2: Copying Python encryption script to server (fallback)...${NC}"
+
+# Copy Python encryption script as fallback
+scp -i "$SSH_KEY" -o StrictHostKeyChecking=no \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/encrypt-mobilephone-python.py" \
+    root@$SERVER_IP:/tmp/encrypt-mobilephone.py
+
+if [ $? -ne 0 ]; then
+    echo -e "${YELLOW}⚠️  Failed to copy Python script, will try .NET method only${NC}"
+fi
+
+echo ""
+echo -e "${BLUE}Step 3: Running encryption script on server...${NC}"
 echo -e "${YELLOW}This may take a few minutes depending on the amount of data...${NC}"
 
 # Run the encryption script on the server
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no root@$SERVER_IP << ENDSSH
-    cd $APP_DIR
+    APP_DIR="$APP_DIR"
+    cd "\$APP_DIR"
     
-    # Source dotnet environment (if available)
-    if [ -f /etc/profile.d/dotnet.sh ]; then
-        source /etc/profile.d/dotnet.sh
+    # Find dotnet runtime path (server has runtime, not SDK)
+    # Check common locations and also check systemd service for the path
+    DOTNET_PATH=\$(which dotnet 2>/dev/null || \
+        grep "^ExecStart=" /etc/systemd/system/mental-health-app.service 2>/dev/null | cut -d' ' -f1 | sed 's|ExecStart=||' || \
+        find /usr/share/dotnet -name dotnet -type f 2>/dev/null | head -1 || \
+        find /root/.dotnet -name dotnet -type f 2>/dev/null | head -1 || \
+        find /usr/local/bin -name dotnet -type f 2>/dev/null | head -1 || \
+        find /opt -name dotnet -type f 2>/dev/null | head -1 || \
+        echo "")
+    
+    if [ -z "\$DOTNET_PATH" ]; then
+        echo "❌ dotnet runtime not found. Please ensure .NET runtime is installed."
+        exit 1
     fi
     
-    # Find dotnet path if not in PATH
-    if ! command -v dotnet &> /dev/null; then
-        DOTNET_PATH=\$(which dotnet 2>/dev/null || find /usr -name dotnet 2>/dev/null | head -1 || find /opt -name dotnet 2>/dev/null | head -1 || echo "")
-        if [ -n "\$DOTNET_PATH" ]; then
-            export PATH="\$(dirname \$DOTNET_PATH):\$PATH"
+    # If it's a symlink, resolve it
+    if [ -L "\$DOTNET_PATH" ]; then
+        DOTNET_PATH=\$(readlink -f "\$DOTNET_PATH" || echo "\$DOTNET_PATH")
+    fi
+    
+    export PATH="\$(dirname \$DOTNET_PATH):\$PATH"
+    echo "✅ Using dotnet: \$DOTNET_PATH"
+    
+    # Check if we have the published application
+    # First check the APP_DIR
+    PUBLISHED_APP="\$APP_DIR/SM_MentalHealthApp.Server.dll"
+    if [ ! -f "\$PUBLISHED_APP" ]; then
+        echo "ℹ️  Not found at \$PUBLISHED_APP, looking for alternative locations..."
+        # Check systemd service for the actual path
+        SERVICE_EXEC=\$(grep "^ExecStart=" /etc/systemd/system/mental-health-app.service 2>/dev/null | sed 's|.*ExecStart=.*dotnet ||' | sed 's| .*||' || echo "")
+        if [ -n "\$SERVICE_EXEC" ] && [ -f "\$SERVICE_EXEC" ]; then
+            PUBLISHED_APP="\$SERVICE_EXEC"
+            echo "✅ Found via systemd service: \$PUBLISHED_APP"
         else
-            echo "❌ dotnet command not found. Please install .NET SDK or ensure it's in PATH"
-            exit 1
+            # Search in common locations
+            PUBLISHED_APP=\$(find "\$APP_DIR" -name "SM_MentalHealthApp.Server.dll" -type f 2>/dev/null | head -1 || \
+                find /opt/mental-health-app -name "SM_MentalHealthApp.Server.dll" -type f 2>/dev/null | head -1 || \
+                echo "")
+            if [ -z "\$PUBLISHED_APP" ]; then
+                echo "❌ Published application not found. Cannot run encryption."
+                echo "ℹ️  The server needs the published application to run encryption."
+                echo "ℹ️  Checked: \$APP_DIR/SM_MentalHealthApp.Server.dll"
+                echo "ℹ️  Checked systemd service path: \$SERVICE_EXEC"
+                echo "ℹ️  Alternatively, you can use a Python-based encryption script."
+                exit 1
+            fi
         fi
     fi
+    
+    echo "✅ Found published application: \$PUBLISHED_APP"
     
     # Stop the service temporarily to avoid conflicts
     echo "Stopping application service..."
     systemctl stop mental-health-app || true
     
-    # Run the encryption script
-    echo "Running encryption script..."
-    dotnet run --project SM_MentalHealthApp.Server --encrypt-mobilephones 2>&1 | tee /tmp/mobilephone-encryption.log
+    # Check .NET version compatibility
+    DOTNET_VERSION=\$(\$DOTNET_PATH --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
+    REQUIRED_VERSION="9.0"
+    
+    # Check if we can run the .NET app or need Python fallback
+    if [ -z "\$DOTNET_VERSION" ] || [ "\$(echo \$DOTNET_VERSION | cut -d. -f1)" != "9" ]; then
+        echo "⚠️  .NET 9.0 runtime not found (found: \$DOTNET_VERSION)"
+        echo "ℹ️  Using Python-based encryption script instead..."
+        echo ""
+        
+        # Use Python-based encryption
+        PYTHON_SCRIPT="/tmp/encrypt-mobilephone.py"
+        
+        # Check if Python script exists (should be copied by script)
+        if [ ! -f "\$PYTHON_SCRIPT" ]; then
+            echo "❌ Python encryption script not found at \$PYTHON_SCRIPT"
+            echo "ℹ️  The script should have been copied to the server."
+            exit 1
+        fi
+        
+        # Install dependencies if needed
+        if ! python3 -c "import pymysql" 2>/dev/null; then
+            echo "Installing pymysql..."
+            pip3 install pymysql --quiet || {
+                echo "❌ Failed to install pymysql. Please install manually: pip3 install pymysql"
+                exit 1
+            }
+        fi
+        
+        if ! python3 -c "from Cryptodome.Cipher import AES" 2>/dev/null; then
+            echo "Installing pycryptodome..."
+            pip3 install pycryptodome --quiet || {
+                echo "❌ Failed to install pycryptodome. Please install manually: pip3 install pycryptodome"
+                exit 1
+            }
+        fi
+        
+        # Run Python encryption script
+        echo "Running Python encryption script..."
+        python3 "\$PYTHON_SCRIPT" "\$APP_DIR/appsettings.Production.json" 2>&1 | tee /tmp/mobilephone-encryption.log
+        ENCRYPT_EXIT=\${PIPESTATUS[0]}
+    else
+        # Use .NET application
+        echo "Running encryption script..."
+        echo "Command: \$DOTNET_PATH \"\$PUBLISHED_APP\" --encrypt-mobilephones"
+        
+        # Get the directory of the published app
+        APP_DIR_PATH=\$(dirname "\$PUBLISHED_APP")
+        cd "\$APP_DIR_PATH"
+        
+        # Run with proper working directory and environment
+        \$DOTNET_PATH "\$PUBLISHED_APP" --encrypt-mobilephones 2>&1 | tee /tmp/mobilephone-encryption.log
+        ENCRYPT_EXIT=\${PIPESTATUS[0]}
+    fi
     
     # Check exit code
-    if [ \${PIPESTATUS[0]} -eq 0 ]; then
+    if [ \$ENCRYPT_EXIT -eq 0 ]; then
         echo "✅ Encryption completed successfully"
     else
-        echo "❌ Encryption failed. Check /tmp/mobilephone-encryption.log for details"
+        echo "❌ Encryption failed with exit code \$ENCRYPT_EXIT"
+        echo "Check /tmp/mobilephone-encryption.log for details"
+        echo ""
+        echo "Last 20 lines of log:"
+        tail -20 /tmp/mobilephone-encryption.log || true
         exit 1
     fi
     

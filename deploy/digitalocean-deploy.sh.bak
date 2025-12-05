@@ -1,4 +1,6 @@
 #!/bin/bash
+# Load centralized DROPLET_IP
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/load-droplet-ip.sh"
 
 # DigitalOcean Deployment Script for Blazor Mental Health App
 # This script automates the deployment of the application to a DigitalOcean droplet
@@ -12,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration - UPDATE THESE VALUES
-DROPLET_IP="159.65.242.79"  # Your DigitalOcean droplet IP address
+DROPLET_IP="${DROPLET_IP}"  # Your DigitalOcean droplet IP address
 DROPLET_USER="root"  # Usually 'root' for new droplets
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"  # Path to your SSH private key
 DOMAIN=""  # Your domain name (optional, leave empty to use IP)

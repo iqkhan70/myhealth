@@ -109,43 +109,36 @@ namespace SM_MentalHealthApp.Server.Controllers
                 _logger.LogInformation("Getting doctors and coordinators for patient {PatientId}", patientId);
 
                 // Get all assigners (doctors and coordinators) for this patient
-                var assigners = await _context.UserAssignments
+                // Materialize full User entities first, then decrypt, then project
+                var assignerUsers = await _context.UserAssignments
                     .Where(ua => ua.AssigneeId == patientId)
                     .Include(ua => ua.Assigner)
                         .ThenInclude(a => a.Role)
                     .Where(ua => ua.Assigner != null && 
                                  ua.Assigner.IsActive && 
                                  (ua.Assigner.RoleId == 2 || ua.Assigner.RoleId == 4 || ua.Assigner.RoleId == 5)) // Active doctors, coordinators, and attorneys
-                    .Select(ua => new
-                    {
-                        ua.Assigner.Id,
-                        ua.Assigner.FirstName,
-                        ua.Assigner.LastName,
-                        ua.Assigner.Email,
-                        ua.Assigner.MobilePhone,
-                        ua.Assigner.Specialization,
-                        ua.Assigner.RoleId,
-                        RoleName = ua.Assigner.Role != null ? ua.Assigner.Role.Name : "Unknown",
-                        ua.Assigner.IsActive
-                    })
+                    .Select(ua => ua.Assigner)
                     .OrderBy(d => d.LastName)
                     .ThenBy(d => d.FirstName)
                     .ToListAsync();
 
-                _logger.LogInformation("Found {AssignerCount} assigners (doctors/coordinators/attorneys) for patient {PatientId}", assigners.Count, patientId);
+                // Decrypt PII data (MobilePhone and DateOfBirth) before projecting
+                UserEncryptionHelper.DecryptUserData(assignerUsers, _encryptionService);
 
-                // Create response objects with roleName included
+                _logger.LogInformation("Found {AssignerCount} assigners (doctors/coordinators/attorneys) for patient {PatientId}", assignerUsers.Count, patientId);
+
+                // Create response objects with roleName included (after decryption)
                 // ASP.NET Core will serialize these with camelCase by default
-                var response = assigners.Select(a => new
+                var response = assignerUsers.Select(a => new
                 {
                     Id = a.Id,
                     FirstName = a.FirstName,
                     LastName = a.LastName,
                     Email = a.Email,
-                    MobilePhone = a.MobilePhone,
+                    MobilePhone = a.MobilePhone, // Now decrypted
                     Specialization = a.Specialization,
                     RoleId = a.RoleId,
-                    RoleName = a.RoleName,
+                    RoleName = a.Role != null ? a.Role.Name : "Unknown",
                     IsActive = a.IsActive
                 }).ToList();
 
