@@ -12,17 +12,8 @@ on:
       - 'SM_MentalHealthApp.Shared/**'
       - 'MentalHealthMobileClean/**'
       - '.github/workflows/**'
-  push:
-    branches:
-      - dev
-      - main
-    paths:
-      # Only trigger on application code changes
-      - 'SM_MentalHealthApp.Server/**'
-      - 'SM_MentalHealthApp.Client/**'
-      - 'SM_MentalHealthApp.Shared/**'
-      - 'MentalHealthMobileClean/**'
-      - '.github/workflows/**'
+  # Removed push trigger - tests should only run on PRs, not on every push
+  # Deployment workflows (dev-staging.yml, production.yml) handle deployments on push
 
 jobs:
   test:
