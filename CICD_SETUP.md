@@ -16,12 +16,33 @@ The CI/CD pipeline includes:
 
 ### Step 1: Add GitHub Secrets
 
+⚠️ **REQUIRED**: Without this secret, all deployments will fail!
+
 Go to your GitHub repository → **Settings → Secrets and variables → Actions** and add:
 
-1. **SSH_PRIVATE_KEY**
+1. **SSH_PRIVATE_KEY** (Required)
+
    - Your SSH private key for accessing the DigitalOcean server
-   - Get it: `cat ~/.ssh/id_rsa`
-   - Copy the entire key (including `-----BEGIN` and `-----END` lines)
+   - **How to get it:**
+     ```bash
+     cat ~/.ssh/id_rsa
+     ```
+   - **Important:** Copy the ENTIRE key including:
+     - `-----BEGIN OPENSSH PRIVATE KEY-----` (or `-----BEGIN RSA PRIVATE KEY-----`)
+     - All the key content in between
+     - `-----END OPENSSH PRIVATE KEY-----` (or `-----END RSA PRIVATE KEY-----`)
+   - **If you don't have an SSH key yet:**
+     ```bash
+     ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+     # Press Enter to accept default location (~/.ssh/id_rsa)
+     # Enter a passphrase (optional but recommended)
+     ```
+   - **Copy the public key to your server:**
+     ```bash
+     ssh-copy-id root@YOUR_SERVER_IP
+     # Or manually:
+     cat ~/.ssh/id_rsa.pub | ssh root@YOUR_SERVER_IP "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+     ```
 
 2. **EXPO_TOKEN** (optional, for mobile builds)
    - Get it from: https://expo.dev/accounts/[your-account]/settings/access-tokens
@@ -48,11 +69,13 @@ For production deployments with approval:
 **When:** Manual trigger only
 
 **What it does:**
+
 - Runs your `myscript1.sh` and `myscript2.sh`
 - Sets up server, database, nginx, certificates
 - One-time setup for new servers
 
 **How to run:**
+
 1. Go to **Actions** tab in GitHub
 2. Select **Initial Server Setup**
 3. Click **Run workflow**
@@ -64,6 +87,7 @@ For production deployments with approval:
 **When:** Push to `dev` branch
 
 **What it does:**
+
 - Builds .NET server and client
 - Runs tests (if configured)
 - Deploys to staging server
@@ -78,6 +102,7 @@ For production deployments with approval:
 **When:** Push to `main` branch
 
 **What it does:**
+
 - Builds .NET server and client
 - Runs tests
 - **Creates backup** before deployment
@@ -94,6 +119,7 @@ For production deployments with approval:
 **When:** Pull requests and pushes to `dev`/`main`
 
 **What it does:**
+
 - Builds the solution
 - Runs unit tests
 - Code quality checks
@@ -105,6 +131,7 @@ For production deployments with approval:
 **When:** Push to `dev`/`main` with changes in `MentalHealthMobileClean/`
 
 **What it does:**
+
 - Builds iOS app (on macOS)
 - Builds Android app (on Ubuntu)
 - Uploads build artifacts
@@ -126,11 +153,13 @@ All workflow files are in `.github/workflows/`:
 ### Development Flow
 
 1. **Create feature branch:**
+
    ```bash
    git checkout -b feature/my-feature
    ```
 
 2. **Make changes and commit:**
+
    ```bash
    git add .
    git commit -m "Add new feature"
@@ -138,10 +167,12 @@ All workflow files are in `.github/workflows/`:
    ```
 
 3. **Create pull request to `dev`:**
+
    - Tests run automatically
    - Review and merge
 
 4. **Auto-deploy to staging:**
+
    - When merged to `dev`, staging deployment runs automatically
    - Test on staging server
 
@@ -153,16 +184,18 @@ All workflow files are in `.github/workflows/`:
 ### Hotfix Flow
 
 1. **Create hotfix branch from `main`:**
+
    ```bash
    git checkout -b hotfix/critical-fix main
    ```
 
 2. **Fix and merge to both branches:**
+
    ```bash
    # Fix the issue
    git commit -m "Fix critical bug"
    git push origin hotfix/critical-fix
-   
+
    # Merge to main (production)
    # Then merge to dev (staging)
    ```
@@ -261,4 +294,3 @@ If production deployment fails, it automatically rolls back to the previous back
 - [ ] Pushed to `dev` branch to test staging deployment
 - [ ] Verified staging deployment works
 - [ ] Tested production deployment (with approval if configured)
-

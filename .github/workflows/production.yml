@@ -90,6 +90,26 @@ jobs:
             --output ./publish/client \
             --no-build
       
+      - name: Validate SSH secret
+        run: |
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            echo "❌ ERROR: SSH_PRIVATE_KEY secret is not configured!"
+            echo ""
+            echo "To fix this:"
+            echo "1. Go to: https://github.com/${{ github.repository }}/settings/secrets/actions"
+            echo "2. Click 'New repository secret'"
+            echo "3. Name: SSH_PRIVATE_KEY"
+            echo "4. Value: Your SSH private key (cat ~/.ssh/id_rsa)"
+            echo "5. Click 'Add secret'"
+            echo ""
+            echo "The key should include the BEGIN and END lines:"
+            echo "-----BEGIN OPENSSH PRIVATE KEY-----"
+            echo "..."
+            echo "-----END OPENSSH PRIVATE KEY-----"
+            exit 1
+          fi
+          echo "✅ SSH_PRIVATE_KEY secret is configured"
+      
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
