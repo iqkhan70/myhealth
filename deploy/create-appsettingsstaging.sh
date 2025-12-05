@@ -178,8 +178,26 @@ try:
                 existing_connection_strings = existing_config["ConnectionStrings"]
                 print("✅ Found existing ConnectionStrings section, preserving it")
     except FileNotFoundError:
-        print("ℹ️  File doesn't exist yet, will check Production file for ConnectionStrings")
-        # Try to read from Production file as fallback
+        print("ℹ️  Staging file doesn't exist yet, checking base appsettings.json for ConnectionStrings")
+    except json.JSONDecodeError as e:
+        print(f"⚠️  Existing Staging file has invalid JSON, will create new one: {e}")
+    
+    # If not found in Staging file, try base appsettings.json (always loaded by ASP.NET Core)
+    if not existing_connection_strings:
+        try:
+            base_file = "/opt/mental-health-app/server/appsettings.json"
+            with open(base_file, 'r') as f:
+                base_config = json.load(f)
+                if "ConnectionStrings" in base_config:
+                    existing_connection_strings = base_config["ConnectionStrings"]
+                    print("✅ Found ConnectionStrings in base appsettings.json, copying to Staging")
+        except FileNotFoundError:
+            print("⚠️  Base appsettings.json not found")
+        except json.JSONDecodeError:
+            print("⚠️  Base appsettings.json has invalid JSON")
+    
+    # If still not found, try Production file as last resort (in case both staging and production are on same server)
+    if not existing_connection_strings:
         try:
             prod_file = "/opt/mental-health-app/server/appsettings.Production.json"
             with open(prod_file, 'r') as f:
@@ -188,20 +206,8 @@ try:
                     existing_connection_strings = prod_config["ConnectionStrings"]
                     print("✅ Found ConnectionStrings in Production file, copying to Staging")
         except FileNotFoundError:
-            print("⚠️  Production file not found, ConnectionStrings must be added manually")
+            pass  # Production file not existing is fine for staging server
         except json.JSONDecodeError:
-            print("⚠️  Production file has invalid JSON, ConnectionStrings must be added manually")
-    except json.JSONDecodeError as e:
-        print(f"⚠️  Existing file has invalid JSON, will create new one: {e}")
-        # Try to read from Production file as fallback
-        try:
-            prod_file = "/opt/mental-health-app/server/appsettings.Production.json"
-            with open(prod_file, 'r') as f:
-                prod_config = json.load(f)
-                if "ConnectionStrings" in prod_config:
-                    existing_connection_strings = prod_config["ConnectionStrings"]
-                    print("✅ Found ConnectionStrings in Production file, copying to Staging")
-        except:
             pass
     
     # Merge: add ConnectionStrings if it existed (from staging file or production file)

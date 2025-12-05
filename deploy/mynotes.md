@@ -212,3 +212,7 @@ DEV_SSH_PRIVATE_KEY, DEV_SSH_HOST, DEV_SSH_USER
 PROD_SSH_PRIVATE_KEY, PROD_SSH_HOST, PROD_SSH_USER
 
 Select which to use based on branch or environment.
+
+============very important---./deploy/setup-staging-connectionstring.sh
+========this file is used in case we jack up the db password for what ever
+==reason

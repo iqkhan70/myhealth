@@ -32,18 +32,32 @@ try:
         print(f"   MySQL: {staging_config['ConnectionStrings'].get('MySQL', 'Not set')[:50]}...")
         sys.exit(0)
     
-    # Try to get from Production file
+    # Try to get from base appsettings.json first (most likely source)
     connection_strings = None
+    base_file = "/opt/mental-health-app/server/appsettings.json"
     try:
-        with open(prod_file, 'r') as f:
-            prod_config = json.load(f)
-            if "ConnectionStrings" in prod_config:
-                connection_strings = prod_config["ConnectionStrings"]
-                print("✅ Found ConnectionStrings in Production file")
+        with open(base_file, 'r') as f:
+            base_config = json.load(f)
+            if "ConnectionStrings" in base_config:
+                connection_strings = base_config["ConnectionStrings"]
+                print("✅ Found ConnectionStrings in base appsettings.json")
     except FileNotFoundError:
-        print("⚠️  Production file not found")
+        print("⚠️  Base appsettings.json not found, checking Production file...")
     except json.JSONDecodeError:
-        print("⚠️  Production file has invalid JSON")
+        print("⚠️  Base appsettings.json has invalid JSON, checking Production file...")
+    
+    # If not found in base file, try Production file as fallback
+    if not connection_strings:
+        try:
+            with open(prod_file, 'r') as f:
+                prod_config = json.load(f)
+                if "ConnectionStrings" in prod_config:
+                    connection_strings = prod_config["ConnectionStrings"]
+                    print("✅ Found ConnectionStrings in Production file")
+        except FileNotFoundError:
+            print("⚠️  Production file not found (this is normal for staging-only servers)")
+        except json.JSONDecodeError:
+            print("⚠️  Production file has invalid JSON")
     
     if connection_strings:
         # Add ConnectionStrings to staging config
