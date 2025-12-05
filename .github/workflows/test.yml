@@ -5,10 +5,52 @@ on:
     branches:
       - dev
       - main
+    paths:
+      # Only trigger on application code changes
+      - 'SM_MentalHealthApp.Server/**'
+      - 'SM_MentalHealthApp.Client/**'
+      - 'SM_MentalHealthApp.Shared/**'
+      - 'MentalHealthMobileClean/**'
+      - '.github/workflows/**'
+    paths-ignore:
+      # Ignore non-code files
+      - '**.md'
+      - '**.sh'
+      - 'deploy/DROPLET_IP'
+      - 'deploy/*.md'
+      - 'deploy/*.sql'
+      - 'deploy/*.py'
+      - '**/*.txt'
+      - '**/*.log'
+      - '**/.gitignore'
+      - '**/.gitattributes'
+      - '**/README.md'
+      - '**/LICENSE'
   push:
     branches:
       - dev
       - main
+    paths:
+      # Only trigger on application code changes
+      - 'SM_MentalHealthApp.Server/**'
+      - 'SM_MentalHealthApp.Client/**'
+      - 'SM_MentalHealthApp.Shared/**'
+      - 'MentalHealthMobileClean/**'
+      - '.github/workflows/**'
+    paths-ignore:
+      # Ignore non-code files
+      - '**.md'
+      - '**.sh'
+      - 'deploy/DROPLET_IP'
+      - 'deploy/*.md'
+      - 'deploy/*.sql'
+      - 'deploy/*.py'
+      - '**/*.txt'
+      - '**/*.log'
+      - '**/.gitignore'
+      - '**/.gitattributes'
+      - '**/README.md'
+      - '**/LICENSE'
 
 jobs:
   test:
