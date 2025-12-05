@@ -178,13 +178,38 @@ try:
                 existing_connection_strings = existing_config["ConnectionStrings"]
                 print("✅ Found existing ConnectionStrings section, preserving it")
     except FileNotFoundError:
-        print("ℹ️  File doesn't exist yet, creating new one")
+        print("ℹ️  File doesn't exist yet, will check Production file for ConnectionStrings")
+        # Try to read from Production file as fallback
+        try:
+            prod_file = "/opt/mental-health-app/server/appsettings.Production.json"
+            with open(prod_file, 'r') as f:
+                prod_config = json.load(f)
+                if "ConnectionStrings" in prod_config:
+                    existing_connection_strings = prod_config["ConnectionStrings"]
+                    print("✅ Found ConnectionStrings in Production file, copying to Staging")
+        except FileNotFoundError:
+            print("⚠️  Production file not found, ConnectionStrings must be added manually")
+        except json.JSONDecodeError:
+            print("⚠️  Production file has invalid JSON, ConnectionStrings must be added manually")
     except json.JSONDecodeError as e:
         print(f"⚠️  Existing file has invalid JSON, will create new one: {e}")
+        # Try to read from Production file as fallback
+        try:
+            prod_file = "/opt/mental-health-app/server/appsettings.Production.json"
+            with open(prod_file, 'r') as f:
+                prod_config = json.load(f)
+                if "ConnectionStrings" in prod_config:
+                    existing_connection_strings = prod_config["ConnectionStrings"]
+                    print("✅ Found ConnectionStrings in Production file, copying to Staging")
+        except:
+            pass
     
-    # Merge: add ConnectionStrings if it existed
+    # Merge: add ConnectionStrings if it existed (from staging file or production file)
     if existing_connection_strings:
         new_config["ConnectionStrings"] = existing_connection_strings
+    else:
+        print("⚠️  WARNING: No ConnectionStrings found! The file will be created without database connection.")
+        print("   You must manually add ConnectionStrings section to the file.")
     
     # Write the merged config
     with open(app_settings_file, 'w') as f:
