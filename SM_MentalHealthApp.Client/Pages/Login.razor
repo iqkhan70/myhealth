@@ -8,7 +8,7 @@
 <div class="login-container">
     <div class="login-card">
         <div class="login-header">
-            <h2>🏥 Health Journal</h2>
+            <h2>🏥 Welcome to Health Portal</h2>
             <p>Sign in to your account</p>
         </div>
 
@@ -42,10 +42,7 @@
                 <label for="password">Password</label>
                 <input type="password" id="password"
                     class="form-control @(string.IsNullOrEmpty(password) && showValidation ? "is-invalid" : "")"
-                    @bind="password" 
-                    @bind:event="oninput"
-                    @onkeydown="HandleKeyPress"
-                    placeholder="Enter your password" 
+                    @bind="password" @bind:event="oninput" @onkeydown="HandleKeyPress" placeholder="Enter your password"
                     disabled="@isLoading" />
                 @if (string.IsNullOrEmpty(password) && showValidation)
                 {
@@ -117,11 +114,8 @@
                     <label for="registerPassword">Password</label>
                     <input type="password" id="registerPassword"
                         class="form-control @(string.IsNullOrEmpty(registerPassword) && showValidation ? "is-invalid" : "")"
-                        @bind="registerPassword" 
-                        @bind:event="oninput"
-                        @onkeydown="HandleRegisterKeyPress"
-                        placeholder="Enter your password" 
-                        disabled="@isLoading" />
+                        @bind="registerPassword" @bind:event="oninput" @onkeydown="HandleRegisterKeyPress"
+                        placeholder="Enter your password" disabled="@isLoading" />
                     @if (string.IsNullOrEmpty(registerPassword) && showValidation)
                     {
                         <div class="invalid-feedback">Password is required</div>
@@ -227,7 +221,7 @@
             {
                 successMessage = "Login successful! Redirecting...";
                 await Task.Delay(1000);
-                
+
                 // Redirect Coordinators to user requests page, others to home
                 if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
                 {
