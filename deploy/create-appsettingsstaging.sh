@@ -102,6 +102,7 @@ ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no root@$SERVER_IP << 'ENDSSH'
     python3 << 'PYTHON'
 import json
 import sys
+import os
 
 app_settings_file = "/opt/mental-health-app/server/appsettings.Staging.json"
 new_json_str = """{
@@ -173,10 +174,16 @@ new_json_str = """{
 }"""
 
 try:
+    # CRITICAL: Check if file already exists - if so, don't overwrite it
+    if os.path.exists(app_settings_file):
+        print("✅ appsettings.Staging.json already exists - preserving your custom settings")
+        print("   If you need to recreate it, delete the file first and run this script again")
+        sys.exit(0)
+    
     # Parse new JSON
     new_config = json.loads(new_json_str)
     
-    # Try to read existing file and preserve ConnectionStrings
+    # Try to read existing file and preserve ConnectionStrings (shouldn't happen due to check above, but kept for safety)
     existing_connection_strings = None
     try:
         with open(app_settings_file, 'r') as f:
@@ -229,7 +236,6 @@ try:
         json.dump(new_config, f, indent=2)
     
     # Set proper permissions
-    import os
     os.chmod(app_settings_file, 0o644)
     
     print(f"✅ Successfully created/updated {app_settings_file}")
