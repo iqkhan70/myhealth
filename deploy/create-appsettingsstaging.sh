@@ -91,6 +91,13 @@ ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no root@$SERVER_IP << 'ENDSSH'
   }
 }'
 
+    # Check if file already exists - if so, don't overwrite it
+    if [ -f "$APP_SETTINGS_FILE" ]; then
+        echo "✅ appsettings.Staging.json already exists - preserving your custom settings"
+        echo "   If you need to recreate it, delete the file first and run this script again"
+        exit 0
+    fi
+
     # Use Python to merge JSON, preserving ConnectionStrings if it exists
     python3 << 'PYTHON'
 import json
