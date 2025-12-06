@@ -27,11 +27,33 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Load server IP
+      - name: Validate branch and load PRODUCTION server IP
         run: |
-          SERVER_IP=$(cat deploy/DROPLET_IP | tr -d '[:space:]')
-          echo "SERVER_IP=$SERVER_IP" >> $GITHUB_ENV
-          echo "🌐 Server IP: $SERVER_IP"
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            echo "❌ ERROR: This workflow should only run on 'main' branch!"
+            echo "   Current branch: ${{ github.ref_name }}"
+            echo "   This is a PRODUCTION deployment workflow."
+            exit 1
+          fi
+          
+          if [ ! -f "deploy/DROPLET_IP_PRODUCTION" ]; then
+            echo "❌ ERROR: deploy/DROPLET_IP_PRODUCTION file not found!"
+            exit 1
+          fi
+          
+          SSH_HOST_PROD=$(cat deploy/DROPLET_IP_PRODUCTION | tr -d '[:space:]' | grep -v '^#' | head -1)
+          
+          if [ -z "$SSH_HOST_PROD" ]; then
+            echo "❌ ERROR: PRODUCTION IP address is empty!"
+            exit 1
+          fi
+          
+          echo "SSH_HOST_PROD=$SSH_HOST_PROD" >> $GITHUB_ENV
+          echo "🚨 PRODUCTION Environment"
+          echo "🌐 Production Server IP: $SSH_HOST_PROD"
+          echo "📦 Branch: ${{ github.ref_name }}"
+          echo "⚠️  WARNING: Deploying to PRODUCTION!"
+          echo "   This requires manual approval (GitHub environment protection)"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -103,18 +125,18 @@ jobs:
       
       - name: Add server to known hosts
         run: |
-          ssh-keyscan -H ${{ env.SERVER_IP }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ env.SSH_HOST_PROD }} >> ~/.ssh/known_hosts
       
       - name: Backup current deployment
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_PROD }} \
             "mkdir -p ${{ env.APP_DIR }}/backup && \
              tar -czf ${{ env.APP_DIR }}/backup/backup-$(date +%Y%m%d-%H%M%S).tar.gz \
              ${{ env.APP_DIR }}/server ${{ env.APP_DIR }}/client 2>/dev/null || true"
       
       - name: Create deployment directory
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_PROD }} \
             "mkdir -p ${{ env.APP_DIR }}/server ${{ env.APP_DIR }}/client"
       
       - name: Copy server files
@@ -125,31 +147,31 @@ jobs:
             --exclude 'appsettings.json' \
             -e "ssh -o StrictHostKeyChecking=no" \
             ./publish/server/ \
-            ${{ env.SSH_USER }}@${{ env.SERVER_IP }}:${{ env.APP_DIR }}/server/
+            ${{ env.SSH_USER }}@${{ env.SSH_HOST_PROD }}:${{ env.APP_DIR }}/server/
       
       - name: Copy client files
         run: |
           rsync -avz --delete \
             -e "ssh -o StrictHostKeyChecking=no" \
             ./publish/client/wwwroot/ \
-            ${{ env.SSH_USER }}@${{ env.SERVER_IP }}:${{ env.APP_DIR }}/client/wwwroot/
+            ${{ env.SSH_USER }}@${{ env.SSH_HOST_PROD }}:${{ env.APP_DIR }}/client/wwwroot/
       
       - name: Set permissions
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_PROD }} \
             "chown -R appuser:appuser ${{ env.APP_DIR }} && \
              chmod +x ${{ env.APP_DIR }}/server/SM_MentalHealthApp.Server.dll"
       
       - name: Run database migrations
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_PROD }} \
             "cd ${{ env.APP_DIR }}/server && \
              dotnet ef database update --no-build --project . || echo 'Migrations skipped'"
         continue-on-error: true
       
       - name: Restart application
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_PROD }} \
             "systemctl restart mental-health-app && \
              sleep 5 && \
              systemctl status mental-health-app --no-pager | head -15"
@@ -159,7 +181,7 @@ jobs:
           echo "Waiting for application to start..."
           sleep 10
           for i in {1..5}; do
-            if curl -k -f https://${{ env.SERVER_IP }}/api/health; then
+            if curl -k -f https://${{ env.SSH_HOST_PROD }}/api/health; then
               echo "✅ Health check passed!"
               exit 0
             fi
@@ -173,7 +195,7 @@ jobs:
         if: failure()
         run: |
           echo "❌ Deployment failed, rolling back..."
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_PROD }} \
             "LATEST_BACKUP=\$(ls -t ${{ env.APP_DIR }}/backup/*.tar.gz | head -1) && \
              if [ -n \"\$LATEST_BACKUP\" ]; then
                tar -xzf \$LATEST_BACKUP -C / && \
@@ -188,7 +210,7 @@ jobs:
         if: success()
         run: |
           echo "✅ Deployment to ${{ env.ENVIRONMENT }} completed successfully!"
-          echo "🌐 Server: https://${{ env.SERVER_IP }}"
+          echo "🌐 Server: https://${{ env.SSH_HOST_PROD }}"
           echo "📦 Branch: ${{ github.ref_name }}"
           echo "🔨 Commit: ${{ github.sha }}"
           echo "👤 Deployed by: ${{ github.actor }}"

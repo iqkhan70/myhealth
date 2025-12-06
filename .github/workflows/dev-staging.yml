@@ -26,11 +26,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Load server IP
+      - name: Validate branch and load STAGING server IP
         run: |
-          SERVER_IP=$(cat deploy/DROPLET_IP | tr -d '[:space:]')
-          echo "SERVER_IP=$SERVER_IP" >> $GITHUB_ENV
-          echo "🌐 Server IP: $SERVER_IP"
+          if [ "${{ github.ref_name }}" != "dev" ]; then
+            echo "❌ ERROR: This workflow should only run on 'dev' branch!"
+            echo "   Current branch: ${{ github.ref_name }}"
+            echo "   This is a STAGING deployment workflow."
+            exit 1
+          fi
+          
+          if [ ! -f "deploy/DROPLET_IP_STAGING" ]; then
+            echo "❌ ERROR: deploy/DROPLET_IP_STAGING file not found!"
+            exit 1
+          fi
+          
+          SSH_HOST_STG=$(cat deploy/DROPLET_IP_STAGING | tr -d '[:space:]' | grep -v '^#' | head -1)
+          
+          if [ -z "$SSH_HOST_STG" ]; then
+            echo "❌ ERROR: STAGING IP address is empty!"
+            exit 1
+          fi
+          
+          echo "SSH_HOST_STG=$SSH_HOST_STG" >> $GITHUB_ENV
+          echo "✅ STAGING Environment"
+          echo "🌐 Staging Server IP: $SSH_HOST_STG"
+          echo "📦 Branch: ${{ github.ref_name }}"
+          echo "⚠️  Deploying to STAGING - this is safe"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -102,11 +123,11 @@ jobs:
       
       - name: Add server to known hosts
         run: |
-          ssh-keyscan -H ${{ env.SERVER_IP }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ env.SSH_HOST_STG }} >> ~/.ssh/known_hosts
       
       - name: Create deployment directory
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_STG }} \
             "mkdir -p ${{ env.APP_DIR }}/server ${{ env.APP_DIR }}/client"
       
       - name: Copy server files
@@ -117,24 +138,24 @@ jobs:
             --exclude 'appsettings.json' \
             -e "ssh -o StrictHostKeyChecking=no" \
             ./publish/server/ \
-            ${{ env.SSH_USER }}@${{ env.SERVER_IP }}:${{ env.APP_DIR }}/server/
+            ${{ env.SSH_USER }}@${{ env.SSH_HOST_STG }}:${{ env.APP_DIR }}/server/
       
       - name: Copy client files
         run: |
           rsync -avz --delete \
             -e "ssh -o StrictHostKeyChecking=no" \
             ./publish/client/wwwroot/ \
-            ${{ env.SSH_USER }}@${{ env.SERVER_IP }}:${{ env.APP_DIR }}/client/wwwroot/
+            ${{ env.SSH_USER }}@${{ env.SSH_HOST_STG }}:${{ env.APP_DIR }}/client/wwwroot/
       
       - name: Set permissions
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_STG }} \
             "chown -R appuser:appuser ${{ env.APP_DIR }} && \
              chmod +x ${{ env.APP_DIR }}/server/SM_MentalHealthApp.Server.dll"
       
       - name: Update systemd service for Staging environment
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_STG }} \
             "sed -i 's/Environment=ASPNETCORE_ENVIRONMENT=Production/Environment=ASPNETCORE_ENVIRONMENT=Staging/' /etc/systemd/system/mental-health-app.service && \
              systemctl daemon-reload && \
              echo '✅ Updated systemd service to use Staging environment'"
@@ -142,14 +163,14 @@ jobs:
       
       - name: Run database migrations
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_STG }} \
             "cd ${{ env.APP_DIR }}/server && \
              dotnet ef database update --no-build --project . || echo 'Migrations skipped'"
         continue-on-error: true
       
       - name: Restart application
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_STG }} \
             "systemctl restart mental-health-app && \
              sleep 3 && \
              systemctl status mental-health-app --no-pager | head -10"
@@ -157,12 +178,12 @@ jobs:
       - name: Health check
         run: |
           sleep 5
-          curl -k -f https://${{ env.SERVER_IP }}/api/health || exit 1
+          curl -k -f https://${{ env.SSH_HOST_STG }}/api/health || exit 1
       
       - name: Deployment summary
         run: |
           echo "✅ Deployment to ${{ env.ENVIRONMENT }} completed successfully!"
-          echo "🌐 Server: https://${{ env.SERVER_IP }}"
+          echo "🌐 Server: https://${{ env.SSH_HOST_STG }}"
           echo "📦 Branch: ${{ github.ref_name }}"
           echo "🔨 Commit: ${{ github.sha }}"
 

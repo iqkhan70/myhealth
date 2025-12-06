@@ -14,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration - UPDATE THESE VALUES
-DROPLET_IP="146.190.166.198"  # Your DigitalOcean droplet IP address
+DROPLET_IP="159.203.100.131"  # Your DigitalOcean droplet IP address
 DROPLET_USER="root"  # Usually 'root' for new droplets
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"  # Path to your SSH private key
 DOMAIN=""  # Your domain name (optional, leave empty to use IP)

@@ -1,0 +1,6 @@
+# Staging Environment IP Address
+# Used by dev branch deployments
+# DO NOT MODIFY unless you're updating the staging server IP
+
+146.190.166.198
+
