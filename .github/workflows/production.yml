@@ -120,6 +120,9 @@ jobs:
       - name: Copy server files
         run: |
           rsync -avz --delete \
+            --exclude 'appsettings.Staging.json' \
+            --exclude 'appsettings.Production.json' \
+            --exclude 'appsettings.json' \
             -e "ssh -o StrictHostKeyChecking=no" \
             ./publish/server/ \
             ${{ env.SSH_USER }}@${{ env.SERVER_IP }}:${{ env.APP_DIR }}/server/
