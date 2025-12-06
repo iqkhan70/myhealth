@@ -40,10 +40,12 @@ jobs:
             exit 1
           fi
           
-          SSH_HOST_STG=$(cat deploy/DROPLET_IP_STAGING | tr -d '[:space:]' | grep -v '^#' | head -1)
+          SSH_HOST_STG=$(cat deploy/DROPLET_IP_STAGING | grep -v '^#' | grep -v '^$' | head -1 | tr -d '[:space:]')
           
           if [ -z "$SSH_HOST_STG" ]; then
             echo "❌ ERROR: STAGING IP address is empty!"
+            echo "   File contents:"
+            cat deploy/DROPLET_IP_STAGING
             exit 1
           fi
           

@@ -41,10 +41,12 @@ jobs:
             exit 1
           fi
           
-          SSH_HOST_PROD=$(cat deploy/DROPLET_IP_PRODUCTION | tr -d '[:space:]' | grep -v '^#' | head -1)
+          SSH_HOST_PROD=$(cat deploy/DROPLET_IP_PRODUCTION | grep -v '^#' | grep -v '^$' | head -1 | tr -d '[:space:]')
           
           if [ -z "$SSH_HOST_PROD" ]; then
             echo "❌ ERROR: PRODUCTION IP address is empty!"
+            echo "   File contents:"
+            cat deploy/DROPLET_IP_PRODUCTION
             exit 1
           fi
           
