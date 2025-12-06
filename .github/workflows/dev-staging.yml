@@ -129,13 +129,6 @@ jobs:
             "chown -R appuser:appuser ${{ env.APP_DIR }} && \
              chmod +x ${{ env.APP_DIR }}/server/SM_MentalHealthApp.Server.dll"
       
-      - name: Create appsettings.Staging.json (only if missing)
-        run: |
-          # Script will only create file if it doesn't exist - preserves existing file
-          chmod +x ./deploy/create-appsettingsstaging.sh
-          ./deploy/create-appsettingsstaging.sh || echo '⚠️  File creation skipped (file may already exist)'
-        continue-on-error: true
-      
       - name: Update systemd service for Staging environment
         run: |
           ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SERVER_IP }} \
