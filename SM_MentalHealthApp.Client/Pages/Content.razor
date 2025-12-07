@@ -3,11 +3,13 @@
 @inject NotificationService NotificationService
 @inject IAuthService AuthService
 @inject IJSRuntime JSRuntime
+@inject ODataService ODataService
 @using Microsoft.JSInterop
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Client.Components.Grid
 @using SM_MentalHealthApp.Client.Components.Common
+@using SM_MentalHealthApp.Client.Helpers
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components
 @using Radzen
@@ -63,7 +65,8 @@
             @if (_columns.Any())
             {
                 <SMDataGrid TItem="ContentItemDto" Columns="_columns" Actions="_actions" ActionsWidth="200px"
-                    LoadItems="LoadContentItems" PageSize="10" @ref="_grid" AutoLoad="true" />
+                    LoadItemsPaged="LoadContentItemsPagedAsync" PageSize="10" @ref="_grid" AutoLoad="true"
+                    AllowPaging="true" AllowFiltering="true" FilterMode="FilterMode.Advanced" ShowPagingSummary="true" />
             }
         </div>
     }
@@ -229,73 +232,484 @@
         }
     }
 
-    private async Task<IEnumerable<ContentItemDto>> LoadContentItems(CancellationToken ct)
+    private async Task<PagedResult<ContentItemDto>> LoadContentItemsPagedAsync(
+        int skip, 
+        int take, 
+        string? orderBy, 
+        string? filter, 
+        CancellationToken ct)
     {
         try
         {
-            // Ensure patients are loaded for doctors/admins/coordinators/attorneys before loading content
-            if ((AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) && !patients.Any())
+            // Decode URL-encoded filter from Radzen
+            var decodedFilter = filter != null ? System.Net.WebUtility.UrlDecode(filter) : null;
+            System.Diagnostics.Debug.WriteLine($"[Content] Original filter: {filter}");
+            System.Diagnostics.Debug.WriteLine($"[Content] Decoded filter: {decodedFilter}");
+            
+            // Debug: Check if Title is in the filter
+            if (!string.IsNullOrEmpty(decodedFilter) && decodedFilter.Contains("Title", StringComparison.OrdinalIgnoreCase))
             {
-                await LoadPatients();
+                System.Diagnostics.Debug.WriteLine($"[Content] Title filter detected in decoded filter!");
             }
-
-            // Load content based on user role
-            if (AuthService.CurrentUser?.RoleId == 1) // Patient
+            
+            // Handle PatientName and AddedByName filters (DTO-only properties, need special handling)
+            var hasPatientName = !string.IsNullOrEmpty(decodedFilter) && decodedFilter.Contains("PatientName", StringComparison.OrdinalIgnoreCase);
+            var hasAddedByName = !string.IsNullOrEmpty(decodedFilter) && decodedFilter.Contains("AddedByName", StringComparison.OrdinalIgnoreCase);
+            string? odataFilter = null;
+            
+            if (hasPatientName)
             {
-                var response = await Http.GetFromJsonAsync<List<ContentItemDto>>($"api/content/patient/{AuthService.CurrentUser.Id}");
-                return response ?? new List<ContentItemDto>();
-            }
-            else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) // Doctor, Coordinator, or Attorney
-            {
-                // For attorneys, the server already filters by assigned patients
-                // For doctors and coordinators, filter client-side
-                if (AuthService.CurrentUser?.RoleId == 5) // Attorney - server already filtered
+                var patientNameFilter = ExtractNameFilter(decodedFilter!, "PatientName");
+                if (!string.IsNullOrEmpty(patientNameFilter))
                 {
-                    try
+                    // Find matching patient IDs
+                    var patientIds = await FindUserIdsByName(patientNameFilter, 1, ct); // RoleId 1 = Patient
+                    if (patientIds.Any())
                     {
-                        var response = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
-                        return response ?? new List<ContentItemDto>();
+                        var patientIdFilter = string.Join(" or ", patientIds.Select(id => $"PatientId eq {id}"));
+                        if (!string.IsNullOrEmpty(odataFilter))
+                            odataFilter = $"{odataFilter} and ({patientIdFilter})";
+                        else
+                            odataFilter = $"({patientIdFilter})";
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        // Log the error for debugging
-                        Console.WriteLine($"Error loading content for attorney: {ex.Message}");
-                        // Only show error for actual failures (401, 403, etc.), not for empty results
-                        if (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized"))
+                        // No matching patients, return empty result
+                        return new PagedResult<ContentItemDto>
                         {
-                            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load content: " + ex.Message);
-                        }
-                        return new List<ContentItemDto>();
+                            Items = new List<ContentItemDto>(),
+                            TotalCount = 0,
+                            PageNumber = (skip / take) + 1,
+                            PageSize = take
+                        };
                     }
+                    // Remove PatientName filter from the rest
+                    decodedFilter = RemoveNameFilter(decodedFilter!, "PatientName");
                 }
-                else // Doctor or Coordinator - filter client-side
+                else
                 {
-                    // Load content only for assigned patients
-                    var assignedPatientIds = patients.Select(p => p.Id).ToList();
-                    if (!assignedPatientIds.Any())
-                    {
-                        return new List<ContentItemDto>();
-                    }
-                    var allContentResponse = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
-                    return allContentResponse?.Where(c => assignedPatientIds.Contains(c.PatientId)).ToList() ?? new List<ContentItemDto>();
+                    // Extraction failed, but filter contains PatientName - remove it
+                    decodedFilter = RemoveNameFilter(decodedFilter!, "PatientName");
                 }
             }
-            else if (AuthService.CurrentUser?.RoleId == 3) // Admin - all content
+            
+            if (hasAddedByName)
             {
-                var response = await Http.GetFromJsonAsync<List<ContentItemDto>>("api/content/all");
-                return response ?? new List<ContentItemDto>();
+                var addedByNameFilter = ExtractNameFilter(decodedFilter!, "AddedByName");
+                if (!string.IsNullOrEmpty(addedByNameFilter))
+                {
+                    // Find matching user IDs (can be any role - doctor, admin, coordinator, etc.)
+                    // Search across all roles since AddedByUserId can be any user
+                    var userIds = await FindUserIdsByName(addedByNameFilter, null, ct); // null = all roles
+                    if (userIds.Any())
+                    {
+                        var userIdFilter = string.Join(" or ", userIds.Select(id => $"AddedByUserId eq {id}"));
+                        if (!string.IsNullOrEmpty(odataFilter))
+                            odataFilter = $"{odataFilter} and ({userIdFilter})";
+                        else
+                            odataFilter = $"({userIdFilter})";
+                    }
+                    else
+                    {
+                        // No matching users, return empty result
+                        return new PagedResult<ContentItemDto>
+                        {
+                            Items = new List<ContentItemDto>(),
+                            TotalCount = 0,
+                            PageNumber = (skip / take) + 1,
+                            PageSize = take
+                        };
+                    }
+                    // Remove AddedByName filter from the rest
+                    decodedFilter = RemoveNameFilter(decodedFilter!, "AddedByName");
+                }
+                else
+                {
+                    // Extraction failed, but filter contains AddedByName - remove it
+                    decodedFilter = RemoveNameFilter(decodedFilter!, "AddedByName");
+                }
             }
+            
+            // Transform remaining filter from Radzen C# syntax to OData syntax
+            if (!string.IsNullOrEmpty(decodedFilter))
+            {
+                var beforeCleanup = decodedFilter;
+                decodedFilter = CleanupFilterOperators(decodedFilter);
+                System.Diagnostics.Debug.WriteLine($"[Content] After cleanup, decodedFilter: {decodedFilter}");
+                
+                // Debug: Check if Title was removed by cleanup
+                if (beforeCleanup.Contains("Title", StringComparison.OrdinalIgnoreCase) && !decodedFilter.Contains("Title", StringComparison.OrdinalIgnoreCase))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Content] WARNING: Title was removed by CleanupFilterOperators!");
+                    System.Diagnostics.Debug.WriteLine($"[Content] Before cleanup: {beforeCleanup}");
+                    System.Diagnostics.Debug.WriteLine($"[Content] After cleanup: {decodedFilter}");
+                }
+                
+                if (!string.IsNullOrWhiteSpace(decodedFilter) && !IsOnlyOperators(decodedFilter))
+                {
+                    var transformedFilter = ODataFilterHelper.TransformToOData(decodedFilter);
+                    System.Diagnostics.Debug.WriteLine($"[Content] Transformed filter: {transformedFilter}");
+                    
+                    // Debug: Check if Title was transformed
+                    if (decodedFilter.Contains("Title", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (transformedFilter.Contains("Title", StringComparison.OrdinalIgnoreCase) || transformedFilter.Contains("contains", StringComparison.OrdinalIgnoreCase))
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[Content] Title filter was transformed successfully");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[Content] WARNING: Title filter may not have been transformed!");
+                            System.Diagnostics.Debug.WriteLine($"[Content] Input to TransformToOData: {decodedFilter}");
+                            System.Diagnostics.Debug.WriteLine($"[Content] Output from TransformToOData: {transformedFilter}");
+                        }
+                    }
+                    
+                    if (!string.IsNullOrEmpty(transformedFilter))
+                    {
+                        if (!string.IsNullOrEmpty(odataFilter))
+                            odataFilter = $"{odataFilter} and ({transformedFilter})";
+                        else
+                            odataFilter = transformedFilter;
+                    }
+                }
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"[Content] Final odataFilter: {odataFilter}");
+            
+            // Transform orderBy to use entity properties instead of DTO properties
+            string? transformedOrderBy = null;
+            if (!string.IsNullOrEmpty(orderBy))
+            {
+                transformedOrderBy = TransformOrderBy(orderBy);
+            }
+            
+            // Query OData endpoint
+            var result = await ODataService.QueryAsync<ContentItem>("Contents", skip, take, transformedOrderBy, odataFilter, ct);
+            
+            // Fetch users for all content items to populate PatientName and AddedByName
+            var contentPatientIds = result.Items.Select(c => c.PatientId).Distinct().ToList();
+            var contentAddedByUserIds = result.Items.Where(c => c.AddedByUserId.HasValue).Select(c => c.AddedByUserId!.Value).Distinct().ToList();
+            var allUserIds = contentPatientIds.Concat(contentAddedByUserIds).Distinct().ToList();
+            
+            var userCache = new Dictionary<int, Shared.User>();
+            if (allUserIds.Any())
+            {
+                try
+                {
+                    var userIdFilters = allUserIds.Select(id => $"Id eq {id}");
+                    var userFilter = string.Join(" or ", userIdFilters);
+                    
+                    var userRequest = new HttpRequestMessage(HttpMethod.Get, $"odata/Users?$filter={Uri.EscapeDataString(userFilter)}");
+                    var token = AuthService.Token;
+                    if (!string.IsNullOrEmpty(token))
+                    {
+                        userRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                    }
+                    
+                    var userResponse = await Http.SendAsync(userRequest, ct);
+                    if (userResponse.IsSuccessStatusCode)
+                    {
+                        var userJson = await userResponse.Content.ReadAsStringAsync(ct);
+                        var userDoc = System.Text.Json.JsonDocument.Parse(userJson);
+                        if (userDoc.RootElement.TryGetProperty("value", out var userArray) && userArray.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            var users = System.Text.Json.JsonSerializer.Deserialize<List<Shared.User>>(userArray.GetRawText(), new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<Shared.User>();
+                            foreach (var user in users)
+                            {
+                                userCache[user.Id] = user;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Content] Error fetching users: {ex.Message}");
+                }
+            }
+            
+            // Map ContentItem to ContentItemDto with PatientName and AddedByName
+            var items = result.Items.Select(c => MapContentToDto(c, userCache)).ToList();
+            
+            // If we sorted by PatientName or AddedByName, we need to sort the results client-side
+            // because OData can't sort by computed DTO properties
+            if (!string.IsNullOrEmpty(orderBy) && (orderBy.Contains("PatientName", StringComparison.OrdinalIgnoreCase) || 
+                                                     orderBy.Contains("AddedByName", StringComparison.OrdinalIgnoreCase)))
+            {
+                items = SortContentResultsByComputedProperty(items, orderBy);
+            }
+            
+            return new PagedResult<ContentItemDto>
+            {
+                Items = items,
+                TotalCount = result.TotalCount,
+                PageNumber = result.PageNumber,
+                PageSize = result.PageSize
+            };
         }
         catch (Exception ex)
         {
-            // Only show error for actual failures (401, 403, etc.), not for empty results
-            if (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized"))
+            NotificationService.ShowError($"Failed to load content: {ex.Message}");
+            return new PagedResult<ContentItemDto>
             {
-                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load content: " + ex.Message);
-            }
-            // For other errors or empty results, just return empty list
+                Items = new List<ContentItemDto>(),
+                TotalCount = 0,
+                PageNumber = (skip / take) + 1,
+                PageSize = take
+            };
         }
-        return new List<ContentItemDto>();
+    }
+    
+    private string? ExtractNameFilter(string filter, string propertyName)
+    {
+        // Extract search term from Radzen-generated filters like:
+        // (PatientName == null ? "" : PatientName).ToLower().Contains("john".ToLower())
+        // contains(PatientName, 'john')
+        // PatientName contains 'john'
+        var patterns = new[]
+        {
+            // Radzen C#-style: (PatientName == null ? "" : PatientName).ToLower().Contains("value".ToLower())
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""([^""]+)""\.ToLower\(\)\)",
+            // Radzen C#-style with single quotes
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('([^']+)'\.ToLower\(\)\)",
+            // OData-style: contains(PatientName, 'john')
+            $@"contains\({propertyName},\s*'([^']+)'\)",
+            // OData-style: PatientName contains 'john'
+            $@"{propertyName}\s+contains\s+'([^']+)'",
+            // OData-style with tolower
+            $@"contains\(tolower\({propertyName}\),\s*tolower\('([^']+)'\)\)",
+            $@"tolower\({propertyName}\)\s+contains\s+'([^']+)'"
+        };
+        
+        foreach (var pattern in patterns)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(filter, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && match.Groups.Count > 1)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+        
+        return null;
+    }
+    
+    private string RemoveNameFilter(string filter, string propertyName)
+    {
+        // Remove the filter clause for the given property name
+        // Handle Radzen C#-style filters: (PatientName == null ? "" : PatientName).ToLower().Contains("value".ToLower())
+        var patterns = new[]
+        {
+            // Radzen C#-style with double quotes
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)",
+            // Radzen C#-style with single quotes
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)",
+            // OData-style patterns
+            $@"contains\({propertyName},\s*'[^']+'\)",
+            $@"{propertyName}\s+contains\s+'[^']+'",
+            $@"contains\(tolower\({propertyName}\),\s*tolower\('[^']+'\)\)",
+            $@"tolower\({propertyName}\)\s+contains\s+'[^']+'",
+            // With "and" operators
+            $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)",
+            $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)",
+            $@"and\s+contains\({propertyName},\s*'[^']+'\)",
+            $@"and\s+{propertyName}\s+contains\s+'[^']+'",
+            // With trailing "and"
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)\s+and",
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)\s+and",
+            $@"contains\({propertyName},\s*'[^']+'\)\s+and",
+            $@"{propertyName}\s+contains\s+'[^']+'\s+and"
+        };
+        
+        var result = filter;
+        foreach (var pattern in patterns)
+        {
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+        
+        // Clean up extra "and" or "or" operators
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+and\s+and\s+", " and ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+or\s+or\s+", " or ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"^\s*and\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+and\s+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"^\s*or\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+or\s+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = result.Trim();
+        
+        return result;
+    }
+    
+    private string CleanupFilterOperators(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return string.Empty;
+            
+        var result = filter;
+        
+        // Remove standalone operators at the start
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"^\s*(and|or)\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove standalone operators at the end
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove empty parentheses: () or ( ) or (and) or (or)
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\(\s*(and|or)?\s*\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove duplicate operators
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+(and|or)\s+", " $1 ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove operators before/after parentheses
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+\(", " (", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\)\s+(and|or)\s+", ") ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        result = result.Trim();
+        return result;
+    }
+    
+    private bool IsOnlyOperators(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+            
+        // Remove all whitespace and check if only operators remain
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(filter, @"\s+", "");
+        var onlyOperators = System.Text.RegularExpressions.Regex.IsMatch(cleaned, @"^(and|or|\(|\)|\s)+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return onlyOperators;
+    }
+    
+    private async Task<List<int>> FindUserIdsByName(string searchTerm, int? roleId, CancellationToken ct)
+    {
+        try
+        {
+            // Query Users OData to find matching users by name
+            string nameFilter;
+            if (roleId.HasValue)
+            {
+                nameFilter = $"(RoleId eq {roleId.Value}) and (contains(FirstName, '{searchTerm}') or contains(LastName, '{searchTerm}'))";
+            }
+            else
+            {
+                // Search across all roles
+                nameFilter = $"(contains(FirstName, '{searchTerm}') or contains(LastName, '{searchTerm}'))";
+            }
+            var result = await ODataService.QueryAsync<Shared.User>("Users", 0, 1000, null, nameFilter, ct);
+            
+            return result.Items.Select(u => u.Id).ToList();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Content] Error finding user IDs by name: {ex.Message}");
+            return new List<int>();
+        }
+    }
+    
+    private string? TransformOrderBy(string? orderBy)
+    {
+        if (string.IsNullOrEmpty(orderBy))
+            return orderBy;
+            
+        // Transform DTO property names to entity property names
+        // PatientName and AddedByName are DTO-only, so we can't sort by them in OData
+        // We'll sort client-side instead, but we need to remove them from the OData orderBy
+        var result = orderBy;
+        
+        // Remove PatientName and AddedByName from orderBy (we'll sort client-side)
+        // Pattern: "PatientName asc" or "AddedByName desc" or "PatientName, OtherProperty asc"
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"PatientName\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"AddedByName\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*PatientName\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*AddedByName\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Clean up extra commas
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*,", ",", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = result.Trim().TrimStart(',').TrimEnd(',');
+        
+        // If result is empty, return null (no OData sorting)
+        if (string.IsNullOrWhiteSpace(result))
+            return null;
+            
+        return result;
+    }
+    
+    private List<ContentItemDto> SortContentResultsByComputedProperty(List<ContentItemDto> items, string orderBy)
+    {
+        if (items == null || !items.Any())
+            return items;
+            
+        var orderByLower = orderBy.ToLowerInvariant();
+        
+        // Parse orderBy: "PatientName asc" or "AddedByName desc"
+        var isDescending = orderByLower.Contains("desc");
+        
+        if (orderByLower.Contains("patientname"))
+        {
+            items = isDescending
+                ? items.OrderByDescending(a => a.PatientName).ToList()
+                : items.OrderBy(a => a.PatientName).ToList();
+        }
+        else if (orderByLower.Contains("addedbyname"))
+        {
+            items = isDescending
+                ? items.OrderByDescending(a => a.AddedByName).ToList()
+                : items.OrderBy(a => a.AddedByName).ToList();
+        }
+        
+        return items;
+    }
+    
+    private ContentItemDto MapContentToDto(ContentItem content, Dictionary<int, Shared.User>? userCache = null)
+    {
+        var dto = new ContentItemDto
+        {
+            Id = content.Id,
+            Title = content.Title,
+            Description = content.Description,
+            OriginalFileName = content.OriginalFileName,
+            FileSizeBytes = content.FileSizeBytes,
+            CreatedAt = content.CreatedAt,
+            ContentTypeModelId = content.ContentTypeModelId,
+            PatientId = content.PatientId,
+            AddedByUserId = content.AddedByUserId,
+            IsIgnoredByDoctor = content.IsIgnoredByDoctor,
+            IgnoredByDoctorId = content.IgnoredByDoctorId,
+            IgnoredAt = content.IgnoredAt
+        };
+        
+        // Populate PatientName from navigation property or cache
+        if (content.Patient != null)
+        {
+            dto.PatientName = $"{content.Patient.FirstName} {content.Patient.LastName}";
+        }
+        else if (userCache != null && userCache.TryGetValue(content.PatientId, out var patient))
+        {
+            dto.PatientName = $"{patient.FirstName} {patient.LastName}";
+        }
+        else
+        {
+            dto.PatientName = $"Patient #{content.PatientId}";
+        }
+        
+        // Populate AddedByName from navigation property or cache
+        if (content.AddedByUserId.HasValue)
+        {
+            if (content.AddedByUser != null)
+            {
+                dto.AddedByName = $"{content.AddedByUser.FirstName} {content.AddedByUser.LastName}";
+            }
+            else if (userCache != null && userCache.TryGetValue(content.AddedByUserId.Value, out var addedByUser))
+            {
+                dto.AddedByName = $"{addedByUser.FirstName} {addedByUser.LastName}";
+            }
+            else
+            {
+                dto.AddedByName = $"User #{content.AddedByUserId.Value}";
+            }
+        }
+        else
+        {
+            dto.AddedByName = "Self";
+        }
+        
+        return dto;
     }
 
     private void InitializeColumns()
@@ -322,32 +736,11 @@
                     builder.CloseElement();
                 }
             },
-            new SMDataGridTemplateColumn<ContentItemDto>
+            new SMDataGridColumn<ContentItemDto>
             {
-                Property = nameof(ContentItemDto.PatientId),
+                Property = nameof(ContentItemDto.PatientName),
                 Title = AuthService.CurrentUser?.RoleId == 4 ? "Client" : "Patient", // Coordinator sees "Client", others see "Patient"
-                Width = "150px",
-                Template = content => builder =>
-                {
-                    builder.OpenElement(0, "div");
-                    builder.OpenElement(1, "strong");
-                    if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
-                    {
-                        builder.AddContent(2, $"Client #{content.PatientId}");
-                    }
-                    else
-                    {
-                        builder.AddContent(2, $"Patient #{content.PatientId}");
-                    }
-                    builder.CloseElement();
-                    builder.OpenElement(3, "br");
-                    builder.CloseElement();
-                    builder.OpenElement(4, "small");
-                    builder.AddAttribute(5, "class", "text-muted");
-                    builder.AddContent(6, $"ID: {content.PatientId}");
-                    builder.CloseElement();
-                    builder.CloseElement();
-                }
+                Width = "150px"
             },
             new SMDataGridTemplateColumn<ContentItemDto>
             {
@@ -409,35 +802,11 @@
                     builder.CloseElement();
                 }
             },
-            new SMDataGridTemplateColumn<ContentItemDto>
+            new SMDataGridColumn<ContentItemDto>
             {
-                Property = nameof(ContentItemDto.AddedByUserId),
+                Property = nameof(ContentItemDto.AddedByName),
                 Title = "Added By",
-                Width = "120px",
-                Template = content => builder =>
-                {
-                    if (content.AddedByUserId.HasValue)
-                    {
-                        builder.OpenElement(0, "div");
-                        builder.OpenElement(1, "strong");
-                        builder.AddContent(2, $"User #{content.AddedByUserId}");
-                        builder.CloseElement();
-                        builder.OpenElement(3, "br");
-                        builder.CloseElement();
-                        builder.OpenElement(4, "small");
-                        builder.AddAttribute(5, "class", "text-muted");
-                        builder.AddContent(6, $"ID: {content.AddedByUserId}");
-                        builder.CloseElement();
-                        builder.CloseElement();
-                    }
-                    else
-                    {
-                        builder.OpenElement(0, "span");
-                        builder.AddAttribute(1, "class", "text-muted");
-                        builder.AddContent(2, "Self");
-                        builder.CloseElement();
-                    }
-                }
+                Width = "120px"
             }
         };
     }
@@ -901,7 +1270,9 @@
         public DateTime CreatedAt { get; set; }
         public int ContentTypeModelId { get; set; }
         public int PatientId { get; set; }
+        public string PatientName { get; set; } = string.Empty; // DTO-only property for display and filtering
         public int? AddedByUserId { get; set; }
+        public string AddedByName { get; set; } = string.Empty; // DTO-only property for display and filtering
         public bool IsIgnoredByDoctor { get; set; } = false;
         public int? IgnoredByDoctorId { get; set; }
         public DateTime? IgnoredAt { get; set; }

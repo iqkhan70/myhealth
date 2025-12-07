@@ -367,6 +367,16 @@ public static class DependencyInjection
         appointmentSet.EntityType.Ignore(a => a.IsUrgentCare);
         appointmentSet.EntityType.Ignore(a => a.IsBusinessHours);
         
+        // Contents
+        var contentSet = builder.EntitySet<ContentItem>("Contents");
+        contentSet.EntityType.HasKey(c => c.Id);
+        // Ignore sensitive/internal properties
+        contentSet.EntityType.Ignore(c => c.S3Bucket);
+        contentSet.EntityType.Ignore(c => c.S3Key);
+        contentSet.EntityType.Ignore(c => c.FileName);
+        contentSet.EntityType.Ignore(c => c.ContentGuid);
+        // Note: Navigation properties are marked [JsonIgnore] in the entity, but OData can still expand them
+        
         return builder.GetEdmModel();
     }
 }

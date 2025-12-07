@@ -46,6 +46,7 @@ public class ODataService
             }
             // Note: We don't use $expand for Appointments because navigation properties are marked [JsonIgnore]
             // Instead, we fetch users separately if navigation properties are missing
+            // For Contents, navigation properties are not marked [JsonIgnore], but we'll fetch them separately if needed
             queryParams.Add("$count=true"); // Get total count
 
             var queryString = string.Join("&", queryParams);

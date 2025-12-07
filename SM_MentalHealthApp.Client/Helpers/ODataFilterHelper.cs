@@ -15,6 +15,7 @@ namespace SM_MentalHealthApp.Client.Helpers
             if (string.IsNullOrWhiteSpace(filter))
                 return filter ?? string.Empty;
 
+            System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Input filter: {filter}");
             var result = filter;
 
             // List of string properties that should be case-insensitive
@@ -26,7 +27,9 @@ namespace SM_MentalHealthApp.Client.Helpers
                 "RoadConditions", "DoctorsInformation", "LawyersInformation",
                 "AdditionalNotes",
                 // Appointment properties (Note: DoctorName and PatientName are DTO-only, handled separately)
-                "Reason", "Notes", "CreatedBy"
+                "Reason", "Notes", "CreatedBy",
+                // Content properties
+                "Title", "Description", "OriginalFileName", "MimeType"
             };
 
             // === STRING FILTER TRANSFORMS (your existing code) ===
@@ -34,22 +37,38 @@ namespace SM_MentalHealthApp.Client.Helpers
             foreach (var prop in stringProperties)
             {
                 // contains(...)
+                // Pattern 1: ((Property == null ? "" : Property).ToLower()).Contains("value".ToLower())
                 result = Regex.Replace(result,
                     $@"\(\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\(\)\)\.Contains\((""([^""]*)""|'([^']*)')\.ToLower\(\)\)",
                     match =>
                     {
                         var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
                         value = value.Replace("'", "''");
+                        System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Matched pattern 1 for {prop}: {value}");
                         return $"contains({prop}, '{value}')";
                     },
                     RegexOptions.IgnoreCase);
 
+                // Pattern 2: (Property == null ? "" : Property).ToLower().Contains("value".ToLower())
                 result = Regex.Replace(result,
                     $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\(\)\.Contains\((""([^""]*)""|'([^']*)')\.ToLower\(\)\)",
                     match =>
                     {
                         var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
                         value = value.Replace("'", "''");
+                        System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Matched pattern 2 for {prop}: {value}");
+                        return $"contains({prop}, '{value}')";
+                    },
+                    RegexOptions.IgnoreCase);
+
+                // Pattern 3: (Property == null ? "" : Property).ToLower.Contains("value".ToLower) - WITHOUT parentheses around ToLower/Contains
+                result = Regex.Replace(result,
+                    $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\.Contains\((""([^""]*)""|'([^']*)')\.ToLower\)",
+                    match =>
+                    {
+                        var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+                        value = value.Replace("'", "''");
+                        System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Matched pattern 3 for {prop}: {value}");
                         return $"contains({prop}, '{value}')";
                     },
                     RegexOptions.IgnoreCase);
@@ -66,6 +85,16 @@ namespace SM_MentalHealthApp.Client.Helpers
 
                 result = Regex.Replace(result,
                     $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\(\)\.StartsWith\((""([^""]*)""|'([^']*)')\.ToLower\(\)\)",
+                    match =>
+                    {
+                        var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+                        return $"startswith(tolower({prop}), '{value}')";
+                    },
+                    RegexOptions.IgnoreCase);
+
+                // Pattern without parentheses: (Property == null ? "" : Property).ToLower.StartsWith("value".ToLower)
+                result = Regex.Replace(result,
+                    $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\.StartsWith\((""([^""]*)""|'([^']*)')\.ToLower\)",
                     match =>
                     {
                         var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
@@ -92,6 +121,16 @@ namespace SM_MentalHealthApp.Client.Helpers
                     },
                     RegexOptions.IgnoreCase);
 
+                // Pattern without parentheses: (Property == null ? "" : Property).ToLower.EndsWith("value".ToLower)
+                result = Regex.Replace(result,
+                    $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\.EndsWith\((""([^""]*)""|'([^']*)')\.ToLower\)",
+                    match =>
+                    {
+                        var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+                        return $"endswith(tolower({prop}), '{value}')";
+                    },
+                    RegexOptions.IgnoreCase);
+
                 // equals
                 result = Regex.Replace(result,
                     $@"\(\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\(\)\)\s*==\s*(""([^""]*)""|'([^']*)')\.ToLower\(\)",
@@ -111,6 +150,16 @@ namespace SM_MentalHealthApp.Client.Helpers
                     },
                     RegexOptions.IgnoreCase);
 
+                // Pattern without parentheses: (Property == null ? "" : Property).ToLower == "value".ToLower
+                result = Regex.Replace(result,
+                    $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\s*==\s*(""([^""]*)""|'([^']*)')\.ToLower",
+                    match =>
+                    {
+                        var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+                        return $"tolower({prop}) eq '{value}'";
+                    },
+                    RegexOptions.IgnoreCase);
+
                 // not equals
                 result = Regex.Replace(result,
                     $@"\(\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\(\)\)\s*!=\s*(""([^""]*)""|'([^']*)')\.ToLower\(\)",
@@ -123,6 +172,16 @@ namespace SM_MentalHealthApp.Client.Helpers
 
                 result = Regex.Replace(result,
                     $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\(\)\s*!=\s*(""([^""]*)""|'([^']*)')\.ToLower\(\)",
+                    match =>
+                    {
+                        var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+                        return $"tolower({prop}) ne '{value}'";
+                    },
+                    RegexOptions.IgnoreCase);
+
+                // Pattern without parentheses: (Property == null ? "" : Property).ToLower != "value".ToLower
+                result = Regex.Replace(result,
+                    $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\s*!=\s*(""([^""]*)""|'([^']*)')\.ToLower",
                     match =>
                     {
                         var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
@@ -167,7 +226,9 @@ namespace SM_MentalHealthApp.Client.Helpers
                 "AccidentDate",
                 "DateReported",
                 // Appointment properties
-                "AppointmentDateTime"
+                "AppointmentDateTime",
+                // Content properties
+                "LastAccessedAt", "IgnoredAt"
             };
 
             foreach (var prop in dateProperties)
@@ -231,6 +292,15 @@ namespace SM_MentalHealthApp.Client.Helpers
             }
 
             System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Output: {result}");
+
+            // Debug: Check if Title was transformed
+            if (filter.Contains("Title", StringComparison.OrdinalIgnoreCase) && !result.Contains("Title", StringComparison.OrdinalIgnoreCase) && !result.Contains("contains", StringComparison.OrdinalIgnoreCase))
+            {
+                System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] WARNING: Title filter may not have been transformed correctly!");
+                System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Original: {filter}");
+                System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Result: {result}");
+            }
+
             return result;
         }
     }
