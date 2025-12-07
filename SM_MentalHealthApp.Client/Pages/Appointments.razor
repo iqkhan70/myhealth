@@ -10,6 +10,7 @@
 @inject HttpClient Http
 @inject IAuthService AuthService
 @inject IAppointmentService AppointmentService
+@inject ODataService ODataService
 @inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
 
@@ -230,9 +231,13 @@
                Columns="_columns" 
                Actions="_actions" 
                ActionsWidth="150px"
-               LoadItems="LoadAppointmentsAsync" 
+               LoadItemsPaged="LoadAppointmentsPagedAsync" 
                @ref="_grid" 
-               PageSize="20"
+               PageSize="10"
+               AllowPaging="true"
+               AllowFiltering="true"
+               FilterMode="FilterMode.Advanced"
+               ShowPagingSummary="true"
                OnRowExpandCallback="@OnRowExpand">
         <ExpansionTemplate Context="appointment">
             @{
@@ -997,31 +1002,395 @@
         });
     }
 
-    private async Task<IEnumerable<AppointmentDto>> LoadAppointmentsAsync(CancellationToken ct)
+    private async Task<PagedResult<AppointmentDto>> LoadAppointmentsPagedAsync(
+        int skip, 
+        int take, 
+        string? orderBy, 
+        string? filter, 
+        CancellationToken ct)
     {
         try
         {
+            // Build OData filter
+            var odataFilter = "";
+            
+            // Add doctor filter if specified (for admins and coordinators)
             int? doctorId = null;
-            // For doctors, don't add doctorId filter - API will automatically filter by doctor
-            // For admins and coordinators, add doctorId filter if specified
             if ((AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) && filterDoctorId.HasValue)
             {
                 doctorId = filterDoctorId.Value;
+                odataFilter = $"DoctorId eq {doctorId.Value}";
             }
-
-            var appointments = await AppointmentService.ListAsync(
-                doctorId: doctorId,
-                patientId: filterPatientId,
-                startDate: filterStartDate,
-                endDate: filterEndDate,
-                ct: ct);
             
-            return appointments;
+            // Add patient filter if specified
+            if (filterPatientId.HasValue)
+            {
+                if (!string.IsNullOrEmpty(odataFilter))
+                    odataFilter += " and ";
+                odataFilter += $"PatientId eq {filterPatientId.Value}";
+            }
+            
+            // Add date range filters if specified
+            if (filterStartDate.HasValue)
+            {
+                if (!string.IsNullOrEmpty(odataFilter))
+                    odataFilter += " and ";
+                var startDateStr = filterStartDate.Value.ToString("yyyy-MM-dd");
+                odataFilter += $"AppointmentDateTime ge {startDateStr}";
+            }
+            
+            if (filterEndDate.HasValue)
+            {
+                if (!string.IsNullOrEmpty(odataFilter))
+                    odataFilter += " and ";
+                var endDateStr = filterEndDate.Value.AddDays(1).ToString("yyyy-MM-dd"); // Add 1 day to include the end date
+                odataFilter += $"AppointmentDateTime lt {endDateStr}";
+            }
+            
+            // Transform and combine any additional filter from grid
+            if (!string.IsNullOrEmpty(filter))
+            {
+                // Decode URL-encoded filter from Radzen
+                var decodedFilter = System.Net.WebUtility.UrlDecode(filter);
+                System.Diagnostics.Debug.WriteLine($"[Appointments] Original decoded filter: {decodedFilter}");
+                
+                // Handle DoctorName and PatientName filters (these are DTO-only, need special handling)
+                // Check if filter contains these properties first
+                var hasDoctorName = decodedFilter.Contains("DoctorName", StringComparison.OrdinalIgnoreCase);
+                var hasPatientName = decodedFilter.Contains("PatientName", StringComparison.OrdinalIgnoreCase);
+                
+                if (hasDoctorName)
+                {
+                    var doctorNameFilter = ExtractNameFilter(decodedFilter, "DoctorName");
+                    if (!string.IsNullOrEmpty(doctorNameFilter))
+                    {
+                        // Find matching doctor IDs
+                        var doctorIds = await FindUserIdsByName(doctorNameFilter, 2, ct); // RoleId 2 = Doctor
+                        if (doctorIds.Any())
+                        {
+                            var doctorIdFilter = string.Join(" or ", doctorIds.Select(id => $"DoctorId eq {id}"));
+                            if (!string.IsNullOrEmpty(odataFilter))
+                                odataFilter = $"{odataFilter} and ({doctorIdFilter})";
+                            else
+                                odataFilter = $"({doctorIdFilter})";
+                        }
+                        else
+                        {
+                            // No matching doctors, return empty result
+                            return new PagedResult<AppointmentDto>
+                            {
+                                Items = new List<AppointmentDto>(),
+                                TotalCount = 0,
+                                PageNumber = (skip / take) + 1,
+                                PageSize = take
+                            };
+                        }
+                    }
+                    // Always remove DoctorName filter from the rest (even if extraction failed)
+                    decodedFilter = RemoveNameFilter(decodedFilter, "DoctorName");
+                    System.Diagnostics.Debug.WriteLine($"[Appointments] After removing DoctorName: {decodedFilter}");
+                }
+                
+                if (hasPatientName)
+                {
+                    var patientNameFilter = ExtractNameFilter(decodedFilter, "PatientName");
+                    if (!string.IsNullOrEmpty(patientNameFilter))
+                    {
+                        // Find matching patient IDs
+                        var patientIds = await FindUserIdsByName(patientNameFilter, 1, ct); // RoleId 1 = Patient
+                        if (patientIds.Any())
+                        {
+                            var patientIdFilter = string.Join(" or ", patientIds.Select(id => $"PatientId eq {id}"));
+                            if (!string.IsNullOrEmpty(odataFilter))
+                                odataFilter = $"{odataFilter} and ({patientIdFilter})";
+                            else
+                                odataFilter = $"({patientIdFilter})";
+                        }
+                        else
+                        {
+                            // No matching patients, return empty result
+                            return new PagedResult<AppointmentDto>
+                            {
+                                Items = new List<AppointmentDto>(),
+                                TotalCount = 0,
+                                PageNumber = (skip / take) + 1,
+                                PageSize = take
+                            };
+                        }
+                    }
+                    // Always remove PatientName filter from the rest (even if extraction failed)
+                    decodedFilter = RemoveNameFilter(decodedFilter, "PatientName");
+                    System.Diagnostics.Debug.WriteLine($"[Appointments] After removing PatientName: {decodedFilter}");
+                }
+                
+                // Clean up any leftover operators from removed filters
+                decodedFilter = CleanupFilterOperators(decodedFilter);
+                System.Diagnostics.Debug.WriteLine($"[Appointments] After cleanup: {decodedFilter}");
+                
+                // Transform remaining C#-style filter to OData syntax (only if there's actual content)
+                string? transformedFilter = null;
+                if (!string.IsNullOrWhiteSpace(decodedFilter) && !IsOnlyOperators(decodedFilter))
+                {
+                    transformedFilter = ODataFilterHelper.TransformToOData(decodedFilter);
+                    System.Diagnostics.Debug.WriteLine($"[Appointments] Transformed filter: {transformedFilter}");
+                }
+                
+                // Combine with existing filters
+                if (!string.IsNullOrEmpty(transformedFilter))
+                {
+                    if (!string.IsNullOrEmpty(odataFilter))
+                        odataFilter = $"{odataFilter} and ({transformedFilter})";
+                    else
+                        odataFilter = transformedFilter;
+                }
+            }
+            
+            // Transform orderBy to use entity properties instead of DTO properties
+            string? transformedOrderBy = null;
+            if (!string.IsNullOrEmpty(orderBy))
+            {
+                transformedOrderBy = TransformOrderBy(orderBy);
+                System.Diagnostics.Debug.WriteLine($"[Appointments] Original orderBy: {orderBy}, Transformed: {transformedOrderBy}");
+            }
+            
+            // Query OData endpoint
+            var result = await ODataService.QueryAsync<AppointmentDto>(
+                "Appointments",
+                skip,
+                take,
+                transformedOrderBy,
+                string.IsNullOrEmpty(odataFilter) ? null : odataFilter,
+                ct
+            );
+            
+            // If we sorted by DoctorName, PatientName, or CreatedBy, we need to sort the results client-side
+            // because OData can't sort by computed DTO properties
+            if (!string.IsNullOrEmpty(orderBy) && (orderBy.Contains("DoctorName", StringComparison.OrdinalIgnoreCase) || 
+                                                     orderBy.Contains("PatientName", StringComparison.OrdinalIgnoreCase) ||
+                                                     orderBy.Contains("CreatedBy", StringComparison.OrdinalIgnoreCase)))
+            {
+                result = SortResultsByComputedProperty(result, orderBy);
+            }
+            
+            return result;
         }
         catch (Exception ex)
         {
             NotificationService.ShowError($"Failed to load appointments: {ex.Message}");
-            return new List<AppointmentDto>();
+            return new PagedResult<AppointmentDto>
+            {
+                Items = new List<AppointmentDto>(),
+                TotalCount = 0,
+                PageNumber = (skip / take) + 1,
+                PageSize = take
+            };
+        }
+    }
+
+    private string? ExtractNameFilter(string filter, string propertyName)
+    {
+        // Extract search term from Radzen-generated filters like:
+        // (DoctorName == null ? "" : DoctorName).ToLower().Contains("Dr.".ToLower())
+        // contains(DoctorName, 'dr')
+        // DoctorName contains 'dr'
+        var patterns = new[]
+        {
+            // Radzen C#-style: (DoctorName == null ? "" : DoctorName).ToLower().Contains("value".ToLower())
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""([^""]+)""\.ToLower\(\)\)",
+            // Radzen C#-style with single quotes
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('([^']+)'\.ToLower\(\)\)",
+            // OData-style: contains(DoctorName, 'dr')
+            $@"contains\({propertyName},\s*'([^']+)'\)",
+            // OData-style: DoctorName contains 'dr'
+            $@"{propertyName}\s+contains\s+'([^']+)'",
+            // OData-style with tolower
+            $@"contains\(tolower\({propertyName}\),\s*tolower\('([^']+)'\)\)",
+            $@"tolower\({propertyName}\)\s+contains\s+'([^']+)'"
+        };
+        
+        foreach (var pattern in patterns)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(filter, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && match.Groups.Count > 1)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+        
+        return null;
+    }
+    
+    private string CleanupFilterOperators(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return string.Empty;
+            
+        var result = filter;
+        
+        // Remove standalone operators at the start
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"^\s*(and|or)\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove standalone operators at the end
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove empty parentheses: () or ( ) or (and) or (or)
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\(\s*(and|or)?\s*\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove duplicate operators
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+(and|or)\s+", " $1 ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove operators before/after parentheses
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+\(", " (", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\)\s+(and|or)\s+", ") ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        result = result.Trim();
+        return result;
+    }
+    
+    private bool IsOnlyOperators(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+            
+        // Remove all whitespace and check if only operators remain
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(filter, @"\s+", "");
+        var onlyOperators = System.Text.RegularExpressions.Regex.IsMatch(cleaned, @"^(and|or|\(|\)|\s)+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return onlyOperators;
+    }
+    
+    private string RemoveNameFilter(string filter, string propertyName)
+    {
+        // Remove the filter clause for the given property name
+        // Handle Radzen C#-style filters: (DoctorName == null ? "" : DoctorName).ToLower().Contains("value".ToLower())
+        var patterns = new[]
+        {
+            // Radzen C#-style with double quotes
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)",
+            // Radzen C#-style with single quotes
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)",
+            // OData-style patterns
+            $@"contains\({propertyName},\s*'[^']+'\)",
+            $@"{propertyName}\s+contains\s+'[^']+'",
+            $@"contains\(tolower\({propertyName}\),\s*tolower\('[^']+'\)\)",
+            $@"tolower\({propertyName}\)\s+contains\s+'[^']+'",
+            // With "and" operators
+            $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)",
+            $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)",
+            $@"and\s+contains\({propertyName},\s*'[^']+'\)",
+            $@"and\s+{propertyName}\s+contains\s+'[^']+'",
+            // With trailing "and"
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)\s+and",
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)\s+and",
+            $@"contains\({propertyName},\s*'[^']+'\)\s+and",
+            $@"{propertyName}\s+contains\s+'[^']+'\s+and"
+        };
+        
+        var result = filter;
+        foreach (var pattern in patterns)
+        {
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+        
+        // Clean up extra "and" or "or" operators
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+and\s+and\s+", " and ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+or\s+or\s+", " or ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"^\s*and\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+and\s+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"^\s*or\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+or\s+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove empty parentheses
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\(\s*\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\(\s*(and|or)\s*\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        result = result.Trim();
+        
+        return result;
+    }
+    
+    private string? TransformOrderBy(string? orderBy)
+    {
+        if (string.IsNullOrEmpty(orderBy))
+            return orderBy;
+            
+        // Transform DTO property names to entity property names
+        // DoctorName, PatientName, and CreatedBy are DTO-only, so we can't sort by them in OData
+        // We'll sort client-side instead, but we need to remove them from the OData orderBy
+        var result = orderBy;
+        
+        // Remove DoctorName, PatientName, and CreatedBy from orderBy (we'll sort client-side)
+        // Pattern: "DoctorName asc" or "DoctorName desc" or "DoctorName, OtherProperty asc"
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"DoctorName\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"PatientName\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"CreatedBy\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*DoctorName\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*PatientName\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*CreatedBy\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Clean up extra commas
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*,", ",", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = result.Trim().TrimStart(',').TrimEnd(',');
+        
+        // If result is empty, return null (no OData sorting)
+        if (string.IsNullOrWhiteSpace(result))
+            return null;
+            
+        return result;
+    }
+    
+    private PagedResult<AppointmentDto> SortResultsByComputedProperty(PagedResult<AppointmentDto> result, string orderBy)
+    {
+        if (result.Items == null || !result.Items.Any())
+            return result;
+            
+        var items = result.Items.ToList();
+        var orderByLower = orderBy.ToLowerInvariant();
+        
+        // Parse orderBy: "DoctorName asc" or "PatientName desc" or "CreatedBy asc"
+        var isDescending = orderByLower.Contains("desc");
+        
+        if (orderByLower.Contains("doctorname"))
+        {
+            items = isDescending
+                ? items.OrderByDescending(a => a.DoctorName).ToList()
+                : items.OrderBy(a => a.DoctorName).ToList();
+        }
+        else if (orderByLower.Contains("patientname"))
+        {
+            items = isDescending
+                ? items.OrderByDescending(a => a.PatientName).ToList()
+                : items.OrderBy(a => a.PatientName).ToList();
+        }
+        else if (orderByLower.Contains("createdby"))
+        {
+            items = isDescending
+                ? items.OrderByDescending(a => a.CreatedBy).ToList()
+                : items.OrderBy(a => a.CreatedBy).ToList();
+        }
+        
+        return new PagedResult<AppointmentDto>
+        {
+            Items = items,
+            TotalCount = result.TotalCount,
+            PageNumber = result.PageNumber,
+            PageSize = result.PageSize
+        };
+    }
+    
+    private async Task<List<int>> FindUserIdsByName(string searchTerm, int roleId, CancellationToken ct)
+    {
+        try
+        {
+            // Query Users OData to find matching users by name
+            var nameFilter = $"(RoleId eq {roleId}) and (contains(FirstName, '{searchTerm}') or contains(LastName, '{searchTerm}'))";
+            var result = await ODataService.QueryAsync<Shared.User>("Users", 0, 1000, null, nameFilter, ct);
+            
+            return result.Items.Select(u => u.Id).ToList();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Appointments] Error finding user IDs by name: {ex.Message}");
+            return new List<int>();
         }
     }
 

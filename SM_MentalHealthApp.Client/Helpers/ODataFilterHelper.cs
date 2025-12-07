@@ -24,7 +24,9 @@ namespace SM_MentalHealthApp.Client.Helpers
                 "Specialization", "LicenseNumber", "Race", "AccidentAddress",
                 "VehicleDetails", "PoliceCaseNumber", "AccidentDetails",
                 "RoadConditions", "DoctorsInformation", "LawyersInformation",
-                "AdditionalNotes"
+                "AdditionalNotes",
+                // Appointment properties (Note: DoctorName and PatientName are DTO-only, handled separately)
+                "Reason", "Notes", "CreatedBy"
             };
 
             // === STRING FILTER TRANSFORMS (your existing code) ===
@@ -163,7 +165,9 @@ namespace SM_MentalHealthApp.Client.Helpers
                 "CreatedAt",
                 "LastLoginAt",
                 "AccidentDate",
-                "DateReported"
+                "DateReported",
+                // Appointment properties
+                "AppointmentDateTime"
             };
 
             foreach (var prop in dateProperties)

@@ -357,6 +357,16 @@ public static class DependencyInjection
         // Note: DateOfBirth is kept in EDM for filtering, but will be handled specially
         // in the controller (materialize, decrypt, filter in memory)
         
+        // Appointments
+        var appointmentSet = builder.EntitySet<Appointment>("Appointments");
+        appointmentSet.EntityType.HasKey(a => a.Id);
+        // Allow navigation properties to be expanded (don't ignore them)
+        // Note: Navigation properties are marked [JsonIgnore] in the entity, but OData can still expand them
+        // Ignore only computed properties
+        appointmentSet.EntityType.Ignore(a => a.EndDateTime);
+        appointmentSet.EntityType.Ignore(a => a.IsUrgentCare);
+        appointmentSet.EntityType.Ignore(a => a.IsBusinessHours);
+        
         return builder.GetEdmModel();
     }
 }
