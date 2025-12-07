@@ -216,7 +216,7 @@
     {
         DialogService.Open("About", ds =>
         @<div>
-            <h4>Health Journal</h4>
+            <h4>Customer Health App</h4>
             <p>A compassionate AI-powered journaling app for health tracking and support.</p>
             <p>Built with Blazor WebAssembly and powered by Hugging Face AI models.</p>
         </div>,
@@ -234,7 +234,7 @@
             {
                 // ✅ Clear authentication state
                 await AuthService.LogoutAsync();
-                
+
                 // ✅ Force full page reload to clear all component state and cached data
                 await JSRuntime.InvokeVoidAsync("eval", "window.location.href = '/login'");
             }
