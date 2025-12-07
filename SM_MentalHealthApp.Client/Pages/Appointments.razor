@@ -1054,10 +1054,11 @@
                 var decodedFilter = System.Net.WebUtility.UrlDecode(filter);
                 System.Diagnostics.Debug.WriteLine($"[Appointments] Original decoded filter: {decodedFilter}");
                 
-                // Handle DoctorName and PatientName filters (these are DTO-only, need special handling)
+                // Handle DoctorName, PatientName, and CreatedBy filters (these are DTO-only, need special handling)
                 // Check if filter contains these properties first
                 var hasDoctorName = decodedFilter.Contains("DoctorName", StringComparison.OrdinalIgnoreCase);
                 var hasPatientName = decodedFilter.Contains("PatientName", StringComparison.OrdinalIgnoreCase);
+                var hasCreatedBy = decodedFilter.Contains("CreatedBy", StringComparison.OrdinalIgnoreCase);
                 
                 if (hasDoctorName)
                 {
@@ -1121,6 +1122,39 @@
                     // Always remove PatientName filter from the rest (even if extraction failed)
                     decodedFilter = RemoveNameFilter(decodedFilter, "PatientName");
                     System.Diagnostics.Debug.WriteLine($"[Appointments] After removing PatientName: {decodedFilter}");
+                }
+                
+                if (hasCreatedBy)
+                {
+                    var createdByFilter = ExtractNameFilter(decodedFilter, "CreatedBy");
+                    if (!string.IsNullOrEmpty(createdByFilter))
+                    {
+                        // Find matching user IDs (can be any role - doctor, admin, coordinator, etc.)
+                        // Search across all roles since CreatedByUserId can be any user
+                        var userIds = await FindUserIdsByName(createdByFilter, null, ct); // null = all roles
+                        if (userIds.Any())
+                        {
+                            var userIdFilter = string.Join(" or ", userIds.Select(id => $"CreatedByUserId eq {id}"));
+                            if (!string.IsNullOrEmpty(odataFilter))
+                                odataFilter = $"{odataFilter} and ({userIdFilter})";
+                            else
+                                odataFilter = $"({userIdFilter})";
+                        }
+                        else
+                        {
+                            // No matching users, return empty result
+                            return new PagedResult<AppointmentDto>
+                            {
+                                Items = new List<AppointmentDto>(),
+                                TotalCount = 0,
+                                PageNumber = (skip / take) + 1,
+                                PageSize = take
+                            };
+                        }
+                    }
+                    // Always remove CreatedBy filter from the rest (even if extraction failed)
+                    decodedFilter = RemoveNameFilter(decodedFilter, "CreatedBy");
+                    System.Diagnostics.Debug.WriteLine($"[Appointments] After removing CreatedBy: {decodedFilter}");
                 }
                 
                 // Clean up any leftover operators from removed filters
@@ -1268,6 +1302,9 @@
             $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)",
             // Radzen C#-style with single quotes
             $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)",
+            // Radzen C#-style without parentheses: (Property == null ? "" : Property).ToLower.Contains("value".ToLower)
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\.Contains\(""[^""]+""\.ToLower\)",
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\.Contains\('[^']+'\.ToLower\)",
             // OData-style patterns
             $@"contains\({propertyName},\s*'[^']+'\)",
             $@"{propertyName}\s+contains\s+'[^']+'",
@@ -1276,11 +1313,15 @@
             // With "and" operators
             $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)",
             $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)",
+            $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\.Contains\(""[^""]+""\.ToLower\)",
+            $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\.Contains\('[^']+'\.ToLower\)",
             $@"and\s+contains\({propertyName},\s*'[^']+'\)",
             $@"and\s+{propertyName}\s+contains\s+'[^']+'",
             // With trailing "and"
             $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)\s+and",
             $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)\s+and",
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\.Contains\(""[^""]+""\.ToLower\)\s+and",
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\.Contains\('[^']+'\.ToLower\)\s+and",
             $@"contains\({propertyName},\s*'[^']+'\)\s+and",
             $@"{propertyName}\s+contains\s+'[^']+'\s+and"
         };
@@ -1377,12 +1418,21 @@
         };
     }
     
-    private async Task<List<int>> FindUserIdsByName(string searchTerm, int roleId, CancellationToken ct)
+    private async Task<List<int>> FindUserIdsByName(string searchTerm, int? roleId, CancellationToken ct)
     {
         try
         {
             // Query Users OData to find matching users by name
-            var nameFilter = $"(RoleId eq {roleId}) and (contains(FirstName, '{searchTerm}') or contains(LastName, '{searchTerm}'))";
+            string nameFilter;
+            if (roleId.HasValue)
+            {
+                nameFilter = $"(RoleId eq {roleId.Value}) and (contains(FirstName, '{searchTerm}') or contains(LastName, '{searchTerm}'))";
+            }
+            else
+            {
+                // Search across all roles
+                nameFilter = $"(contains(FirstName, '{searchTerm}') or contains(LastName, '{searchTerm}'))";
+            }
             var result = await ODataService.QueryAsync<Shared.User>("Users", 0, 1000, null, nameFilter, ct);
             
             return result.Items.Select(u => u.Id).ToList();
