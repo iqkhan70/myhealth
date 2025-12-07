@@ -11,6 +11,10 @@ using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Server.Services;
 using System.Text;
 using StackExchange.Redis;
+using Microsoft.AspNetCore.OData;
+using Microsoft.OData.Edm;
+using Microsoft.OData.ModelBuilder;
+using SM_MentalHealthApp.Shared;
 
 namespace SM_MentalHealthApp.Server;
 
@@ -190,14 +194,26 @@ public static class DependencyInjection
     private static IServiceCollection AddFrameworkServices(this IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
     {
         // Controllers and JSON Options
-        services.AddControllers()
+        services.AddControllers(options =>
+            {
+                // Add filter to decrypt User PII in OData responses
+                options.Filters.Add<Filters.ODataUserDecryptionActionFilter>();
+            })
             .AddJsonOptions(options =>
             {
                 options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
                 options.JsonSerializerOptions.WriteIndented = true;
                 options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
                 options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.Never; // Include all properties, even if default values
-            });
+            })
+            .AddOData(options => options
+                .Select()
+                .Filter()
+                .OrderBy()
+                .Count()
+                .SetMaxTop(1000)
+                .AddRouteComponents("odata", GetEdmModel())
+            );
 
         // API Versioning
         services.AddApiVersioning(options =>
@@ -319,6 +335,29 @@ public static class DependencyInjection
         services.AddAuthorization();
 
         return services;
+    }
+
+    /// <summary>
+    /// Creates the Entity Data Model (EDM) for OData
+    /// </summary>
+    private static IEdmModel GetEdmModel()
+    {
+        var builder = new ODataConventionModelBuilder();
+        
+        // Users (Patients, Doctors, Coordinators, Attorneys)
+        var userSet = builder.EntitySet<User>("Users");
+        userSet.EntityType.HasKey(u => u.Id);
+        // Ignore sensitive/computed properties
+        userSet.EntityType.Ignore(u => u.PasswordHash);
+        userSet.EntityType.Ignore(u => u.DateOfBirthEncrypted);
+        userSet.EntityType.Ignore(u => u.MobilePhoneEncrypted);
+        userSet.EntityType.Ignore(u => u.JournalEntries);
+        userSet.EntityType.Ignore(u => u.ChatSessions);
+        userSet.EntityType.Ignore(u => u.FullName);
+        // Note: DateOfBirth is kept in EDM for filtering, but will be handled specially
+        // in the controller (materialize, decrypt, filter in memory)
+        
+        return builder.GetEdmModel();
     }
 }
 

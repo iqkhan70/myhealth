@@ -1,6 +1,7 @@
 @using Radzen
 @using Radzen.Blazor
 @using SM_MentalHealthApp.Shared
+@using System
 @inherits ComponentBase
 @typeparam TItem
 
@@ -22,7 +23,8 @@
         </div>
     }
     <RadzenDataGrid TItem="TItem" 
-    Data="@(UseServerSidePagination ? null : _items)"
+    @ref="_radzenGrid"
+    Data="@(UseServerSidePagination ? (_items.Count > 0 ? _items : null) : _items)"
     Count="@(UseServerSidePagination ? _totalCount : _items.Count)"
     LoadData="@(UseServerSidePagination ? LoadData : null)" 
     class="@Class" 
@@ -31,6 +33,7 @@
     GridLines="@GridLines" 
     AllowColumnResize="@AllowColumnResize"
     FilterMode="@FilterMode" 
+    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
     AllowSorting="@AllowSorting" 
     PageSize="@PageSize" 
     AllowPaging="@AllowPaging"
@@ -153,6 +156,7 @@
     private CancellationTokenSource? _cts;
     private bool _isLoading;
     private string? _errorMessage;
+    private RadzenDataGrid<TItem>? _radzenGrid;
     
     // Determine if we're using server-side pagination
     private bool UseServerSidePagination => LoadItemsPaged is not null;
@@ -160,6 +164,14 @@
     protected override async Task OnInitializedAsync()
     {
         _cts = new CancellationTokenSource();
+        
+        // For server-side pagination, start with empty list so LoadData gets called
+        if (UseServerSidePagination)
+        {
+            _items = new List<TItem>();
+            _totalCount = 0;
+            Console.WriteLine("[SMDataGrid] OnInitializedAsync: Server-side pagination, _items initialized as empty");
+        }
         
         // If using client-side pagination (LoadItems), load data on init
         if (!UseServerSidePagination && LoadItems is not null && AutoLoad)
@@ -171,11 +183,12 @@
     
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // For server-side pagination, ensure LoadData is called on first render
+        // For server-side pagination, RadzenDataGrid should call LoadData automatically
+        // If it doesn't, we can trigger it by resetting state
         if (firstRender && UseServerSidePagination && LoadItemsPaged is not null)
         {
-            // Radzen should call LoadData automatically, but we can trigger it if needed
-            // by resetting the state
+            // Small delay to ensure grid is fully rendered, then trigger state change
+            await Task.Delay(50);
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -221,9 +234,17 @@
         
         if (UseServerSidePagination)
         {
-            // For server-side pagination, reset and let Radzen trigger LoadData
+            // For server-side pagination, reset and explicitly trigger Radzen to reload
             _totalCount = 0;
             _items.Clear();
+            
+            // Explicitly reload the RadzenDataGrid to trigger LoadData
+            // This must be done before StateHasChanged to ensure Radzen sees the change
+            if (_radzenGrid != null)
+            {
+                await _radzenGrid.Reload();
+            }
+            
             await InvokeAsync(StateHasChanged);
         }
         else
@@ -233,9 +254,72 @@
         }
     }
 
+    /// <summary>
+    /// Updates a single row in the grid by finding it by ID and updating its properties in place.
+    /// This provides a smoother UX than reloading the entire grid by preserving the object reference.
+    /// </summary>
+    public async Task UpdateRowAsync<TKey>(TItem updatedItem, Func<TItem, TKey> keySelector) where TKey : IEquatable<TKey>
+    {
+        if (updatedItem == null || keySelector == null) return;
+        
+        var updatedKey = keySelector(updatedItem);
+        
+        // Find the item to update (by reference, not index)
+        var existingItem = _items.FirstOrDefault(item => keySelector(item).Equals(updatedKey));
+        
+        if (existingItem != null)
+        {
+            // Update properties in place to preserve object reference
+            // This prevents RadzenDataGrid from treating it as a new collection
+            CopyProperties(updatedItem, existingItem);
+            
+            // Just call StateHasChanged - Radzen should detect the property changes
+            // without reloading the entire grid since we kept the same object reference
+            await InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            // Item not found in current page, do a full refresh
+            await RefreshAsync();
+        }
+    }
+    
+    /// <summary>
+    /// Copies properties from source to target using reflection
+    /// </summary>
+    private void CopyProperties(TItem source, TItem target)
+    {
+        if (source == null || target == null) return;
+        
+        var properties = typeof(TItem).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        
+        foreach (var prop in properties)
+        {
+            // Skip read-only properties and navigation properties
+            if (!prop.CanWrite || prop.Name.Contains("Entries") || prop.Name.Contains("Sessions") || prop.Name.Contains("Assignments"))
+                continue;
+                
+            try
+            {
+                var value = prop.GetValue(source);
+                prop.SetValue(target, value);
+            }
+            catch
+            {
+                // Ignore properties that can't be copied
+            }
+        }
+    }
+
     private async Task LoadData(LoadDataArgs args)
     {
-        if (_isLoading) return;
+        Console.WriteLine($"[SMDataGrid] LoadData CALLED! skip={args.Skip}, top={args.Top}, filter={args.Filter}");
+        
+        if (_isLoading)
+        {
+            Console.WriteLine("[SMDataGrid] Already loading, returning early");
+            return;
+        }
 
         _isLoading = true;
         _errorMessage = null;
@@ -245,9 +329,14 @@
             if (LoadItemsPaged is not null)
             {
                 // Server-side pagination
+                var skip = args.Skip ?? 0;
+                var take = args.Top ?? PageSize;
+                
+                Console.WriteLine($"[SMDataGrid] Calling LoadItemsPaged: skip={skip}, take={take}");
+                
                 var result = await LoadItemsPaged(
-                    args.Skip ?? 0,
-                    args.Top ?? PageSize,
+                    skip,
+                    take,
                     args.OrderBy,
                     args.Filter,
                     _cts?.Token ?? CancellationToken.None
@@ -255,11 +344,18 @@
 
                 _items = result.Items?.ToList() ?? new();
                 _totalCount = result.TotalCount;
+                
+                Console.WriteLine($"[SMDataGrid] LoadData SUCCESS: items={_items.Count}, total={_totalCount}");
+                Console.WriteLine($"[SMDataGrid] First item: {(_items.Count > 0 ? _items[0]?.ToString() : "none")}");
 
                 if (OnItemsLoaded.HasDelegate)
                 {
                     await OnItemsLoaded.InvokeAsync(_items);
                 }
+                
+                // Force UI update immediately after setting data
+                await InvokeAsync(StateHasChanged);
+                Console.WriteLine($"[SMDataGrid] StateHasChanged called after setting _items");
             }
             else if (LoadItems is not null)
             {
@@ -294,6 +390,8 @@
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[SMDataGrid] LoadData ERROR: {ex.Message}");
+            Console.WriteLine($"[SMDataGrid] StackTrace: {ex.StackTrace}");
             _errorMessage = ex.Message;
             _items = new();
             _totalCount = 0;
@@ -305,6 +403,7 @@
         finally
         {
             _isLoading = false;
+            Console.WriteLine($"[SMDataGrid] LoadData finally: _items.Count={_items.Count}, _totalCount={_totalCount}");
             await InvokeAsync(StateHasChanged);
         }
     }

@@ -40,6 +40,7 @@ if (app.Environment.IsDevelopment())
 // app.UseStaticFiles(); // Removed - this was serving Blazor client files
 
 app.UseCors("AllowBlazorClient");
+app.UseRouting(); // Required for OData routing
 app.UseAuthentication();
 app.UseAuthorization();
 

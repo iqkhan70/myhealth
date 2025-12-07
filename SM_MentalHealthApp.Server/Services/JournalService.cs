@@ -78,10 +78,9 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                // Try with includes first
+                // Load entries without includes to avoid issues with encrypted User data
+                // The User navigation properties will be loaded on-demand if needed
                 var entries = await _context.JournalEntries
-                    .Include(e => e.EnteredByUser) // Include who entered the entry (doctor or patient)
-                    .Include(e => e.User) // Include the patient
                     .Where(e => e.UserId == userId && e.IsActive)
                     .OrderByDescending(e => e.CreatedAt)
                     .ToListAsync();
@@ -90,21 +89,8 @@ namespace SM_MentalHealthApp.Server.Services
             }
             catch (Exception ex)
             {
-                // Fallback: return entries without includes if navigation properties fail
-                try
-                {
-                    var entries = await _context.JournalEntries
-                        .Where(e => e.UserId == userId && e.IsActive)
-                        .OrderByDescending(e => e.CreatedAt)
-                        .ToListAsync();
-                    
-                    return entries ?? new List<JournalEntry>();
-                }
-                catch
-                {
-                    // If even the simple query fails, return empty list
-                    return new List<JournalEntry>();
-                }
+                // If query fails, return empty list
+                return new List<JournalEntry>();
             }
         }
 
