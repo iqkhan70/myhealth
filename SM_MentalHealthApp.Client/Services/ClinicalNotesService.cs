@@ -15,13 +15,41 @@ public class ClinicalNotesService : BaseService, IClinicalNotesService
         var queryParams = new List<string>();
         if (patientId.HasValue) queryParams.Add($"patientId={patientId.Value}");
         if (doctorId.HasValue) queryParams.Add($"doctorId={doctorId.Value}");
-        
-        var url = queryParams.Any() 
+
+        var url = queryParams.Any()
             ? $"api/clinicalnotes?{string.Join("&", queryParams)}"
             : "api/clinicalnotes";
-        
+
         var response = await _http.GetFromJsonAsync<List<ClinicalNoteDto>>(url, ct);
         return response ?? new List<ClinicalNoteDto>();
+    }
+
+    public async Task<PagedResult<ClinicalNoteDto>> ListPagedAsync(int skip, int take, int? patientId = null, int? doctorId = null, string? searchTerm = null, string? noteType = null, string? priority = null, bool? isIgnoredByDoctor = null, DateTime? createdDateFrom = null, DateTime? createdDateTo = null, CancellationToken ct = default)
+    {
+        AddAuthorizationHeader();
+        var queryParams = new List<string>
+        {
+            $"skip={skip}",
+            $"take={take}"
+        };
+        if (patientId.HasValue) queryParams.Add($"patientId={patientId.Value}");
+        if (doctorId.HasValue) queryParams.Add($"doctorId={doctorId.Value}");
+        if (!string.IsNullOrWhiteSpace(searchTerm)) queryParams.Add($"searchTerm={Uri.EscapeDataString(searchTerm)}");
+        if (!string.IsNullOrWhiteSpace(noteType)) queryParams.Add($"noteType={Uri.EscapeDataString(noteType)}");
+        if (!string.IsNullOrWhiteSpace(priority)) queryParams.Add($"priority={Uri.EscapeDataString(priority)}");
+        if (isIgnoredByDoctor.HasValue) queryParams.Add($"isIgnoredByDoctor={isIgnoredByDoctor.Value}");
+        if (createdDateFrom.HasValue) queryParams.Add($"createdDateFrom={createdDateFrom.Value:yyyy-MM-dd}");
+        if (createdDateTo.HasValue) queryParams.Add($"createdDateTo={createdDateTo.Value:yyyy-MM-dd}");
+
+        var url = $"api/clinicalnotes/paged?{string.Join("&", queryParams)}";
+        var response = await _http.GetFromJsonAsync<PagedResult<ClinicalNoteDto>>(url, ct);
+        return response ?? new PagedResult<ClinicalNoteDto>
+        {
+            Items = new List<ClinicalNoteDto>(),
+            TotalCount = 0,
+            PageNumber = 1,
+            PageSize = take
+        };
     }
 
     public async Task<ClinicalNoteDto?> GetAsync(int id, CancellationToken ct = default)

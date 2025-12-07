@@ -29,7 +29,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
-        /// Get all clinical notes with optional filtering
+        /// Get all clinical notes with optional filtering (non-paginated - for backward compatibility)
         /// </summary>
         [HttpGet]
         public async Task<ActionResult<List<ClinicalNoteDto>>> GetClinicalNotes(
@@ -40,7 +40,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 var currentUserId = GetCurrentUserId();
                 var currentRoleId = GetCurrentRoleId();
-                
+
                 // For doctors and attorneys, filter by assigned patients
                 if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && currentUserId.HasValue)
                 {
@@ -49,19 +49,19 @@ namespace SM_MentalHealthApp.Server.Controllers
                         .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
                         .Select(ua => ua.AssigneeId)
                         .ToListAsync();
-                    
+
                     if (!assignedPatientIds.Any())
                     {
                         // No assigned patients, return empty list
                         return Ok(new List<ClinicalNoteDto>());
                     }
-                    
+
                     // Filter notes to only include assigned patients
                     var allNotes = await _clinicalNotesService.GetClinicalNotesAsync(patientId, doctorId);
                     var filteredNotes = allNotes?.Where(n => assignedPatientIds.Contains(n.PatientId)).ToList() ?? new List<ClinicalNoteDto>();
                     return Ok(filteredNotes);
                 }
-                
+
                 // For admins, return all notes (no filtering)
                 var notes = await _clinicalNotesService.GetClinicalNotesAsync(patientId, doctorId);
                 // Always return OK with list (empty list if no notes) - never error on empty
@@ -72,6 +72,109 @@ namespace SM_MentalHealthApp.Server.Controllers
                 _logger.LogError(ex, "Error getting clinical notes - returning empty list");
                 // Return empty list instead of error - allows UI to show empty grid
                 return Ok(new List<ClinicalNoteDto>());
+            }
+        }
+
+        /// <summary>
+        /// Get paginated clinical notes with optional filtering
+        /// </summary>
+        [HttpGet("paged")]
+        public async Task<ActionResult<PagedResult<ClinicalNoteDto>>> GetClinicalNotesPaged(
+            [FromQuery] int skip = 0,
+            [FromQuery] int take = 10,
+            [FromQuery] int? patientId = null,
+            [FromQuery] int? doctorId = null,
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] string? noteType = null,
+            [FromQuery] string? priority = null,
+            [FromQuery] bool? isIgnoredByDoctor = null,
+            [FromQuery] DateTime? createdDateFrom = null,
+            [FromQuery] DateTime? createdDateTo = null)
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+
+                // For doctors and attorneys, filter by assigned patients
+                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && currentUserId.HasValue)
+                {
+                    // Get assigned patient IDs for this doctor/attorney
+                    var assignedPatientIds = await _context.UserAssignments
+                        .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
+                        .Select(ua => ua.AssigneeId)
+                        .ToListAsync();
+
+                    if (!assignedPatientIds.Any())
+                    {
+                        // No assigned patients, return empty result
+                        return Ok(new PagedResult<ClinicalNoteDto>
+                        {
+                            Items = new List<ClinicalNoteDto>(),
+                            TotalCount = 0,
+                            PageNumber = 1,
+                            PageSize = take
+                        });
+                    }
+
+                    // Get paginated notes
+                    var result = await _clinicalNotesService.GetClinicalNotesPagedAsync(skip, take, patientId, doctorId, searchTerm, noteType, priority, isIgnoredByDoctor, createdDateFrom, createdDateTo);
+
+                    // Filter to only include assigned patients
+                    var filteredItems = result.Items?.Where(n => assignedPatientIds.Contains(n.PatientId)).ToList() ?? new List<ClinicalNoteDto>();
+
+                    // Recalculate total count for assigned patients only
+                    var countQuery = _context.ClinicalNotes
+                        .Where(cn => cn.IsActive && assignedPatientIds.Contains(cn.PatientId));
+
+                    if (patientId.HasValue) countQuery = countQuery.Where(cn => cn.PatientId == patientId.Value);
+                    if (doctorId.HasValue) countQuery = countQuery.Where(cn => cn.DoctorId == doctorId.Value);
+
+                    // Apply search filters for count
+                    if (!string.IsNullOrWhiteSpace(searchTerm))
+                    {
+                        var searchLower = searchTerm.ToLower();
+                        countQuery = countQuery.Where(cn =>
+                            cn.Title.ToLower().Contains(searchLower) ||
+                            cn.Content.ToLower().Contains(searchLower) ||
+                            (cn.Tags != null && cn.Tags.ToLower().Contains(searchLower)));
+                    }
+                    if (!string.IsNullOrWhiteSpace(noteType))
+                        countQuery = countQuery.Where(cn => cn.NoteType == noteType);
+                    if (!string.IsNullOrWhiteSpace(priority))
+                        countQuery = countQuery.Where(cn => cn.Priority == priority);
+                    if (isIgnoredByDoctor.HasValue)
+                        countQuery = countQuery.Where(cn => cn.IsIgnoredByDoctor == isIgnoredByDoctor.Value);
+                    if (createdDateFrom.HasValue)
+                        countQuery = countQuery.Where(cn => cn.CreatedAt >= createdDateFrom.Value);
+                    if (createdDateTo.HasValue)
+                        countQuery = countQuery.Where(cn => cn.CreatedAt <= createdDateTo.Value);
+
+                    var totalCount = await countQuery.CountAsync();
+
+                    return Ok(new PagedResult<ClinicalNoteDto>
+                    {
+                        Items = filteredItems,
+                        TotalCount = totalCount,
+                        PageNumber = result.PageNumber,
+                        PageSize = result.PageSize
+                    });
+                }
+
+                // For admins, return all notes (no filtering)
+                var pagedNotes = await _clinicalNotesService.GetClinicalNotesPagedAsync(skip, take, patientId, doctorId, searchTerm, noteType, priority, isIgnoredByDoctor, createdDateFrom, createdDateTo);
+                return Ok(pagedNotes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting paginated clinical notes - returning empty result");
+                return Ok(new PagedResult<ClinicalNoteDto>
+                {
+                    Items = new List<ClinicalNoteDto>(),
+                    TotalCount = 0,
+                    PageNumber = 1,
+                    PageSize = take
+                });
             }
         }
 
@@ -186,7 +289,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Get user ID and role from the authenticated user
                 var userId = GetCurrentUserId();
                 var userRole = GetCurrentRoleId();
-                
+
                 if (userId == null)
                     return Unauthorized("User ID not found");
 
@@ -245,7 +348,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 var currentUserId = GetCurrentUserId();
                 var currentRoleId = GetCurrentRoleId();
-                
+
                 // For doctors and attorneys, filter by assigned patients
                 if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && currentUserId.HasValue)
                 {
@@ -254,19 +357,19 @@ namespace SM_MentalHealthApp.Server.Controllers
                         .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
                         .Select(ua => ua.AssigneeId)
                         .ToListAsync();
-                    
+
                     if (!assignedPatientIds.Any())
                     {
                         // No assigned patients, return empty list
                         return Ok(new List<ClinicalNoteDto>());
                     }
-                    
+
                     // Filter notes to only include assigned patients
                     var allNotes = await _clinicalNotesService.SearchClinicalNotesAsync(searchTerm, patientId, doctorId);
                     var filteredNotes = allNotes?.Where(n => assignedPatientIds.Contains(n.PatientId)).ToList() ?? new List<ClinicalNoteDto>();
                     return Ok(filteredNotes);
                 }
-                
+
                 // For admins, return all notes (no filtering)
                 var notes = await _clinicalNotesService.SearchClinicalNotesAsync(searchTerm, patientId, doctorId);
                 return Ok(notes);
@@ -294,7 +397,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 var currentUserId = GetCurrentUserId();
                 var currentRoleId = GetCurrentRoleId();
-                
+
                 if (currentUserId == null)
                     return Unauthorized("User ID not found");
 
@@ -307,7 +410,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                         .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
                         .Select(ua => ua.AssigneeId)
                         .ToListAsync();
-                    
+
                     if (!assignedPatientIds.Any())
                     {
                         // No assigned patients, return empty list
@@ -317,13 +420,13 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 // Use AI-powered search that includes both clinical notes and content analyses
                 var notes = await _contentAnalysisService.SearchClinicalNotesWithAIAsync(searchTerm, patientId, doctorId);
-                
+
                 // Filter by assigned patients if applicable
                 if (assignedPatientIds != null && assignedPatientIds.Any())
                 {
                     notes = notes?.Where(n => assignedPatientIds.Contains(n.PatientId)).ToList() ?? new List<ClinicalNoteDto>();
                 }
-                
+
                 return Ok(notes);
             }
             catch (Exception ex)
@@ -398,12 +501,13 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 var isIgnored = await _clinicalNotesService.ToggleIgnoreAsync(id, doctorId.Value);
-                
+
                 // Reload note to get updated status
                 var updatedNote = await _clinicalNotesService.GetClinicalNoteByIdAsync(id);
-                return Ok(new { 
-                    message = isIgnored ? "Clinical note ignored" : "Clinical note unignored", 
-                    isIgnored = isIgnored 
+                return Ok(new
+                {
+                    message = isIgnored ? "Clinical note ignored" : "Clinical note unignored",
+                    isIgnored = isIgnored
                 });
             }
             catch (Exception ex)

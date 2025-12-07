@@ -7,6 +7,7 @@ namespace SM_MentalHealthApp.Server.Services
     public interface IClinicalNotesService
     {
         Task<List<ClinicalNoteDto>> GetClinicalNotesAsync(int? patientId = null, int? doctorId = null);
+        Task<PagedResult<ClinicalNoteDto>> GetClinicalNotesPagedAsync(int skip, int take, int? patientId = null, int? doctorId = null, string? searchTerm = null, string? noteType = null, string? priority = null, bool? isIgnoredByDoctor = null, DateTime? createdDateFrom = null, DateTime? createdDateTo = null);
         Task<ClinicalNoteDto?> GetClinicalNoteByIdAsync(int id);
         Task<ClinicalNoteDto> CreateClinicalNoteAsync(CreateClinicalNoteRequest request, int doctorId);
         Task<ClinicalNoteDto?> UpdateClinicalNoteAsync(int id, UpdateClinicalNoteRequest request, int doctorId);
@@ -54,6 +55,105 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogError(ex, "Error getting clinical notes - returning empty list");
                 // Return empty list instead of throwing - allows UI to show empty grid
                 return new List<ClinicalNoteDto>();
+            }
+        }
+
+        public async Task<PagedResult<ClinicalNoteDto>> GetClinicalNotesPagedAsync(
+            int skip,
+            int take,
+            int? patientId = null,
+            int? doctorId = null,
+            string? searchTerm = null,
+            string? noteType = null,
+            string? priority = null,
+            bool? isIgnoredByDoctor = null,
+            DateTime? createdDateFrom = null,
+            DateTime? createdDateTo = null)
+        {
+            try
+            {
+                var query = _context.ClinicalNotes
+                    .Include(cn => cn.Patient)
+                    .Include(cn => cn.Doctor)
+                    .Where(cn => cn.IsActive);
+
+                if (patientId.HasValue)
+                    query = query.Where(cn => cn.PatientId == patientId.Value);
+
+                if (doctorId.HasValue)
+                    query = query.Where(cn => cn.DoctorId == doctorId.Value);
+
+                // Apply text search filter
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    var searchLower = searchTerm.ToLower();
+                    query = query.Where(cn =>
+                        cn.Title.ToLower().Contains(searchLower) ||
+                        cn.Content.ToLower().Contains(searchLower) ||
+                        (cn.Tags != null && cn.Tags.ToLower().Contains(searchLower)) ||
+                        (cn.Patient.FirstName + " " + cn.Patient.LastName).ToLower().Contains(searchLower) ||
+                        (cn.Doctor.FirstName + " " + cn.Doctor.LastName).ToLower().Contains(searchLower));
+                }
+
+                // Apply note type filter
+                if (!string.IsNullOrWhiteSpace(noteType))
+                {
+                    query = query.Where(cn => cn.NoteType == noteType);
+                }
+
+                // Apply priority filter
+                if (!string.IsNullOrWhiteSpace(priority))
+                {
+                    query = query.Where(cn => cn.Priority == priority);
+                }
+
+                // Apply AI status filter (IsIgnoredByDoctor)
+                if (isIgnoredByDoctor.HasValue)
+                {
+                    query = query.Where(cn => cn.IsIgnoredByDoctor == isIgnoredByDoctor.Value);
+                }
+
+                // Apply date filter (CreatedAt)
+                if (createdDateFrom.HasValue)
+                {
+                    query = query.Where(cn => cn.CreatedAt >= createdDateFrom.Value);
+                }
+                if (createdDateTo.HasValue)
+                {
+                    // createdDateTo is already end of day, so use <=
+                    query = query.Where(cn => cn.CreatedAt <= createdDateTo.Value);
+                }
+
+                // Get total count before pagination
+                var totalCount = await query.CountAsync();
+
+                // Apply pagination and ordering
+                var notes = await query
+                    .OrderByDescending(cn => cn.CreatedAt)
+                    .Skip(skip)
+                    .Take(take)
+                    .ToListAsync();
+
+                var items = notes?.Select(MapToDto).ToList() ?? new List<ClinicalNoteDto>();
+
+                return new PagedResult<ClinicalNoteDto>
+                {
+                    Items = items,
+                    TotalCount = totalCount,
+                    PageNumber = (skip / take) + 1,
+                    PageSize = take
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting paginated clinical notes - returning empty result");
+                return new PagedResult<ClinicalNoteDto>
+                {
+                    Items = new List<ClinicalNoteDto>(),
+                    TotalCount = 0,
+                    PageNumber = 1,
+                    PageSize = take
+                };
             }
         }
 
@@ -186,7 +286,7 @@ namespace SM_MentalHealthApp.Server.Services
                     return false;
                 }
 
-                _logger.LogInformation("Attempting to delete clinical note {Id}. Note DoctorId: {NoteDoctorId}, Requesting DoctorId: {RequestingDoctorId}", 
+                _logger.LogInformation("Attempting to delete clinical note {Id}. Note DoctorId: {NoteDoctorId}, Requesting DoctorId: {RequestingDoctorId}",
                     id, note.DoctorId, doctorId);
 
                 // If doctorId is provided (not null), verify the doctor owns this note
@@ -195,7 +295,7 @@ namespace SM_MentalHealthApp.Server.Services
                 {
                     if (note.DoctorId != doctorId.Value)
                     {
-                        _logger.LogWarning("Doctor {DoctorId} attempted to delete note {Id} owned by doctor {NoteDoctorId}", 
+                        _logger.LogWarning("Doctor {DoctorId} attempted to delete note {Id} owned by doctor {NoteDoctorId}",
                             doctorId.Value, id, note.DoctorId);
                         throw new UnauthorizedAccessException("You can only delete your own clinical notes");
                     }

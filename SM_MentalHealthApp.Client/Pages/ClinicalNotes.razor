@@ -4,6 +4,7 @@
 @using SM_MentalHealthApp.Client.Components.Grid
 @using SM_MentalHealthApp.Client.Components.Common
 @using SM_MentalHealthApp.Client.Helpers
+@using SM_MentalHealthApp.Client.Helpers
 @using Radzen
 @using Radzen.Blazor
 @inject IClinicalNotesService ClinicalNotesService
@@ -29,9 +30,13 @@
                        Columns="_columns" 
                        Actions="_actions" 
                        ActionsWidth="150px"
-                       LoadItems="LoadClinicalNotesAsync" 
+                       LoadItemsPaged="LoadClinicalNotesPagedAsync" 
                        @ref="_grid" 
-                       PageSize="10"
+                       PageSize="5"
+                       AllowPaging="true"
+                       AllowFiltering="true"
+                       FilterMode="FilterMode.Advanced"
+                       ShowPagingSummary="true"
                        OnRowExpandCallback="@OnRowExpand">
                 <ExpansionTemplate Context="note">
                     @{
@@ -481,24 +486,38 @@
         });
     }
 
-    private async Task<IEnumerable<ClinicalNoteDto>> LoadClinicalNotesAsync(CancellationToken ct)
+    private async Task<PagedResult<ClinicalNoteDto>> LoadClinicalNotesPagedAsync(
+        int skip, 
+        int take, 
+        string? orderBy, 
+        string? filter, 
+        CancellationToken ct)
     {
         try
         {
-            var notes = await ClinicalNotesService.ListAsync(null, null, ct);
-            // Return empty list if null - don't treat empty as error
-            return notes ?? new List<ClinicalNoteDto>();
+            // Parse Radzen filter string using helper (similar to how Patients page does it)
+            var (searchTerm, noteType, priority, isIgnoredByDoctor, createdDateFrom, createdDateTo) = ClinicalNotesFilterHelper.ParseFilter(filter);
+            
+            var result = await ClinicalNotesService.ListPagedAsync(skip, take, null, null, searchTerm, noteType, priority, isIgnoredByDoctor, createdDateFrom, createdDateTo, ct);
+            Console.WriteLine($"[ClinicalNotes] LoadClinicalNotesPagedAsync: skip={skip}, take={take}, items={result.Items.Count}, total={result.TotalCount}, searchTerm={searchTerm}, noteType={noteType}, priority={priority}, isIgnoredByDoctor={isIgnoredByDoctor}, createdDateFrom={createdDateFrom}, createdDateTo={createdDateTo}, filter={filter}");
+            return result;
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[ClinicalNotes] Error loading paginated notes: {ex.Message}");
             // Only show error for actual failures, not empty results
-            // Empty results should just show empty grid
             if (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized"))
             {
                 NotificationService.ShowError($"Failed to load clinical notes: {ex.Message}");
             }
-            // For other errors (like network issues), log but don't show error for empty results
-            return new List<ClinicalNoteDto>();
+            // For other errors, return empty result
+            return new PagedResult<ClinicalNoteDto>
+            {
+                Items = new List<ClinicalNoteDto>(),
+                TotalCount = 0,
+                PageNumber = (skip / take) + 1,
+                PageSize = take
+            };
         }
     }
 
