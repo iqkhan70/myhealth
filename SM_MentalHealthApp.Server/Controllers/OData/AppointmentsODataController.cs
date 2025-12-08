@@ -52,15 +52,39 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                 {
                     if (currentRoleId.Value == 2) // Doctor
                     {
-                        // Doctors see only their own appointments
-                        query = query.Where(a => a.DoctorId == currentUserId.Value);
+                        // Doctors see only appointments for their assigned patients
+                        var assignedPatientIds = _context.UserAssignments
+                            .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
+                            .Select(ua => ua.AssigneeId);
+                        
+                        query = query.Where(a => 
+                            a.DoctorId == currentUserId.Value && 
+                            assignedPatientIds.Contains(a.PatientId));
+                    }
+                    else if (currentRoleId.Value == 4) // Coordinator
+                    {
+                        // Coordinators see only appointments for their assigned patients
+                        var assignedPatientIds = _context.UserAssignments
+                            .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
+                            .Select(ua => ua.AssigneeId);
+                        
+                        query = query.Where(a => assignedPatientIds.Contains(a.PatientId));
                     }
                     else if (currentRoleId.Value == 1) // Patient
                     {
                         // Patients see only their own appointments
                         query = query.Where(a => a.PatientId == currentUserId.Value);
                     }
-                    // Admin (3), Coordinator (4), and Attorney (5) see all appointments
+                    else if (currentRoleId.Value == 5) // Attorney
+                    {
+                        // Attorneys see appointments for their assigned patients
+                        var assignedPatientIds = _context.UserAssignments
+                            .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
+                            .Select(ua => ua.AssigneeId);
+                        
+                        query = query.Where(a => assignedPatientIds.Contains(a.PatientId));
+                    }
+                    // Admin (3) sees all appointments - no filtering needed
                 }
 
                 return query;
@@ -90,12 +114,38 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
             {
                 if (currentRoleId.Value == 2) // Doctor
                 {
-                    query = query.Where(a => a.DoctorId == currentUserId.Value);
+                    // Doctors see only appointments for their assigned patients
+                    var assignedPatientIds = _context.UserAssignments
+                        .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
+                        .Select(ua => ua.AssigneeId);
+                    
+                    query = query.Where(a => 
+                        a.DoctorId == currentUserId.Value && 
+                        assignedPatientIds.Contains(a.PatientId));
+                }
+                else if (currentRoleId.Value == 4) // Coordinator
+                {
+                    // Coordinators see only appointments for their assigned patients
+                    var assignedPatientIds = _context.UserAssignments
+                        .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
+                        .Select(ua => ua.AssigneeId);
+                    
+                    query = query.Where(a => assignedPatientIds.Contains(a.PatientId));
                 }
                 else if (currentRoleId.Value == 1) // Patient
                 {
                     query = query.Where(a => a.PatientId == currentUserId.Value);
                 }
+                else if (currentRoleId.Value == 5) // Attorney
+                {
+                    // Attorneys see appointments for their assigned patients
+                    var assignedPatientIds = _context.UserAssignments
+                        .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
+                        .Select(ua => ua.AssigneeId);
+                    
+                    query = query.Where(a => assignedPatientIds.Contains(a.PatientId));
+                }
+                // Admin (3) sees all appointments - no filtering needed
             }
 
             return SingleResult.Create(query);
@@ -103,18 +153,16 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
 
         private int? GetCurrentUserId()
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (int.TryParse(userIdClaim, out int userId))
-                return userId;
-            return null;
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? 
+                             User.FindFirst("UserId") ?? 
+                             User.FindFirst("userId");
+            return userIdClaim != null && int.TryParse(userIdClaim.Value, out var userId) ? userId : null;
         }
 
         private int? GetCurrentRoleId()
         {
-            var roleIdClaim = User.FindFirst("roleId")?.Value;
-            if (int.TryParse(roleIdClaim, out int roleId))
-                return roleId;
-            return null;
+            var roleIdClaim = User.FindFirst("RoleId") ?? User.FindFirst("roleId");
+            return roleIdClaim != null && int.TryParse(roleIdClaim.Value, out var roleId) ? roleId : null;
         }
     }
 }

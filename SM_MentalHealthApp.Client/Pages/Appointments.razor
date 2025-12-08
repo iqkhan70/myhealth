@@ -1484,6 +1484,8 @@
         editingAppointment = null;
         var currentUser = AuthService.CurrentUser;
         var isDoctor = currentUser?.RoleId == 2;
+        var isCoordinator = currentUser?.RoleId == 4;
+        var isAdmin = currentUser?.RoleId == 3;
 
         appointmentForm = new CreateAppointmentRequest
         {
@@ -1501,12 +1503,41 @@
         validationError = "";
         validationWarnings = new();
 
-        // For doctors, load their assigned patients
+        // Load patients based on role
         if (isDoctor)
         {
-            availablePatients = patients; // Already loaded in LoadData
+            // For doctors, load their assigned patients (already loaded in LoadData)
+            availablePatients = patients;
             // Load OOO periods for the doctor
             await LoadDoctorOOOPeriods(appointmentForm.DoctorId);
+        }
+        else if (isCoordinator)
+        {
+            // For coordinators, load their assigned patients
+            try
+            {
+                if (currentUser != null)
+                {
+                    var response = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{currentUser.Id}/patients");
+                    availablePatients = response ?? new();
+                }
+                else
+                {
+                    availablePatients = new();
+                }
+            }
+            catch (Exception ex)
+            {
+                availablePatients = new();
+                await JSRuntime.InvokeVoidAsync("console.error", $"Error loading coordinator patients: {ex.Message}");
+            }
+            doctorOOOPeriods = new();
+        }
+        else if (isAdmin)
+        {
+            // For admin, load all patients (already loaded in LoadData)
+            availablePatients = patients;
+            doctorOOOPeriods = new();
         }
         else
         {

@@ -51,8 +51,14 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                     .Where(u => u.IsActive)
                     .AsQueryable();
 
+                // Check if the filter is specifically filtering by IDs (used for populating navigation properties)
+                var filterRaw = queryOptions?.Filter?.RawValue;
+                bool isFilteringByIds = !string.IsNullOrEmpty(filterRaw) && 
+                                       System.Text.RegularExpressions.Regex.IsMatch(filterRaw, @"\bId\s+eq\s+\d+", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
                 // For doctors, coordinators, and attorneys: filter to assigned patients only
-                if (currentRoleId.HasValue && currentUserId.HasValue)
+                // BUT: Allow fetching users by specific IDs (needed for navigation properties like Assigner/Assignee)
+                if (currentRoleId.HasValue && currentUserId.HasValue && !isFilteringByIds)
                 {
                     if (currentRoleId.Value == 2 ||   // Doctor
                         currentRoleId.Value == 4 ||   // Coordinator
@@ -69,7 +75,7 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                 }
 
                 // Check if the filter or orderBy contains DateOfBirth (encrypted PII that needs special handling)
-                var filterRaw = queryOptions?.Filter?.RawValue;
+                // Note: filterRaw was already set above
                 var orderBy = queryOptions?.OrderBy;
                 var hasDateOfBirthFilter = !string.IsNullOrEmpty(filterRaw) && filterRaw.Contains("DateOfBirth", StringComparison.OrdinalIgnoreCase);
                 
