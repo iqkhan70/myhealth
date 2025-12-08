@@ -68,57 +68,116 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                     }
                 }
 
-                // Check if the filter contains DateOfBirth (encrypted PII that needs special handling)
+                // Check if the filter or orderBy contains DateOfBirth (encrypted PII that needs special handling)
                 var filterRaw = queryOptions?.Filter?.RawValue;
-                if (!string.IsNullOrEmpty(filterRaw) && filterRaw.Contains("DateOfBirth", StringComparison.OrdinalIgnoreCase))
+                var orderBy = queryOptions?.OrderBy;
+                var hasDateOfBirthFilter = !string.IsNullOrEmpty(filterRaw) && filterRaw.Contains("DateOfBirth", StringComparison.OrdinalIgnoreCase);
+                
+                // Check if orderBy contains DateOfBirth
+                bool hasDateOfBirthSort = false;
+                string? orderByProperty = null;
+                bool isDescending = false;
+                if (orderBy != null && orderBy.OrderByClause != null)
                 {
-                    // DateOfBirth filtering requires special handling:
-                    // 1. Apply all non-DateOfBirth filters via OData
+                    // Extract the actual property name from the OData expression
+                    var expression = orderBy.OrderByClause.Expression;
+                    if (expression is Microsoft.OData.UriParser.SingleValuePropertyAccessNode propertyNode)
+                    {
+                        orderByProperty = propertyNode.Property.Name;
+                    }
+                    else
+                    {
+                        // Fallback to ToString() if it's not a property access node
+                        orderByProperty = expression.ToString();
+                    }
+                    
+                    hasDateOfBirthSort = orderByProperty != null && orderByProperty.Equals("DateOfBirth", StringComparison.OrdinalIgnoreCase);
+                    isDescending = orderBy.OrderByClause.Direction == Microsoft.OData.UriParser.OrderByDirection.Descending;
+                    _logger.LogInformation($"[UsersODataController] OrderBy detected: {orderByProperty}, hasDateOfBirthSort: {hasDateOfBirthSort}, isDescending: {isDescending}");
+                }
+
+                if (hasDateOfBirthFilter || hasDateOfBirthSort)
+                {
+                    // DateOfBirth filtering/sorting requires special handling:
+                    // 1. Apply all non-DateOfBirth filters via OData (if no DateOfBirth filter)
                     // 2. Materialize the query
                     // 3. Decrypt DateOfBirth
-                    // 4. Apply DateOfBirth filter in memory
-                    // 5. Apply pagination/sorting in memory
+                    // 4. Apply DateOfBirth filter in memory (if present)
+                    // 5. Apply DateOfBirth sorting in memory (if present)
+                    // 6. Apply pagination
 
-                    _logger.LogInformation("DateOfBirth filter detected, applying special handling for encrypted PII");
+                    _logger.LogInformation("DateOfBirth filter or sort detected, applying special handling for encrypted PII");
 
-                    // First, try to apply OData filters (excluding DateOfBirth which is not in EDM model)
-                    // OData will reject DateOfBirth filters since it's excluded from EDM, so we need to handle it manually
-
-                    // Materialize the query first (before OData tries to apply DateOfBirth filter)
+                    // Materialize the query (OData can't sort/filter encrypted DateOfBirth)
                     var allUsers = query.ToList();
 
                     // Decrypt DateOfBirth for all users
                     UserEncryptionHelper.DecryptUserData(allUsers, _encryptionService);
 
-                    // Parse and apply DateOfBirth filter manually
-                    var filteredUsers = ApplyDateOfBirthFilter(allUsers.AsQueryable(), filterRaw);
-
-                    // Apply pagination and sorting
-                    var skip = queryOptions?.Skip?.Value ?? 0;
-                    var top = queryOptions?.Top?.Value ?? 1000;
-                    var orderBy = queryOptions?.OrderBy;
-
-                    if (orderBy != null && orderBy.OrderByClause != null)
+                    // Apply DateOfBirth filter if present
+                    IQueryable<User> filteredUsers = allUsers.AsQueryable();
+                    if (hasDateOfBirthFilter)
                     {
-                        // Apply sorting (simplified - handle common cases)
-                        var orderByProperty = orderBy.OrderByClause.Expression.ToString();
-                        var isDescending = orderBy.OrderByClause.Direction == Microsoft.OData.UriParser.OrderByDirection.Descending;
-
-                        if (orderByProperty == "DateOfBirth")
+                        filteredUsers = ApplyDateOfBirthFilter(filteredUsers, filterRaw!);
+                    }
+                    else
+                    {
+                        // No DateOfBirth filter - apply other OData filters if any
+                        try
                         {
-                            filteredUsers = isDescending
-                                ? filteredUsers.OrderByDescending(u => u.DateOfBirth)
-                                : filteredUsers.OrderBy(u => u.DateOfBirth);
+                            if (queryOptions != null)
+                            {
+                                // Create a temporary query options without orderBy and skip/top to apply filters
+                                var filterOnlyOptions = new ODataQueryOptions<User>(queryOptions.Context, queryOptions.Request);
+                                // Note: We can't easily exclude DateOfBirth from filter, so we'll apply all filters
+                                // and let ApplyDateOfBirthFilter handle DateOfBirth if present
+                                filteredUsers = filterOnlyOptions.ApplyTo(filteredUsers) as IQueryable<User> ?? filteredUsers;
+                            }
                         }
-                        // Add other sorting properties as needed
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Error applying OData filters, using unfiltered results");
+                        }
                     }
 
-                    // Return as IQueryable - OData will apply pagination/sorting on the already-filtered data
-                    // Note: OData won't try to apply the DateOfBirth filter again because it's already applied
-                    return filteredUsers;
+                    // Apply DateOfBirth sorting if present
+                    if (hasDateOfBirthSort && !string.IsNullOrEmpty(orderByProperty))
+                    {
+                        filteredUsers = isDescending
+                            ? filteredUsers.OrderByDescending(u => u.DateOfBirth)
+                            : filteredUsers.OrderBy(u => u.DateOfBirth);
+                    }
+                    else if (orderBy != null && orderBy.OrderByClause != null && !hasDateOfBirthSort)
+                    {
+                        // Apply other sorting (non-DateOfBirth) - this should work since DateOfBirth is already decrypted
+                        try
+                        {
+                            var sortQueryOptions = new ODataQueryOptions<User>(queryOptions.Context, queryOptions.Request);
+                            filteredUsers = sortQueryOptions.ApplyTo(filteredUsers) as IQueryable<User> ?? filteredUsers;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Error applying OData sorting, using unsorted results");
+                        }
+                    }
+
+                    // Apply pagination
+                    var skip = queryOptions?.Skip?.Value ?? 0;
+                    var top = queryOptions?.Top?.Value ?? 1000;
+                    filteredUsers = filteredUsers.Skip(skip).Take(top);
+
+                    // IMPORTANT: Materialize the query to prevent OData from trying to translate DateOfBirth to SQL
+                    // This ensures that all DateOfBirth operations happen in memory after decryption
+                    _logger.LogInformation($"[UsersODataController] Materializing query - hasDateOfBirthSort: {hasDateOfBirthSort}, hasDateOfBirthFilter: {hasDateOfBirthFilter}");
+                    var materializedUsers = filteredUsers.ToList();
+                    _logger.LogInformation($"[UsersODataController] Materialized {materializedUsers.Count} users");
+                    
+                    // Return as IQueryable from the materialized list - OData will handle serialization
+                    // The filter should detect this is already materialized and skip enumeration
+                    return materializedUsers.AsQueryable();
                 }
 
-                // No DateOfBirth filter - use normal flow with DecryptingQueryable
+                // No DateOfBirth filter or sort - use normal flow with DecryptingQueryable
                 return new DecryptingQueryable<User>(query, _encryptionService);
             }
             catch (Exception ex)

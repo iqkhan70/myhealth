@@ -22,6 +22,13 @@ namespace SM_MentalHealthApp.Server.Filters
 
         public void OnResultExecuting(ResultExecutingContext context)
         {
+            // Check if the request has DateOfBirth in orderBy - if so, the controller should have already handled it
+            // Don't try to enumerate IQueryable that might have DateOfBirth operations
+            var request = context.HttpContext.Request;
+            var orderByParam = request.Query["$orderby"].ToString();
+            var hasDateOfBirthInOrderBy = !string.IsNullOrEmpty(orderByParam) && 
+                                         orderByParam.Contains("DateOfBirth", StringComparison.OrdinalIgnoreCase);
+            
             // Decrypt before serialization
             if (context.Result is ObjectResult objectResult && objectResult.Value != null)
             {
@@ -36,17 +43,29 @@ namespace SM_MentalHealthApp.Server.Filters
                 }
                 // Handle IEnumerable<User> (collection results)
                 // But be careful - OData might return other types, so check if it's actually User
-                else if (objectResult.Value is System.Collections.IEnumerable enumerable)
+                else if (objectResult.Value is System.Collections.IEnumerable enumerable && !(objectResult.Value is IQueryable<User>))
                 {
                     // Only process if the enumerable contains User objects
                     // OData responses might contain dictionaries or other types
-                    var firstItem = enumerable.Cast<object>().FirstOrDefault();
-                    if (firstItem is User)
+                    // Skip if DateOfBirth is in orderBy (controller should have handled it)
+                    if (!hasDateOfBirthInOrderBy)
                     {
-                        var users = enumerable.Cast<User>().ToList();
-                        if (users.Any())
+                        try
                         {
-                            UserEncryptionHelper.DecryptUserData(users, _encryptionService);
+                            var firstItem = enumerable.Cast<object>().FirstOrDefault();
+                            if (firstItem is User)
+                            {
+                                var users = enumerable.Cast<User>().ToList();
+                                if (users.Any())
+                                {
+                                    UserEncryptionHelper.DecryptUserData(users, _encryptionService);
+                                }
+                            }
+                        }
+                        catch (InvalidOperationException ex) when (ex.Message.Contains("DateOfBirth") || ex.Message.Contains("Translation") || ex.Message.Contains("unmapped"))
+                        {
+                            // Skip if translation error - controller should have handled DateOfBirth
+                            System.Diagnostics.Debug.WriteLine($"[ODataUserDecryptionActionFilter] Translation error in IEnumerable handling: {ex.Message}");
                         }
                     }
                     // If it's not User objects, skip decryption (might be OData metadata or other types)
@@ -63,12 +82,80 @@ namespace SM_MentalHealthApp.Server.Filters
                 // Handle IQueryable<User> - materialize and decrypt
                 else if (objectResult.Value is IQueryable<User> queryable)
                 {
-                    var users = queryable.ToList();
-                    if (users.Any())
+                    // If DateOfBirth is in orderBy, the controller should have already handled it
+                    // Skip enumeration to avoid EF Core trying to translate DateOfBirth
+                    if (hasDateOfBirthInOrderBy)
                     {
-                        UserEncryptionHelper.DecryptUserData(users, _encryptionService);
-                        // Replace the queryable with the decrypted list
-                        objectResult.Value = users.AsQueryable();
+                        System.Diagnostics.Debug.WriteLine($"[ODataUserDecryptionActionFilter] DateOfBirth in orderBy detected - skipping enumeration (controller should have handled it)");
+                        // The controller should have already materialized and decrypted
+                        // Just check if it's an in-memory enumerable and decrypt if needed
+                        if (queryable is System.Collections.Generic.IEnumerable<User> inMemoryEnumerable)
+                        {
+                            var users = inMemoryEnumerable.ToList();
+                            if (users.Any())
+                            {
+                                // Check if DateOfBirth is already decrypted
+                                var needsDecryption = users.Any(u => u.DateOfBirth == DateTime.MinValue || 
+                                                                   string.IsNullOrEmpty(u.MobilePhone));
+                                if (needsDecryption)
+                                {
+                                    UserEncryptionHelper.DecryptUserData(users, _encryptionService);
+                                    objectResult.Value = users.AsQueryable();
+                                }
+                            }
+                        }
+                        // If it's not an in-memory enumerable, don't try to enumerate - let OData handle it
+                        return;
+                    }
+                    
+                    // Check if this is already a materialized list (from AsQueryable() on a List)
+                    // If it's backed by EF Core, we need to be careful about DateOfBirth operations
+                    try
+                    {
+                        // Try to check if this is an in-memory queryable (from AsQueryable on a List)
+                        // by checking if it's actually an IEnumerable<User> that we can enumerate safely
+                        if (queryable is System.Collections.Generic.IEnumerable<User> inMemoryEnumerable)
+                        {
+                            // This is likely already materialized - just decrypt if needed
+                            var users = inMemoryEnumerable.ToList();
+                            if (users.Any())
+                            {
+                                // Check if DateOfBirth is already decrypted (if it's not DateTime.MinValue, it's likely decrypted)
+                                // If it's already decrypted, we don't need to decrypt again
+                                var needsDecryption = users.Any(u => u.DateOfBirth == DateTime.MinValue || 
+                                                                   string.IsNullOrEmpty(u.MobilePhone));
+                                
+                                if (needsDecryption)
+                                {
+                                    UserEncryptionHelper.DecryptUserData(users, _encryptionService);
+                                }
+                                // Replace the queryable with the decrypted list
+                                objectResult.Value = users.AsQueryable();
+                            }
+                        }
+                        else
+                        {
+                            // This is an EF Core queryable - materialize it
+                            var users = queryable.ToList();
+                            if (users.Any())
+                            {
+                                UserEncryptionHelper.DecryptUserData(users, _encryptionService);
+                                // Replace the queryable with the decrypted list
+                                objectResult.Value = users.AsQueryable();
+                            }
+                        }
+                    }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("DateOfBirth") || ex.Message.Contains("Translation") || ex.Message.Contains("unmapped"))
+                    {
+                        // If we get a translation error, it means the query still has DateOfBirth operations
+                        // This means the controller didn't handle DateOfBirth operations properly
+                        // OR the queryable is from an EF Core query that wasn't materialized
+                        // In this case, we should NOT try to enumerate it - let OData handle it
+                        // The controller should have materialized DateOfBirth operations before returning
+                        System.Diagnostics.Debug.WriteLine($"[ODataUserDecryptionActionFilter] Translation error (DateOfBirth operations detected): {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"[ODataUserDecryptionActionFilter] Skipping decryption - controller should have handled DateOfBirth operations");
+                        // Don't try to enumerate - just let OData serialize whatever is in the queryable
+                        // The controller should have already materialized and decrypted
                     }
                 }
             }
