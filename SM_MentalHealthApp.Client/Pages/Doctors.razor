@@ -577,11 +577,13 @@
                 {
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Doctor added successfully!");
                     await LoadDoctors(); // Reload the list
+                    CloseDoctorForm(); // Only close on success
                 }
                 else
                 {
                     var error = await result.Content.ReadAsStringAsync();
                     NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to add doctor: " + error);
+                    // Don't close dialog on error - keep it open so user can fix the issue
                 }
             }
             else
@@ -627,15 +629,15 @@
                 {
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Doctor updated successfully!");
                     await LoadDoctors(); // Reload the list
+                    CloseDoctorForm(); // Only close on success
                 }
                 else
                 {
                     var error = await result.Content.ReadAsStringAsync();
                     NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update doctor: " + error);
+                    // Don't close dialog on error - keep it open so user can fix the issue
                 }
             }
-            
-            CloseDoctorForm();
         }
         catch (Exception ex)
         {

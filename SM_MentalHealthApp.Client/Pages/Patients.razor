@@ -1342,6 +1342,7 @@
                 {
                     await _grid.RefreshAsync();
                 }
+                ClosePatientForm(); // Only close on success
             }
             else
             {
@@ -1406,13 +1407,24 @@
                         await _grid.RefreshAsync();
                     }
                 }
+                ClosePatientForm(); // Only close on success
             }
-            
-            ClosePatientForm();
+        }
+        catch (HttpRequestException ex)
+        {
+            // Extract error message from exception data if available
+            var errorMessage = ex.Message;
+            if (ex.Data.Contains("ErrorContent"))
+            {
+                errorMessage = ex.Data["ErrorContent"]?.ToString() ?? errorMessage;
+            }
+            NotificationService.ShowError(errorMessage);
+            // Don't close dialog on error - keep it open so user can fix the issue
         }
         catch (Exception ex)
         {
             NotificationService.ShowError($"Failed to save patient: {ex.Message}");
+            // Don't close dialog on error - keep it open so user can fix the issue
         }
         finally
         {

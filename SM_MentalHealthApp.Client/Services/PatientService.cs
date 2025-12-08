@@ -43,7 +43,16 @@ public class PatientService : BaseService, IPatientService
     {
         AddAuthorizationHeader();
         var response = await _http.PostAsJsonAsync("api/admin/create-patient", request, ct);
-        response.EnsureSuccessStatusCode();
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(ct);
+            throw new HttpRequestException($"Failed to create patient: {errorContent}")
+            {
+                Data = { ["StatusCode"] = response.StatusCode, ["ErrorContent"] = errorContent }
+            };
+        }
+        
         return await response.Content.ReadFromJsonAsync<User>(ct) ?? throw new Exception("Failed to create patient");
     }
 
