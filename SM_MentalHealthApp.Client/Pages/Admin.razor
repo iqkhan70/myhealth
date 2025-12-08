@@ -1,10 +1,14 @@
 @page "/admin"
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components.Grid
+@using SM_MentalHealthApp.Client.Helpers
+@using System.Net.Http.Json
 @inject HttpClient Http
 @inject IAuthService AuthService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject ODataService ODataService
 
 <PageTitle>Assignments</PageTitle>
 
@@ -127,11 +131,18 @@
                     </small>
                 </div>
 
-                <RadzenDataGrid Data="@GetAssignmentDisplayModels()" TItem="AssignmentDisplayModel" AllowPaging="true"
-                    PageSize="10" AllowSorting="true" FilterMode="FilterMode.Advanced" ShowPagingSummary="true"
-                    EmptyText="No assignments found" AllowFiltering="true"
-                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" ShowFilterRow="true"
-                    ShowFilterRowButtons="true">
+                <SMDataGrid TItem="AssignmentDisplayModel" 
+                    LoadItemsPaged="LoadAssignmentsPagedAsync"
+                    AllowPaging="true"
+                    PageSize="10" 
+                    AllowSorting="true" 
+                    FilterMode="FilterMode.Advanced" 
+                    ShowPagingSummary="true"
+                    EmptyText="No assignments found" 
+                    AllowFiltering="true"
+                    ShowFilterRow="true"
+                    ShowFilterRowButtons="true"
+                    @ref="_assignmentsGrid">
                     <Columns>
                         <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="PatientName" Title="Patient"
                             Width="200px" Filterable="true" FilterProperty="PatientName">
@@ -186,7 +197,7 @@
                             </Template>
                         </RadzenDataGridColumn>
                     </Columns>
-                </RadzenDataGrid>
+                </SMDataGrid>
             </div>
 
             <!-- Doctor-Patient Overview -->
@@ -237,6 +248,7 @@
     private List<UserAssignment> assignments = new();
     private int selectedPatientId = 0;
     private int selectedDoctorId = 0;
+    private SMDataGrid<AssignmentDisplayModel>? _assignmentsGrid;
     private bool isLoading = true;
     private string message = "";
     private bool isError = false;
@@ -259,22 +271,18 @@
             isLoading = true;
             StateHasChanged();
 
-            Console.WriteLine($"Admin user: {AuthService.CurrentUser?.Email}, Role: {AuthService.CurrentUser?.RoleId}");
 
             // Load patients (users with role = Patient)
             var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
             patients = patientsResponse ?? new();
-            Console.WriteLine($"Loaded {patients.Count} patients");
 
             // Load doctors (users with role = Doctor)
             var doctorsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors");
             doctors = doctorsResponse ?? new();
-            Console.WriteLine($"Loaded {doctors.Count} doctors");
 
             // Load assignments
             var assignmentsResponse = await Http.GetFromJsonAsync<List<UserAssignment>>("api/admin/assignments");
             assignments = assignmentsResponse ?? new();
-            Console.WriteLine($"Loaded {assignments.Count} assignments");
 
             isLoading = false;
         }
@@ -283,7 +291,6 @@
             isLoading = false;
             message = $"Error loading data: {ex.Message}";
             isError = true;
-            Console.WriteLine($"Admin page error: {ex.Message}");
         }
     }
 
@@ -297,38 +304,479 @@
     d.Email.Contains(doctorSearchTerm, StringComparison.OrdinalIgnoreCase));
 
 
-    private List<AssignmentDisplayModel> GetAssignmentDisplayModels()
+    private async Task<PagedResult<AssignmentDisplayModel>> LoadAssignmentsPagedAsync(int skip, int take, string? orderBy, string? filter, CancellationToken ct)
     {
-        return assignments.Select(a => new AssignmentDisplayModel
+        try
         {
-            PatientId = a.AssigneeId,
-            PatientName = $"{a.Assignee?.FirstName} {a.Assignee?.LastName}",
-            PatientEmail = a.Assignee?.Email ?? "",
-            DoctorId = a.AssignerId,
-            DoctorName = $"{a.Assigner?.FirstName} {a.Assigner?.LastName}",
-            DoctorEmail = a.Assigner?.Email ?? "",
-            DoctorSpecialization = a.Assigner?.Specialization,
-            AssignedDate = a.AssignedAt
-        }).ToList();
+            // Decode the filter
+            var decodedFilter = !string.IsNullOrEmpty(filter) 
+                ? System.Net.WebUtility.UrlDecode(filter) 
+                : null;
+
+            // Handle PatientName, DoctorName, and DoctorSpecialization filters (computed properties)
+            string? odataFilter = null;
+            bool hasPatientName = !string.IsNullOrEmpty(decodedFilter) && 
+                                 (decodedFilter.Contains("PatientName", StringComparison.OrdinalIgnoreCase));
+            bool hasDoctorName = !string.IsNullOrEmpty(decodedFilter) && 
+                                (decodedFilter.Contains("DoctorName", StringComparison.OrdinalIgnoreCase));
+            bool hasDoctorSpecialization = !string.IsNullOrEmpty(decodedFilter) && 
+                                          (decodedFilter.Contains("DoctorSpecialization", StringComparison.OrdinalIgnoreCase));
+
+            if (hasPatientName)
+            {
+                var patientNameFilter = ExtractNameFilter(decodedFilter!, "PatientName");
+                if (!string.IsNullOrEmpty(patientNameFilter))
+                {
+                    // Find matching patient IDs
+                    var patientIds = await FindUserIdsByName(patientNameFilter, 1, ct); // RoleId 1 = Patient
+                    if (patientIds.Any())
+                    {
+                        var patientIdFilter = string.Join(" or ", patientIds.Select(id => $"AssigneeId eq {id}"));
+                        odataFilter = $"({patientIdFilter})";
+                    }
+                    else
+                    {
+                        // No matching patients, return empty result
+                        return new PagedResult<AssignmentDisplayModel>
+                        {
+                            Items = new List<AssignmentDisplayModel>(),
+                            TotalCount = 0,
+                            PageNumber = (skip / take) + 1,
+                            PageSize = take
+                        };
+                    }
+                }
+                decodedFilter = RemoveNameFilter(decodedFilter!, "PatientName");
+            }
+
+            if (hasDoctorName)
+            {
+                var doctorNameFilter = ExtractNameFilter(decodedFilter ?? "", "DoctorName");
+                if (!string.IsNullOrEmpty(doctorNameFilter))
+                {
+                    // Find matching doctor IDs
+                    var doctorIds = await FindUserIdsByName(doctorNameFilter, 2, ct); // RoleId 2 = Doctor
+                    if (doctorIds.Any())
+                    {
+                        var doctorIdFilter = string.Join(" or ", doctorIds.Select(id => $"AssignerId eq {id}"));
+                        if (!string.IsNullOrEmpty(odataFilter))
+                            odataFilter = $"{odataFilter} and ({doctorIdFilter})";
+                        else
+                            odataFilter = $"({doctorIdFilter})";
+                    }
+                    else
+                    {
+                        // No matching doctors, return empty result
+                        return new PagedResult<AssignmentDisplayModel>
+                        {
+                            Items = new List<AssignmentDisplayModel>(),
+                            TotalCount = 0,
+                            PageNumber = (skip / take) + 1,
+                            PageSize = take
+                        };
+                    }
+                }
+                decodedFilter = RemoveNameFilter(decodedFilter ?? "", "DoctorName");
+            }
+
+            if (hasDoctorSpecialization)
+            {
+                var specializationFilter = ExtractSpecializationFilter(decodedFilter ?? "");
+                if (!string.IsNullOrEmpty(specializationFilter))
+                {
+                    // Find doctors with this specialization
+                    var doctorIds = await FindDoctorIdsBySpecialization(specializationFilter, ct);
+                    if (doctorIds.Any())
+                    {
+                        var doctorIdFilter = string.Join(" or ", doctorIds.Select(id => $"AssignerId eq {id}"));
+                        if (!string.IsNullOrEmpty(odataFilter))
+                            odataFilter = $"{odataFilter} and ({doctorIdFilter})";
+                        else
+                            odataFilter = $"({doctorIdFilter})";
+                    }
+                    else
+                    {
+                        // No matching doctors, return empty result
+                        return new PagedResult<AssignmentDisplayModel>
+                        {
+                            Items = new List<AssignmentDisplayModel>(),
+                            TotalCount = 0,
+                            PageNumber = (skip / take) + 1,
+                            PageSize = take
+                        };
+                    }
+                }
+                decodedFilter = RemoveSpecializationFilter(decodedFilter ?? "");
+            }
+
+            // Clean up any leftover operators
+            if (!string.IsNullOrEmpty(decodedFilter))
+            {
+                decodedFilter = CleanupFilterOperators(decodedFilter);
+            }
+
+            // Transform remaining filter to OData syntax
+            // First, replace AssignedDate with AssignedAt (the actual OData property name)
+            string? transformedFilter = null;
+            if (!string.IsNullOrWhiteSpace(decodedFilter))
+            {
+                // Replace AssignedDate with AssignedAt before transformation
+                var filterForTransformation = decodedFilter.Replace("AssignedDate", "AssignedAt", StringComparison.OrdinalIgnoreCase);
+                transformedFilter = ODataFilterHelper.TransformToOData(filterForTransformation);
+            }
+
+            // Combine filters
+            if (!string.IsNullOrEmpty(transformedFilter))
+            {
+                if (!string.IsNullOrEmpty(odataFilter))
+                    odataFilter = $"{odataFilter} and ({transformedFilter})";
+                else
+                    odataFilter = transformedFilter;
+            }
+
+            // Transform orderBy to remove PatientName/DoctorName/DoctorSpecialization (we'll sort client-side)
+            // Also replace AssignedDate with AssignedAt (the actual OData property name)
+            string? transformedOrderBy = null;
+            bool needsClientSort = false;
+            string? clientSortProperty = null;
+            bool isDescending = false;
+            
+            if (!string.IsNullOrEmpty(orderBy))
+            {
+                // Replace AssignedDate with AssignedAt before processing
+                var orderByForProcessing = orderBy.Replace("AssignedDate", "AssignedAt", StringComparison.OrdinalIgnoreCase);
+                
+                if (orderBy.Contains("PatientName", StringComparison.OrdinalIgnoreCase))
+                {
+                    needsClientSort = true;
+                    clientSortProperty = "PatientName";
+                    isDescending = orderBy.Contains("desc", StringComparison.OrdinalIgnoreCase);
+                    transformedOrderBy = RemovePropertyFromOrderBy(orderByForProcessing, "PatientName");
+                }
+                else if (orderBy.Contains("DoctorName", StringComparison.OrdinalIgnoreCase))
+                {
+                    needsClientSort = true;
+                    clientSortProperty = "DoctorName";
+                    isDescending = orderBy.Contains("desc", StringComparison.OrdinalIgnoreCase);
+                    transformedOrderBy = RemovePropertyFromOrderBy(orderByForProcessing, "DoctorName");
+                }
+                else if (orderBy.Contains("DoctorSpecialization", StringComparison.OrdinalIgnoreCase))
+                {
+                    needsClientSort = true;
+                    clientSortProperty = "DoctorSpecialization";
+                    isDescending = orderBy.Contains("desc", StringComparison.OrdinalIgnoreCase);
+                    transformedOrderBy = RemovePropertyFromOrderBy(orderByForProcessing, "DoctorSpecialization");
+                }
+                else
+                {
+                    transformedOrderBy = orderByForProcessing;
+                }
+            }
+
+            // Query OData endpoint
+            var result = await ODataService.QueryAsync<UserAssignment>(
+                "UserAssignments",
+                skip,
+                take,
+                transformedOrderBy,
+                string.IsNullOrEmpty(odataFilter) ? null : odataFilter,
+                ct
+            );
+
+            // Map UserAssignment to AssignmentDisplayModel
+            var items = result.Items.Select(ua => MapAssignmentToDisplayModel(ua)).ToList();
+
+            // Client-side sort if needed
+            if (needsClientSort && !string.IsNullOrEmpty(clientSortProperty))
+            {
+                if (clientSortProperty == "PatientName")
+                {
+                    items = isDescending
+                        ? items.OrderByDescending(a => a.PatientName).ToList()
+                        : items.OrderBy(a => a.PatientName).ToList();
+                }
+                else if (clientSortProperty == "DoctorName")
+                {
+                    items = isDescending
+                        ? items.OrderByDescending(a => a.DoctorName).ToList()
+                        : items.OrderBy(a => a.DoctorName).ToList();
+                }
+                else if (clientSortProperty == "DoctorSpecialization")
+                {
+                    items = isDescending
+                        ? items.OrderByDescending(a => a.DoctorSpecialization ?? "").ToList()
+                        : items.OrderBy(a => a.DoctorSpecialization ?? "").ToList();
+                }
+            }
+
+            return new PagedResult<AssignmentDisplayModel>
+            {
+                Items = items,
+                TotalCount = result.TotalCount,
+                PageNumber = result.PageNumber,
+                PageSize = result.PageSize
+            };
+        }
+        catch (Exception ex)
+        {
+            return new PagedResult<AssignmentDisplayModel>
+            {
+                Items = new List<AssignmentDisplayModel>(),
+                TotalCount = 0,
+                PageNumber = 1,
+                PageSize = 10
+            };
+        }
+    }
+
+    private AssignmentDisplayModel MapAssignmentToDisplayModel(UserAssignment ua)
+    {
+        var model = new AssignmentDisplayModel
+        {
+            PatientId = ua.AssigneeId,
+            PatientName = $"{ua.Assignee?.FirstName} {ua.Assignee?.LastName}".Trim(),
+            PatientEmail = ua.Assignee?.Email ?? "",
+            DoctorId = ua.AssignerId,
+            DoctorName = $"{ua.Assigner?.FirstName} {ua.Assigner?.LastName}".Trim(),
+            DoctorEmail = ua.Assigner?.Email ?? "",
+            DoctorSpecialization = ua.Assigner?.Specialization,
+            AssignedDate = ua.AssignedAt
+        };
+        
+        return model;
+    }
+
+    private string? ExtractNameFilter(string filter, string propertyName)
+    {
+        // Extract search term from Radzen-generated filters like:
+        // (PatientName == null ? "" : PatientName).ToLower().Contains("dr".ToLower())
+        // or: PatientName.ToLower().Contains("dr".ToLower())
+        
+        // Try multiple patterns to match Radzen's filter format
+        // Pattern 1: (PropertyName == null ? "" : PropertyName).ToLower().Contains("value".ToLower())
+        var pattern1 = $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\s*\.\s*ToLower\s*\(\s*\)\s*\.\s*Contains\s*\(\s*[""']([^""']+)[""']";
+        var match1 = System.Text.RegularExpressions.Regex.Match(filter, pattern1, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match1.Success)
+        {
+            var value = match1.Groups[1].Value;
+            return value;
+        }
+        
+        // Pattern 2: PropertyName.ToLower().Contains("value".ToLower())
+        var pattern2 = $@"{propertyName}\s*\.\s*ToLower\s*\(\s*\)\s*\.\s*Contains\s*\(\s*[""']([^""']+)[""']";
+        var match2 = System.Text.RegularExpressions.Regex.Match(filter, pattern2, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match2.Success)
+        {
+            var value = match2.Groups[1].Value;
+            return value;
+        }
+        
+        // Pattern 3: (PropertyName == null ? "" : PropertyName).ToLower.Contains("value".ToLower)
+        var pattern3 = $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\s*\.\s*ToLower\s*\.\s*Contains\s*\(\s*[""']([^""']+)[""']";
+        var match3 = System.Text.RegularExpressions.Regex.Match(filter, pattern3, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match3.Success)
+        {
+            var value = match3.Groups[1].Value;
+            return value;
+        }
+        
+        // Pattern 4: PropertyName.ToLower.Contains("value".ToLower)
+        var pattern4 = $@"{propertyName}\s*\.\s*ToLower\s*\.\s*Contains\s*\(\s*[""']([^""']+)[""']";
+        var match4 = System.Text.RegularExpressions.Regex.Match(filter, pattern4, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match4.Success)
+        {
+            var value = match4.Groups[1].Value;
+            return value;
+        }
+        
+        return null;
+    }
+
+    private string RemoveNameFilter(string filter, string propertyName)
+    {
+        // Remove the propertyName filter clause
+        // Pattern: (PropertyName == null ? "" : PropertyName).ToLower().Contains("value".ToLower())
+        // or: PropertyName.ToLower().Contains("value".ToLower())
+        var pattern = $@"\(?\s*{propertyName}\s*[=!]=\s*null\s*\?\s*""""\s*:\s*{propertyName}\s*\)?\s*\.\s*ToLower\s*\(\s*\)\s*\.\s*Contains\s*\([^)]+\)|{propertyName}\s*\.\s*ToLower\s*\(\s*\)\s*\.\s*Contains\s*\([^)]+\)";
+        var result = System.Text.RegularExpressions.Regex.Replace(filter, pattern, "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Clean up operators
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+and\s+and\s+", " and ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+or\s+or\s+", " or ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = result.Trim().TrimStart('(').TrimEnd(')');
+        
+        return result;
+    }
+
+    private string? RemovePropertyFromOrderBy(string orderBy, string propertyName)
+    {
+        // Remove propertyName from orderBy string
+        // Pattern: "PatientName asc" or "PatientName desc" or "PatientName, OtherProperty asc"
+        var result = System.Text.RegularExpressions.Regex.Replace(orderBy, $@"{propertyName}\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, $@",\s*{propertyName}\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = result.Trim().TrimStart(',').TrimEnd(',');
+        
+        if (string.IsNullOrWhiteSpace(result))
+            return null;
+            
+        return result;
+    }
+
+    private async Task<List<int>> FindUserIdsByName(string searchTerm, int? roleId, CancellationToken ct)
+    {
+        try
+        {
+            // Build filter for Users OData endpoint
+            var filter = $"(contains(FirstName, '{searchTerm}') or contains(LastName, '{searchTerm}') or contains(Email, '{searchTerm}'))";
+            if (roleId.HasValue)
+            {
+                filter = $"RoleId eq {roleId.Value} and ({filter})";
+            }
+
+            var result = await ODataService.QueryAsync<User>(
+                "Users",
+                0,
+                1000, // Get up to 1000 matching users
+                null,
+                filter,
+                ct
+            );
+
+            return result.Items.Select(u => u.Id).ToList();
+        }
+        catch (Exception ex)
+        {
+            return new List<int>();
+        }
+    }
+
+    private string? ExtractSpecializationFilter(string filter)
+    {
+        // Extract specialization value from Radzen-generated filters like:
+        // (DoctorSpecialization == null ? "" : DoctorSpecialization).ToLower().Contains("psychiatry".ToLower())
+        // or: DoctorSpecialization.ToLower().Contains("psychiatry".ToLower())
+        // or: DoctorSpecialization == "Psychiatry"
+        var pattern = @"DoctorSpecialization\s*[=!]=\s*null\s*\?\s*""""\s*:\s*DoctorSpecialization|DoctorSpecialization";
+        var match = System.Text.RegularExpressions.Regex.Match(filter, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success)
+        {
+            // Try Contains pattern first
+            var containsPattern = @"Contains\s*\(\s*[""']([^""']+)[""']";
+            var containsMatch = System.Text.RegularExpressions.Regex.Match(filter, containsPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (containsMatch.Success)
+            {
+                return containsMatch.Groups[1].Value;
+            }
+            
+            // Try equality pattern: DoctorSpecialization == "value"
+            var eqPattern = @"DoctorSpecialization\s*==\s*[""']([^""']+)[""']";
+            var eqMatch = System.Text.RegularExpressions.Regex.Match(filter, eqPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (eqMatch.Success)
+            {
+                return eqMatch.Groups[1].Value;
+            }
+        }
+        return null;
+    }
+
+    private string RemoveSpecializationFilter(string filter)
+    {
+        // Remove the DoctorSpecialization filter clause
+        var pattern = @"\(?\s*DoctorSpecialization\s*[=!]=\s*null\s*\?\s*""""\s*:\s*DoctorSpecialization\s*\)?\s*\.\s*ToLower\s*\(\s*\)\s*\.\s*Contains\s*\([^)]+\)|DoctorSpecialization\s*\.\s*ToLower\s*\(\s*\)\s*\.\s*Contains\s*\([^)]+\)|DoctorSpecialization\s*==\s*[""'][^""']+[""']";
+        var result = System.Text.RegularExpressions.Regex.Replace(filter, pattern, "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Clean up operators
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+and\s+and\s+", " and ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+or\s+or\s+", " or ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = result.Trim().TrimStart('(').TrimEnd(')');
+        
+        return result;
+    }
+
+    private async Task<List<int>> FindDoctorIdsBySpecialization(string specialization, CancellationToken ct)
+    {
+        try
+        {
+            // Build filter for Users OData endpoint to find doctors with this specialization
+            var filter = $"RoleId eq 2 and contains(Specialization, '{specialization}')";
+
+            var result = await ODataService.QueryAsync<User>(
+                "Users",
+                0,
+                1000, // Get up to 1000 matching doctors
+                null,
+                filter,
+                ct
+            );
+
+            return result.Items.Select(u => u.Id).ToList();
+        }
+        catch (Exception ex)
+        {
+            return new List<int>();
+        }
+    }
+
+    private string CleanupFilterOperators(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return filter;
+
+        // Remove leftover "and", "or" operators
+        var result = System.Text.RegularExpressions.Regex.Replace(filter, @"^\s*(and|or)\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+(and|or)\s+", " ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove empty parentheses
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\(\s*\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\(\s*and\s*\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\(\s*or\s*\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Trim and clean up
+        result = result.Trim();
+        
+        // Check if result is only operators
+        if (IsOnlyOperators(result))
+            return string.Empty;
+            
+        return result;
+    }
+
+    private bool IsOnlyOperators(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+            
+        // Check if filter contains only "and", "or", parentheses, and whitespace
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(filter, @"\s*(and|or|\(|\))\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return string.IsNullOrWhiteSpace(cleaned);
     }
 
     private async Task UnassignPatientFromGrid(int patientId, int doctorId)
     {
         try
         {
-            var request = new AssignPatientRequest
+            var request = new UnassignPatientRequest
             {
                 PatientId = patientId,
                 DoctorId = doctorId
             };
 
-            var response = await Http.PostAsJsonAsync("api/admin/unassign", request);
+            // Use DELETE method as the server endpoint expects
+            var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/admin/unassign")
+            {
+                Content = JsonContent.Create(request)
+            });
 
             if (response.IsSuccessStatusCode)
             {
                 message = "Patient unassigned from doctor successfully!";
                 isError = false;
-                await LoadData();
+                // Refresh the assignments grid
+                if (_assignmentsGrid != null)
+                {
+                    await _assignmentsGrid.RefreshAsync();
+                }
                 StateHasChanged();
             }
             else

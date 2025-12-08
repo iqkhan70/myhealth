@@ -15,7 +15,6 @@ namespace SM_MentalHealthApp.Client.Helpers
             if (string.IsNullOrWhiteSpace(filter))
                 return filter ?? string.Empty;
 
-            System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Input filter: {filter}");
             var result = filter;
 
             // List of string properties that should be case-insensitive
@@ -44,7 +43,6 @@ namespace SM_MentalHealthApp.Client.Helpers
                     {
                         var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
                         value = value.Replace("'", "''");
-                        System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Matched pattern 1 for {prop}: {value}");
                         return $"contains({prop}, '{value}')";
                     },
                     RegexOptions.IgnoreCase);
@@ -56,7 +54,6 @@ namespace SM_MentalHealthApp.Client.Helpers
                     {
                         var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
                         value = value.Replace("'", "''");
-                        System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Matched pattern 2 for {prop}: {value}");
                         return $"contains({prop}, '{value}')";
                     },
                     RegexOptions.IgnoreCase);
@@ -68,7 +65,6 @@ namespace SM_MentalHealthApp.Client.Helpers
                     {
                         var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
                         value = value.Replace("'", "''");
-                        System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Matched pattern 3 for {prop}: {value}");
                         return $"contains({prop}, '{value}')";
                     },
                     RegexOptions.IgnoreCase);
@@ -228,7 +224,9 @@ namespace SM_MentalHealthApp.Client.Helpers
                 // Appointment properties
                 "AppointmentDateTime",
                 // Content properties
-                "LastAccessedAt", "IgnoredAt"
+                "LastAccessedAt", "IgnoredAt",
+                // UserAssignment properties
+                "AssignedAt"
             };
 
             foreach (var prop in dateProperties)
@@ -269,8 +267,9 @@ namespace SM_MentalHealthApp.Client.Helpers
                             iso = dateStr;
                         }
 
-                        // For date-only filters, always use date-only format (yyyy-MM-dd) without time
-                        // OData will handle the date comparison correctly
+                        // For date-only filters, use date-only format without quotes (like appointments)
+                        // OData supports date-only format for DateTime properties: yyyy-MM-dd
+                        // This matches how appointments date filtering works
                         if (op == "==")
                         {
                             // For equality, use date-only format
@@ -283,22 +282,11 @@ namespace SM_MentalHealthApp.Client.Helpers
                         }
                         else
                         {
-                            // For comparison operators, use date-only format
-                            // OData will compare dates correctly
+                            // For comparison operators, use date-only format (no quotes, no time)
                             return $"{prop} {odataOp} {iso}";
                         }
                     },
                     RegexOptions.IgnoreCase);
-            }
-
-            System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Output: {result}");
-
-            // Debug: Check if Title was transformed
-            if (filter.Contains("Title", StringComparison.OrdinalIgnoreCase) && !result.Contains("Title", StringComparison.OrdinalIgnoreCase) && !result.Contains("contains", StringComparison.OrdinalIgnoreCase))
-            {
-                System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] WARNING: Title filter may not have been transformed correctly!");
-                System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Original: {filter}");
-                System.Diagnostics.Debug.WriteLine($"[ODataFilterHelper] Result: {result}");
             }
 
             return result;

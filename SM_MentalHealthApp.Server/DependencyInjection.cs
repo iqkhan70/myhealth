@@ -377,6 +377,11 @@ public static class DependencyInjection
         contentSet.EntityType.Ignore(c => c.ContentGuid);
         // Note: Navigation properties are marked [JsonIgnore] in the entity, but OData can still expand them
         
+        // UserAssignments
+        var userAssignmentSet = builder.EntitySet<UserAssignment>("UserAssignments");
+        userAssignmentSet.EntityType.HasKey(ua => new { ua.AssignerId, ua.AssigneeId });
+        // Navigation properties are NOT ignored to allow expansion
+        
         return builder.GetEdmModel();
     }
 }

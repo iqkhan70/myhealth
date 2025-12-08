@@ -24,7 +24,7 @@
     }
     <RadzenDataGrid TItem="TItem" 
     @ref="_radzenGrid"
-    Data="@(UseServerSidePagination ? (_items.Count > 0 ? _items : null) : _items)"
+    Data="@_items"
     Count="@(UseServerSidePagination ? _totalCount : _items.Count)"
     LoadData="@(UseServerSidePagination ? LoadData : null)" 
     class="@Class" 
@@ -45,7 +45,11 @@
     RowExpand="@(item => HandleRowExpand(item))" 
     @attributes="AdditionalAttributes">
     <Columns>
-        @if (Columns is not null)
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else if (Columns is not null)
         {
             foreach (var col in Columns)
             {
@@ -170,7 +174,6 @@
         {
             _items = new List<TItem>();
             _totalCount = 0;
-            Console.WriteLine("[SMDataGrid] OnInitializedAsync: Server-side pagination, _items initialized as empty");
         }
         
         // If using client-side pagination (LoadItems), load data on init
@@ -184,12 +187,15 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // For server-side pagination, RadzenDataGrid should call LoadData automatically
-        // If it doesn't, we can trigger it by resetting state
-        if (firstRender && UseServerSidePagination && LoadItemsPaged is not null)
+        // If it doesn't, we can trigger it by explicitly calling Reload
+        if (firstRender && UseServerSidePagination && LoadItemsPaged is not null && _radzenGrid != null)
         {
-            // Small delay to ensure grid is fully rendered, then trigger state change
-            await Task.Delay(50);
-            await InvokeAsync(StateHasChanged);
+            // Small delay to ensure grid is fully rendered, then trigger reload
+            await Task.Delay(100);
+            if (_radzenGrid != null)
+            {
+                await _radzenGrid.Reload();
+            }
         }
     }
     
@@ -313,11 +319,8 @@
 
     private async Task LoadData(LoadDataArgs args)
     {
-        Console.WriteLine($"[SMDataGrid] LoadData CALLED! skip={args.Skip}, top={args.Top}, filter={args.Filter}");
-        
         if (_isLoading)
         {
-            Console.WriteLine("[SMDataGrid] Already loading, returning early");
             return;
         }
 
@@ -332,8 +335,6 @@
                 var skip = args.Skip ?? 0;
                 var take = args.Top ?? PageSize;
                 
-                Console.WriteLine($"[SMDataGrid] Calling LoadItemsPaged: skip={skip}, take={take}");
-                
                 var result = await LoadItemsPaged(
                     skip,
                     take,
@@ -342,20 +343,20 @@
                     _cts?.Token ?? CancellationToken.None
                 );
 
-                _items = result.Items?.ToList() ?? new();
+                // Create a new list reference so Radzen detects the change
+                // IMPORTANT: When using LoadData, RadzenDataGrid uses the Data property
+                // We must assign a new list reference for Radzen to detect the change
+                _items = result.Items?.ToList() ?? new List<TItem>();
                 _totalCount = result.TotalCount;
-                
-                Console.WriteLine($"[SMDataGrid] LoadData SUCCESS: items={_items.Count}, total={_totalCount}");
-                Console.WriteLine($"[SMDataGrid] First item: {(_items.Count > 0 ? _items[0]?.ToString() : "none")}");
 
                 if (OnItemsLoaded.HasDelegate)
                 {
                     await OnItemsLoaded.InvokeAsync(_items);
                 }
                 
-                // Force UI update immediately after setting data
+                // Force UI update - Radzen needs to see the Data property change
+                // We must call StateHasChanged to trigger re-render
                 await InvokeAsync(StateHasChanged);
-                Console.WriteLine($"[SMDataGrid] StateHasChanged called after setting _items");
             }
             else if (LoadItems is not null)
             {
@@ -390,8 +391,6 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SMDataGrid] LoadData ERROR: {ex.Message}");
-            Console.WriteLine($"[SMDataGrid] StackTrace: {ex.StackTrace}");
             _errorMessage = ex.Message;
             _items = new();
             _totalCount = 0;
@@ -403,7 +402,6 @@
         finally
         {
             _isLoading = false;
-            Console.WriteLine($"[SMDataGrid] LoadData finally: _items.Count={_items.Count}, _totalCount={_totalCount}");
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -488,6 +486,7 @@
 
     [Parameter] public RenderFragment<TItem>? ExpansionTemplate { get; set; }
     [Parameter] public EventCallback<TItem> OnRowExpandCallback { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
 
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
