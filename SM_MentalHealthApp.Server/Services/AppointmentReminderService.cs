@@ -39,7 +39,15 @@ namespace SM_MentalHealthApp.Server.Services
                 }
 
                 // Wait for the next check interval
-                await Task.Delay(_checkInterval, stoppingToken);
+                try
+                {
+                    await Task.Delay(_checkInterval, stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when cancellation is requested - exit gracefully
+                    break;
+                }
             }
 
             _logger.LogInformation("Appointment Reminder Service stopped");
