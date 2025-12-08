@@ -31,10 +31,36 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("patient/{patientId}")]
+        [Authorize]
         public async Task<ActionResult<List<ContentItem>>> GetContentsForPatient(int patientId)
         {
             try
             {
+                var currentUserId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+                
+                if (!currentUserId.HasValue || !currentRoleId.HasValue)
+                    return Unauthorized();
+
+                // Check access: Admin sees all, others see only assigned patients
+                if (currentRoleId.Value != 3) // Not admin
+                {
+                    if (currentRoleId.Value == 1) // Patient
+                    {
+                        if (patientId != currentUserId.Value)
+                            return Forbid();
+                    }
+                    else // Doctor, Coordinator, or Attorney
+                    {
+                        var hasAccess = await _context.UserAssignments
+                            .AnyAsync(ua => ua.AssignerId == currentUserId.Value && 
+                                          ua.AssigneeId == patientId && 
+                                          ua.IsActive);
+                        if (!hasAccess)
+                            return Forbid();
+                    }
+                }
+
                 var contents = await _contentService.GetContentsForPatientAsync(patientId);
                 return Ok(contents);
             }
@@ -73,23 +99,30 @@ namespace SM_MentalHealthApp.Server.Controllers
                     .Where(c => c.IsActive)
                     .AsQueryable();
                 
-                // For attorneys, filter by assigned patients
-                if (currentRoleId.HasValue && currentRoleId.Value == Shared.Constants.Roles.Attorney && currentUserId.HasValue)
+                // For doctors, coordinators, and attorneys: filter by assigned patients
+                // Admins see all content
+                if (currentRoleId.HasValue && currentUserId.HasValue)
                 {
-                    // Get assigned patient IDs for this attorney
-                    var assignedPatientIds = await _context.UserAssignments
-                        .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
-                        .Select(ua => ua.AssigneeId)
-                        .ToListAsync();
-                    
-                    if (!assignedPatientIds.Any())
+                    if (currentRoleId.Value == Shared.Constants.Roles.Doctor || 
+                        currentRoleId.Value == Shared.Constants.Roles.Coordinator || 
+                        currentRoleId.Value == Shared.Constants.Roles.Attorney)
                     {
-                        // No assigned patients, return empty list (same structure as successful query)
-                        return Ok(new List<object>());
+                        // Get assigned patient IDs for this doctor/coordinator/attorney
+                        var assignedPatientIds = await _context.UserAssignments
+                            .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
+                            .Select(ua => ua.AssigneeId)
+                            .ToListAsync();
+                        
+                        if (!assignedPatientIds.Any())
+                        {
+                            // No assigned patients, return empty list (same structure as successful query)
+                            return Ok(new List<object>());
+                        }
+                        
+                        // Filter content to only include assigned patients
+                        query = query.Where(c => assignedPatientIds.Contains(c.PatientId));
                     }
-                    
-                    // Filter content to only include assigned patients
-                    query = query.Where(c => assignedPatientIds.Contains(c.PatientId));
+                    // Admin (RoleId 3) sees all content - no filtering needed
                 }
                 
                 var contents = await query
@@ -121,13 +154,39 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("{id}")]
+        [Authorize]
         public async Task<ActionResult<ContentItem>> GetContent(int id)
         {
             try
             {
+                var currentUserId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+                
+                if (!currentUserId.HasValue || !currentRoleId.HasValue)
+                    return Unauthorized();
+
                 var content = await _contentService.GetContentByIdAsync(id);
                 if (content == null)
                     return NotFound();
+
+                // Check access: Admin sees all, others see only assigned patients
+                if (currentRoleId.Value != 3) // Not admin
+                {
+                    if (currentRoleId.Value == 1) // Patient
+                    {
+                        if (content.PatientId != currentUserId.Value)
+                            return Forbid();
+                    }
+                    else // Doctor, Coordinator, or Attorney
+                    {
+                        var hasAccess = await _context.UserAssignments
+                            .AnyAsync(ua => ua.AssignerId == currentUserId.Value && 
+                                          ua.AssigneeId == content.PatientId && 
+                                          ua.IsActive);
+                        if (!hasAccess)
+                            return Forbid();
+                    }
+                }
 
                 return Ok(content);
             }

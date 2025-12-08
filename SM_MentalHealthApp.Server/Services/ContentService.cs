@@ -198,11 +198,11 @@ namespace SM_MentalHealthApp.Server.Services
             if (userRoleId == 3)
                 return true;
 
-            // Doctor can access content for their assigned patients
-            if (userRoleId == 2)
+            // Doctor, Coordinator, or Attorney can access content for their assigned patients
+            if (userRoleId == 2 || userRoleId == 4 || userRoleId == 5)
             {
                 var assignment = await _context.UserAssignments
-                    .FirstOrDefaultAsync(a => a.AssignerId == userId && a.AssigneeId == content.PatientId);
+                    .FirstOrDefaultAsync(a => a.AssignerId == userId && a.AssigneeId == content.PatientId && a.IsActive);
                 return assignment != null;
             }
 

@@ -112,18 +112,16 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
 
         private int? GetCurrentUserId()
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (int.TryParse(userIdClaim, out int userId))
-                return userId;
-            return null;
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? 
+                             User.FindFirst("UserId") ?? 
+                             User.FindFirst("userId");
+            return userIdClaim != null && int.TryParse(userIdClaim.Value, out var userId) ? userId : null;
         }
 
         private int? GetCurrentRoleId()
         {
-            var roleIdClaim = User.FindFirst("roleId")?.Value;
-            if (int.TryParse(roleIdClaim, out int roleId))
-                return roleId;
-            return null;
+            var roleIdClaim = User.FindFirst("RoleId") ?? User.FindFirst("roleId");
+            return roleIdClaim != null && int.TryParse(roleIdClaim.Value, out var roleId) ? roleId : null;
         }
     }
 }
