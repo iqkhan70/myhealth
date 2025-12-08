@@ -283,9 +283,6 @@ namespace SM_MentalHealthApp.Server.Services
             context.AppendLine("\nRespond as an administrative AI assistant.");
 
             var prompt = context.ToString();
-            Console.WriteLine($"=== ADMIN PROMPT ===");
-            Console.WriteLine(prompt);
-            Console.WriteLine("=== END ADMIN PROMPT ===");
 
             return prompt;
         }
@@ -316,10 +313,6 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Use enhanced context that includes both journal entries AND content analysis
                 var enhancedContext = await _contentAnalysisService.BuildEnhancedContextAsync(patientId, originalPrompt);
-
-                Console.WriteLine($"=== ENHANCED CONTEXT FOR PATIENT {patientId} ===");
-                Console.WriteLine(enhancedContext);
-                Console.WriteLine("=== END ENHANCED CONTEXT ===");
 
                 return enhancedContext;
             }

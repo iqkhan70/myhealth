@@ -41,21 +41,14 @@ namespace CheckAdmin
                 return;
             }
 
-            Console.WriteLine($"Admin User: {adminUser.FirstName} {adminUser.LastName}");
-            Console.WriteLine($"Email: {adminUser.Email}");
-            Console.WriteLine($"Current Password Hash: {adminUser.PasswordHash}");
-
             // Generate new password hash
             var salt = "mentalhealth_salt_2024";
             var newPasswordHash = PasswordHasher.HashPassword("Password123!", salt);
-
-            Console.WriteLine($"New Password Hash: {newPasswordHash}");
 
             // Update password
             adminUser.PasswordHash = newPasswordHash;
             await context.SaveChangesAsync();
 
-            Console.WriteLine("Admin password updated successfully!");
         }
     }
 }

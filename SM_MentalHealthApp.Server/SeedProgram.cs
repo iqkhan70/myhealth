@@ -18,7 +18,6 @@ namespace SM_MentalHealthApp.Server
             try
             {
                 await SeedContentTypes.SeedAsync(context);
-                Console.WriteLine("Seeding completed successfully!");
             }
             catch (Exception ex)
             {

@@ -36,13 +36,9 @@ namespace SM_MentalHealthApp.Server.Scripts
             
             if (string.IsNullOrEmpty(connectionString))
             {
-                Console.WriteLine("❌ Error: Connection string not found in appsettings.json");
-                Console.WriteLine("   Looking for 'MySQL' or 'DefaultConnection' connection string");
                 return;
             }
-            
-            Console.WriteLine($"📡 Connecting to database...");
-            
+                        
             // Use hardcoded server version instead of AutoDetect to avoid connection during registration
             // This matches the version used in DependencyInjection.cs
             services.AddDbContext<JournalDbContext>(options =>

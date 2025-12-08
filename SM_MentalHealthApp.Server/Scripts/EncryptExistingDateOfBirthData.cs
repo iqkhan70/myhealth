@@ -40,7 +40,7 @@ namespace SM_MentalHealthApp.Server.Scripts
                 {
                     // Try to decrypt first to see if it's already encrypted with current key
                     var testDecrypt = encryptionService.DecryptDateTime(user.DateOfBirthEncrypted);
-                    
+
                     if (testDecrypt == DateTime.MinValue)
                     {
                         // Decryption failed - might be plain text or encrypted with different key
@@ -107,15 +107,11 @@ namespace SM_MentalHealthApp.Server.Scripts
             }
 
             await context.SaveChangesAsync();
-            
+
             logger.LogInformation("Encryption complete!");
             logger.LogInformation("Users: {Encrypted} newly encrypted, {ReEncrypted} re-encrypted, {Skipped} skipped", encryptedUsers, reEncryptedUsers, skippedUsers);
             logger.LogInformation("UserRequests: {Encrypted} newly encrypted, {ReEncrypted} re-encrypted, {Skipped} skipped", encryptedRequests, 0, skippedRequests);
-            
-            Console.WriteLine($"✅ Successfully encrypted {encryptedUsers} user DateOfBirth records.");
-            Console.WriteLine($"✅ Successfully re-encrypted {reEncryptedUsers} user DateOfBirth records.");
-            Console.WriteLine($"✅ Successfully encrypted {encryptedRequests} user request DateOfBirth records.");
-            Console.WriteLine($"ℹ️  Skipped {skippedUsers} users and {skippedRequests} user requests.");
+
         }
     }
 }
