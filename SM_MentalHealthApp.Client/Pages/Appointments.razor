@@ -177,12 +177,12 @@
 
     <!-- Filters -->
     <div class="appointment-controls">
-        @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator - can filter by doctor
+        @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator - can filter by provider
         {
             <div class="control-group">
-                <label class="control-label">Doctor</label>
+                <label class="control-label">Provider</label>
                 <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
-                    @bind-value="filterDoctorId" AllowFiltering="true" Placeholder="All Doctors"
+                    @bind-value="filterDoctorId" AllowFiltering="true" Placeholder="All Providers"
                     Style="width: 200px" />
             </div>
         }
@@ -363,10 +363,10 @@
                     else // Admin or Coordinator - show dropdown
                     {
                         <div class="form-group">
-                            <label class="form-label">Doctor <span class="required-asterisk">*</span></label>
+                            <label class="form-label">Provider (Doctor/Attorney) <span class="required-asterisk">*</span></label>
                             <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
                                 @bind-value="appointmentForm.DoctorId" Change="@OnDoctorChanged"
-                                AllowFiltering="true" Placeholder="Select Doctor"
+                                AllowFiltering="true" Placeholder="Select Provider"
                                 Style="width: 100%" />
                         </div>
                     }
@@ -510,7 +510,7 @@
                     else // Admin or Coordinator - show dropdown
                     {
                         <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
-                            Value="@oooForm.DoctorId" ValueChanged="@((int? value) => OnOOODoctorChanged(value))" AllowFiltering="true" Placeholder="Select Doctor"
+                            Value="@oooForm.DoctorId" ValueChanged="@((int? value) => OnOOODoctorChanged(value))" AllowFiltering="true" Placeholder="Select Provider"
                             Style="width: 100%" />
                     }
                 </div>
@@ -858,8 +858,18 @@
             }
             else if (isAdmin || isCoordinator)
             {
+                // Load both doctors and attorneys for the provider dropdown
                 var doctorsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors");
-                doctors = doctorsResponse ?? new();
+                var doctorsList = doctorsResponse ?? new();
+                
+                var attorneysResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys");
+                var attorneysList = attorneysResponse ?? new();
+                
+                // Combine doctors and attorneys, sorted by name
+                doctors = doctorsList.Concat(attorneysList)
+                    .OrderBy(u => u.LastName)
+                    .ThenBy(u => u.FirstName)
+                    .ToList();
 
                 var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
                 patients = patientsResponse ?? new();
@@ -1064,11 +1074,14 @@
                     var doctorNameFilter = ExtractNameFilter(decodedFilter, "DoctorName");
                     if (!string.IsNullOrEmpty(doctorNameFilter))
                     {
-                        // Find matching doctor IDs
+                        // Find matching doctor and attorney IDs (RoleId 2 = Doctor, RoleId 5 = Attorney)
                         var doctorIds = await FindUserIdsByName(doctorNameFilter, 2, ct); // RoleId 2 = Doctor
-                        if (doctorIds.Any())
+                        var attorneyIds = await FindUserIdsByName(doctorNameFilter, 5, ct); // RoleId 5 = Attorney
+                        var allProviderIds = doctorIds.Concat(attorneyIds).Distinct().ToList();
+                        
+                        if (allProviderIds.Any())
                         {
-                            var doctorIdFilter = string.Join(" or ", doctorIds.Select(id => $"DoctorId eq {id}"));
+                            var doctorIdFilter = string.Join(" or ", allProviderIds.Select(id => $"DoctorId eq {id}"));
                             if (!string.IsNullOrEmpty(odataFilter))
                                 odataFilter = $"{odataFilter} and ({doctorIdFilter})";
                             else
@@ -1076,7 +1089,7 @@
                         }
                         else
                         {
-                            // No matching doctors, return empty result
+                            // No matching providers, return empty result
                             return new PagedResult<AppointmentDto>
                             {
                                 Items = new List<AppointmentDto>(),
