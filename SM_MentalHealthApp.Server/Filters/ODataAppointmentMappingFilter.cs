@@ -84,7 +84,6 @@ namespace SM_MentalHealthApp.Server.Filters
                 catch (Exception ex)
                 {
                     // Log error but don't crash - let OData handle it
-                    System.Diagnostics.Debug.WriteLine($"[ODataAppointmentMappingFilter] Error mapping: {ex.Message}");
                 }
             }
         }

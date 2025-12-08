@@ -345,7 +345,6 @@
                     // Debug: Log if follow-up is showing wrong color
                     if (note.NoteType?.ToLower().Contains("follow") == true && noteTypeClass == "bg-danger")
                     {
-                        System.Diagnostics.Debug.WriteLine($"WARNING: Follow-up note type '{note.NoteType}' is getting red color!");
                     }
                     builder.OpenElement(0, "span");
                     builder.AddAttribute(1, "class", $"badge {noteTypeClass}");
@@ -499,12 +498,10 @@
             var (searchTerm, noteType, priority, isIgnoredByDoctor, createdDateFrom, createdDateTo) = ClinicalNotesFilterHelper.ParseFilter(filter);
             
             var result = await ClinicalNotesService.ListPagedAsync(skip, take, null, null, searchTerm, noteType, priority, isIgnoredByDoctor, createdDateFrom, createdDateTo, ct);
-            Console.WriteLine($"[ClinicalNotes] LoadClinicalNotesPagedAsync: skip={skip}, take={take}, items={result.Items.Count}, total={result.TotalCount}, searchTerm={searchTerm}, noteType={noteType}, priority={priority}, isIgnoredByDoctor={isIgnoredByDoctor}, createdDateFrom={createdDateFrom}, createdDateTo={createdDateTo}, filter={filter}");
             return result;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ClinicalNotes] Error loading paginated notes: {ex.Message}");
             // Only show error for actual failures, not empty results
             if (ex.Message.Contains("401") || ex.Message.Contains("403") || ex.Message.Contains("Unauthorized"))
             {

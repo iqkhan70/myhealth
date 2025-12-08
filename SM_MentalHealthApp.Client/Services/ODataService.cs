@@ -66,7 +66,6 @@ public class ODataService
 
             // Parse OData response
             var json = await response.Content.ReadAsStringAsync(ct);
-            System.Diagnostics.Debug.WriteLine($"[ODataService] Response for {entitySet}: {json.Substring(0, Math.Min(500, json.Length))}...");
             var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
@@ -144,7 +143,6 @@ public class ODataService
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[ODataService] Error deserializing appointment: {ex.Message}");
                             // Continue with next appointment
                         }
                     }
@@ -191,7 +189,6 @@ public class ODataService
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[ODataService] Error fetching users: {ex.Message}");
                         }
                     }
                     
@@ -212,7 +209,6 @@ public class ODataService
                 // Special handling for UserAssignment (navigation properties are marked [JsonIgnore])
                 else if (typeof(T) == typeof(Shared.UserAssignment) && entitySet == "UserAssignments")
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ODataService] Processing UserAssignments, array length: {valueArray.GetArrayLength()}");
                     // Parse each UserAssignment individually
                     var userAssignments = new List<Shared.UserAssignment>();
                     foreach (var assignmentElement in valueArray.EnumerateArray())
@@ -248,25 +244,19 @@ public class ODataService
                             // Note: Navigation properties (Assigner, Assignee) are marked [JsonIgnore]
                             // but OData might still include them if $expand is used. If not, we'll fetch them separately below.
                             
-                            System.Diagnostics.Debug.WriteLine($"[ODataService] Deserialized UserAssignment: AssignerId={assignment.AssignerId}, AssigneeId={assignment.AssigneeId}, Assigner={(assignment.Assigner != null ? "populated" : "null")}, Assignee={(assignment.Assignee != null ? "populated" : "null")}");
                             userAssignments.Add(assignment);
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[ODataService] Error deserializing UserAssignment: {ex.Message}");
                             // Continue with next assignment
                         }
                     }
-                    
-                    System.Diagnostics.Debug.WriteLine($"[ODataService] Deserialized {userAssignments.Count} UserAssignments");
                     
                     // Fetch users for all assignments that don't already have navigation properties populated
                     var assignerIds = userAssignments.Where(ua => ua.Assigner == null).Select(ua => ua.AssignerId).Distinct().ToList();
                     var assigneeIds = userAssignments.Where(ua => ua.Assignee == null).Select(ua => ua.AssigneeId).Distinct().ToList();
                     
                     var allUserIds = assignerIds.Concat(assigneeIds).Distinct().ToList();
-                    
-                    System.Diagnostics.Debug.WriteLine($"[ODataService] Need to fetch {allUserIds.Count} users for UserAssignments");
                     
                     // Fetch users via OData if needed
                     var userCache = new Dictionary<int, Shared.User>();
@@ -277,8 +267,6 @@ public class ODataService
                             // Build filter for multiple user IDs: Id eq 1 or Id eq 2 or Id eq 3
                             var userIdFilters = allUserIds.Select(id => $"Id eq {id}");
                             var userFilter = string.Join(" or ", userIdFilters);
-                            
-                            System.Diagnostics.Debug.WriteLine($"[ODataService] Fetching users with filter: {userFilter}");
                             
                             // Query users via OData
                             var userRequest = new HttpRequestMessage(HttpMethod.Get, $"odata/Users?$filter={Uri.EscapeDataString(userFilter)}");
@@ -296,21 +284,15 @@ public class ODataService
                                 if (userDoc.RootElement.TryGetProperty("value", out var userArray) && userArray.ValueKind == System.Text.Json.JsonValueKind.Array)
                                 {
                                     var users = JsonSerializer.Deserialize<List<Shared.User>>(userArray.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<Shared.User>();
-                                    System.Diagnostics.Debug.WriteLine($"[ODataService] Fetched {users.Count} users");
                                     foreach (var user in users)
                                     {
                                         userCache[user.Id] = user;
                                     }
                                 }
                             }
-                            else
-                            {
-                                System.Diagnostics.Debug.WriteLine($"[ODataService] Failed to fetch users: {userResponse.StatusCode}");
-                            }
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[ODataService] Error fetching users for UserAssignments: {ex.Message}");
                         }
                     }
                     
@@ -323,12 +305,8 @@ public class ODataService
                             assignment.Assignee = assignee;
                     }
                     
-                    System.Diagnostics.Debug.WriteLine($"[ODataService] Final UserAssignments count: {userAssignments.Count}, with Assigner: {userAssignments.Count(ua => ua.Assigner != null)}, with Assignee: {userAssignments.Count(ua => ua.Assignee != null)}");
-                    
                     // Return UserAssignments with populated navigation properties
                     items = userAssignments.Cast<T>().ToList();
-                    
-                    System.Diagnostics.Debug.WriteLine($"[ODataService] Returning {items.Count} UserAssignments to caller");
                 }
                 else
                 {
@@ -355,7 +333,6 @@ public class ODataService
                 // Fallback: if no count, use items count (but this might be wrong for pagination)
                 // For appointments, we should always have a count
                 totalCount = items.Count;
-                System.Diagnostics.Debug.WriteLine($"[ODataService] Warning: No @odata.count found for {entitySet}, using items count: {totalCount}");
             }
 
             return new PagedResult<T>

@@ -29,17 +29,13 @@ namespace SM_MentalHealthApp.Server.Helpers
 
         public IEnumerator<T> GetEnumerator()
         {
-            Console.WriteLine($"[DecryptingQueryable] GetEnumerator called for type {typeof(T).Name}");
             var items = _source.ToList();
-            Console.WriteLine($"[DecryptingQueryable] Materialized {items.Count} items from source");
             
             // Decrypt if T is User
             if (typeof(T) == typeof(User))
             {
                 var users = items.Cast<User>().ToList();
-                Console.WriteLine($"[DecryptingQueryable] Decrypting {users.Count} User entities");
                 UserEncryptionHelper.DecryptUserData(users, _encryptionService);
-                Console.WriteLine($"[DecryptingQueryable] Decryption complete, returning enumerator");
                 return users.Cast<T>().GetEnumerator();
             }
             

@@ -1052,7 +1052,6 @@
             {
                 // Decode URL-encoded filter from Radzen
                 var decodedFilter = System.Net.WebUtility.UrlDecode(filter);
-                System.Diagnostics.Debug.WriteLine($"[Appointments] Original decoded filter: {decodedFilter}");
                 
                 // Handle DoctorName, PatientName, and CreatedBy filters (these are DTO-only, need special handling)
                 // Check if filter contains these properties first
@@ -1089,7 +1088,6 @@
                     }
                     // Always remove DoctorName filter from the rest (even if extraction failed)
                     decodedFilter = RemoveNameFilter(decodedFilter, "DoctorName");
-                    System.Diagnostics.Debug.WriteLine($"[Appointments] After removing DoctorName: {decodedFilter}");
                 }
                 
                 if (hasPatientName)
@@ -1121,7 +1119,6 @@
                     }
                     // Always remove PatientName filter from the rest (even if extraction failed)
                     decodedFilter = RemoveNameFilter(decodedFilter, "PatientName");
-                    System.Diagnostics.Debug.WriteLine($"[Appointments] After removing PatientName: {decodedFilter}");
                 }
                 
                 if (hasCreatedBy)
@@ -1154,19 +1151,16 @@
                     }
                     // Always remove CreatedBy filter from the rest (even if extraction failed)
                     decodedFilter = RemoveNameFilter(decodedFilter, "CreatedBy");
-                    System.Diagnostics.Debug.WriteLine($"[Appointments] After removing CreatedBy: {decodedFilter}");
                 }
                 
                 // Clean up any leftover operators from removed filters
                 decodedFilter = CleanupFilterOperators(decodedFilter);
-                System.Diagnostics.Debug.WriteLine($"[Appointments] After cleanup: {decodedFilter}");
                 
                 // Transform remaining C#-style filter to OData syntax (only if there's actual content)
                 string? transformedFilter = null;
                 if (!string.IsNullOrWhiteSpace(decodedFilter) && !IsOnlyOperators(decodedFilter))
                 {
                     transformedFilter = ODataFilterHelper.TransformToOData(decodedFilter);
-                    System.Diagnostics.Debug.WriteLine($"[Appointments] Transformed filter: {transformedFilter}");
                 }
                 
                 // Combine with existing filters
@@ -1184,7 +1178,6 @@
             if (!string.IsNullOrEmpty(orderBy))
             {
                 transformedOrderBy = TransformOrderBy(orderBy);
-                System.Diagnostics.Debug.WriteLine($"[Appointments] Original orderBy: {orderBy}, Transformed: {transformedOrderBy}");
             }
             
             // Query OData endpoint
@@ -1439,7 +1432,6 @@
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Appointments] Error finding user IDs by name: {ex.Message}");
             return new List<int>();
         }
     }
@@ -1840,7 +1832,6 @@
         catch (Exception ex)
         {
             // Silently fail - it's okay if there's no existing entry
-            System.Diagnostics.Debug.WriteLine($"Error loading OOO: {ex.Message}");
         }
     }
 
@@ -2002,7 +1993,6 @@
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error loading OOO periods: {ex.Message}");
             doctorOOOPeriods = new();
         }
     }
@@ -2033,7 +2023,6 @@
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error loading all OOO periods: {ex.Message}");
             doctorOOOPeriods = new();
         }
         await InvokeAsync(StateHasChanged);

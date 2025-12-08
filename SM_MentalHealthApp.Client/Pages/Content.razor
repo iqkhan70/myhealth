@@ -243,14 +243,6 @@
         {
             // Decode URL-encoded filter from Radzen
             var decodedFilter = filter != null ? System.Net.WebUtility.UrlDecode(filter) : null;
-            System.Diagnostics.Debug.WriteLine($"[Content] Original filter: {filter}");
-            System.Diagnostics.Debug.WriteLine($"[Content] Decoded filter: {decodedFilter}");
-            
-            // Debug: Check if Title is in the filter
-            if (!string.IsNullOrEmpty(decodedFilter) && decodedFilter.Contains("Title", StringComparison.OrdinalIgnoreCase))
-            {
-                System.Diagnostics.Debug.WriteLine($"[Content] Title filter detected in decoded filter!");
-            }
             
             // Handle PatientName and AddedByName filters (DTO-only properties, need special handling)
             var hasPatientName = !string.IsNullOrEmpty(decodedFilter) && decodedFilter.Contains("PatientName", StringComparison.OrdinalIgnoreCase);
@@ -333,37 +325,11 @@
             // Transform remaining filter from Radzen C# syntax to OData syntax
             if (!string.IsNullOrEmpty(decodedFilter))
             {
-                var beforeCleanup = decodedFilter;
                 decodedFilter = CleanupFilterOperators(decodedFilter);
-                System.Diagnostics.Debug.WriteLine($"[Content] After cleanup, decodedFilter: {decodedFilter}");
-                
-                // Debug: Check if Title was removed by cleanup
-                if (beforeCleanup.Contains("Title", StringComparison.OrdinalIgnoreCase) && !decodedFilter.Contains("Title", StringComparison.OrdinalIgnoreCase))
-                {
-                    System.Diagnostics.Debug.WriteLine($"[Content] WARNING: Title was removed by CleanupFilterOperators!");
-                    System.Diagnostics.Debug.WriteLine($"[Content] Before cleanup: {beforeCleanup}");
-                    System.Diagnostics.Debug.WriteLine($"[Content] After cleanup: {decodedFilter}");
-                }
                 
                 if (!string.IsNullOrWhiteSpace(decodedFilter) && !IsOnlyOperators(decodedFilter))
                 {
                     var transformedFilter = ODataFilterHelper.TransformToOData(decodedFilter);
-                    System.Diagnostics.Debug.WriteLine($"[Content] Transformed filter: {transformedFilter}");
-                    
-                    // Debug: Check if Title was transformed
-                    if (decodedFilter.Contains("Title", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (transformedFilter.Contains("Title", StringComparison.OrdinalIgnoreCase) || transformedFilter.Contains("contains", StringComparison.OrdinalIgnoreCase))
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[Content] Title filter was transformed successfully");
-                        }
-                        else
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[Content] WARNING: Title filter may not have been transformed!");
-                            System.Diagnostics.Debug.WriteLine($"[Content] Input to TransformToOData: {decodedFilter}");
-                            System.Diagnostics.Debug.WriteLine($"[Content] Output from TransformToOData: {transformedFilter}");
-                        }
-                    }
                     
                     if (!string.IsNullOrEmpty(transformedFilter))
                     {
@@ -374,8 +340,6 @@
                     }
                 }
             }
-            
-            System.Diagnostics.Debug.WriteLine($"[Content] Final odataFilter: {odataFilter}");
             
             // Transform orderBy to use entity properties instead of DTO properties
             string? transformedOrderBy = null;
@@ -424,7 +388,6 @@
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[Content] Error fetching users: {ex.Message}");
                 }
             }
             
@@ -597,7 +560,6 @@
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Content] Error finding user IDs by name: {ex.Message}");
             return new List<int>();
         }
     }
@@ -907,8 +869,6 @@
 
     private async Task SaveContent()
     {
-        Console.WriteLine("SaveContent method called");
-        NotificationService.Notify(NotificationSeverity.Info, "Debug", "SaveContent method called!");
         try
         {
             if (editingContent == null)
@@ -920,12 +880,9 @@
                 StateHasChanged();
 
                 // Add new content - validate from top to bottom
-                Console.WriteLine($"Validation: PatientId={contentForm.PatientId}, Title='{contentForm.Title}', Description='{contentForm.Description}', SelectedFile={selectedFile?.Name}");
-                
                 // 1. Patient selection (for doctors and admins only)
                 if ((AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) && contentForm.PatientId == 0)
                 {
-                    Console.WriteLine("Patient validation failed");
                     showPatientError = true;
                     NotificationService.Notify(NotificationSeverity.Warning, "Patient Required", "Please select a patient for this content.");
                     StateHasChanged();
@@ -935,7 +892,6 @@
                 // 2. Title (required for all users)
                 if (string.IsNullOrWhiteSpace(contentForm.Title))
                 {
-                    Console.WriteLine("Title validation failed");
                     showTitleError = true;
                     NotificationService.Notify(NotificationSeverity.Warning, "Title Required", "Please enter a title for the content.");
                     StateHasChanged();
@@ -945,16 +901,11 @@
                 // 3. File selection (required for all users)
                 if (selectedFile == null)
                 {
-                    Console.WriteLine("File validation failed");
                     showFileError = true;
                     NotificationService.Notify(NotificationSeverity.Warning, "No File Selected", "Please select a file to upload before clicking Upload.");
                     StateHasChanged();
                     return;
                 }
-
-                Console.WriteLine("All validations passed, proceeding with upload");
-                Console.WriteLine($"Current User ID: {AuthService.CurrentUser?.Id}");
-                Console.WriteLine($"Current User Role: {AuthService.CurrentUser?.RoleId}");
 
                 isSaving = true;
                 StateHasChanged();
@@ -965,11 +916,6 @@
                 if (AuthService.CurrentUser?.Id != null)
                 {
                     formData.Add(new StringContent(AuthService.CurrentUser.Id.ToString()), "AddedByUserId");
-                    Console.WriteLine($"Added AddedByUserId: {AuthService.CurrentUser.Id}");
-                }
-                else
-                {
-                    Console.WriteLine("WARNING: No current user ID available!");
                 }
                 
                 formData.Add(new StringContent(contentForm.Title), "Title");

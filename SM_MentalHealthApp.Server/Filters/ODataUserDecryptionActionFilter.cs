@@ -65,7 +65,6 @@ namespace SM_MentalHealthApp.Server.Filters
                         catch (InvalidOperationException ex) when (ex.Message.Contains("DateOfBirth") || ex.Message.Contains("Translation") || ex.Message.Contains("unmapped"))
                         {
                             // Skip if translation error - controller should have handled DateOfBirth
-                            System.Diagnostics.Debug.WriteLine($"[ODataUserDecryptionActionFilter] Translation error in IEnumerable handling: {ex.Message}");
                         }
                     }
                     // If it's not User objects, skip decryption (might be OData metadata or other types)
@@ -86,7 +85,6 @@ namespace SM_MentalHealthApp.Server.Filters
                     // Skip enumeration to avoid EF Core trying to translate DateOfBirth
                     if (hasDateOfBirthInOrderBy)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[ODataUserDecryptionActionFilter] DateOfBirth in orderBy detected - skipping enumeration (controller should have handled it)");
                         // The controller should have already materialized and decrypted
                         // Just check if it's an in-memory enumerable and decrypt if needed
                         if (queryable is System.Collections.Generic.IEnumerable<User> inMemoryEnumerable)
@@ -152,8 +150,6 @@ namespace SM_MentalHealthApp.Server.Filters
                         // OR the queryable is from an EF Core query that wasn't materialized
                         // In this case, we should NOT try to enumerate it - let OData handle it
                         // The controller should have materialized DateOfBirth operations before returning
-                        System.Diagnostics.Debug.WriteLine($"[ODataUserDecryptionActionFilter] Translation error (DateOfBirth operations detected): {ex.Message}");
-                        System.Diagnostics.Debug.WriteLine($"[ODataUserDecryptionActionFilter] Skipping decryption - controller should have handled DateOfBirth operations");
                         // Don't try to enumerate - just let OData serialize whatever is in the queryable
                         // The controller should have already materialized and decrypted
                     }

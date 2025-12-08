@@ -204,9 +204,6 @@ namespace SM_MentalHealthApp.Client.Helpers
                 }
             }
 
-            System.Diagnostics.Debug.WriteLine($"[ClinicalNotesFilterHelper] Original filter: {filter}");
-            System.Diagnostics.Debug.WriteLine($"[ClinicalNotesFilterHelper] Decoded filter: {decodedFilter}");
-            System.Diagnostics.Debug.WriteLine($"[ClinicalNotesFilterHelper] Parsed: searchTerm={searchTerm}, noteType={noteType}, priority={priority}, isIgnoredByDoctor={isIgnoredByDoctor}, createdDateFrom={createdDateFrom}, createdDateTo={createdDateTo}");
             return (searchTerm, noteType, priority, isIgnoredByDoctor, createdDateFrom, createdDateTo);
         }
     }
