@@ -398,15 +398,6 @@
                 }
             }
             
-            // Debug logging
-            Console.WriteLine($"=== CHAT REQUEST DEBUG ===");
-            Console.WriteLine($"UserInput: {UserInput}");
-            Console.WriteLine($"IsGenericMode: {IsGenericMode}");
-            Console.WriteLine($"AuthService.CurrentUser?.RoleId: {AuthService.CurrentUser?.RoleId}");
-            Console.WriteLine($"SelectedUserId: {SelectedUserId}");
-            Console.WriteLine($"Calculated patientId: {patientId}");
-            Console.WriteLine($"AuthService.CurrentUser?.Id: {AuthService.CurrentUser?.Id}");
-            Console.WriteLine($"=== END DEBUG ===");
             
             IsLoading = true;
             StateHasChanged();

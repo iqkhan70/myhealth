@@ -28,13 +28,13 @@
                         @if (IncomingCall.CallType == "video")
                         {
                             <i class="fas fa-video"></i>
-                    
+
                             <text> Video Call</text>
                         }
                         else
                         {
                             <i class="fas fa-phone"></i>
-                    
+
                             <text> Audio Call</text>
                         }
                     </p>
@@ -235,19 +235,16 @@
     {
         if (IncomingCall != null)
         {
-            Console.WriteLine($"📞 IncomingCallModal: Call received - CallerName: '{IncomingCall.CallerName}', CallId: '{IncomingCall.CallId}'");
-            
             // ✅ Play incoming call sound
             try
             {
                 await JS.InvokeVoidAsync("playIncomingCallSound");
-                Console.WriteLine("🔔 IncomingCallModal: Started playing ringtone");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"⚠️ IncomingCallModal: Error playing ringtone: {ex.Message}");
             }
-            
+
             // ✅ Start timeout timer - close dialog after 15 seconds if not answered
             StartTimeoutTimer();
         }
@@ -257,13 +254,12 @@
             try
             {
                 await JS.InvokeVoidAsync("stopIncomingCallSound");
-                Console.WriteLine("🔕 IncomingCallModal: Stopped ringtone (call cleared)");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone: {ex.Message}");
             }
-            
+
             // ✅ Stop timeout timer
             StopTimeoutTimer();
         }
@@ -272,70 +268,62 @@
     private void StartTimeoutTimer()
     {
         StopTimeoutTimer(); // Clear any existing timer
-        
+
         _timeoutTimer = new System.Threading.Timer(_ =>
         {
-            Console.WriteLine($"⏰ IncomingCallModal: Timeout ({TIMEOUT_SECONDS}s) - auto-closing dialog");
-            
             // ✅ Use Task.Run to handle async operations in timer callback
             Task.Run(async () =>
+    {
+            try
             {
+            // Stop ringtone
                 try
                 {
-                    // Stop ringtone
-                    try
-                    {
-                        await JS.InvokeVoidAsync("stopIncomingCallSound");
-                        Console.WriteLine("🔕 IncomingCallModal: Stopped ringtone (timeout)");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone: {ex.Message}");
-                    }
-                    
-                    // ✅ Try to decline the call (notify caller), but don't fail if call session is gone
-                    if (IncomingCall != null)
-                    {
-                        Console.WriteLine($"⏰ IncomingCallModal: Attempting to decline call due to timeout");
-                        try
-                        {
-                            if (SignalRService != null)
-                            {
-                                await SignalRService.RejectCallAsync(IncomingCall.CallId);
-                                Console.WriteLine($"✅ IncomingCallModal: Rejection sent");
-                            }
-                        }
-                        catch (Exception rejectEx)
-                        {
-                            Console.WriteLine($"⚠️ IncomingCallModal: Error sending rejection (call may already be ended): {rejectEx.Message}");
-                            // Continue to close dialog even if rejection fails
-                        }
-                    }
-                    
-                    // ✅ ALWAYS close the dialog and clear the incoming call, regardless of rejection success
-                    if (IncomingCall != null)
-                    {
-                        var callToDecline = IncomingCall; // Capture for async operation
-                        await InvokeAsync(async () =>
-                        {
-                            Console.WriteLine($"✅ IncomingCallModal: Closing dialog due to timeout");
-                            if (OnCallDeclined.HasDelegate)
-                            {
-                                // Fire the event to notify parent to clear the call
-                                await OnCallDeclined.InvokeAsync(callToDecline);
-                                Console.WriteLine($"✅ IncomingCallModal: OnCallDeclined event fired");
-                            }
-                        });
-                    }
+                    await JS.InvokeVoidAsync("stopIncomingCallSound");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"❌ IncomingCallModal: Error in timeout handler: {ex.Message}");
+                    Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone: {ex.Message}");
                 }
-            });
+
+            // ✅ Try to decline the call (notify caller), but don't fail if call session is gone
+                if (IncomingCall != null)
+                {
+                    try
+                    {
+                        if (SignalRService != null)
+                        {
+                            await SignalRService.RejectCallAsync(IncomingCall.CallId);
+                        }
+                    }
+                    catch (Exception rejectEx)
+                    {
+                        Console.WriteLine($"⚠️ IncomingCallModal: Error sending rejection (call may already be ended): {rejectEx.Message}");
+                    // Continue to close dialog even if rejection fails
+                    }
+                }
+
+            // ✅ ALWAYS close the dialog and clear the incoming call, regardless of rejection success
+                if (IncomingCall != null)
+                {
+                    var callToDecline = IncomingCall; // Capture for async operation
+                    await InvokeAsync(async () =>
+            {
+            if (OnCallDeclined.HasDelegate)
+            {
+                    // Fire the event to notify parent to clear the call
+                await OnCallDeclined.InvokeAsync(callToDecline);
+            }
+        });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ IncomingCallModal: Error in timeout handler: {ex.Message}");
+            }
+        });
         }, null, TimeSpan.FromSeconds(TIMEOUT_SECONDS), Timeout.InfiniteTimeSpan);
-        
-        Console.WriteLine($"⏰ IncomingCallModal: Started timeout timer ({TIMEOUT_SECONDS}s)");
+
     }
 
     private void StopTimeoutTimer()
@@ -344,7 +332,6 @@
         {
             _timeoutTimer.Dispose();
             _timeoutTimer = null;
-            Console.WriteLine($"⏰ IncomingCallModal: Stopped timeout timer");
         }
     }
 
@@ -357,7 +344,6 @@
     {
         if (IncomingCall == null)
         {
-            Console.WriteLine("IncomingCall is null in AcceptCall");
             return;
         }
 
@@ -370,13 +356,12 @@
             try
             {
                 await JS.InvokeVoidAsync("stopIncomingCallSound");
-                Console.WriteLine("🔕 IncomingCallModal: Stopped ringtone (call accepted)");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone: {ex.Message}");
             }
-            
+
             if (SignalRService == null)
             {
                 Console.WriteLine("SignalRService is null in AcceptCall");
@@ -394,7 +379,7 @@
             try
             {
                 NotificationService?.Notify(NotificationSeverity.Success, "Call Accepted",
-                    $"Accepted {IncomingCall.CallType} call from {IncomingCall.CallerName}");
+                $"Accepted {IncomingCall.CallType} call from {IncomingCall.CallerName}");
             }
             catch (Exception notifEx)
             {
@@ -407,7 +392,7 @@
             try
             {
                 NotificationService?.Notify(NotificationSeverity.Error, "Call Error",
-                    $"Failed to accept call: {ex.Message}");
+                $"Failed to accept call: {ex.Message}");
             }
             catch { }
         }
@@ -428,23 +413,19 @@
         var callType = IncomingCall.CallType;
         var callerName = IncomingCall.CallerName;
 
-        Console.WriteLine($"📞 ========== IncomingCallModal: DeclineCall called ==========");
-        Console.WriteLine($"📞 IncomingCallModal: CallId: {callId}, CallType: {callType}, CallerName: '{callerName}'");
-
         try
         {
             // ✅ Stop the ringtone (wrap in try-catch to prevent AudioContext errors from blocking)
             try
             {
                 await JS.InvokeVoidAsync("stopIncomingCallSound");
-                Console.WriteLine("🔕 IncomingCallModal: Stopped ringtone (call declined)");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"⚠️ IncomingCallModal: Error stopping ringtone (non-critical): {ex.Message}");
                 // Don't fail the decline if ringtone stop fails
             }
-            
+
             // ✅ Notify the caller that call was rejected FIRST (before cleanup)
             if (SignalRService == null)
             {
@@ -454,9 +435,7 @@
             {
                 try
                 {
-                    Console.WriteLine($"📞 IncomingCallModal: Sending rejection via SignalR for callId: {callId}");
                     await SignalRService.RejectCallAsync(callId);
-                    Console.WriteLine($"✅ IncomingCallModal: Rejection sent successfully");
                 }
                 catch (Exception rejectEx)
                 {
@@ -465,29 +444,27 @@
                     // Continue with cleanup even if rejection fails
                 }
             }
-            
+
             // ✅ Check if receiver is on the call page (AudioCall/VideoCall) - if so, leave Agora and navigate back
             var currentUri = Navigation.Uri;
             var isOnAudioCallPage = currentUri.Contains("/audio-call/");
             var isOnVideoCallPage = currentUri.Contains("/video-call/");
-            
+
             if (isOnAudioCallPage || isOnVideoCallPage)
             {
-                Console.WriteLine($"📞 IncomingCallModal: Receiver is on call page, leaving Agora and navigating back...");
                 try
                 {
                     // Leave Agora channel if connected
                     if (AgoraService.IsInCall)
                     {
                         await AgoraService.LeaveChannelAsync();
-                        Console.WriteLine("✅ IncomingCallModal: Left Agora channel");
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"⚠️ IncomingCallModal: Error leaving Agora channel: {ex.Message}");
                 }
-                
+
                 // Navigate back to chat
                 await Task.Delay(300); // Small delay for cleanup
                 Navigation.NavigateTo("/real-time-chat");
@@ -499,7 +476,6 @@
                 try
                 {
                     await OnCallDeclined.InvokeAsync(IncomingCall);
-                    Console.WriteLine("✅ IncomingCallModal: OnCallDeclined event fired");
                 }
                 catch (Exception ex)
                 {
@@ -511,14 +487,13 @@
             try
             {
                 NotificationService?.Notify(NotificationSeverity.Info, "Call Declined",
-                    $"Declined {callType} call from {callerName}");
+                $"Declined {callType} call from {callerName}");
             }
             catch (Exception notifEx)
             {
                 Console.WriteLine($"⚠️ IncomingCallModal: NotificationService failed: {notifEx.Message}");
             }
-            
-            Console.WriteLine($"✅ IncomingCallModal: DeclineCall completed successfully");
+
         }
         catch (Exception ex)
         {
@@ -527,10 +502,9 @@
             try
             {
                 NotificationService?.Notify(NotificationSeverity.Error, "Call Error",
-                    $"Failed to decline call: {ex.Message}");
+                $"Failed to decline call: {ex.Message}");
             }
             catch { }
         }
-        Console.WriteLine($"📞 ========== End IncomingCallModal: DeclineCall ==========");
     }
 }

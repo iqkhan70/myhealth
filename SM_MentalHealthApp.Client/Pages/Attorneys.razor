@@ -235,8 +235,6 @@
                 {
                     Console.WriteLine($"Warning: Found {nullAttorneys} null attorneys in the list");
                 }
-                
-                Console.WriteLine($"Loaded {attorneys.Count} attorneys");
             }
             else
             {
@@ -245,8 +243,6 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading attorneys: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
             NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load attorneys: " + ex.Message);
         }
         finally

@@ -63,20 +63,12 @@ public static class DependencyInjection
                     // This will be handled by a service that updates the HttpClient after initialization
                     if (string.IsNullOrEmpty(serverNgrokUrl))
                     {
-                        // For now, we'll create the HttpClient with a placeholder
-                        // A service will update it after reading from query/localStorage
-                        Console.WriteLine($"⚠️ SERVER_NGROK_URL not set in environment.");
-                        Console.WriteLine($"⚠️ The app will try to read it from URL query parameter or localStorage.");
-                        Console.WriteLine($"⚠️ Add ?server=https://your-server-ngrok-url.ngrok.io to the URL");
-                        Console.WriteLine($"⚠️ Or set SERVER_NGROK_URL environment variable before building");
-
                         // Use a default that will be updated by ServerUrlService
                         serverUrl = "http://localhost:5262/";
                     }
                     else
                     {
                         serverUrl = serverNgrokUrl.EndsWith("/") ? serverNgrokUrl : serverNgrokUrl + "/";
-                        Console.WriteLine($"🌐 Using server ngrok URL from environment: {serverUrl}");
                     }
                 }
                 else
@@ -106,10 +98,6 @@ public static class DependencyInjection
                     }
                 }
 
-                Console.WriteLine($"🌐 HttpClient BaseAddress configured: {serverUrl}");
-                Console.WriteLine($"ℹ️ Client is on: {baseUri.Scheme}://{baseUri.Host}:{baseUri.Port}");
-                Console.WriteLine($"ℹ️ Server API will use: {serverUrl}");
-
                 // ✅ Create HttpClient with proper configuration
                 var httpClient = new HttpClient { BaseAddress = new Uri(serverUrl) };
 
@@ -127,7 +115,6 @@ public static class DependencyInjection
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Error configuring HttpClient: {ex.Message}");
                 // Fallback to localhost if host extraction fails
                 var fallbackClient = new HttpClient { BaseAddress = new Uri("http://localhost:5262/") };
                 fallbackClient.Timeout = TimeSpan.FromMinutes(15);

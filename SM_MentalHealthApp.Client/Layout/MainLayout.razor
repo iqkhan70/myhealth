@@ -79,7 +79,6 @@ else
         // Start SignalR connection if user is authenticated
         if (AuthService.CurrentUser != null)
         {
-            Console.WriteLine("🔗 Web App: Starting SignalR connection for incoming calls...");
             await SignalRService.StartAsync();
         }
     }
@@ -90,11 +89,9 @@ else
         var currentUserId = AuthService.CurrentUser?.Id;
         if (currentUserId == null || call.TargetUserId != currentUserId)
         {
-            Console.WriteLine($"🔍 Web App: Ignoring call - not for this user. Current: {currentUserId}, Target: {call.TargetUserId}");
             return;
         }
 
-        Console.WriteLine($"📞 Web App: Incoming call from {call.CallerName} ({call.CallType})");
         incomingCall = call;
         InvokeAsync(StateHasChanged);
 
@@ -113,9 +110,6 @@ else
 
     private async void HandleCallEnded(string callIdOrChannel)
     {
-        Console.WriteLine($"📞 ========== MainLayout: HandleCallEnded called ==========");
-        Console.WriteLine($"📞 MainLayout: Received callIdOrChannel: '{callIdOrChannel}'");
-        Console.WriteLine($"📞 MainLayout: Current incomingCall?.CallId: '{incomingCall?.CallId}'");
         
         // ✅ If there's an incoming call, close it when we receive call-ended event
         // The server sends channelName in call-ended, and incomingCall.CallId is the channel name
@@ -129,22 +123,12 @@ else
                             callIdOrChannel.Contains(incomingCall.CallId, StringComparison.OrdinalIgnoreCase) ||
                             incomingCall.CallId.Contains(callIdOrChannel, StringComparison.OrdinalIgnoreCase);
             
-            Console.WriteLine($"📞 MainLayout: Matching check - callIdMatch: {callIdMatch}");
-            Console.WriteLine($"📞 MainLayout:   incomingCall.CallId: '{incomingCall.CallId}'");
-            Console.WriteLine($"📞 MainLayout:   callIdOrChannel: '{callIdOrChannel}'");
-            Console.WriteLine($"📞 MainLayout:   Direct equals (case-insensitive): {incomingCall.CallId.Equals(callIdOrChannel, StringComparison.OrdinalIgnoreCase)}");
-            Console.WriteLine($"📞 MainLayout:   Contains check 1: {callIdOrChannel.Contains(incomingCall.CallId, StringComparison.OrdinalIgnoreCase)}");
-            Console.WriteLine($"📞 MainLayout:   Contains check 2: {incomingCall.CallId.Contains(callIdOrChannel, StringComparison.OrdinalIgnoreCase)}");
-            
             if (callIdMatch)
             {
-                Console.WriteLine($"✅ MainLayout: Closing incoming call dialog (matched: {incomingCall.CallId} == {callIdOrChannel})");
-                
                 // ✅ Stop ringtone when call ends (timeout or manual end)
                 try
                 {
                     await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
-                    Console.WriteLine("🔕 MainLayout: Stopped ringtone (call ended)");
                 }
                 catch (Exception ex)
                 {
@@ -153,14 +137,11 @@ else
                 
                 incomingCall = null;
                 await InvokeAsync(StateHasChanged);
-                Console.WriteLine($"✅ MainLayout: Dialog closed and state updated");
             }
             else
             {
-                Console.WriteLine($"⚠️ MainLayout: Call ID mismatch - not closing dialog. Incoming: '{incomingCall.CallId}', Received: '{callIdOrChannel}'");
                 // ✅ FALLBACK: If there's an incoming call and we get a call-ended event, close it anyway
                 // This handles cases where the channel name might be slightly different
-                Console.WriteLine($"📞 MainLayout: FALLBACK - Closing dialog anyway since we have an incoming call");
                 try
                 {
                     await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
@@ -175,7 +156,6 @@ else
         {
             Console.WriteLine($"📞 MainLayout: No incoming call to close (incomingCall is null)");
         }
-        Console.WriteLine($"📞 ========== End MainLayout: HandleCallEnded ==========");
     }
 
     private async Task HandleCallAccepted(CallInvitation call)
@@ -198,27 +178,19 @@ else
                     var smallerId = Math.Min(currentUserId, callerId);
                     var largerId = Math.Max(currentUserId, callerId);
                     channelName = $"call_{smallerId}_{largerId}";
-                    Console.WriteLine($"⚠️ MainLayout: Channel was empty, generated: {channelName}");
                 }
                 else
                 {
-                    Console.WriteLine($"❌ MainLayout: Cannot generate channel - currentUserId: {currentUserId}, callerId: {callerId}");
                     NotificationService.Notify(NotificationSeverity.Error, "Call Error",
                     "Cannot join call: missing channel information");
                     return;
                 }
             }
-            
-            Console.WriteLine($"🎯 MainLayout: Accepting {call.CallType} call from {call.CallerName}");
-            Console.WriteLine($"📞 MainLayout: Channel name: {channelName}");
-            Console.WriteLine($"📞 MainLayout: CallId from call: {call.CallId}");
-            
+                        
             // Navigate to the video call page to join the call
             var callUrl = call.CallType?.ToLower() == "video"
             ? $"/video-call/{call.CallerId}?channel={Uri.EscapeDataString(channelName)}"
             : $"/audio-call/{call.CallerId}?channel={Uri.EscapeDataString(channelName)}";
-
-            Console.WriteLine($"🎯 MainLayout: Navigating to: {callUrl}");
 
             NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
             $"Joining {call.CallType} call with {call.CallerName}...");
@@ -227,8 +199,6 @@ else
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ MainLayout: Error accepting call: {ex.Message}");
-            Console.WriteLine($"❌ MainLayout: Stack trace: {ex.StackTrace}");
             NotificationService.Notify(NotificationSeverity.Error, "Call Error",
             $"Failed to join call: {ex.Message}");
         }
@@ -238,13 +208,10 @@ else
 
     private async Task HandleCallDeclined(CallInvitation call)
     {
-        Console.WriteLine($"📞 MainLayout: HandleCallDeclined called for call: {call.CallId}");
-        
         // ✅ Stop ringtone when call is declined
         try
         {
             await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
-            Console.WriteLine("🔕 MainLayout: Stopped ringtone (call declined)");
         }
         catch (Exception ex)
         {
@@ -253,7 +220,6 @@ else
         
         incomingCall = null;
         await InvokeAsync(StateHasChanged);
-        Console.WriteLine($"✅ MainLayout: Dialog cleared after decline");
     }
 
     private void ShowAbout()

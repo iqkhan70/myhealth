@@ -311,7 +311,6 @@
             {
                 if (AgoraService.IsInCall)
                 {
-                    Console.WriteLine($"⚠️ AudioCall: Detected existing call, cleaning up to avoid UID_CONFLICT");
                     await AgoraService.LeaveChannelAsync();
                     await Task.Delay(300); // Small delay for cleanup
                 }
@@ -345,13 +344,11 @@
             AgoraService.OnUserLeft += HandleUserLeft;
             AgoraService.OnConnectionStateChanged += HandleConnectionStateChanged;
             AgoraService.OnError += HandleError;
-            Console.WriteLine("📞 AudioCall: Agora event handlers set up");
 
             // ✅ Check if this is an incoming call (has channel parameter)
             // Works for both mobile calls (mobile_call=true) and web-to-web calls
             var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
             var queryString = uri.Query;
-            Console.WriteLine($"🔍 AudioCall: Checking query string: {queryString}");
             
             if (!string.IsNullOrEmpty(queryString))
             {
@@ -365,19 +362,14 @@
                     }
                 }
 
-                Console.WriteLine($"🔍 AudioCall: Query params: {string.Join(", ", queryParams.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
-
                 // ✅ Auto-join if channel parameter exists
                 // Check if this is an incoming call (has mobile_call=true) or outgoing call (caller initiated)
                 if (queryParams.TryGetValue("channel", out var channelParam))
                 {
-                    Console.WriteLine($"✅ AudioCall: Found channel parameter: {channelParam}");
-                    
                     if (!string.IsNullOrEmpty(channelParam))
                     {
                         // ✅ CRITICAL: Set currentChannel immediately so rejection handler can match it
                         currentChannel = channelParam;
-                        Console.WriteLine($"📞 AudioCall: Set currentChannel to: {currentChannel} (for rejection handling)");
                         
                         // Check if this is a mobile call (incoming) or web-to-web call
                         var isMobileCall = queryParams.TryGetValue("mobile_call", out var mobileCallParam) && 
@@ -386,7 +378,6 @@
                         if (isMobileCall)
                         {
                             // This is an incoming call from mobile - auto-join as receiver
-                            Console.WriteLine("📱 AudioCall: This is an incoming mobile call - joining as receiver");
                             callStatus = "Joining incoming call...";
                             StateHasChanged(); // Update UI immediately
                             await JoinIncomingCallAsync(channelParam);
@@ -396,7 +387,6 @@
                         else
                         {
                             // This is an outgoing call (caller initiated from RealTimeChat) - start the call
-                            Console.WriteLine("📞 AudioCall: This is an outgoing call - starting call as caller");
                             callStatus = "Starting call...";
                             StateHasChanged(); // Update UI immediately
                             await StartCall(UserId); // UserId is the target user ID
@@ -424,7 +414,6 @@
             // ✅ Ensure SignalRService is connected
             if (!SignalRService.IsConnected)
             {
-                Console.WriteLine("📞 AudioCall: SignalRService not connected, starting...");
                 try
                 {
                     await SignalRService.StartAsync();
@@ -444,12 +433,10 @@
             // ✅ Subscribe to call-ended events so both parties get notified
             RealtimeService.OnCallEnded += HandleCallEnded;
             SignalRService.OnCallEnded += HandleCallEnded;
-            Console.WriteLine("📞 AudioCall: Subscribed to call-ended events from both services");
             
             // ✅ Subscribe to call-rejected events so caller gets notified when receiver declines
             RealtimeService.OnCallRejected += HandleCallRejected;
             SignalRService.OnCallRejected += HandleCallRejected;
-            Console.WriteLine("📞 AudioCall: Subscribed to call-rejected events from both services");
         }
         catch (Exception ex)
         {
@@ -459,11 +446,6 @@
     
     private void HandleCallEnded(string channelName)
     {
-        Console.WriteLine($"📞 ========== AudioCall: Call ended event received ==========");
-        Console.WriteLine($"📞 AudioCall: Received channelName: '{channelName}'");
-        Console.WriteLine($"📞 AudioCall: Current channel: '{currentChannel}'");
-        Console.WriteLine($"📞 AudioCall: Channels match: {channelName == currentChannel}");
-        Console.WriteLine($"📞 AudioCall: isInCall: {isInCall}");
         
         // ✅ Check if this call-ended event is for our current call
         // Use case-insensitive comparison and also check if either is empty
@@ -473,7 +455,6 @@
         
         if (channelsMatch || isInCall) // If we're in a call, assume it's for us
         {
-            Console.WriteLine($"📞 AudioCall: ✅ This is our call! Navigating back to chat...");
             // Navigate back to chat on the UI thread
             _ = Task.Run(async () =>
             {
@@ -486,7 +467,6 @@
                     }
                     await InvokeAsync(() =>
                     {
-                        Console.WriteLine($"📞 AudioCall: Navigating to /real-time-chat");
                         Navigation.NavigateTo("/real-time-chat");
                         StateHasChanged();
                     });
@@ -508,11 +488,6 @@
 
     private void HandleCallRejected(string callId)
     {
-        Console.WriteLine($"📞 ========== AudioCall: Call rejected event received ==========");
-        Console.WriteLine($"📞 AudioCall: Received callId: '{callId}'");
-        Console.WriteLine($"📞 AudioCall: Current channel: '{currentChannel}'");
-        Console.WriteLine($"📞 AudioCall: isInCall: {isInCall}");
-        Console.WriteLine($"📞 AudioCall: isConnecting: {isConnecting}");
         
         // ✅ Stop the timeout timer since receiver declined
         StopCallTimeoutTimer();
@@ -530,7 +505,6 @@
         // ✅ If we're the caller (either in call or connecting, or on call page with channel), handle rejection
         if (channelsMatch || isInCall || isConnecting || (!string.IsNullOrEmpty(currentChannel) && isOnCallPage))
         {
-            Console.WriteLine($"📞 AudioCall: ✅ Call was rejected by receiver! Closing call...");
             
             // Navigate back to chat on the UI thread
             _ = Task.Run(async () =>
@@ -550,7 +524,6 @@
                         NotificationService.Notify(NotificationSeverity.Warning, "Call Declined", 
                             $"{targetUser?.FirstName} {targetUser?.LastName} declined your call");
                         
-                        Console.WriteLine($"📞 AudioCall: Navigating to /real-time-chat (call rejected)");
                         Navigation.NavigateTo("/real-time-chat");
                         StateHasChanged();
                     });
@@ -574,7 +547,6 @@
     {
         try
         {
-            Console.WriteLine($"🎯 AudioCall: JoinIncomingCallAsync called with channel: {channelName}");
             
             // ✅ Validate channel name
             if (string.IsNullOrWhiteSpace(channelName))
@@ -583,12 +555,10 @@
             }
 
             // ✅ CRITICAL: Force cleanup before joining to avoid UID_CONFLICT
-            Console.WriteLine($"🔧 AudioCall: Force cleaning up any existing Agora connection...");
             try
             {
                 if (AgoraService.IsInCall)
                 {
-                    Console.WriteLine($"⚠️ AudioCall: Detected existing call, leaving first");
                     await AgoraService.LeaveChannelAsync();
                     await Task.Delay(800); // Wait for cleanup
                 }
@@ -606,13 +576,10 @@
             if (receiverId == 0)
                 throw new Exception("Invalid receiver ID");
 
-            Console.WriteLine($"📞 AudioCall: Receiver joining channel: {channelName}, UID: {receiverId}");
-
             // Get Agora token and App ID for the incoming channel
             var (token, appId) = await AgoraService.GetAgoraTokenAsync(channelName, (uint)receiverId);
             if (string.IsNullOrEmpty(appId))
             {
-                Console.WriteLine($"❌ AudioCall: Failed to get App ID. AppId: {appId}");
                 throw new Exception("Failed to get App ID");
             }
             
@@ -622,8 +589,6 @@
                 Console.WriteLine($"⚠️ AudioCall: No token received - Token Authentication may be disabled (this is OK for testing)");
             }
 
-            Console.WriteLine($"✅ AudioCall: Got token and App ID, joining channel...");
-            Console.WriteLine($"📞 AudioCall: Joining as receiver with UID: {receiverId}");
 
             // Join the Agora channel (audio call - video disabled)
             // Use receiver's own ID as UID (not the caller's ID)
@@ -638,11 +603,9 @@
 
             if (!success)
             {
-                Console.WriteLine($"❌ AudioCall: JoinChannelAsync returned false");
                 throw new Exception("Failed to join call");
             }
 
-            Console.WriteLine($"✅ AudioCall: Successfully joined channel, setting isInCall = true");
             isInCall = true;
             currentChannel = channelName;
             callStatus = "Connected";
@@ -663,53 +626,6 @@
             StateHasChanged(); // Final UI update
         }
     }
-
-    @* private async Task StartCall()
-    {
-        try
-        {
-            isConnecting = true;
-            callStatus = "Connecting...";
-
-            // Generate channel name
-            //var channelName = $"call_{UserId}_{DateTime.UtcNow.Ticks}";
-
-            var channelName = $"call_3_1";
-
-            // Generate UID
-            var uid = (uint)(AuthService.CurrentUser?.Id ?? 0);
-            if (uid == 0) uid = (uint)new Random().Next(100000, 999999);
-
-            // Get Agora token and App ID
-            var (token, appId) = await AgoraService.GetAgoraTokenAsync(channelName, uid);
-            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(appId))
-            {
-                throw new Exception("Failed to get call token or App ID");
-            }
-
-            // Join channel (audio call)
-            var success = await AgoraService.JoinChannelAsync(channelName, token, appId, uid, false);
-            if (!success)
-            {
-                throw new Exception("Failed to join call");
-            }
-
-            isInCall = true;
-            currentChannel = channelName;
-            callStatus = "Connected";
-        }
-        catch (Exception ex)
-        {
-            error = $"Failed to start call: {ex.Message}";
-            callStatus = "Call failed";
-        }
-        finally
-        {
-            isConnecting = false;
-        }
-    } *@
-
-
     private async Task StartCall(int targetUserId)
     {
         try
@@ -818,15 +734,12 @@
                     {
                         try
                         {
-                            Console.WriteLine($"⏰ AudioCall: Timeout handler - notifying server and cleaning up...");
                             
                             // ✅ CRITICAL: Notify server that call timed out (this will trigger call-ended event for receiver)
                             // Use the channel name to ensure receiver's dialog closes
                             try
                             {
-                                Console.WriteLine($"📞 AudioCall: Calling SignalRService.EndCallAsync with channel: {currentChannel}");
                                 await SignalRService.EndCallAsync(currentChannel);
-                                Console.WriteLine($"✅ AudioCall: EndCallAsync completed");
                             }
                             catch (Exception endCallEx)
                             {
@@ -838,7 +751,6 @@
                             try
                             {
                                 await AgoraService.LeaveChannelAsync();
-                                Console.WriteLine($"✅ AudioCall: Left Agora channel");
                             }
                             catch (Exception leaveEx)
                             {

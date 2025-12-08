@@ -1029,7 +1029,6 @@
         {
             var first = _messages.First();
             var last = _messages.Last();
-            Console.WriteLine($"🔄 Sorted {_messages.Count} messages. First: {first.Timestamp:yyyy-MM-dd HH:mm:ss.fff} ({first.Message}), Last: {last.Timestamp:yyyy-MM-dd HH:mm:ss.fff} ({last.Message})");
         }
     }
     
@@ -1150,7 +1149,6 @@
                         else
                         {
                             timestamp = DateTime.UtcNow;
-                            Console.WriteLine($"⚠️ Failed to parse timestamp: {timestampStr}, using UtcNow");
                         }
                         
                         return new ChatMsg
@@ -1228,7 +1226,6 @@
         
         _messages.Add(newMsg);
         SortMessages(); // ✅ Sort immediately after adding
-        Console.WriteLine($"📤 Sent message at {newMsg.Timestamp:HH:mm:ss.fff} - Total messages: {_messages.Count}");
         
         newMessage = string.Empty;
         lastMessageCount = _messages.Count;
@@ -1248,8 +1245,6 @@
 
     private async void HandleNewMessage(ChatMsg message)
     {
-        Console.WriteLine($"📨 HandleNewMessage called: SenderId={message.SenderId}, TargetUserId={message.TargetUserId}, Message='{message.Message}'");
-        Console.WriteLine($"📨 Current user: {AuthService.CurrentUser?.Id}, Selected user: {selectedUser?.Id}");
         
         if (selectedUser == null)
         {
@@ -1260,7 +1255,6 @@
         var isRelevantMessage = (message.SenderId == selectedUser.Id && message.TargetUserId == AuthService.CurrentUser?.Id) ||
                                 (message.SenderId == AuthService.CurrentUser?.Id && message.TargetUserId == selectedUser.Id);
         
-        Console.WriteLine($"📨 Message relevance check: {isRelevantMessage} (SenderId={message.SenderId} == selectedUser.Id={selectedUser.Id} && TargetUserId={message.TargetUserId} == CurrentUser.Id={AuthService.CurrentUser?.Id}) || (SenderId={message.SenderId} == CurrentUser.Id={AuthService.CurrentUser?.Id} && TargetUserId={message.TargetUserId} == selectedUser.Id={selectedUser.Id})");
 
         if (isRelevantMessage)
         {
@@ -1282,13 +1276,11 @@
                     // ✅ Replace local message with server message (has correct timestamp and ID)
                     var index = _messages.IndexOf(localMessage);
                     _messages[index] = message;
-                    Console.WriteLine($"🔄 Replaced local message with server message: {message.Message} (ID: {message.Id}) at {message.Timestamp:HH:mm:ss.fff}");
                 }
                 else if (!_messages.Any(m => m.Id == message.Id))
                 {
                     // ✅ Server message but no matching local message - add it
                     _messages.Add(message);
-                    Console.WriteLine($"📥 Received server message at {message.Timestamp:HH:mm:ss.fff}");
                 }
                 else
                 {
@@ -1301,7 +1293,6 @@
                 if (!_messages.Any(m => m.Id == message.Id))
                 {
                     _messages.Add(message);
-                    Console.WriteLine($"📥 Received message from {message.SenderName} at {message.Timestamp:HH:mm:ss.fff}");
                 }
                 else
                 {
@@ -1319,7 +1310,6 @@
             await Task.Delay(100); // Give DOM time to update
             await InvokeAsync(ScrollToBottom);
             
-            Console.WriteLine($"✅ Message added to chat. Total messages: {_messages.Count}");
         }
         else
         {
@@ -1338,11 +1328,9 @@
     {
         try
         {
-            Console.WriteLine($"📞 RealTimeChat: Initiating video call to user {user.Id} ({user.FirstName} {user.LastName})");
             
             // ✅ Generate channel name
             var channelName = GenerateChannelName(user.Id);
-            Console.WriteLine($"📞 RealTimeChat: Channel name: {channelName}");
             
             // ✅ Send SignalR call notification to receiver
             await RealtimeService.InitiateCallAsync(user.Id, "video");
@@ -1358,7 +1346,6 @@
             
             // ✅ Navigate to VideoCall page - this will automatically join the channel
             var callUrl = $"/video-call/{user.Id}?channel={Uri.EscapeDataString(channelName)}";
-            Console.WriteLine($"📞 RealTimeChat: Navigating caller to: {callUrl}");
             Navigation.NavigateTo(callUrl);
             
             NotificationService.Notify(NotificationSeverity.Info, "Video Call", $"Connecting to {user.FirstName}...");
@@ -1375,11 +1362,9 @@
     {
         try
         {
-            Console.WriteLine($"📞 RealTimeChat: Initiating audio call to user {user.Id} ({user.FirstName} {user.LastName})");
             
             // ✅ Generate channel name
             var channelName = GenerateChannelName(user.Id);
-            Console.WriteLine($"📞 RealTimeChat: Channel name: {channelName}");
             
             // ✅ Send SignalR call notification to receiver
             await RealtimeService.InitiateCallAsync(user.Id, "audio");
@@ -1395,7 +1380,6 @@
             
             // ✅ Navigate to AudioCall page - this will automatically join the channel
             var callUrl = $"/audio-call/{user.Id}?channel={Uri.EscapeDataString(channelName)}";
-            Console.WriteLine($"📞 RealTimeChat: Navigating caller to: {callUrl}");
             Navigation.NavigateTo(callUrl);
             
             NotificationService.Notify(NotificationSeverity.Info, "Audio Call", $"Connecting to {user.FirstName}...");
@@ -1460,7 +1444,6 @@
 
     private async void HandleIncomingCall(CallInvitation call)
     {
-        Console.WriteLine($"📞 RealTimeChat: HandleIncomingCall - CallerName: '{call.CallerName}', CallId: '{call.CallId}'");
         
         incomingCall = new IncomingCall
         {
@@ -1475,7 +1458,6 @@
         try
         {
             await JS.InvokeVoidAsync("playIncomingCallSound");
-            Console.WriteLine("🔔 RealTimeChat: Started playing incoming call ringtone");
         }
         catch (Exception ex)
         {
@@ -1494,7 +1476,6 @@
         
         _callTimeoutTimer = new System.Threading.Timer(_ =>
         {
-            Console.WriteLine($"⏰ RealTimeChat: Call timeout ({CALL_TIMEOUT_SECONDS}s) - auto-closing dialog");
             
             Task.Run(async () =>
             {
@@ -1504,7 +1485,6 @@
                     try
                     {
                         await JS.InvokeVoidAsync("stopIncomingCallSound");
-                        Console.WriteLine("🔕 RealTimeChat: Stopped ringtone (timeout)");
                     }
                     catch (Exception ex)
                     {
@@ -1514,11 +1494,9 @@
                     // ✅ Try to reject the call (notify caller), but don't fail if call session is gone
                     if (incomingCall != null)
                     {
-                        Console.WriteLine($"⏰ RealTimeChat: Attempting to reject call due to timeout");
                         try
                         {
                             await SignalRService.RejectCallAsync(incomingCall.CallId);
-                            Console.WriteLine($"✅ RealTimeChat: Rejection sent");
                         }
                         catch (Exception rejectEx)
                         {
@@ -1530,7 +1508,6 @@
                     // ✅ ALWAYS close the dialog, regardless of rejection success
                     await InvokeAsync(() =>
                     {
-                        Console.WriteLine($"✅ RealTimeChat: Closing dialog due to timeout");
                         incomingCall = null;
                         StateHasChanged();
                     });
@@ -1542,7 +1519,6 @@
             });
         }, null, TimeSpan.FromSeconds(CALL_TIMEOUT_SECONDS), Timeout.InfiniteTimeSpan);
         
-        Console.WriteLine($"⏰ RealTimeChat: Started call timeout timer ({CALL_TIMEOUT_SECONDS}s)");
     }
 
     private void StopCallTimeoutTimer()
@@ -1551,7 +1527,6 @@
         {
             _callTimeoutTimer.Dispose();
             _callTimeoutTimer = null;
-            Console.WriteLine($"⏰ RealTimeChat: Stopped call timeout timer");
         }
     }
 
@@ -1602,7 +1577,6 @@
             try
             {
                 await JS.InvokeVoidAsync("stopIncomingCallSound");
-                Console.WriteLine("🔕 RealTimeChat: Stopped ringtone (call accepted)");
             }
             catch (Exception ex)
             {
@@ -1622,21 +1596,15 @@
                     var smallerId = Math.Min(currentUserId, callerId);
                     var largerId = Math.Max(currentUserId, callerId);
                     channelName = $"call_{smallerId}_{largerId}";
-                    Console.WriteLine($"⚠️ RealTimeChat: Channel was empty, generated: {channelName}");
                 }
                 else
                 {
-                    Console.WriteLine($"❌ RealTimeChat: Cannot generate channel - currentUserId: {currentUserId}, callerId: {callerId}");
                     NotificationService.Notify(NotificationSeverity.Error, "Call Error",
                     "Cannot join call: missing channel information");
                     return;
                 }
             }
             
-            Console.WriteLine($"🎯 RealTimeChat: Accepting {incomingCall.CallType} call from {incomingCall.CallerName}");
-            Console.WriteLine($"📞 RealTimeChat: Channel name: {channelName}");
-            Console.WriteLine($"📞 RealTimeChat: CallId from incomingCall: {incomingCall.CallId}");
-
             NotificationService.Notify(NotificationSeverity.Success, "Call Accepted",
             $"Accepting {incomingCall.CallType} call from {incomingCall.CallerName}");
 
@@ -1646,7 +1614,6 @@
             ? $"/video-call/{incomingCall.CallerId}?channel={Uri.EscapeDataString(channelName)}&mobile_call=true"
             : $"/audio-call/{incomingCall.CallerId}?channel={Uri.EscapeDataString(channelName)}&mobile_call=true";
             
-            Console.WriteLine($"🎯 RealTimeChat: Navigating to: {callUrl}");
             Navigation.NavigateTo(callUrl);
 
             incomingCall = null;
@@ -1675,7 +1642,6 @@
         try
         {
             await JS.InvokeVoidAsync("stopIncomingCallSound");
-            Console.WriteLine("🔕 RealTimeChat: Stopped ringtone (call rejected)");
         }
         catch (Exception ex)
         {
@@ -1689,14 +1655,12 @@
         
         if (isOnAudioCallPage || isOnVideoCallPage)
         {
-            Console.WriteLine($"📞 RealTimeChat: Receiver is on call page, leaving Agora and navigating back...");
             try
             {
                 // Leave Agora channel if connected
                 if (AgoraService.IsInCall)
                 {
                     await AgoraService.LeaveChannelAsync();
-                    Console.WriteLine("✅ RealTimeChat: Left Agora channel");
                 }
             }
             catch (Exception ex)
@@ -1714,7 +1678,6 @@
         try
         {
             await SignalRService.RejectCallAsync(callId);
-            Console.WriteLine($"✅ RealTimeChat: Sent rejection via SignalR for call: {callId}");
         }
         catch (Exception ex)
         {
