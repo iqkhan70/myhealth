@@ -67,63 +67,111 @@ public class ODataService
             // Make request
             var response = await _http.SendAsync(request, ct);
             
+            // Read response content first (before checking status) to help with debugging
+            var responseContent = await response.Content.ReadAsStringAsync(ct);
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+            var statusCode = response.StatusCode;
+            var fullUrl = _http.BaseAddress != null ? new Uri(_http.BaseAddress, url).ToString() : url;
+            
+            // Log request details for debugging (especially on DigitalOcean)
+            System.Diagnostics.Debug.WriteLine($"[ODataService] Request URL: {fullUrl}");
+            System.Diagnostics.Debug.WriteLine($"[ODataService] Status Code: {statusCode}");
+            System.Diagnostics.Debug.WriteLine($"[ODataService] Content-Type: {contentType}");
+            System.Diagnostics.Debug.WriteLine($"[ODataService] Response Length: {responseContent?.Length ?? 0}");
+            if (responseContent != null && responseContent.Length > 0)
+            {
+                var preview = responseContent.Length > 200 ? responseContent.Substring(0, 200) : responseContent;
+                System.Diagnostics.Debug.WriteLine($"[ODataService] Response Preview: {preview}");
+            }
+            
             // Check if response is successful before parsing
             if (!response.IsSuccessStatusCode)
             {
-                var errorContent = await response.Content.ReadAsStringAsync(ct);
-                var statusCode = response.StatusCode;
-                throw new HttpRequestException($"OData query failed with status {statusCode}: {errorContent}")
+                throw new HttpRequestException($"OData query failed with status {statusCode}. URL: {fullUrl}. Response: {responseContent?.Substring(0, Math.Min(1000, responseContent?.Length ?? 0)) ?? "No content"}")
                 {
-                    Data = { ["StatusCode"] = statusCode, ["ErrorContent"] = errorContent, ["Url"] = url }
+                    Data = { 
+                        ["StatusCode"] = statusCode, 
+                        ["ErrorContent"] = responseContent, 
+                        ["Url"] = fullUrl,
+                        ["ContentType"] = contentType
+                    }
                 };
             }
             
             // Check content type to ensure we're getting JSON
-            var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
-            if (!contentType.Contains("json") && !contentType.Contains("odata"))
+            if (!string.IsNullOrEmpty(contentType) && !contentType.Contains("json") && !contentType.Contains("odata"))
             {
-                var responseContent = await response.Content.ReadAsStringAsync(ct);
-                throw new HttpRequestException($"OData endpoint returned unexpected content type: {contentType}. Response: {responseContent.Substring(0, Math.Min(500, responseContent.Length))}")
+                throw new HttpRequestException($"OData endpoint returned unexpected content type: {contentType}. URL: {fullUrl}. Response preview: {responseContent?.Substring(0, Math.Min(500, responseContent?.Length ?? 0)) ?? "No content"}")
                 {
-                    Data = { ["ContentType"] = contentType, ["Url"] = url }
+                    Data = { 
+                        ["ContentType"] = contentType, 
+                        ["Url"] = fullUrl,
+                        ["ResponsePreview"] = responseContent?.Substring(0, Math.Min(500, responseContent?.Length ?? 0))
+                    }
                 };
             }
 
-            // Parse OData response
-            var json = await response.Content.ReadAsStringAsync(ct);
-            
             // Validate that we have valid JSON (not empty, not HTML)
-            if (string.IsNullOrWhiteSpace(json))
+            if (string.IsNullOrWhiteSpace(responseContent))
             {
-                throw new HttpRequestException($"OData endpoint returned empty response. URL: {url}")
+                throw new HttpRequestException($"OData endpoint returned empty response. URL: {fullUrl}")
                 {
-                    Data = { ["Url"] = url }
+                    Data = { ["Url"] = fullUrl, ["StatusCode"] = statusCode, ["ContentType"] = contentType }
                 };
             }
             
-            // Check if response looks like HTML (error page)
-            if (json.TrimStart().StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) || 
-                json.TrimStart().StartsWith("<html", StringComparison.OrdinalIgnoreCase))
+            // Check if response looks like HTML (error page) - common on DigitalOcean with nginx
+            var trimmedContent = responseContent.TrimStart();
+            if (trimmedContent.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) || 
+                trimmedContent.StartsWith("<html", StringComparison.OrdinalIgnoreCase) ||
+                trimmedContent.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase))
             {
-                throw new HttpRequestException($"OData endpoint returned HTML instead of JSON. This might indicate a routing or server error. URL: {url}. Response preview: {json.Substring(0, Math.Min(500, json.Length))}")
+                // This is likely an nginx error page or XML response
+                var isXml = trimmedContent.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase);
+                var errorType = isXml ? "XML" : "HTML";
+                throw new HttpRequestException($"OData endpoint returned {errorType} instead of JSON. This might indicate a routing issue, nginx misconfiguration, or the endpoint doesn't exist. URL: {fullUrl}. Response preview: {responseContent.Substring(0, Math.Min(1000, responseContent.Length))}")
                 {
-                    Data = { ["Url"] = url, ["ResponsePreview"] = json.Substring(0, Math.Min(500, json.Length)) }
+                    Data = { 
+                        ["Url"] = fullUrl, 
+                        ["ResponsePreview"] = responseContent.Substring(0, Math.Min(1000, responseContent.Length)),
+                        ["ContentType"] = contentType,
+                        ["StatusCode"] = statusCode,
+                        ["IsXml"] = isXml
+                    }
                 };
             }
             
             JsonDocument doc;
             try
             {
-                doc = JsonDocument.Parse(json);
+                doc = JsonDocument.Parse(responseContent);
             }
             catch (JsonException ex)
             {
-                throw new HttpRequestException($"Failed to parse OData JSON response. URL: {url}. Response preview: {json.Substring(0, Math.Min(500, json.Length))}. Error: {ex.Message}", ex)
+                // Enhanced error message with more context
+                var preview = responseContent.Length > 500 ? responseContent.Substring(0, 500) : responseContent;
+                throw new HttpRequestException($"Failed to parse OData JSON response. URL: {fullUrl}. Status: {statusCode}. Content-Type: {contentType}. Response preview: {preview}. JSON Error: {ex.Message}", ex)
                 {
-                    Data = { ["Url"] = url, ["ResponsePreview"] = json.Substring(0, Math.Min(500, json.Length)) }
+                    Data = { 
+                        ["Url"] = fullUrl, 
+                        ["ResponsePreview"] = preview,
+                        ["StatusCode"] = statusCode,
+                        ["ContentType"] = contentType,
+                        ["JsonError"] = ex.Message
+                    }
                 };
             }
             var root = doc.RootElement;
+            
+            // Additional validation: ensure root has expected OData structure
+            if (!root.TryGetProperty("value", out _) && !root.TryGetProperty("@odata.context", out _))
+            {
+                var rootJson = System.Text.Json.JsonSerializer.Serialize(root, new JsonSerializerOptions { WriteIndented = true });
+                throw new HttpRequestException($"OData response doesn't have expected structure (missing 'value' or '@odata.context'). URL: {fullUrl}. Root element: {rootJson.Substring(0, Math.Min(500, rootJson.Length))}")
+                {
+                    Data = { ["Url"] = fullUrl, ["RootElement"] = rootJson }
+                };
+            }
 
             // Extract items from "value" array
             var items = new List<T>();
