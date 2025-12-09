@@ -34,14 +34,20 @@ public class ODataService
         try
         {
             // Build OData query
+            // Note: $ characters in OData query parameters are valid and don't need encoding
+            // But we'll construct the URL properly to avoid any encoding issues
             var queryParams = new List<string>();
             if (skip > 0) queryParams.Add($"$skip={skip}");
             if (take > 0) queryParams.Add($"$top={take}");
-            if (!string.IsNullOrEmpty(orderBy)) queryParams.Add($"$orderby={Uri.EscapeDataString(orderBy)}");
+            if (!string.IsNullOrEmpty(orderBy)) 
+            {
+                // Only encode the value, not the $orderby parameter name
+                queryParams.Add($"$orderby={Uri.EscapeDataString(orderBy)}");
+            }
             if (!string.IsNullOrEmpty(filter))
             {
                 // Filter is already transformed to OData syntax by the caller (e.g., Patients.razor)
-                // Just URL-encode it for the query string
+                // Only encode the filter value, not the $filter parameter name
                 queryParams.Add($"$filter={Uri.EscapeDataString(filter)}");
             }
             // Note: We don't use $expand for Appointments because navigation properties are marked [JsonIgnore]
@@ -50,6 +56,7 @@ public class ODataService
             queryParams.Add("$count=true"); // Get total count
 
             var queryString = string.Join("&", queryParams);
+            // Construct URL - entitySet doesn't need encoding (it's a simple identifier)
             var url = $"odata/{entitySet}?{queryString}";
 
             // Create request with authorization header (don't modify DefaultRequestHeaders)
