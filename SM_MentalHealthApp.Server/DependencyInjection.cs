@@ -343,7 +343,7 @@ public static class DependencyInjection
     private static IEdmModel GetEdmModel()
     {
         var builder = new ODataConventionModelBuilder();
-        
+
         // Users (Patients, Doctors, Coordinators, Attorneys)
         var userSet = builder.EntitySet<User>("Users");
         userSet.EntityType.HasKey(u => u.Id);
@@ -356,7 +356,7 @@ public static class DependencyInjection
         userSet.EntityType.Ignore(u => u.FullName);
         // Note: DateOfBirth is kept in EDM for filtering, but will be handled specially
         // in the controller (materialize, decrypt, filter in memory)
-        
+
         // Appointments
         var appointmentSet = builder.EntitySet<Appointment>("Appointments");
         appointmentSet.EntityType.HasKey(a => a.Id);
@@ -366,7 +366,7 @@ public static class DependencyInjection
         appointmentSet.EntityType.Ignore(a => a.EndDateTime);
         appointmentSet.EntityType.Ignore(a => a.IsUrgentCare);
         appointmentSet.EntityType.Ignore(a => a.IsBusinessHours);
-        
+
         // Contents
         var contentSet = builder.EntitySet<ContentItem>("Contents");
         contentSet.EntityType.HasKey(c => c.Id);
@@ -376,12 +376,12 @@ public static class DependencyInjection
         contentSet.EntityType.Ignore(c => c.FileName);
         contentSet.EntityType.Ignore(c => c.ContentGuid);
         // Note: Navigation properties are marked [JsonIgnore] in the entity, but OData can still expand them
-        
+
         // UserAssignments
         var userAssignmentSet = builder.EntitySet<UserAssignment>("UserAssignments");
         userAssignmentSet.EntityType.HasKey(ua => new { ua.AssignerId, ua.AssigneeId });
         // Navigation properties are NOT ignored to allow expansion
-        
+
         return builder.GetEdmModel();
     }
 }

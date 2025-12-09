@@ -27,10 +27,10 @@ systemctl restart mental-health-app
 nginx -t && systemctl reload nginx
 
 #tail from mac
-cd /Users/mohammedkhan/iq/health && sleep 3 && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@45.55.248.45 "journalctl -u mental-health-app --no-pager -n 20 | tail -20" 2>/dev/null
+cd /Users/mohammedkhan/iq/health && sleep 3 && ssh -i "$HOME/.ssh/id_rsa" -o StrictHostKeyChecking=no root@45.55.248.45 journalctl -u mental-health-app -f -n 20
 
-#tail from the server
-journalctl -u mental-health-app --no-pager -n 20 | tail -20" 2>/dev/null
+#tail from the server - this works
+journalctl -u mental-health-app -f -n 20
 
 =======================secret github instructions======================
 Create a CI-only SSH key on your Mac

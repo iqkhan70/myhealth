@@ -59,14 +59,70 @@ public class ODataService
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             }
+            
+            // Explicitly request JSON response (OData can return XML by default)
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/odata+json"));
 
             // Make request
             var response = await _http.SendAsync(request, ct);
-            response.EnsureSuccessStatusCode();
+            
+            // Check if response is successful before parsing
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync(ct);
+                var statusCode = response.StatusCode;
+                throw new HttpRequestException($"OData query failed with status {statusCode}: {errorContent}")
+                {
+                    Data = { ["StatusCode"] = statusCode, ["ErrorContent"] = errorContent, ["Url"] = url }
+                };
+            }
+            
+            // Check content type to ensure we're getting JSON
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+            if (!contentType.Contains("json") && !contentType.Contains("odata"))
+            {
+                var responseContent = await response.Content.ReadAsStringAsync(ct);
+                throw new HttpRequestException($"OData endpoint returned unexpected content type: {contentType}. Response: {responseContent.Substring(0, Math.Min(500, responseContent.Length))}")
+                {
+                    Data = { ["ContentType"] = contentType, ["Url"] = url }
+                };
+            }
 
             // Parse OData response
             var json = await response.Content.ReadAsStringAsync(ct);
-            var doc = JsonDocument.Parse(json);
+            
+            // Validate that we have valid JSON (not empty, not HTML)
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                throw new HttpRequestException($"OData endpoint returned empty response. URL: {url}")
+                {
+                    Data = { ["Url"] = url }
+                };
+            }
+            
+            // Check if response looks like HTML (error page)
+            if (json.TrimStart().StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) || 
+                json.TrimStart().StartsWith("<html", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new HttpRequestException($"OData endpoint returned HTML instead of JSON. This might indicate a routing or server error. URL: {url}. Response preview: {json.Substring(0, Math.Min(500, json.Length))}")
+                {
+                    Data = { ["Url"] = url, ["ResponsePreview"] = json.Substring(0, Math.Min(500, json.Length)) }
+                };
+            }
+            
+            JsonDocument doc;
+            try
+            {
+                doc = JsonDocument.Parse(json);
+            }
+            catch (JsonException ex)
+            {
+                throw new HttpRequestException($"Failed to parse OData JSON response. URL: {url}. Response preview: {json.Substring(0, Math.Min(500, json.Length))}. Error: {ex.Message}", ex)
+                {
+                    Data = { ["Url"] = url, ["ResponsePreview"] = json.Substring(0, Math.Min(500, json.Length)) }
+                };
+            }
             var root = doc.RootElement;
 
             // Extract items from "value" array
