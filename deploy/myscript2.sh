@@ -367,7 +367,11 @@ cd /Users/mohammedkhan/iq/health && curl -k https://${DROPLET_IP}/ 2>&1 | head -
 
 ./deploy/encrypt-existing-mobilephone-data.sh
 
+./deploy/fix-nginx-odata.sh
+
 echo "this is for reference in case you want to see the logs"
 echo "ssh -i ~/.ssh/id_rsa root@${DROPLET_IP} 'journalctl -u mental-health-app -f --no-pager'"
 
+echo "if you are gettin connection issue, refer mynotes.md"
 
+echo "make sure you push certificate to digital ocean machine for git build to work"
