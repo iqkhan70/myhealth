@@ -117,6 +117,13 @@ namespace SM_MentalHealthApp.Server.Data
                         .WithMany(r => r.Users)
                         .HasForeignKey(e => e.RoleId)
                         .OnDelete(DeleteBehavior.Restrict);
+                        
+                        // Performance indexes for common queries
+                        entity.HasIndex(e => e.RoleId); // Critical for filtering patients (RoleId = 1)
+                        entity.HasIndex(e => e.IsActive); // Critical for filtering active users
+                        entity.HasIndex(e => new { e.RoleId, e.IsActive }); // Composite index for common filter combination
+                        entity.HasIndex(e => e.FirstName); // For name searches
+                        entity.HasIndex(e => e.LastName); // For name searches
                   });
 
                   // Configure UserRequest entity
@@ -185,6 +192,13 @@ namespace SM_MentalHealthApp.Server.Data
                         .WithMany(u => u.AssignedTo)
                         .HasForeignKey(e => e.AssigneeId)
                         .OnDelete(DeleteBehavior.Cascade);
+                        
+                        // Performance indexes for common queries (critical for role-based filtering)
+                        entity.HasIndex(e => e.AssignerId); // For finding patients assigned to a doctor/coordinator
+                        entity.HasIndex(e => e.AssigneeId); // For finding doctors/coordinators assigned to a patient
+                        entity.HasIndex(e => e.IsActive); // For filtering active assignments
+                        entity.HasIndex(e => new { e.AssignerId, e.IsActive }); // Composite index for most common query pattern
+                        entity.HasIndex(e => new { e.AssigneeId, e.IsActive }); // For reverse lookups
                   });
 
                   // Configure JournalEntry entity

@@ -367,6 +367,8 @@ cd /Users/mohammedkhan/iq/health && curl -k https://${DROPLET_IP}/ 2>&1 | head -
 
 ./deploy/encrypt-existing-mobilephone-data.sh
 
+./deploy/add-performance-indexes.sh
+
 ./deploy/fix-nginx-odata.sh
 
 echo "this is for reference in case you want to see the logs"

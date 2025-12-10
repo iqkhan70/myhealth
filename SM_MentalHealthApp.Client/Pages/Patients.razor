@@ -1191,36 +1191,40 @@
                 ct
             );
             
-            // Load journal entries for the current page only (server-side pagination optimization)
-            foreach (var user in result.Items)
-            {
-                try
-                {
-                    var entries = await PatientService.GetJournalEntriesAsync(user.Id, ct);
-                    user.JournalEntries = entries;
-                }
-                catch
-                {
-                    user.JournalEntries = new();
-                }
-            }
-            
-            // Apply journal filter client-side (since it requires journal entry count)
-            // Note: This is a limitation - for true server-side filtering by journal count,
-            // we'd need to add a computed property or database view
+            // Only load journal entries if journal filter is active (lazy loading to avoid N+1 requests)
+            // Journal entries are also loaded on-demand when a row is expanded (OnRowExpand)
             if (!string.IsNullOrEmpty(selectedJournalFilter))
             {
+                // Batch load journal entry counts for all users on current page
+                var userIds = result.Items.Select(u => u.Id).ToList();
+                var journalCounts = await GetJournalEntryCountsBatchAsync(userIds, ct);
+                
+                // Apply journal filter client-side based on counts
                 var filteredItems = result.Items.AsEnumerable();
                 filteredItems = selectedJournalFilter switch
                 {
-                    "0" => filteredItems.Where(u => (u.JournalEntries?.Count ?? 0) == 0),
-                    "1-5" => filteredItems.Where(u => (u.JournalEntries?.Count ?? 0) >= 1 && (u.JournalEntries?.Count ?? 0) <= 5),
-                    "6-10" => filteredItems.Where(u => (u.JournalEntries?.Count ?? 0) >= 6 && (u.JournalEntries?.Count ?? 0) <= 10),
-                    "10+" => filteredItems.Where(u => (u.JournalEntries?.Count ?? 0) > 10),
+                    "0" => filteredItems.Where(u => (journalCounts.GetValueOrDefault(u.Id, 0)) == 0),
+                    "1-5" => filteredItems.Where(u => {
+                        var count = journalCounts.GetValueOrDefault(u.Id, 0);
+                        return count >= 1 && count <= 5;
+                    }),
+                    "6-10" => filteredItems.Where(u => {
+                        var count = journalCounts.GetValueOrDefault(u.Id, 0);
+                        return count >= 6 && count <= 10;
+                    }),
+                    "10+" => filteredItems.Where(u => journalCounts.GetValueOrDefault(u.Id, 0) > 10),
                     _ => filteredItems
                 };
                 result.Items = filteredItems.ToList();
                 // Note: TotalCount might be slightly off after client-side filtering, but it's acceptable
+            }
+            else
+            {
+                // Initialize empty journal entries list for all users (will be loaded on row expand)
+                foreach (var user in result.Items)
+                {
+                    user.JournalEntries = new();
+                }
             }
             
             return result;
@@ -1246,17 +1250,45 @@
         return new List<User>();
     }
 
+    /// <summary>
+    /// Batch fetch journal entry counts for multiple users (single API call instead of N calls)
+    /// </summary>
+    private async Task<Dictionary<int, int>> GetJournalEntryCountsBatchAsync(List<int> userIds, CancellationToken ct)
+    {
+        if (userIds == null || !userIds.Any())
+            return new Dictionary<int, int>();
+
+        try
+        {
+            // Single batch API call instead of N individual calls
+            var response = await Http.PostAsJsonAsync("api/journal/counts/batch", userIds, ct);
+            response.EnsureSuccessStatusCode();
+            var counts = await response.Content.ReadFromJsonAsync<Dictionary<int, int>>(ct);
+            return counts ?? userIds.ToDictionary(id => id, _ => 0);
+        }
+        catch
+        {
+            // Return zero counts for all users on error
+            return userIds.ToDictionary(id => id, _ => 0);
+        }
+    }
+
     private async Task OnRowExpand(User user)
     {
         try
         {
             if (!expandedUsers.ContainsKey(user.Id))
             {
-                var fullUser = await PatientService.GetAsync(user.Id);
+                // Load user details and journal entries in parallel to reduce request time
+                var userTask = PatientService.GetAsync(user.Id);
+                var journalTask = PatientService.GetJournalEntriesAsync(user.Id);
+                
+                await Task.WhenAll(userTask, journalTask);
+                
+                var fullUser = await userTask;
                 if (fullUser != null)
                 {
-                    // Load journal entries and chat sessions
-                    fullUser.JournalEntries = await PatientService.GetJournalEntriesAsync(user.Id);
+                    fullUser.JournalEntries = await journalTask;
                     expandedUsers[user.Id] = fullUser;
                     StateHasChanged();
                 }

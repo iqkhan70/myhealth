@@ -84,7 +84,7 @@ namespace SM_MentalHealthApp.Server.Services
                     .Where(e => e.UserId == userId && e.IsActive)
                     .OrderByDescending(e => e.CreatedAt)
                     .ToListAsync();
-                
+
                 return entries ?? new List<JournalEntry>();
             }
             catch (Exception ex)
@@ -135,6 +135,34 @@ namespace SM_MentalHealthApp.Server.Services
             entry.IsActive = false;
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        /// <summary>
+        /// Get journal entry counts for multiple users in a single query (batch operation)
+        /// </summary>
+        public async Task<Dictionary<int, int>> GetJournalEntryCountsBatchAsync(List<int> userIds)
+        {
+            if (userIds == null || !userIds.Any())
+                return new Dictionary<int, int>();
+
+            try
+            {
+                // Single query to get counts for all users
+                var counts = await _context.JournalEntries
+                    .Where(e => userIds.Contains(e.UserId) && e.IsActive)
+                    .GroupBy(e => e.UserId)
+                    .Select(g => new { UserId = g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.UserId, x => x.Count);
+
+                // Ensure all requested user IDs are in the result (with count 0 if no entries)
+                var result = userIds.ToDictionary(id => id, id => counts.GetValueOrDefault(id, 0));
+                return result;
+            }
+            catch (Exception)
+            {
+                // Return zero counts for all users on error
+                return userIds.ToDictionary(id => id, _ => 0);
+            }
         }
 
         public async Task<bool> VerifyDoctorAccessAsync(int patientId, int doctorId)

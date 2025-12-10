@@ -115,7 +115,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 await _journalService.ToggleIgnoreAsync(entryId, doctorId.Value);
-                
+
                 // Reload entry to get updated status
                 var updatedEntry = await _journalService.GetEntryById(entryId, null);
                 return Ok(new { message = updatedEntry?.IsIgnoredByDoctor == true ? "Journal entry ignored" : "Journal entry unignored", isIgnored = updatedEntry?.IsIgnoredByDoctor ?? false });
@@ -123,6 +123,29 @@ namespace SM_MentalHealthApp.Server.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error toggling ignore status for journal entry {EntryId}", entryId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Get journal entry counts for multiple users (batch endpoint to avoid N+1 requests)
+        /// </summary>
+        [HttpPost("counts/batch")]
+        public async Task<ActionResult<Dictionary<int, int>>> GetJournalEntryCountsBatch([FromBody] List<int> userIds)
+        {
+            try
+            {
+                if (userIds == null || !userIds.Any())
+                {
+                    return Ok(new Dictionary<int, int>());
+                }
+
+                var counts = await _journalService.GetJournalEntryCountsBatchAsync(userIds);
+                return Ok(counts);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting journal entry counts batch");
                 return StatusCode(500, "Internal server error");
             }
         }
