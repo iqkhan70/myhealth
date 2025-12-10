@@ -1560,45 +1560,30 @@
     {
         if (user == null)
         {
-            await JSRuntime.InvokeVoidAsync("console.error", "PerformAiHealthCheckAsync: user is null");
             return;
         }
         
         try
         {
-            await JSRuntime.InvokeVoidAsync("console.log", $"PerformAiHealthCheckAsync called for user: {user.Id} - {user.FirstName} {user.LastName}");
-            
             isPerformingHealthCheck = true;
             StateHasChanged();
             
             NotificationService.ShowInfo($"Analyzing {user.FirstName} {user.LastName}'s health status...");
             
-            await JSRuntime.InvokeVoidAsync("console.log", $"Calling API: api/admin/ai-health-check/{user.Id}");
             var result = await PatientService.PerformAiHealthCheckAsync(user.Id, ct);
             
             if (result == null)
             {
-                await JSRuntime.InvokeVoidAsync("console.error", "Result is null");
                 NotificationService.ShowError("AI Health Check returned no result. Please check server logs.");
                 return;
             }
             
-            await JSRuntime.InvokeVoidAsync("console.log", "Result received:", 
-                $"Success: {result.Success}, Severity: {result.Severity}, Message: {result.Message}, AlertsSent: {result.AlertsSent}");
-            
             if (result.Success)
             {
-                await JSRuntime.InvokeVoidAsync("console.log", "Showing notification for severity:", result.Severity);
-                
                 // Store result for viewing in a dialog
                 currentHealthCheckResult = result;
                 currentHealthCheckPatient = user; // Store patient for sending alerts
                 showHealthCheckDialog = true;
-                
-                // Debug: Log severity sources
-                await JSRuntime.InvokeVoidAsync("console.log", "Severity Sources:", 
-                    result.SeveritySources != null ? result.SeveritySources.Count : 0,
-                    result.SeveritySources);
                 
                 StateHasChanged();
                 
@@ -1606,25 +1591,21 @@
                 if (result.Severity == "High")
                 {
                     var warningMsg = $"⚠️ {result.Message}";
-                    await JSRuntime.InvokeVoidAsync("console.log", "Showing warning:", warningMsg);
                     NotificationService.ShowWarning(warningMsg, 8000); // 8 seconds
                 }
                 else if (result.Severity == "Normal" || result.Severity == "Low")
                 {
                     var successMsg = $"✅ {result.Message}";
-                    await JSRuntime.InvokeVoidAsync("console.log", "Showing success:", successMsg);
                     NotificationService.ShowSuccess(successMsg, 6000); // 6 seconds
                 }
                 else
                 {
                     var infoMsg = $"ℹ️ {result.Message}";
-                    await JSRuntime.InvokeVoidAsync("console.log", "Showing info:", infoMsg);
                     NotificationService.ShowInfo(infoMsg, 6000); // 6 seconds
                 }
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("console.error", "Result.Success is false:", result.Message);
                 NotificationService.ShowError($"AI Health Check failed: {result.Message}");
                 StateHasChanged();
             }
@@ -1637,12 +1618,10 @@
                 errorMsg = $"HTTP Error: {httpEx.Data["StatusCode"]} - {errorMsg}";
             }
             NotificationService.ShowError($"AI Health Check failed: {errorMsg}");
-            await JSRuntime.InvokeVoidAsync("console.error", "AI Health Check HTTP Error:", httpEx);
         }
         catch (Exception ex)
         {
             NotificationService.ShowError($"AI Health Check failed: {ex.Message}");
-            await JSRuntime.InvokeVoidAsync("console.error", "AI Health Check Error:", ex.Message, ex.StackTrace);
         }
         finally
         {
@@ -1925,13 +1904,11 @@
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                await JSRuntime.InvokeVoidAsync("console.error", $"Failed to mark source as ignored: {response.StatusCode} - {errorContent}");
                 NotificationService.ShowError($"Failed to mark source as ignored: {response.StatusCode}. Please try again.");
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("console.error", $"Error marking source as ignored: {ex.Message}", ex.StackTrace);
             NotificationService.ShowError($"Error: {ex.Message}");
         }
     }

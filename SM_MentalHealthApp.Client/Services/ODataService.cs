@@ -80,17 +80,6 @@ public class ODataService
             var statusCode = response.StatusCode;
             var fullUrl = _http.BaseAddress != null ? new Uri(_http.BaseAddress, url).ToString() : url;
             
-            // Log request details for debugging (especially on DigitalOcean)
-            System.Diagnostics.Debug.WriteLine($"[ODataService] Request URL: {fullUrl}");
-            System.Diagnostics.Debug.WriteLine($"[ODataService] Status Code: {statusCode}");
-            System.Diagnostics.Debug.WriteLine($"[ODataService] Content-Type: {contentType}");
-            System.Diagnostics.Debug.WriteLine($"[ODataService] Response Length: {responseContent?.Length ?? 0}");
-            if (responseContent != null && responseContent.Length > 0)
-            {
-                var preview = responseContent.Length > 200 ? responseContent.Substring(0, 200) : responseContent;
-                System.Diagnostics.Debug.WriteLine($"[ODataService] Response Preview: {preview}");
-            }
-            
             // Check if response is successful before parsing
             if (!response.IsSuccessStatusCode)
             {
