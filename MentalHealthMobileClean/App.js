@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
+import { Audio } from 'expo-av';
 import SignalRService from './src/services/SignalRService';
 // ✅ Use Agora now (conditionally imported for development builds only)
 let AgoraService = null;
@@ -152,6 +153,12 @@ export default function App() {
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [agoraInitialized, setAgoraInitialized] = useState(false);
+  
+  // 📞 Incoming call state
+  const [incomingCall, setIncomingCall] = useState(null);
+  const ringtoneSoundRef = useRef(null);
+  const ringtoneIntervalRef = useRef(null);
+  const incomingCallTimeoutRef = useRef(null);
 
   // 📄 Document upload state
   const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password'
@@ -591,10 +598,27 @@ export default function App() {
         setupSignalRMessageListener();
         console.log('✅ App: SignalR message listener set up');
 
-        // Optional: wire these if your server emits them
+        // Handle incoming calls
+        console.log('📞 App: Setting up onIncomingCall listener...');
         SignalRService.setEventListener('onIncomingCall', (callData) => {
-          // You can auto-open modal or show a dialog
-          console.log('Incoming call:', callData);
+          console.log('📞 App: ========== INCOMING CALL EVENT RECEIVED ==========');
+          console.log('📞 App: Incoming call received:', JSON.stringify(callData, null, 2));
+          console.log('📞 App: Call data type:', typeof callData);
+          console.log('📞 App: Call data keys:', callData ? Object.keys(callData) : 'null');
+          handleIncomingCall(callData);
+        });
+        console.log('✅ App: onIncomingCall listener registered');
+        
+        // Handle call ended (close incoming call modal if open)
+        SignalRService.setEventListener('onCallEnded', (callIdOrChannel) => {
+          console.log('📞 App: Call ended:', callIdOrChannel);
+          setIncomingCall((current) => {
+            if (current && (current.callId === callIdOrChannel || current.channelName === callIdOrChannel)) {
+              stopRingtone();
+              return null;
+            }
+            return current;
+          });
         });
       } else {
         console.error('❌ App: SignalR failed to connect!');
@@ -1090,6 +1114,211 @@ export default function App() {
     setIsVideoMuted(next);
     await AgoraService.muteLocalVideo(next);
   };
+
+  // ---------- INCOMING CALL ----------
+  const playRingtone = async () => {
+    try {
+      // Stop any existing ringtone first
+      stopRingtone();
+      
+      // Request audio mode for calls
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+      });
+      
+      // Create a simple beep pattern using Audio API
+      // We'll create tones programmatically
+      const playBeep = async (frequency = 800, duration = 400) => {
+        try {
+          // For now, we'll use a simple vibration pattern
+          // In a production app, you'd use a proper ringtone file
+          // This is a placeholder that will work but may not sound great
+          console.log('🔔 Playing beep:', frequency, 'Hz for', duration, 'ms');
+          
+          // Note: expo-av doesn't support generating tones directly
+          // For a proper ringtone, you'd need to:
+          // 1. Include a ringtone file in assets
+          // 2. Use Audio.Sound.createAsync with require('./assets/ringtone.mp3')
+          // For now, we'll just log - the modal will still appear
+        } catch (error) {
+          console.warn('⚠️ Could not play beep sound:', error);
+        }
+      };
+      
+      // Play beep pattern (two beeps, then repeat every 3 seconds)
+      playBeep(800, 400);
+      setTimeout(() => playBeep(1000, 400), 600);
+      
+      // Repeat pattern every 3 seconds
+      ringtoneIntervalRef.current = setInterval(() => {
+        playBeep(800, 400);
+        setTimeout(() => playBeep(1000, 400), 600);
+      }, 3000);
+      
+      console.log('🔔 Started playing ringtone pattern');
+    } catch (error) {
+      console.error('❌ Error playing ringtone:', error);
+    }
+  };
+
+  const stopRingtone = async () => {
+    try {
+      if (ringtoneIntervalRef.current) {
+        clearInterval(ringtoneIntervalRef.current);
+        ringtoneIntervalRef.current = null;
+      }
+      
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+        incomingCallTimeoutRef.current = null;
+      }
+      
+      if (ringtoneSoundRef.current) {
+        await ringtoneSoundRef.current.stopAsync();
+        await ringtoneSoundRef.current.unloadAsync();
+        ringtoneSoundRef.current = null;
+      }
+      
+      console.log('🔕 Stopped ringtone');
+    } catch (error) {
+      console.error('❌ Error stopping ringtone:', error);
+    }
+  };
+
+  const handleIncomingCall = (callData) => {
+    console.log('📞 App: Handling incoming call:', JSON.stringify(callData, null, 2));
+    
+    // Only show if not already in a call or handling another incoming call
+    if (callModal.visible) {
+      console.log('⚠️ App: Already in a call, rejecting new incoming call');
+      // Automatically reject if already busy
+      const callId = callData.callId || callData.channelName;
+      SignalRService.rejectCall(callId).catch(err => {
+        console.error('Error rejecting call:', err);
+      });
+      return;
+    }
+    
+    if (incomingCall) {
+      console.log('⚠️ App: Already handling another incoming call, rejecting new one');
+      const callId = callData.callId || callData.channelName;
+      SignalRService.rejectCall(callId).catch(err => {
+        console.error('Error rejecting call:', err);
+      });
+      return;
+    }
+    
+    // Set incoming call state
+    const incomingCallData = {
+      callId: callData.callId || callData.channelName,
+      callerId: callData.callerId,
+      callerName: callData.callerName || 'Unknown',
+      callerRole: callData.callerRole || '',
+      callType: callData.callType || 'audio',
+      channelName: callData.channelName || callData.callId
+    };
+    
+    console.log('📞 App: Setting incoming call state:', incomingCallData);
+    setIncomingCall(incomingCallData);
+    
+    // Play ringtone
+    console.log('🔔 App: Starting ringtone...');
+    playRingtone();
+    
+    // Auto-dismiss after 30 seconds if not answered
+    const callId = callData.callId || callData.channelName;
+    const timeoutId = setTimeout(() => {
+      setIncomingCall((current) => {
+        if (current && current.callId === callId) {
+          console.log('⏰ Incoming call timeout - auto dismissing');
+          stopRingtone();
+          // Also reject the call on the server
+          SignalRService.rejectCall(callId).catch(err => {
+            console.error('Error rejecting timed-out call:', err);
+          });
+          return null;
+        }
+        return current;
+      });
+    }, 30000);
+    
+    // Store timeout ID for cleanup if needed
+    incomingCallTimeoutRef.current = timeoutId;
+  };
+
+  const acceptIncomingCall = async () => {
+    if (!incomingCall) return;
+    
+    try {
+      console.log('✅ Accepting incoming call:', incomingCall);
+      
+      // Stop ringtone
+      stopRingtone();
+      
+      // Accept call via SignalR
+      const callId = incomingCall.callId || incomingCall.channelName;
+      await SignalRService.acceptCall(callId);
+      
+      // Find the caller in contacts or create a temporary user object
+      const caller = contacts.find(c => c.id === incomingCall.callerId) || {
+        id: incomingCall.callerId,
+        firstName: incomingCall.callerName.split(' ')[0] || 'Unknown',
+        lastName: incomingCall.callerName.split(' ').slice(1).join(' ') || 'User'
+      };
+      
+      // Start the call (join Agora channel)
+      await startCall(caller, incomingCall.callType === 'video' ? 'Video' : 'Audio');
+      
+      // Clear incoming call state
+      setIncomingCall(null);
+    } catch (error) {
+      console.error('❌ Error accepting call:', error);
+      Alert.alert('Error', 'Failed to accept call. Please try again.');
+      stopRingtone();
+      setIncomingCall(null);
+    }
+  };
+
+  const declineIncomingCall = async () => {
+    if (!incomingCall) return;
+    
+    try {
+      console.log('❌ Declining incoming call:', incomingCall);
+      
+      // Stop ringtone
+      stopRingtone();
+      
+      // Reject call via SignalR
+      const callId = incomingCall.callId || incomingCall.channelName;
+      await SignalRService.rejectCall(callId);
+      
+      // Clear incoming call state
+      setIncomingCall(null);
+    } catch (error) {
+      console.error('❌ Error declining call:', error);
+      stopRingtone();
+      setIncomingCall(null);
+    }
+  };
+
+  // Debug: Log when incomingCall state changes
+  useEffect(() => {
+    if (incomingCall) {
+      console.log('📞 ✅ Incoming call state set:', JSON.stringify(incomingCall, null, 2));
+      console.log('📞 Modal should be visible now');
+    } else {
+      console.log('📞 Incoming call state cleared');
+    }
+  }, [incomingCall]);
+
+  // Cleanup ringtone on unmount
+  useEffect(() => {
+    return () => {
+      stopRingtone();
+    };
+  }, []);
 
   // ---------- EMERGENCY ----------
   const registerDeviceForEmergency = async () => {
@@ -1695,12 +1924,58 @@ export default function App() {
     );
   }
 
+  // Render incoming call modal
+  const renderIncomingCallModal = () => {
+    const isVisible = !!incomingCall;
+    if (isVisible) {
+      console.log('📞 Rendering incoming call modal with data:', incomingCall);
+    }
+    return (
+      <Modal visible={isVisible} transparent animationType="fade" onRequestClose={declineIncomingCall}>
+        <View style={styles.incomingCallOverlay}>
+          <View style={styles.incomingCallModal}>
+            <View style={styles.incomingCallHeader}>
+              <View style={styles.callerAvatar}>
+                <Text style={styles.callerAvatarText}>
+                  {incomingCall?.callerName?.charAt(0)?.toUpperCase() || '?'}
+                </Text>
+              </View>
+              <View style={styles.callerInfo}>
+                <Text style={styles.callerName}>{incomingCall?.callerName || 'Unknown'}</Text>
+                <Text style={styles.callerRole}>{incomingCall?.callerRole || ''}</Text>
+                <Text style={styles.callTypeText}>
+                  {incomingCall?.callType === 'video' ? '📹 Video Call' : '📞 Audio Call'}
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.incomingCallActions}>
+              <TouchableOpacity 
+                style={[styles.incomingCallButton, styles.declineButton]} 
+                onPress={declineIncomingCall}
+              >
+                <Text style={styles.incomingCallButtonText}>Decline</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.incomingCallButton, styles.acceptButton]} 
+                onPress={acceptIncomingCall}
+              >
+                <Text style={styles.incomingCallButtonText}>Accept</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   if (currentView === 'contact-detail') {
     return (
       <View style={styles.container}>
         <StatusBar style="auto" />
         {renderContactDetail()}
         {renderCallModal()}
+        {renderIncomingCallModal()}
         <SmsComponent
           visible={smsModalVisible}
           onClose={() => setSmsModalVisible(false)}
@@ -1730,6 +2005,7 @@ export default function App() {
         <StatusBar style="auto" />
         {renderChat()}
         {renderCallModal()}
+        {renderIncomingCallModal()}
       </View>
     );
   }
@@ -1739,6 +2015,7 @@ export default function App() {
       <StatusBar style="auto" />
       {renderContacts()}
       {renderCallModal()}
+      {renderIncomingCallModal()}
     </View>
   );
 }
@@ -2327,5 +2604,84 @@ const styles = StyleSheet.create({
   contactArrowText: {
     fontSize: 20,
     color: '#ccc',
+  },
+  // Incoming call modal styles
+  incomingCallOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  incomingCallModal: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 30,
+    minWidth: 300,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  incomingCallHeader: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  callerAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#2196F3',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  callerAvatarText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  callerInfo: {
+    alignItems: 'center',
+  },
+  callerName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 5,
+  },
+  callerRole: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 5,
+  },
+  callTypeText: {
+    fontSize: 18,
+    color: '#2196F3',
+    fontWeight: '600',
+  },
+  incomingCallActions: {
+    flexDirection: 'row',
+    gap: 20,
+    width: '100%',
+  },
+  incomingCallButton: {
+    flex: 1,
+    padding: 15,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  declineButton: {
+    backgroundColor: '#f44336',
+  },
+  acceptButton: {
+    backgroundColor: '#4CAF50',
+  },
+  incomingCallButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

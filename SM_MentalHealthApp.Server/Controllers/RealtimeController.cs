@@ -295,9 +295,6 @@ namespace SM_MentalHealthApp.Server.Controllers
                     };
                 }
 
-                if (!_userConnections.TryGetValue(request.TargetUserId, out var targetConnectionId))
-                    return Ok(new { message = "Target user is not online", delivered = false });
-
                 var channelName = request.ChannelName;
                 if (string.IsNullOrWhiteSpace(channelName))
                 {
@@ -317,20 +314,67 @@ namespace SM_MentalHealthApp.Server.Controllers
                     ? $"{caller.FirstName} {caller.LastName}"
                     : "Unknown User";
 
-                var callData = new
-                {
-                    type = "incoming_call",
-                    callerId = callerConnection.UserId,
-                    callerName = callerName,
-                    callType = request.CallType,
-                    channelName = channelName,
-                    timestamp = DateTime.UtcNow,
-                    agoraAppId = tokenData?.agoraAppId,
-                    agoraToken = tokenData?.token
-                };
+                var callerRole = caller != null && caller.RoleId == 2 ? "Doctor" : "Patient";
 
-                if (_connections.TryGetValue(targetConnectionId, out var targetConnection))
-                    targetConnection.PendingCalls.Add(callData);
+                // ✅ Check if target user is connected via web app (polling) or mobile app (SignalR)
+                bool delivered = false;
+                
+                // First, check if target is a web app user (polling connection)
+                if (_userConnections.TryGetValue(request.TargetUserId, out var targetConnectionId))
+                {
+                    var callData = new
+                    {
+                        type = "incoming_call",
+                        callerId = callerConnection.UserId,
+                        callerName = callerName,
+                        callType = request.CallType,
+                        channelName = channelName,
+                        timestamp = DateTime.UtcNow,
+                        agoraAppId = tokenData?.agoraAppId,
+                        agoraToken = tokenData?.token
+                    };
+
+                    if (_connections.TryGetValue(targetConnectionId, out var targetConnection))
+                    {
+                        targetConnection.PendingCalls.Add(callData);
+                        delivered = true;
+                        _logger.LogInformation("📞 Call initiated from {CallerId} to {TargetUserId} (web app user) via polling", callerConnection.UserId, request.TargetUserId);
+                    }
+                }
+                
+                // ✅ Also check if target is a mobile app user (SignalR connection)
+                if (MobileHub.UserConnections.TryGetValue(request.TargetUserId, out string? targetSignalRConnectionId))
+                {
+                    var callData = new
+                    {
+                        callId = channelName, // Use channel name as callId for consistency
+                        callerId = callerConnection.UserId,
+                        callerName = callerName,
+                        callerRole = callerRole,
+                        callType = request.CallType,
+                        channelName = channelName,
+                        timestamp = DateTime.UtcNow.ToString("O")
+                    };
+
+                    _logger.LogInformation("📞 Sending SignalR call invitation to user {TargetUserId} via connection {ConnectionId} from {CallerId}",
+                        request.TargetUserId, targetSignalRConnectionId, callerConnection.UserId);
+                    
+                    await _hubContext.Clients.Client(targetSignalRConnectionId).SendAsync("incoming-call", callData);
+                    
+                    _logger.LogInformation("✅ SignalR call invitation sent successfully to connection {ConnectionId} from {CallerId} to {TargetUserId}",
+                        targetSignalRConnectionId, callerConnection.UserId, request.TargetUserId);
+                    
+                    delivered = true;
+                }
+
+                if (!delivered)
+                {
+                    _logger.LogWarning("⚠️ Target user {TargetUserId} is not online. Web connections: {WebConnections}, Mobile connections: {MobileConnections}",
+                        request.TargetUserId,
+                        string.Join(", ", _userConnections.Select(kvp => $"User {kvp.Key}")),
+                        string.Join(", ", MobileHub.UserConnections.Select(kvp => $"User {kvp.Key}")));
+                    return Ok(new { message = "Target user is not online", delivered = false });
+                }
 
                 _logger.LogInformation("Call initiated from {CallerId} to {TargetUserId}", callerConnection.UserId, request.TargetUserId);
                 return Ok(new { message = "Call initiated successfully", delivered = true });

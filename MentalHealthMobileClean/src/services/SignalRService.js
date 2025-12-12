@@ -99,9 +99,20 @@ class SignalRService {
 
     // Handle incoming calls
     this.connection.on('incoming-call', (callData) => {
-      console.log('📞 SignalR: Incoming call:', callData);
+      console.log('📞 SignalR: ========== INCOMING-CALL EVENT RECEIVED ==========');
+      console.log('📞 SignalR: Raw call data:', JSON.stringify(callData, null, 2));
+      console.log('📞 SignalR: Call data type:', typeof callData);
+      console.log('📞 SignalR: Has onIncomingCall listener?', !!this.listeners.onIncomingCall);
       if (this.listeners.onIncomingCall) {
-        this.listeners.onIncomingCall(callData);
+        console.log('📞 SignalR: Calling onIncomingCall listener...');
+        try {
+          this.listeners.onIncomingCall(callData);
+          console.log('✅ SignalR: onIncomingCall listener called successfully');
+        } catch (error) {
+          console.error('❌ SignalR: Error in onIncomingCall listener:', error);
+        }
+      } else {
+        console.warn('⚠️ SignalR: No onIncomingCall listener registered!');
       }
     });
 
