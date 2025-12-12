@@ -358,7 +358,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                     // ✅ Create a CallSession in MobileHub.ActiveCalls so mobile can accept/reject/end the call
                     var callId = Guid.NewGuid().ToString();
-                    var callSession = new SM_MentalHealthApp.Server.Hubs.CallSession
+                    var callSession = new Hubs.CallSession
                     {
                         CallId = callId,
                         ChannelName = channelName,
