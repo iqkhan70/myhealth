@@ -1086,19 +1086,41 @@ export default function App() {
 
   const endCall = async () => {
     try {
+      console.log('📞 Mobile: Ending call...');
+      
+      // ✅ Notify server that call is ending (so other party gets notified)
+      if (callModal?.channelName) {
+        try {
+          await SignalRService.endCall(callModal.channelName);
+          console.log('✅ Mobile: Notified server that call ended');
+        } catch (e) {
+          console.error('⚠️ Mobile: Error notifying server:', e);
+        }
+      }
+      
+      // ✅ Leave Agora channel
       if (AgoraService && agoraInitialized) {
         await AgoraService.leaveChannel();
+        console.log('✅ Mobile: Left Agora channel');
       }
     } catch (e) {
-      console.error('leave error:', e);
+      console.error('❌ Mobile: Error ending call:', e);
     }
-    // Clear any pending timeouts/intervals
-    // Note: In a real app, you'd store these in refs to clear them properly
+    
+    // ✅ Clear call state
     setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
     setRemoteUsers([]);
     remoteUserJoinTimes.current = {}; // Clear join times
     setIsAudioMuted(false);
     setIsVideoMuted(false);
+    
+    // ✅ Also clear incoming call state if it exists
+    if (incomingCall) {
+      stopRingtone();
+      setIncomingCall(null);
+    }
+    
+    console.log('✅ Mobile: Call ended and state cleared');
   };
 
   const toggleMute = async () => {
@@ -1252,29 +1274,34 @@ export default function App() {
     if (!incomingCall) return;
     
     try {
-      console.log('✅ Accepting incoming call:', incomingCall);
+      console.log('✅ Mobile: Accepting incoming call:', incomingCall);
       
       // Stop ringtone
       stopRingtone();
       
-      // Accept call via SignalR
+      // ✅ Clear incoming call state FIRST (so modal closes immediately)
       const callId = incomingCall.callId || incomingCall.channelName;
+      const callerId = incomingCall.callerId;
+      const callerName = incomingCall.callerName;
+      const callType = incomingCall.callType;
+      setIncomingCall(null);
+      
+      // Accept call via SignalR
       await SignalRService.acceptCall(callId);
+      console.log('✅ Mobile: Call accepted via SignalR');
       
       // Find the caller in contacts or create a temporary user object
-      const caller = contacts.find(c => c.id === incomingCall.callerId) || {
-        id: incomingCall.callerId,
-        firstName: incomingCall.callerName.split(' ')[0] || 'Unknown',
-        lastName: incomingCall.callerName.split(' ').slice(1).join(' ') || 'User'
+      const caller = contacts.find(c => c.id === callerId) || {
+        id: callerId,
+        firstName: callerName.split(' ')[0] || 'Unknown',
+        lastName: callerName.split(' ').slice(1).join(' ') || 'User'
       };
       
       // Start the call (join Agora channel)
-      await startCall(caller, incomingCall.callType === 'video' ? 'Video' : 'Audio');
-      
-      // Clear incoming call state
-      setIncomingCall(null);
+      await startCall(caller, callType === 'video' ? 'Video' : 'Audio');
+      console.log('✅ Mobile: Call started, Agora channel joined');
     } catch (error) {
-      console.error('❌ Error accepting call:', error);
+      console.error('❌ Mobile: Error accepting call:', error);
       Alert.alert('Error', 'Failed to accept call. Please try again.');
       stopRingtone();
       setIncomingCall(null);
@@ -1285,7 +1312,7 @@ export default function App() {
     if (!incomingCall) return;
     
     try {
-      console.log('❌ Declining incoming call:', incomingCall);
+      console.log('❌ Mobile: Declining incoming call:', incomingCall);
       
       // Stop ringtone
       stopRingtone();
@@ -1293,11 +1320,17 @@ export default function App() {
       // Reject call via SignalR
       const callId = incomingCall.callId || incomingCall.channelName;
       await SignalRService.rejectCall(callId);
+      console.log('✅ Mobile: Call rejected via SignalR');
       
-      // Clear incoming call state
+      // ✅ Clear incoming call state
       setIncomingCall(null);
+      
+      // ✅ Also ensure call modal is closed (in case it was open)
+      if (callModal.visible) {
+        setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
+      }
     } catch (error) {
-      console.error('❌ Error declining call:', error);
+      console.error('❌ Mobile: Error declining call:', error);
       stopRingtone();
       setIncomingCall(null);
     }

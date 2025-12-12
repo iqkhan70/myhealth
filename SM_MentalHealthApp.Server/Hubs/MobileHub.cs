@@ -15,7 +15,8 @@ namespace SM_MentalHealthApp.Server.Hubs
 
         // Store active connections (made internal so MobileController can access it)
         internal static readonly ConcurrentDictionary<int, string> UserConnections = new();
-        private static readonly ConcurrentDictionary<string, CallSession> ActiveCalls = new();
+        // Store active calls (made internal so RealtimeController can create sessions for web-to-mobile calls)
+        internal static readonly ConcurrentDictionary<string, CallSession> ActiveCalls = new();
 
         public MobileHub(JournalDbContext context, ILogger<MobileHub> logger)
         {
@@ -221,22 +222,56 @@ namespace SM_MentalHealthApp.Server.Hubs
         {
             try
             {
-                if (!ActiveCalls.TryGetValue(callId, out CallSession? callSession))
+                // ✅ Try to find call by callId (could be GUID or channel name)
+                CallSession? callSession = null;
+                string? actualCallId = null;
+                
+                if (ActiveCalls.TryGetValue(callId, out callSession))
                 {
+                    actualCallId = callSession.CallId;
+                }
+                else
+                {
+                    // Try to find by channel name in values
+                    callSession = ActiveCalls.Values.FirstOrDefault(c => c.ChannelName == callId);
+                    if (callSession != null)
+                    {
+                        actualCallId = callSession.CallId;
+                    }
+                }
+
+                if (callSession == null)
+                {
+                    _logger.LogWarning("Call not found for acceptance: {CallId}", callId);
                     await Clients.Caller.SendAsync("error", "Call not found");
                     return;
                 }
 
                 callSession.Status = "accepted";
-                _logger.LogInformation("Call {CallId} accepted", callId);
+                _logger.LogInformation("Call {CallId} (channel: {Channel}) accepted", actualCallId, callSession.ChannelName);
 
-                // Notify caller that call was accepted
+                // ✅ Notify caller that call was accepted (check both MobileHub and RealtimeController)
+                // First, check if caller is a mobile app user (MobileHub)
                 if (UserConnections.TryGetValue(callSession.CallerId, out string? callerConnectionId))
                 {
-                    await Clients.Client(callerConnectionId).SendAsync("call-accepted", new { callId });
+                    await Clients.Client(callerConnectionId).SendAsync("call-accepted", new { 
+                        callId = callSession.ChannelName ?? actualCallId,
+                        channelName = callSession.ChannelName 
+                    });
+                    _logger.LogInformation("✅ Notified mobile caller {CallerId} via MobileHub", callSession.CallerId);
                 }
+                
+                // ✅ Also notify web app caller via RealtimeController (if they're using polling)
+                // We'll need to inject RealtimeController's connection dictionary or use a shared service
+                // For now, we'll rely on SignalR for web app too (web app should be using SignalRService)
+                // But if web app is using polling, we need to add the event to their PendingCalls
+                // This requires access to RealtimeController's _connections dictionary
+                // We'll handle this by ensuring web app also connects to MobileHub via SignalRService
 
-                await Clients.Caller.SendAsync("call-accepted", new { callId });
+                await Clients.Caller.SendAsync("call-accepted", new { 
+                    callId = callSession.ChannelName ?? actualCallId,
+                    channelName = callSession.ChannelName 
+                });
             }
             catch (Exception ex)
             {
@@ -284,12 +319,14 @@ namespace SM_MentalHealthApp.Server.Hubs
 
                 _logger.LogInformation("Call {CallId} (channel: {Channel}) rejected", actualCallId, callSession.ChannelName);
 
-                // ✅ Notify caller that call was rejected - use channel name for matching
+                // ✅ Notify caller that call was rejected - check both MobileHub and RealtimeController
                 if (UserConnections.TryGetValue(callSession.CallerId, out string? callerConnectionId))
                 {
                     await Clients.Client(callerConnectionId).SendAsync("call-rejected", new { 
-                        callId = callSession.ChannelName ?? actualCallId // Use channel name for matching
+                        callId = callSession.ChannelName ?? actualCallId,
+                        channelName = callSession.ChannelName
                     });
+                    _logger.LogInformation("✅ Notified caller {CallerId} via MobileHub that call was rejected", callSession.CallerId);
                 }
             }
             catch (Exception ex)

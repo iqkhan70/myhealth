@@ -356,6 +356,26 @@ namespace SM_MentalHealthApp.Server.Controllers
                         timestamp = DateTime.UtcNow.ToString("O")
                     };
 
+                    // ✅ Create a CallSession in MobileHub.ActiveCalls so mobile can accept/reject/end the call
+                    var callId = Guid.NewGuid().ToString();
+                    var callSession = new SM_MentalHealthApp.Server.Hubs.CallSession
+                    {
+                        CallId = callId,
+                        ChannelName = channelName,
+                        CallerId = callerConnection.UserId,
+                        TargetUserId = request.TargetUserId,
+                        CallType = request.CallType,
+                        Status = "ringing",
+                        StartTime = DateTime.UtcNow
+                    };
+                    
+                    // Store by both callId (GUID) and channelName for easy lookup
+                    MobileHub.ActiveCalls[callId] = callSession;
+                    MobileHub.ActiveCalls[channelName] = callSession;
+                    
+                    _logger.LogInformation("📞 Created CallSession for web-to-mobile call: CallId={CallId}, Channel={Channel}, Caller={CallerId}, Target={TargetUserId}",
+                        callId, channelName, callerConnection.UserId, request.TargetUserId);
+
                     _logger.LogInformation("📞 Sending SignalR call invitation to user {TargetUserId} via connection {ConnectionId} from {CallerId}",
                         request.TargetUserId, targetSignalRConnectionId, callerConnection.UserId);
                     
