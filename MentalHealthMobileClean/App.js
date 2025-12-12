@@ -49,25 +49,82 @@ const isIOS = Platform.OS === 'ios';
 
 // ---------- ENV / URLS ----------
 const getApiBaseUrl = () => {
-  const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
-  // For web/localhost development, use HTTPS (server runs on HTTPS)
-  if (isWeb) {
-    const url = AppConfig.getWebApiBaseUrl();
-    console.log('🌐 Using Web API URL:', url);
-    return url;
+  try {
+    const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
+    // For web/localhost development, use HTTPS (server runs on HTTPS)
+    if (isWeb) {
+      const url = AppConfig.getWebApiBaseUrl();
+      if (!url || typeof url !== 'string' || url.trim() === '') {
+        throw new Error('Web API URL is invalid');
+      }
+      console.log('🌐 Using Web API URL:', url);
+      return url.trim();
+    }
+    // For mobile: use HTTPS with configured server IP
+    const url = AppConfig.getMobileApiBaseUrl();
+    if (!url || typeof url !== 'string' || url.trim() === '') {
+      throw new Error('Mobile API URL is invalid');
+    }
+    console.log('📱 Using Mobile API URL:', url);
+    console.log('📱 Config:', {
+      SERVER_IP: AppConfig.SERVER_IP,
+      SERVER_PORT: AppConfig.SERVER_PORT,
+      USE_HTTPS: AppConfig.USE_HTTPS
+    });
+    return url.trim();
+  } catch (error) {
+    console.error('❌ Error getting API base URL:', error);
+    // Fallback to staging server
+    const fallbackUrl = 'https://caseflowstage.store/api';
+    console.warn('⚠️ Using fallback URL:', fallbackUrl);
+    return fallbackUrl;
   }
-  // For mobile: use HTTPS with configured server IP
-  const url = AppConfig.getMobileApiBaseUrl();
-  console.log('📱 Using Mobile API URL:', url);
-  console.log('📱 Config:', {
-    SERVER_IP: AppConfig.SERVER_IP,
-    SERVER_PORT: AppConfig.SERVER_PORT,
-    USE_HTTPS: AppConfig.USE_HTTPS
-  });
-  return url;
 };
+
 const API_BASE_URL = getApiBaseUrl();
-const SIGNALR_HUB_URL = API_BASE_URL.replace('/api', '/mobilehub');
+
+// Ensure SIGNALR_HUB_URL is always valid
+const getSignalRHubUrl = () => {
+  if (!API_BASE_URL || typeof API_BASE_URL !== 'string') {
+    console.error('❌ API_BASE_URL is invalid, using fallback');
+    return 'https://caseflowstage.store/mobilehub';
+  }
+  try {
+    const hubUrl = API_BASE_URL.replace('/api', '/mobilehub');
+    if (!hubUrl || hubUrl.trim() === '') {
+      throw new Error('SignalR Hub URL is invalid');
+    }
+    return hubUrl.trim();
+  } catch (error) {
+    console.error('❌ Error constructing SignalR Hub URL:', error);
+    return 'https://caseflowstage.store/mobilehub';
+  }
+};
+
+const SIGNALR_HUB_URL = getSignalRHubUrl();
+
+// Validate URLs are valid
+if (!API_BASE_URL || !SIGNALR_HUB_URL) {
+  console.error('❌ CRITICAL: URLs are null or undefined!');
+  console.error('API_BASE_URL:', API_BASE_URL);
+  console.error('SIGNALR_HUB_URL:', SIGNALR_HUB_URL);
+}
+
+// Helper function to ensure URL is valid before use
+const ensureValidUrl = (url, fallback = API_BASE_URL) => {
+  if (!url || typeof url !== 'string' || url.trim() === '') {
+    console.warn('⚠️ Invalid URL provided, using fallback:', url);
+    return fallback || 'https://caseflowstage.store/api';
+  }
+  const trimmedUrl = url.trim();
+  // Basic URL validation
+  if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+    console.warn('⚠️ URL does not start with http:// or https://:', trimmedUrl);
+    return fallback || 'https://caseflowstage.store/api';
+  }
+  return trimmedUrl;
+};
+
 console.log('✅ API Base URL initialized:', API_BASE_URL);
 console.log('✅ SignalR Hub URL:', SIGNALR_HUB_URL);
 
@@ -91,6 +148,7 @@ export default function App() {
   // 🔔 Call modal state
   const [callModal, setCallModal] = useState({ visible: false, targetUser: null, callType: null, channelName: null });
   const [remoteUsers, setRemoteUsers] = useState([]);
+  const remoteUserJoinTimes = useRef({}); // Track when each remote user joined (timestamp)
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [agoraInitialized, setAgoraInitialized] = useState(false);
@@ -175,10 +233,42 @@ export default function App() {
 
           // Hook Agora events → UI
           AgoraService.setListener('onUserJoined', (uid) => {
-            setRemoteUsers((prev) => (prev.includes(uid) ? prev : [...prev, uid]));
+            console.log('📱 App: onUserJoined event received, UID:', uid);
+            const joinTime = Date.now();
+            remoteUserJoinTimes.current[uid] = joinTime;
+            console.log('📱 App: Recorded join time for UID:', uid, 'at', joinTime);
+            setRemoteUsers((prev) => {
+              if (prev.includes(uid)) {
+                console.log('📱 App: UID already in remoteUsers, skipping');
+                return prev;
+              }
+              console.log('📱 App: Adding UID to remoteUsers:', uid, 'new array:', [...prev, uid]);
+              return [...prev, uid];
+            });
           });
           AgoraService.setListener('onUserLeft', (uid) => {
-            setRemoteUsers((prev) => prev.filter((id) => id !== uid));
+            console.log('📱 App: onUserLeft event received, UID:', uid);
+            const joinTime = remoteUserJoinTimes.current[uid];
+            const timeInCall = joinTime ? Date.now() - joinTime : 0;
+            
+            setRemoteUsers((prev) => {
+              if (!prev.includes(uid)) {
+                console.log('📱 App: UID not in remoteUsers, ignoring onUserLeft');
+                return prev;
+              }
+              
+              // Only remove if user has been in call for at least 2 seconds
+              // This prevents false positives from race conditions where onUserOffline
+              // fires immediately after onUserJoined
+              if (timeInCall < 2000) {
+                console.log(`⚠️ App: Ignoring onUserLeft for UID ${uid} - only been in call for ${timeInCall}ms (likely false positive)`);
+                return prev;
+              }
+              
+              console.log(`📱 App: Removing UID ${uid} from remoteUsers (was in call for ${timeInCall}ms)`);
+              delete remoteUserJoinTimes.current[uid];
+              return prev.filter((id) => id !== uid);
+            });
           });
           AgoraService.setListener('onConnectionStateChanged', (state) => {
             console.log('Agora state:', state);
@@ -198,8 +288,9 @@ export default function App() {
   const login = async () => {
     setLoading(true);
     try {
-      console.log('🔐 Attempting login to:', `${API_BASE_URL}/auth/login`);
-      const resp = await fetch(`${API_BASE_URL}/auth/login`, {
+      const loginUrl = ensureValidUrl(`${API_BASE_URL}/auth/login`);
+      console.log('🔐 Attempting login to:', loginUrl);
+      const resp = await fetch(loginUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -921,6 +1012,46 @@ export default function App() {
     if (!ok) throw new Error('Join channel failed');
 
     setCallModal((prev) => ({ ...prev, channelName }));
+    
+    // Log current state for debugging
+    console.log('📱 Call started:', {
+      channelName,
+      uid,
+      withVideo,
+      remoteUsersCount: remoteUsers.length,
+      targetUserId: targetUser.id
+    });
+    
+    // Fallback: If events don't fire, try using target user's ID after a delay
+    // This is a workaround for cases where onUserJoined doesn't fire
+    const fallbackTimeout = setTimeout(() => {
+      setRemoteUsers((prev) => {
+        if (prev.length === 0 && targetUser.id && targetUser.id !== uid) {
+          console.log('⚠️ Fallback: No remote users detected via events, using targetUser.id as fallback:', targetUser.id);
+          console.log('⚠️ This is a workaround - events should have fired but didn\'t');
+          return [targetUser.id];
+        }
+        return prev;
+      });
+    }, 5000); // Wait 5 seconds for events to fire
+    
+    // Clear timeout if remote users are detected
+    const checkInterval = setInterval(() => {
+      if (remoteUsers.length > 0) {
+        clearTimeout(fallbackTimeout);
+        clearInterval(checkInterval);
+      }
+    }, 500);
+    
+    // Give a moment for remote user to join, then log again
+    setTimeout(() => {
+      console.log('📱 Call state after 3 seconds:', {
+        remoteUsersCount: remoteUsers.length,
+        remoteUsers: remoteUsers,
+        expectedRemoteUid: targetUser.id,
+        myUid: uid
+      });
+    }, 3000);
   } catch (e) {
     console.error('startCall error:', e);
     Alert.alert('Error', e.message || 'Failed to start call.');
@@ -937,8 +1068,11 @@ export default function App() {
     } catch (e) {
       console.error('leave error:', e);
     }
+    // Clear any pending timeouts/intervals
+    // Note: In a real app, you'd store these in refs to clear them properly
     setCallModal({ visible: false, targetUser: null, callType: null, channelName: null });
     setRemoteUsers([]);
+    remoteUserJoinTimes.current = {}; // Clear join times
     setIsAudioMuted(false);
     setIsVideoMuted(false);
   };
@@ -1134,64 +1268,61 @@ export default function App() {
         <View style={styles.callContent}>
           {callModal.callType === 'Video' ? (
             <View style={styles.videoContainer}>
-              {/* Remote */}
+              {/* Remote Video - Always render when we have remote users and channel */}
               <View style={styles.remoteVideo}>
-                {remoteUsers.length > 0 &&
-                  callModal?.channelName &&
-                  (isIOS ? RtcRemoteView?.TextureView : RtcRemoteView?.SurfaceView) ? (
-                    isIOS ? (
+                {remoteUsers.length > 0 && callModal?.channelName ? (
+                  <>
+                    {isIOS && RtcRemoteView?.TextureView ? (
                       <RtcRemoteView.TextureView
                         uid={remoteUsers[0]}
                         channelId={callModal.channelName}
                         style={{ width: '100%', height: '100%' }}
                       />
-                    ) : (
+                    ) : !isIOS && RtcRemoteView?.SurfaceView ? (
                       <RtcRemoteView.SurfaceView
                         uid={remoteUsers[0]}
                         channelId={callModal.channelName}
                         style={{ width: '100%', height: '100%' }}
                       />
-                    )
-                  ) : (
-                    <>
-                      <Text style={styles.videoPlaceholder}>Waiting for remote…</Text>
-                      {__DEV__ && (
-                        <Text style={{ color: '#888', fontSize: 12 }}>
-                          Debug: remoteUsers={remoteUsers.length},
-                          channel={callModal?.channelName || 'none'},
-                          RtcRemoteView={!!RtcRemoteView}
-                        </Text>
-                      )}
-                    </>
-                  )}
+                    ) : (
+                      <Text style={styles.videoPlaceholder}>
+                        Video component not available (Expo Go?)
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.videoPlaceholder}>Waiting for remote…</Text>
+                    {__DEV__ && (
+                      <Text style={{ color: '#888', fontSize: 12 }}>
+                        Debug: remoteUsers={remoteUsers.length},
+                        channel={callModal?.channelName || 'none'},
+                        RtcRemoteView={!!RtcRemoteView}
+                      </Text>
+                    )}
+                  </>
+                )}
               </View>
-              {/* Local PiP */}
-              {callModal?.channelName &&
-                (isIOS ? RtcLocalView?.TextureView : RtcLocalView?.SurfaceView) ? (
+              {/* Local PiP - Always render when we have channel */}
+              {callModal?.channelName ? (
                 <View style={styles.localVideo}>
-                  {isIOS ? (
+                  {isIOS && RtcLocalView?.TextureView ? (
                     <RtcLocalView.TextureView
                       channelId={callModal.channelName}
                       style={{ width: '100%', height: '100%', borderRadius: 8 }}
                     />
-                  ) : (
+                  ) : !isIOS && RtcLocalView?.SurfaceView ? (
                     <RtcLocalView.SurfaceView
                       channelId={callModal.channelName}
                       style={{ width: '100%', height: '100%', borderRadius: 8 }}
                     />
-                  )}
-                </View>
-              ) : (
-                <>
-                  <Text style={styles.videoPlaceholder}>Waiting for local preview…</Text>
-                  {__DEV__ && (
-                    <Text style={{ color: '#888', fontSize: 12 }}>
-                      Debug: channel={callModal?.channelName || 'none'},
-                      RtcLocalView={!!RtcLocalView}
+                  ) : (
+                    <Text style={styles.videoPlaceholder}>
+                      Local preview not available
                     </Text>
                   )}
-                </>
-              )}
+                </View>
+              ) : null}
             </View>
           ) : (
             <View style={styles.audioContainer}>

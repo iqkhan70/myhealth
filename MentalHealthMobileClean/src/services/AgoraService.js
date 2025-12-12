@@ -40,12 +40,41 @@ class AgoraService {
           this._emit('onJoinSuccess', connection);
         },
         onUserJoined: (connection, remoteUid, elapsed) => {
-          console.log('👤 Remote user joined:', remoteUid);
+          console.log('👤 Remote user joined:', remoteUid, 'connection:', connection);
           this._emit('onUserJoined', remoteUid);
         },
+        onUserPublished: (connection, remoteUid, mediaType) => {
+          console.log('📹 Remote user published:', remoteUid, 'mediaType:', mediaType, 'connection:', connection);
+          // When remote user publishes video/audio, add them to remote users
+          // mediaType: 0 = audio, 1 = video
+          if (mediaType === 0 || mediaType === 1) {
+            console.log('📹 Emitting onUserJoined for published user:', remoteUid);
+            this._emit('onUserJoined', remoteUid);
+          }
+        },
+        onFirstRemoteVideoDecoded: (connection, remoteUid, width, height, elapsed) => {
+          console.log('📹 First remote video decoded:', remoteUid, 'width:', width, 'height:', height);
+          // When remote video is decoded, user is definitely there
+          this._emit('onUserJoined', remoteUid);
+        },
+        onFirstRemoteAudioFrame: (connection, remoteUid, elapsed) => {
+          console.log('🎵 First remote audio frame:', remoteUid);
+          // When remote audio is received, user is definitely there
+          this._emit('onUserJoined', remoteUid);
+        },
+        onUserUnpublished: (connection, remoteUid, mediaType) => {
+          console.log('📹 Remote user unpublished:', remoteUid, 'mediaType:', mediaType);
+        },
         onUserOffline: (connection, remoteUid, reason) => {
-          console.log('👋 Remote user left:', remoteUid);
+          // Reason codes: 0 = USER_OFFLINE_QUIT, 1 = USER_OFFLINE_DROPPED, 2 = USER_OFFLINE_BECOME_AUDIENCE
+          console.log('👋 Remote user left:', remoteUid, 'reason:', reason, 'reasonText:', 
+            reason === 0 ? 'QUIT' : reason === 1 ? 'DROPPED' : reason === 2 ? 'BECOME_AUDIENCE' : 'UNKNOWN');
+          // Only emit if reason is not 0 (QUIT) - reason 0 might be a false positive
+          // Actually, let's emit all reasons but add logging
           this._emit('onUserLeft', remoteUid);
+        },
+        onError: (err, msg) => {
+          console.error('❌ Agora error:', err, msg);
         },
       });
 
@@ -126,6 +155,14 @@ class AgoraService {
       await this.engine.setEnableSpeakerphone(true);
 
       console.log("✅ Joined channel successfully:", result);
+      
+      // Give a moment for remote users to be detected, then check
+      setTimeout(() => {
+        console.log("🔍 Checking for existing remote users in channel...");
+        // Note: Agora SDK doesn't provide a direct way to list users,
+        // but onUserJoined should fire for users already in channel
+      }, 2000);
+      
       return true;
     } catch (e) {
       console.error("❌ joinChannel error:", e);

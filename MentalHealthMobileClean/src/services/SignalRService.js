@@ -17,10 +17,20 @@ class SignalRService {
 
   async initialize(hubUrl, token) {
     try {
-      console.log('🔗 SignalR: Initializing connection to:', hubUrl);
+      // Validate hubUrl
+      if (!hubUrl || typeof hubUrl !== 'string' || hubUrl.trim() === '') {
+        throw new Error(`Invalid SignalR Hub URL: ${hubUrl}`);
+      }
+      
+      const validUrl = hubUrl.trim();
+      if (!validUrl.startsWith('http://') && !validUrl.startsWith('https://')) {
+        throw new Error(`SignalR Hub URL must start with http:// or https://: ${validUrl}`);
+      }
+      
+      console.log('🔗 SignalR: Initializing connection to:', validUrl);
       
       this.connection = new HubConnectionBuilder()
-        .withUrl(hubUrl, {
+        .withUrl(validUrl, {
           accessTokenFactory: () => token,
         })
         .withAutomaticReconnect()
