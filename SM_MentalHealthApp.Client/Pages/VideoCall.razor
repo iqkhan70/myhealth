@@ -88,8 +88,9 @@
                 }
             </div>
 
-            <!-- Local Video -->
+            <!-- Local Video (Picture-in-Picture) -->
             <div id="local-video-container" class="local-video-container">
+                <video id="local-video" autoplay playsinline></video>
                 @if (!isVideoEnabled)
                 {
                     <div class="video-off-overlay">
@@ -250,7 +251,7 @@
     }
 
     .local-video-container {
-        position: absolute;
+        position: fixed; /* Changed from absolute to fixed to ensure it's positioned relative to viewport */
         top: 20px;
         right: 20px;
         width: 200px;
@@ -259,13 +260,16 @@
         overflow: hidden;
         border: 2px solid #fff;
         background: #333;
-        z-index: 999; /* Below controls but above remote video */
+        z-index: 5000; /* High z-index to ensure it's above remote video and info overlay, but below controls */
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        pointer-events: auto; /* Ensure it can receive pointer events */
     }
 
     .local-video-container video {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        display: block;
     }
 
     .video-off-overlay {
@@ -793,6 +797,18 @@
             callStatus = "Ringing...";
             callStartTime = DateTime.UtcNow;
             receiverJoined = false; // Reset flag when starting a new call
+            
+            // ✅ CRITICAL: Stop any existing ringtone first (in case of reconnection or retry)
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+                Console.WriteLine("🔕 VideoCall: Stopped any existing ringtone before starting new call");
+            }
+            catch (Exception stopEx)
+            {
+                Console.WriteLine($"⚠️ VideoCall: Error stopping existing ringtone: {stopEx.Message}");
+            }
+            
             StateHasChanged(); // ✅ Update UI to show status
             
             // ✅ Play ringing sound for caller
@@ -1051,17 +1067,41 @@
         StopCallTimeoutTimer();
         Console.WriteLine($"✅ VideoCall: Stopped timeout timer (receiver joined)");
         
-        // ✅ Stop ringing sound immediately - use InvokeAsync to ensure UI thread
-        InvokeAsync(async () =>
+        // ✅ Stop ringing sound immediately - fire-and-forget async call for fastest response
+        // This ensures the ringer stops immediately, especially on first call
+        _ = Task.Run(async () =>
         {
             try
             {
+                // Call immediately without delay
                 await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
                 Console.WriteLine("🔕 VideoCall: Stopped ringtone (receiver joined)");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"⚠️ VideoCall: Error stopping ringtone: {ex.Message}");
+                // Retry once after a short delay
+                try
+                {
+                    await Task.Delay(100);
+                    await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+                    Console.WriteLine("🔕 VideoCall: Stopped ringtone (retry successful)");
+                }
+                catch (Exception retryEx)
+                {
+                    Console.WriteLine($"⚠️ VideoCall: Retry also failed: {retryEx.Message}");
+                    // Final fallback - try one more time
+                    try
+                    {
+                        await Task.Delay(300);
+                        await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+                        Console.WriteLine("🔕 VideoCall: Stopped ringtone (final retry successful)");
+                    }
+                    catch (Exception finalEx)
+                    {
+                        Console.WriteLine($"⚠️ VideoCall: All retries failed: {finalEx.Message}");
+                    }
+                }
             }
         });
         

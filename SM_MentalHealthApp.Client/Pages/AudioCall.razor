@@ -665,6 +665,18 @@
             callStatus = "Ringing...";
             callStartTime = DateTime.UtcNow;
             receiverJoined = false; // Reset flag when starting a new call
+            
+            // ✅ CRITICAL: Stop any existing ringtone first (in case of reconnection or retry)
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+                Console.WriteLine("🔕 AudioCall: Stopped any existing ringtone before starting new call");
+            }
+            catch (Exception stopEx)
+            {
+                Console.WriteLine($"⚠️ AudioCall: Error stopping existing ringtone: {stopEx.Message}");
+            }
+            
             StateHasChanged(); // ✅ Update UI to show status
             
             // ✅ Play ringing sound for caller
@@ -909,17 +921,41 @@
         StopCallTimeoutTimer();
         Console.WriteLine($"✅ AudioCall: Stopped timeout timer (receiver joined)");
         
-        // ✅ Stop ringing sound immediately - use InvokeAsync to ensure UI thread
-        InvokeAsync(async () =>
+        // ✅ Stop ringing sound immediately - fire-and-forget async call for fastest response
+        // This ensures the ringer stops immediately, especially on first call
+        _ = Task.Run(async () =>
         {
             try
             {
+                // Call immediately without delay
                 await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
                 Console.WriteLine("🔕 AudioCall: Stopped ringtone (receiver joined)");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"⚠️ AudioCall: Error stopping ringtone: {ex.Message}");
+                // Retry once after a short delay
+                try
+                {
+                    await Task.Delay(100);
+                    await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+                    Console.WriteLine("🔕 AudioCall: Stopped ringtone (retry successful)");
+                }
+                catch (Exception retryEx)
+                {
+                    Console.WriteLine($"⚠️ AudioCall: Retry also failed: {retryEx.Message}");
+                    // Final fallback - try one more time
+                    try
+                    {
+                        await Task.Delay(300);
+                        await JSRuntime.InvokeVoidAsync("stopIncomingCallSound");
+                        Console.WriteLine("🔕 AudioCall: Stopped ringtone (final retry successful)");
+                    }
+                    catch (Exception finalEx)
+                    {
+                        Console.WriteLine($"⚠️ AudioCall: All retries failed: {finalEx.Message}");
+                    }
+                }
             }
         });
         

@@ -448,23 +448,40 @@
         try {
             console.log('🔕 Stopping incoming call ringtone...');
             
-            // Clear interval
+            // Clear interval FIRST (most important - stops the beeping immediately)
+            if (ringtoneInterval) {
+                clearInterval(ringtoneInterval);
+                ringtoneInterval = null;
+                console.log('✅ Cleared ringtone interval');
+            }
+            
+            // Close audio context (but don't fail if already closed)
+            if (ringtoneAudioContext) {
+                try {
+                    // Only close if not already closed
+                    if (ringtoneAudioContext.state !== 'closed') {
+                        ringtoneAudioContext.close().catch(err => {
+                            // Ignore errors - context might already be closed
+                            console.log('Audio context close note (non-critical):', err.message);
+                        });
+                    }
+                    ringtoneAudioContext = null;
+                    console.log('✅ Cleared audio context');
+                } catch (closeError) {
+                    // Ignore errors - context might already be closed or in invalid state
+                    console.log('Audio context already closed or invalid (this is OK)');
+                    ringtoneAudioContext = null;
+                }
+            }
+            
+            console.log('🔕 Ringtone stopped successfully');
+        } catch (error) {
+            console.error('Error stopping incoming call sound:', error);
+            // Even if there's an error, try to clear the interval as a fallback
             if (ringtoneInterval) {
                 clearInterval(ringtoneInterval);
                 ringtoneInterval = null;
             }
-            
-            // Close audio context
-            if (ringtoneAudioContext) {
-                ringtoneAudioContext.close().catch(err => {
-                    console.warn('Error closing audio context:', err);
-                });
-                ringtoneAudioContext = null;
-            }
-            
-            console.log('🔕 Ringtone stopped');
-        } catch (error) {
-            console.error('Error stopping incoming call sound:', error);
         }
     };
 </script>
@@ -975,11 +992,44 @@
                     agoraLocalStream = { audioTrack, videoTrack };
                     tracksToPublish.push(videoTrack);
 
-                    const localVideoContainer = document.getElementById('local-video-container');
-                    if (localVideoContainer) {
-                        videoTrack.play(localVideoContainer);
-                        console.log('✅ Local video displayed');
-                    }
+                    // Play local video in the video element with retry logic
+                    const playLocalVideo = async (retryCount = 0) => {
+                        const localVideoElement = document.getElementById('local-video');
+                        if (localVideoElement) {
+                            try {
+                                await videoTrack.play(localVideoElement);
+                                console.log('✅ Local video displayed');
+                            } catch (playError) {
+                                console.error('❌ Error playing local video:', playError);
+                                // Retry if element exists but play failed
+                                if (retryCount < 3) {
+                                    setTimeout(() => playLocalVideo(retryCount + 1), 500);
+                                }
+                            }
+                        } else {
+                            // Retry if element doesn't exist yet (DOM might not be ready)
+                            if (retryCount < 5) {
+                                console.log(`⏳ Local video element not found, retrying... (${retryCount + 1}/5)`);
+                                setTimeout(() => playLocalVideo(retryCount + 1), 300);
+                            } else {
+                                // Final fallback to container
+                                const localVideoContainer = document.getElementById('local-video-container');
+                                if (localVideoContainer) {
+                                    try {
+                                        await videoTrack.play(localVideoContainer);
+                                        console.log('✅ Local video displayed (fallback to container)');
+                                    } catch (fallbackError) {
+                                        console.error('❌ Error playing local video in container:', fallbackError);
+                                    }
+                                } else {
+                                    console.warn('⚠️ Local video container not found');
+                                }
+                            }
+                        }
+                    };
+                    
+                    // Start playing local video
+                    playLocalVideo();
                 } else {
                     console.log('2');
                     agoraLocalStream = { audioTrack };
@@ -1376,10 +1426,36 @@
                             });
                             agoraLocalStream = { audioTrack, videoTrack };
                             tracksToPublish.push(videoTrack);
-                            const localVideoContainer = document.getElementById('local-video-container');
-                            if (localVideoContainer) {
-                                videoTrack.play(localVideoContainer);
-                            }
+                            // Play local video in the video element with retry logic
+                            const playLocalVideo = async (retryCount = 0) => {
+                                const localVideoElement = document.getElementById('local-video');
+                                if (localVideoElement) {
+                                    try {
+                                        await videoTrack.play(localVideoElement);
+                                        console.log('✅ Local video displayed (UID_CONFLICT recovery)');
+                                    } catch (playError) {
+                                        console.error('❌ Error playing local video:', playError);
+                                        if (retryCount < 3) {
+                                            setTimeout(() => playLocalVideo(retryCount + 1), 500);
+                                        }
+                                    }
+                                } else {
+                                    if (retryCount < 5) {
+                                        setTimeout(() => playLocalVideo(retryCount + 1), 300);
+                                    } else {
+                                        const localVideoContainer = document.getElementById('local-video-container');
+                                        if (localVideoContainer) {
+                                            try {
+                                                await videoTrack.play(localVideoContainer);
+                                                console.log('✅ Local video displayed (fallback to container)');
+                                            } catch (fallbackError) {
+                                                console.error('❌ Error playing local video in container:', fallbackError);
+                                            }
+                                        }
+                                    }
+                                }
+                            };
+                            playLocalVideo();
                         } else {
                             agoraLocalStream = { audioTrack };
                         }
