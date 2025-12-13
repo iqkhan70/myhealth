@@ -6,6 +6,7 @@ using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using SM_MentalHealthApp.Server.Hubs;
 
@@ -322,23 +323,51 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // First, check if target is a web app user (polling connection)
                 if (_userConnections.TryGetValue(request.TargetUserId, out var targetConnectionId))
                 {
-                    var callData = new
-                    {
-                        type = "incoming_call",
-                        callerId = callerConnection.UserId,
-                        callerName = callerName,
-                        callType = request.CallType,
-                        channelName = channelName,
-                        timestamp = DateTime.UtcNow,
-                        agoraAppId = tokenData?.agoraAppId,
-                        agoraToken = tokenData?.token
-                    };
-
                     if (_connections.TryGetValue(targetConnectionId, out var targetConnection))
                     {
-                        targetConnection.PendingCalls.Add(callData);
-                        delivered = true;
-                        _logger.LogInformation("📞 Call initiated from {CallerId} to {TargetUserId} (web app user) via polling", callerConnection.UserId, request.TargetUserId);
+                        // ✅ Check if this call has already been rejected by the receiver
+                        if (targetConnection.RejectedCalls.Contains(channelName))
+                        {
+                            _logger.LogInformation("📞 Call {ChannelName} was previously rejected by {TargetUserId}, not re-adding to PendingCalls", channelName, request.TargetUserId);
+                            return Ok(new { message = "Call was previously rejected", delivered = false });
+                        }
+
+                        // ✅ Check if there's already a call in PendingCalls for this channel
+                        var existingCall = targetConnection.PendingCalls.FirstOrDefault(c =>
+                        {
+                            if (c is JsonElement jsonElement)
+                            {
+                                if (jsonElement.TryGetProperty("channelName", out var channelNameProp))
+                                {
+                                    return channelNameProp.GetString() == channelName;
+                                }
+                            }
+                            return false;
+                        });
+
+                        if (existingCall != null)
+                        {
+                            _logger.LogInformation("📞 Call {ChannelName} already exists in PendingCalls for {TargetUserId}, not adding duplicate", channelName, request.TargetUserId);
+                            delivered = true; // Call already exists, consider it delivered
+                        }
+                        else
+                        {
+                            var callData = new
+                            {
+                                type = "incoming_call",
+                                callerId = callerConnection.UserId,
+                                callerName = callerName,
+                                callType = request.CallType,
+                                channelName = channelName,
+                                timestamp = DateTime.UtcNow,
+                                agoraAppId = tokenData?.agoraAppId,
+                                agoraToken = tokenData?.token
+                            };
+
+                            targetConnection.PendingCalls.Add(callData);
+                            delivered = true;
+                            _logger.LogInformation("📞 Call initiated from {CallerId} to {TargetUserId} (web app user) via polling", callerConnection.UserId, request.TargetUserId);
+                        }
                     }
                 }
                 
@@ -353,6 +382,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                         callerRole = callerRole,
                         callType = request.CallType,
                         channelName = channelName,
+                        targetUserId = request.TargetUserId, // ✅ Include targetUserId so client can filter
                         timestamp = DateTime.UtcNow.ToString("O")
                     };
 
@@ -416,10 +446,34 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 connection.LastPing = DateTime.UtcNow;
 
+                // ✅ Filter out rejected calls before returning
+                var validCalls = connection.PendingCalls.Where(c =>
+                {
+                    if (c is JsonElement jsonElement)
+                    {
+                        string? channelName = null;
+                        if (jsonElement.TryGetProperty("channelName", out var channelNameProp))
+                        {
+                            channelName = channelNameProp.GetString();
+                        }
+                        else if (jsonElement.TryGetProperty("callId", out var callIdProp))
+                        {
+                            channelName = callIdProp.GetString();
+                        }
+
+                        if (!string.IsNullOrEmpty(channelName))
+                        {
+                            // Don't return calls that have been rejected
+                            return !connection.RejectedCalls.Contains(channelName);
+                        }
+                    }
+                    return true; // If we can't determine the channel, include it (shouldn't happen)
+                }).ToArray();
+
                 var response = new
                 {
                     messages = connection.PendingMessages.ToArray(),
-                    calls = connection.PendingCalls.ToArray(),
+                    calls = validCalls,
                     connectionStatus = "connected"
                 };
 
@@ -432,6 +486,232 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 _logger.LogError(ex, "Error polling");
                 return BadRequest($"Poll failed: {ex.Message}");
+            }
+        }
+
+        [HttpPost("reject-call")]
+        public async Task<IActionResult> RejectCall([FromBody] RejectCallRequest request)
+        {
+            try
+            {
+                if (!_connections.TryGetValue(request.ConnectionId, out var connection))
+                    return BadRequest("Invalid connection");
+
+                var receiverUserId = connection.UserId;
+                _logger.LogInformation("📞 RejectCall: Receiver {ReceiverId} rejecting call {CallId}", receiverUserId, request.CallId);
+
+                // ✅ Remove ALL matching calls from receiver's PendingCalls to prevent it from reappearing
+                // Extract channel name from request.CallId for matching
+                string? channelNameToMatch = request.CallId;
+                var callsToRemove = new List<object>();
+                
+                foreach (var call in connection.PendingCalls)
+                {
+                    if (call is JsonElement jsonElement)
+                    {
+                        string? callChannelName = null;
+                        if (jsonElement.TryGetProperty("channelName", out var channelNameProp))
+                        {
+                            callChannelName = channelNameProp.GetString();
+                        }
+                        else if (jsonElement.TryGetProperty("callId", out var callIdProp))
+                        {
+                            callChannelName = callIdProp.GetString();
+                        }
+
+                        // Match by channel name or callId
+                        if (!string.IsNullOrEmpty(callChannelName) && 
+                            (callChannelName == request.CallId || 
+                             request.CallId == callChannelName ||
+                             request.CallId.Contains(callChannelName) ||
+                             callChannelName.Contains(request.CallId)))
+                        {
+                            callsToRemove.Add(call);
+                            if (string.IsNullOrEmpty(channelNameToMatch) || channelNameToMatch == request.CallId)
+                            {
+                                channelNameToMatch = callChannelName; // Use the actual channel name from the call
+                            }
+                        }
+                    }
+                }
+
+                // Remove all matching calls
+                foreach (var callToRemove in callsToRemove)
+                {
+                    connection.PendingCalls.Remove(callToRemove);
+                }
+
+                if (callsToRemove.Count > 0)
+                {
+                    _logger.LogInformation("✅ Removed {Count} call(s) matching {CallId} from receiver's PendingCalls", callsToRemove.Count, request.CallId);
+                }
+
+                var firstCallToRemove = callsToRemove.FirstOrDefault(); // Keep for extracting callerId below
+
+                // ✅ Try to find the caller and notify them
+                // Extract callerId from the call data if available
+                int? callerId = null;
+                if (firstCallToRemove is JsonElement jsonCall)
+                {
+                    if (jsonCall.TryGetProperty("callerId", out var callerIdProp))
+                    {
+                        callerId = callerIdProp.GetInt32();
+                    }
+                }
+
+                // ✅ Also check MobileHub.ActiveCalls to find the call session and notify caller
+                CallSession? callSession = null;
+                if (MobileHub.ActiveCalls.TryGetValue(request.CallId, out callSession))
+                {
+                    callerId = callSession.CallerId;
+                }
+                else
+                {
+                    // Try to find by channel name
+                    callSession = MobileHub.ActiveCalls.Values.FirstOrDefault(c => c.ChannelName == request.CallId);
+                    if (callSession != null)
+                    {
+                        callerId = callSession.CallerId;
+                    }
+                }
+
+                // ✅ Mark this call as rejected to prevent it from being re-added
+                // Use the channel name we extracted, or fall back to callSession or request.CallId
+                string channelNameToReject = channelNameToMatch ?? request.CallId;
+                if (callSession != null && !string.IsNullOrEmpty(callSession.ChannelName))
+                {
+                    channelNameToReject = callSession.ChannelName;
+                }
+
+                connection.RejectedCalls.Add(channelNameToReject);
+                _logger.LogInformation("✅ Marked call {ChannelName} as rejected to prevent re-adding (RejectedCalls count: {Count})", channelNameToReject, connection.RejectedCalls.Count);
+
+                // ✅ Remove from MobileHub.ActiveCalls if found
+                if (callSession != null)
+                {
+                    MobileHub.ActiveCalls.TryRemove(callSession.CallId, out _);
+                    if (!string.IsNullOrEmpty(callSession.ChannelName))
+                    {
+                        MobileHub.ActiveCalls.TryRemove(callSession.ChannelName, out _);
+                    }
+                    _logger.LogInformation("✅ Removed call session from MobileHub.ActiveCalls");
+                }
+
+                // ✅ Notify caller via SignalR if they're connected
+                if (callerId.HasValue)
+                {
+                    // Check if caller is a mobile app user (SignalR)
+                    if (MobileHub.UserConnections.TryGetValue(callerId.Value, out string? callerConnectionId))
+                    {
+                        await _hubContext.Clients.Client(callerConnectionId).SendAsync("call-rejected", new
+                        {
+                            callId = request.CallId,
+                            channelName = callSession?.ChannelName ?? request.CallId
+                        });
+                        _logger.LogInformation("✅ Notified caller {CallerId} via SignalR that call was rejected", callerId.Value);
+                    }
+
+                    // ✅ Also notify caller if they're a web app user (polling)
+                    if (_userConnections.TryGetValue(callerId.Value, out var callerWebConnectionId))
+                    {
+                        if (_connections.TryGetValue(callerWebConnectionId, out var callerConnection))
+                        {
+                            // Add call-rejected event to caller's pending messages (they'll get it on next poll)
+                            callerConnection.PendingMessages.Add(new
+                            {
+                                type = "call-rejected",
+                                callId = request.CallId,
+                                channelName = callSession?.ChannelName ?? request.CallId
+                            });
+                            _logger.LogInformation("✅ Added call-rejected event to caller's PendingMessages");
+                        }
+                    }
+                }
+
+                return Ok(new { message = "Call rejected successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error rejecting call");
+                return BadRequest($"Failed to reject call: {ex.Message}");
+            }
+        }
+
+        [HttpPost("end-call")]
+        public async Task<IActionResult> EndCall([FromBody] EndCallRequest request)
+        {
+            try
+            {
+                if (!_connections.TryGetValue(request.ConnectionId, out var connection))
+                    return BadRequest("Invalid connection");
+
+                var userId = connection.UserId;
+                _logger.LogInformation("📞 EndCall: User {UserId} ending call {CallId}", userId, request.CallId);
+
+                // ✅ Try to find the call session in MobileHub.ActiveCalls
+                CallSession? callSession = null;
+                if (MobileHub.ActiveCalls.TryGetValue(request.CallId, out callSession))
+                {
+                    // Found by key
+                }
+                else
+                {
+                    // Try to find by channel name
+                    callSession = MobileHub.ActiveCalls.Values.FirstOrDefault(c => c.ChannelName == request.CallId);
+                }
+
+                // ✅ Remove from MobileHub.ActiveCalls if found
+                if (callSession != null)
+                {
+                    MobileHub.ActiveCalls.TryRemove(callSession.CallId, out _);
+                    if (!string.IsNullOrEmpty(callSession.ChannelName))
+                    {
+                        MobileHub.ActiveCalls.TryRemove(callSession.ChannelName, out _);
+                    }
+                    _logger.LogInformation("✅ Removed call session from MobileHub.ActiveCalls");
+
+                    // ✅ Notify both participants
+                    var participants = new[] { callSession.CallerId, callSession.TargetUserId };
+                    foreach (var participantId in participants)
+                    {
+                        // Notify via SignalR (mobile app)
+                        if (MobileHub.UserConnections.TryGetValue(participantId, out string? participantConnectionId))
+                        {
+                            await _hubContext.Clients.Client(participantConnectionId).SendAsync("call-ended", new
+                            {
+                                callId = callSession.CallId,
+                                channelName = callSession.ChannelName
+                            });
+                            _logger.LogInformation("✅ Notified participant {ParticipantId} via SignalR that call ended", participantId);
+                        }
+
+                        // Notify via polling (web app)
+                        if (_userConnections.TryGetValue(participantId, out var participantWebConnectionId))
+                        {
+                            if (_connections.TryGetValue(participantWebConnectionId, out var participantConnection))
+                            {
+                                participantConnection.PendingMessages.Add(new
+                                {
+                                    type = "call-ended",
+                                    callId = callSession.CallId,
+                                    channelName = callSession.ChannelName
+                                });
+                                _logger.LogInformation("✅ Added call-ended event to participant's PendingMessages");
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Call session not found for ending: {CallId}", request.CallId);
+                }
+
+                return Ok(new { message = "Call ended successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error ending call");
+                return BadRequest($"Failed to end call: {ex.Message}");
             }
         }
 
@@ -577,6 +857,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public DateTime LastPing { get; set; }
         public List<object> PendingMessages { get; set; } = new();
         public List<object> PendingCalls { get; set; } = new();
+        public HashSet<string> RejectedCalls { get; set; } = new(); // Track rejected calls to prevent re-adding
     }
 
     public class ConnectRequest
@@ -613,5 +894,17 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string ConnectionId { get; set; } = string.Empty;
         public int TargetUserId { get; set; }
         public string Message { get; set; } = string.Empty;
+    }
+
+    public class RejectCallRequest
+    {
+        public string ConnectionId { get; set; } = string.Empty;
+        public string CallId { get; set; } = string.Empty;
+    }
+
+    public class EndCallRequest
+    {
+        public string ConnectionId { get; set; } = string.Empty;
+        public string CallId { get; set; } = string.Empty;
     }
 }

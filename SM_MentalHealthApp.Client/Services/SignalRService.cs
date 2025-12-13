@@ -136,6 +136,14 @@ namespace SM_MentalHealthApp.Client.Services
                         Console.WriteLine($"⚠️ SignalR: No 'callerName' property found in JSON");
                     }
 
+                    // ✅ Extract targetUserId from JSON
+                    int? extractedTargetUserId = null;
+                    if (root.TryGetProperty("targetUserId", out var targetUserIdElement))
+                    {
+                        extractedTargetUserId = targetUserIdElement.GetInt32();
+                        Console.WriteLine($"📞 SignalR: Extracted targetUserId from JSON: {extractedTargetUserId}");
+                    }
+
                     var call = JsonSerializer.Deserialize<CallInvitation>(json, new JsonSerializerOptions
                     {
                         PropertyNameCaseInsensitive = true
@@ -146,6 +154,13 @@ namespace SM_MentalHealthApp.Client.Services
                         // ✅ Override CallId with channel name for auto-join
                         var finalChannelName = !string.IsNullOrWhiteSpace(channelName) ? channelName : call.CallId;
                         call.CallId = finalChannelName ?? "";
+
+                        // ✅ Set TargetUserId if extracted from JSON
+                        if (extractedTargetUserId.HasValue)
+                        {
+                            call.TargetUserId = extractedTargetUserId.Value;
+                            Console.WriteLine($"✅ SignalR: Set TargetUserId to {call.TargetUserId}");
+                        }
 
                         // ✅ ALWAYS use extracted callerName if available (more reliable than deserialization)
                         if (!string.IsNullOrWhiteSpace(extractedCallerName) && extractedCallerName != "Mobile User")
@@ -166,7 +181,7 @@ namespace SM_MentalHealthApp.Client.Services
 
                         // ✅ Log all properties to debug caller name issue
                         Console.WriteLine($"📞 SignalR: Final CallId (channel): {call.CallId}");
-                        Console.WriteLine($"📞 SignalR: CallerId: {call.CallerId}, CallerName: '{call.CallerName}', CallType: {call.CallType}");
+                        Console.WriteLine($"📞 SignalR: CallerId: {call.CallerId}, TargetUserId: {call.TargetUserId}, CallerName: '{call.CallerName}', CallType: {call.CallType}");
                         Console.WriteLine($"📞 SignalR: CallerRole: '{call.CallerRole}'");
 
                         if (string.IsNullOrWhiteSpace(call.CallId))

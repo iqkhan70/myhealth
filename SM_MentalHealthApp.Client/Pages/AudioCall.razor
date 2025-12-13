@@ -1,6 +1,7 @@
 @page "/audio-call/{UserId:int}"
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Shared
+@using System.Text.Json
 @inject IAgoraService AgoraService
 @inject IAuthService AuthService
 @inject NavigationManager Navigation
@@ -8,6 +9,7 @@
 @inject IJSRuntime JSRuntime
 @inject IRealtimeService RealtimeService
 @inject ISignalRService SignalRService
+@inject HttpClient Http
 @implements IAsyncDisposable
 
 <PageTitle>Audio Call</PageTitle>
@@ -324,8 +326,14 @@
             targetUser = await GetUserById(UserId);
             if (targetUser == null)
             {
-                error = "User not found";
-                return;
+                // Don't show error, just use a placeholder - the call can still proceed
+                targetUser = new User
+                {
+                    Id = UserId,
+                    FirstName = "User",
+                    LastName = UserId.ToString()
+                };
+                Console.WriteLine($"⚠️ AudioCall: User {UserId} not found, using placeholder");
             }
 
             // Initialize Agora
@@ -1013,17 +1021,101 @@
         StateHasChanged();
     }
 
-    private Task<User?> GetUserById(int userId)
+    private async Task<User?> GetUserById(int userId)
     {
-        // This would typically call your user service
-        // For now, return a mock user
-        var user = new User
+        try
         {
-            Id = userId,
-            FirstName = "Test",
-            LastName = "User"
-        };
-        return Task.FromResult<User?>(user);
+            // Try multiple API endpoints
+            User? user = null;
+            
+            // Try api/user/{userId} first (used by Journal page)
+            try
+            {
+                user = await Http.GetFromJsonAsync<User>($"api/user/{userId}");
+                if (user != null && !string.IsNullOrEmpty(user.FirstName))
+                {
+                    Console.WriteLine($"✅ AudioCall: Fetched user {userId} from api/user: {user.FirstName} {user.LastName}");
+                    return user;
+                }
+            }
+            catch (Exception ex1)
+            {
+                Console.WriteLine($"⚠️ AudioCall: api/user/{userId} failed: {ex1.Message}");
+            }
+            
+            // Try api/patient/{userId} as fallback
+            try
+            {
+                user = await Http.GetFromJsonAsync<User>($"api/patient/{userId}");
+                if (user != null && !string.IsNullOrEmpty(user.FirstName))
+                {
+                    Console.WriteLine($"✅ AudioCall: Fetched user {userId} from api/patient: {user.FirstName} {user.LastName}");
+                    return user;
+                }
+            }
+            catch (Exception ex2)
+            {
+                Console.WriteLine($"⚠️ AudioCall: api/patient/{userId} failed: {ex2.Message}");
+            }
+            
+            // Try OData endpoint as another fallback
+            try
+            {
+                var response = await Http.GetAsync($"odata/Users({userId})");
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+                    if (json.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Array)
+                    {
+                        var users = valueElement.EnumerateArray().ToList();
+                        if (users.Any())
+                        {
+                            var userJson = users.First();
+                            user = JsonSerializer.Deserialize<User>(userJson.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                            if (user != null && !string.IsNullOrEmpty(user.FirstName))
+                            {
+                                Console.WriteLine($"✅ AudioCall: Fetched user {userId} from OData: {user.FirstName} {user.LastName}");
+                                return user;
+                            }
+                        }
+                    }
+                    else if (json.TryGetProperty("FirstName", out _))
+                    {
+                        // Single result
+                        user = JsonSerializer.Deserialize<User>(json.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        if (user != null && !string.IsNullOrEmpty(user.FirstName))
+                        {
+                            Console.WriteLine($"✅ AudioCall: Fetched user {userId} from OData (single): {user.FirstName} {user.LastName}");
+                            return user;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex3)
+            {
+                Console.WriteLine($"⚠️ AudioCall: OData endpoint failed: {ex3.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ AudioCall: All API attempts failed for user {userId}: {ex.Message}");
+        }
+        
+        // Fallback to current user if fetching target user fails
+        if (AuthService.CurrentUser?.Id == userId)
+        {
+            Console.WriteLine($"✅ AudioCall: Using current user as fallback: {AuthService.CurrentUser.FirstName} {AuthService.CurrentUser.LastName}");
+            return new User
+            {
+                Id = userId,
+                FirstName = AuthService.CurrentUser.FirstName,
+                LastName = AuthService.CurrentUser.LastName
+            };
+        }
+        
+        // Last resort: return null and let the UI handle it
+        Console.WriteLine($"⚠️ AudioCall: Could not fetch user {userId}, returning null");
+        return null;
     }
 
     public async ValueTask DisposeAsync()

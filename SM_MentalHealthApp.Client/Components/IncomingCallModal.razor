@@ -1,6 +1,7 @@
 @using SM_MentalHealthApp.Client.Services
 @implements IDisposable
 @inject ISignalRService SignalRService
+@inject IRealtimeService RealtimeService
 @inject NotificationService NotificationService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
@@ -427,22 +428,43 @@
             }
 
             // ✅ Notify the caller that call was rejected FIRST (before cleanup)
-            if (SignalRService == null)
-            {
-                Console.WriteLine("⚠️ IncomingCallModal: SignalRService is null in DeclineCall");
-            }
-            else
+            // Try SignalR first (for mobile or web app users connected via SignalR)
+            bool rejectionSent = false;
+            if (SignalRService != null && SignalRService.IsConnected)
             {
                 try
                 {
                     await SignalRService.RejectCallAsync(callId);
+                    rejectionSent = true;
+                    Console.WriteLine("✅ IncomingCallModal: Rejection sent via SignalR");
                 }
                 catch (Exception rejectEx)
                 {
-                    Console.WriteLine($"❌ IncomingCallModal: Error sending rejection: {rejectEx.Message}");
-                    Console.WriteLine($"❌ IncomingCallModal: Stack trace: {rejectEx.StackTrace}");
+                    Console.WriteLine($"⚠️ IncomingCallModal: Error sending rejection via SignalR: {rejectEx.Message}");
+                    // Continue to try RealtimeService as fallback
+                }
+            }
+
+            // ✅ Also try RealtimeService (for web app users using polling)
+            // This ensures the call is removed from PendingCalls so it doesn't reappear
+            if (!rejectionSent && RealtimeService != null && RealtimeService.IsConnected)
+            {
+                try
+                {
+                    await RealtimeService.RejectCallAsync(callId);
+                    rejectionSent = true;
+                    Console.WriteLine("✅ IncomingCallModal: Rejection sent via RealtimeService");
+                }
+                catch (Exception rejectEx)
+                {
+                    Console.WriteLine($"⚠️ IncomingCallModal: Error sending rejection via RealtimeService: {rejectEx.Message}");
                     // Continue with cleanup even if rejection fails
                 }
+            }
+
+            if (!rejectionSent)
+            {
+                Console.WriteLine("⚠️ IncomingCallModal: Could not send rejection via either SignalR or RealtimeService");
             }
 
             // ✅ Check if receiver is on the call page (AudioCall/VideoCall) - if so, leave Agora and navigate back

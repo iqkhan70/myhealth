@@ -5,6 +5,7 @@
 @inject DialogService DialogService
 @inject IAuthService AuthService
 @inject ISignalRService SignalRService
+@inject IRealtimeService RealtimeService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
@@ -68,36 +69,97 @@ else
 
 @code {
     private CallInvitation? incomingCall;
+    private HashSet<string> rejectedCallIds = new(); // Track rejected calls to prevent re-showing
 
     protected override async Task OnInitializedAsync()
     {
-        // Set up SignalR event handlers
+        // Set up SignalR event handlers (for mobile-to-web calls)
         SignalRService.OnIncomingCall += HandleIncomingCall;
         SignalRService.OnNewMessage += HandleNewMessage;
         SignalRService.OnCallEnded += HandleCallEnded;
+        SignalRService.OnCallRejected += HandleCallRejected;
+
+        // ✅ ALSO set up RealtimeService event handlers (for web-to-web calls)
+        RealtimeService.OnIncomingCall += HandleIncomingCall;
+        RealtimeService.OnCallEnded += HandleCallEnded;
+        RealtimeService.OnCallRejected += HandleCallRejected;
 
         // Start SignalR connection if user is authenticated
         if (AuthService.CurrentUser != null)
         {
             await SignalRService.StartAsync();
+            // RealtimeService will be started when needed (e.g., when user navigates to RealTimeChat)
         }
     }
 
     private void HandleIncomingCall(CallInvitation call)
     {
-        // Filter calls - only show if this user is the target
         var currentUserId = AuthService.CurrentUser?.Id;
-        if (currentUserId == null || call.TargetUserId != currentUserId)
+        if (currentUserId == null)
         {
+            Console.WriteLine($"📞 MainLayout: Ignoring incoming call - user not authenticated");
             return;
         }
 
+        // ✅ CRITICAL: Don't show incoming call modal if this user is the caller (they initiated the call)
+        if (call.CallerId == currentUserId)
+        {
+            Console.WriteLine($"📞 MainLayout: Ignoring incoming call - user {currentUserId} is the caller (they initiated this call)");
+            return;
+        }
+
+        // ✅ Filter calls - only show if this user is the target
+        // If TargetUserId is set, use it; otherwise, assume any call where we're not the caller is for us
+        if (call.TargetUserId > 0 && call.TargetUserId != currentUserId)
+        {
+            Console.WriteLine($"📞 MainLayout: Ignoring incoming call - TargetUserId {call.TargetUserId} doesn't match current user {currentUserId}");
+            return;
+        }
+
+        // ✅ CRITICAL: Don't show if we already have this exact call (prevent duplicates)
+        if (incomingCall != null && incomingCall.CallId == call.CallId)
+        {
+            Console.WriteLine($"📞 MainLayout: Ignoring duplicate incoming call - already showing call {call.CallId}");
+            return;
+        }
+
+        // ✅ CRITICAL: Don't show if this call was already rejected by the user
+        if (rejectedCallIds.Contains(call.CallId))
+        {
+            Console.WriteLine($"📞 MainLayout: Ignoring incoming call - call {call.CallId} was already rejected");
+            return;
+        }
+
+        Console.WriteLine($"📞 MainLayout: Showing incoming call modal for call from {call.CallerName} (CallerId: {call.CallerId}, TargetUserId: {call.TargetUserId}, CurrentUserId: {currentUserId}, CallId: {call.CallId})");
         incomingCall = call;
         InvokeAsync(StateHasChanged);
 
         // Show notification
         NotificationService.Notify(NotificationSeverity.Info, "Incoming Call",
         $"{call.CallType} call from {call.CallerName}");
+    }
+
+    private void HandleCallRejected(string callId)
+    {
+        Console.WriteLine($"📞 MainLayout: HandleCallRejected called for callId: {callId}");
+        
+        // ✅ Mark this call as rejected to prevent it from being shown again
+        if (!string.IsNullOrEmpty(callId))
+        {
+            rejectedCallIds.Add(callId);
+            Console.WriteLine($"✅ MainLayout: Added {callId} to rejectedCallIds (total: {rejectedCallIds.Count})");
+        }
+        
+        // ✅ If the rejected call matches our incoming call, clear it immediately
+        if (incomingCall != null && 
+            (incomingCall.CallId == callId || 
+             callId.Contains(incomingCall.CallId) || 
+             incomingCall.CallId.Contains(callId)))
+        {
+            Console.WriteLine($"📞 MainLayout: Call {callId} was rejected, clearing incoming call modal");
+            incomingCall = null;
+            InvokeAsync(StateHasChanged);
+        }
     }
 
     private void HandleNewMessage(ChatMessage message)
@@ -208,6 +270,24 @@ else
 
     private async Task HandleCallDeclined(CallInvitation call)
     {
+        Console.WriteLine($"📞 MainLayout: HandleCallDeclined called for call {call.CallId}");
+        
+        // ✅ CRITICAL: Mark this call as rejected IMMEDIATELY to prevent it from being shown again
+        if (!string.IsNullOrEmpty(call.CallId))
+        {
+            rejectedCallIds.Add(call.CallId);
+            Console.WriteLine($"✅ MainLayout: Added {call.CallId} to rejectedCallIds (total: {rejectedCallIds.Count})");
+        }
+        
+        // ✅ CRITICAL: Clear the incoming call state IMMEDIATELY to prevent it from reappearing
+        // Do this BEFORE any async operations to prevent race conditions
+        if (incomingCall != null && incomingCall.CallId == call.CallId)
+        {
+            incomingCall = null;
+            StateHasChanged(); // Update UI immediately
+            Console.WriteLine($"✅ MainLayout: Cleared incoming call state for {call.CallId}");
+        }
+        
         // ✅ Stop ringtone when call is declined
         try
         {
@@ -218,7 +298,7 @@ else
             Console.WriteLine($"⚠️ MainLayout: Error stopping ringtone: {ex.Message}");
         }
         
-        incomingCall = null;
+        // Ensure state is updated
         await InvokeAsync(StateHasChanged);
     }
 
@@ -261,6 +341,12 @@ else
         SignalRService.OnIncomingCall -= HandleIncomingCall;
         SignalRService.OnNewMessage -= HandleNewMessage;
         SignalRService.OnCallEnded -= HandleCallEnded;
+        SignalRService.OnCallRejected -= HandleCallRejected;
+
+        // ✅ Also clean up RealtimeService event handlers
+        RealtimeService.OnIncomingCall -= HandleIncomingCall;
+        RealtimeService.OnCallEnded -= HandleCallEnded;
+        RealtimeService.OnCallRejected -= HandleCallRejected;
 
         await SignalRService.StopAsync();
     }
