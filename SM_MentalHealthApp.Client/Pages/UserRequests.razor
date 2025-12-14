@@ -38,7 +38,7 @@
                     Click="@RefreshRequests" Disabled="@isLoading" />
                 <div class="auto-refresh-indicator">
                     <span class="refresh-icon">⚡</span>
-                    <span>Auto-refresh every 30s</span>
+                    <span>Auto-refresh every 3m</span>
                 </div>
             </div>
         </div>
@@ -145,8 +145,38 @@
                         {
                             var expandedRequest = expandedRequests[request.Id];
                             <div class="p-4" style="background-color: #f8f9fa; border-top: 2px solid #dee2e6;">
-                                <h6 class="mb-3">Accident Information</h6>
-                                <div class="row">
+                                @* Lead Intake Section - Expandable *@
+                                <div class="lead-intake-section-header" style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 8px 0; margin-bottom: 12px;" @onclick="@(() => ToggleLeadIntakeSection(request.Id))">
+                                    <span style="font-size: 18px; transition: transform 0.2s; transform: @(expandedLeadIntakeSections.Contains(request.Id) ? "rotate(90deg)" : "rotate(0deg)")">▶</span>
+                                    <h6 class="mb-0" style="margin: 0;">Lead Intake</h6>
+                                </div>
+                                @if (expandedLeadIntakeSections.Contains(request.Id))
+                                {
+                                    <div class="row">
+                                        <div class="col-md-12 mb-3">
+                                            <p class="text-muted">Lead intake information will be displayed here.</p>
+                                        </div>
+                                    </div>
+                                    
+                                    @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator can edit
+                                    {
+                                        <div class="col-12 mt-3">
+                                            <RadzenButton Text="Edit Lead Intake" 
+                                                         ButtonStyle="ButtonStyle.Primary" 
+                                                         Size="ButtonSize.Small"
+                                                         Click="@(() => ShowEditLeadIntakeDialog(expandedRequest))" />
+                                        </div>
+                                    }
+                                }
+                                
+                                @* Accident Section - Expandable *@
+                                <div class="accident-section-header" style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 8px 0; margin-bottom: 12px; margin-top: 12px;" @onclick="@(() => ToggleAccidentSection(request.Id))">
+                                    <span style="font-size: 18px; transition: transform 0.2s; transform: @(expandedAccidentSections.Contains(request.Id) ? "rotate(90deg)" : "rotate(0deg)")">▶</span>
+                                    <h6 class="mb-0" style="margin: 0;">Accident section</h6>
+                                </div>
+                                @if (expandedAccidentSections.Contains(request.Id))
+                                {
+                                    <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label"><strong>Age:</strong></label>
                                         <div>@(expandedRequest.Age?.ToString() ?? "Not provided")</div>
@@ -204,7 +234,8 @@
                                                          Click="@(() => ShowEditAccidentInfoDialog(expandedRequest))" />
                                         </div>
                                     }
-                                </div>
+                                    </div>
+                                }
                             </div>
                         }
                     </Template>
@@ -447,6 +478,35 @@
     </SMModal>
 }
 
+<!-- Edit Lead Intake Dialog -->
+@if (showEditLeadIntakeDialog && selectedRequest != null)
+{
+    <SMModal IsVisible="@showEditLeadIntakeDialog" 
+             Title="Edit Lead Intake" 
+             OnClose="@(() => { showEditLeadIntakeDialog = false; selectedRequest = null; })"
+             Size="Large">
+        <Body>
+            <div class="dialog-content">
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <p class="text-muted">Lead intake fields will be added here.</p>
+                        <!-- TODO: Add lead intake form fields when ready -->
+                    </div>
+                </div>
+                
+                <div class="dialog-actions">
+                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" 
+                                 Click="@(() => { showEditLeadIntakeDialog = false; selectedRequest = null; })" 
+                                 Disabled="@isProcessing" />
+                    <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Primary" 
+                                 Click="@SaveLeadIntake" 
+                                 Disabled="@isProcessing" />
+                </div>
+            </div>
+        </Body>
+    </SMModal>
+}
+
 @code {
     private List<UserRequest> userRequests = new();
     private bool isLoading = true;
@@ -456,6 +516,7 @@
     private bool showPendingDialog = false;
     private bool showDetailsDialog = false;
     private bool showEditAccidentInfoDialog = false;
+    private bool showEditLeadIntakeDialog = false;
     private bool isProcessing = false;
     private string approveNotes = "";
     private string rejectNotes = "";
@@ -464,6 +525,8 @@
     private System.Threading.Timer? _refreshTimer;
     private RadzenDataGrid<UserRequest>? dataGrid;
     private Dictionary<int, UserRequest> expandedRequests = new();
+    private HashSet<int> expandedAccidentSections = new HashSet<int>(); // Track which rows have accident section expanded
+    private HashSet<int> expandedLeadIntakeSections = new HashSet<int>(); // Track which rows have lead intake section expanded
     
     // Accident information form
     private int? editAge;
@@ -838,7 +901,79 @@
                     }
                 }
             });
-        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        }, null, TimeSpan.FromSeconds(180), TimeSpan.FromSeconds(180));
+    }
+
+    private void ToggleAccidentSection(int requestId)
+    {
+        if (expandedAccidentSections.Contains(requestId))
+        {
+            expandedAccidentSections.Remove(requestId);
+        }
+        else
+        {
+            expandedAccidentSections.Add(requestId);
+        }
+        StateHasChanged();
+    }
+
+    private void ToggleLeadIntakeSection(int requestId)
+    {
+        if (expandedLeadIntakeSections.Contains(requestId))
+        {
+            expandedLeadIntakeSections.Remove(requestId);
+        }
+        else
+        {
+            expandedLeadIntakeSections.Add(requestId);
+        }
+        StateHasChanged();
+    }
+    
+    private void ShowEditLeadIntakeDialog(UserRequest request)
+    {
+        selectedRequest = request;
+        showEditLeadIntakeDialog = true;
+    }
+    
+    private async Task SaveLeadIntake()
+    {
+        if (selectedRequest == null) return;
+        
+        try
+        {
+            isProcessing = true;
+            StateHasChanged();
+            
+            // TODO: Add lead intake fields here when ready
+            var updateRequest = new
+            {
+                // Placeholder - fields will be added later
+            };
+            
+            // TODO: Update endpoint when ready
+            // var response = await Http.PutAsJsonAsync($"api/UserRequest/{selectedRequest.Id}/lead-intake", updateRequest);
+            
+            // Placeholder success message
+            NotificationService.Notify(NotificationSeverity.Success, "Success", "Lead intake information updated successfully");
+            showEditLeadIntakeDialog = false;
+            // Refresh the request
+            await LoadUserRequests();
+            // Clear expanded cache for this request
+            if (expandedRequests.ContainsKey(selectedRequest.Id))
+            {
+                expandedRequests.Remove(selectedRequest.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Error updating lead intake information: {ex.Message}");
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()
