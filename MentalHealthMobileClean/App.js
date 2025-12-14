@@ -511,18 +511,47 @@ export default function App() {
           // Message is valid - add it to messages (ONLY ONCE - removed duplicate)
           setMessages((prev) => {
             // Check if message already exists to prevent duplicates
-            const existingMessage = prev.find(m => 
-              m.id === message.id || 
-              (m.text === messageText && m.senderId === message.senderId && Math.abs((m.timestamp?.getTime() || 0) - (message.timestamp ? new Date(message.timestamp).getTime() : Date.now())) < 5000)
-            );
+            // Check by ID first (most reliable)
+            if (message.id) {
+              const existingById = prev.find(m => m.id?.toString() === message.id?.toString());
+              if (existingById) {
+                console.log('📱 App: Duplicate message detected by ID, skipping:', message.id);
+                return prev;
+              }
+            }
             
-            if (existingMessage) {
-              console.log('📱 App: Duplicate message detected, skipping:', message.id || messageText.substring(0, 30));
+            // Also check by text + sender + timestamp (for cases where ID might differ)
+            const messageTimestamp = message.timestamp ? new Date(message.timestamp).getTime() : Date.now();
+            const existingByContent = prev.find(m => {
+              const mText = m.text?.trim();
+              const msgText = messageText.trim();
+              const mTime = m.timestamp?.getTime() || 0;
+              const timeDiff = Math.abs(mTime - messageTimestamp);
+              
+              // Same text, same sender, within 5 seconds
+              return mText === msgText && 
+                     m.senderId === message.senderId && 
+                     timeDiff < 5000;
+            });
+            
+            if (existingByContent) {
+              // If we found a match by content but IDs differ, update the existing message's ID
+              // This handles the case where optimistic message gets replaced with real ID
+              if (message.id && existingByContent.id !== message.id) {
+                console.log('📱 App: Updating existing message ID from', existingByContent.id, 'to', message.id);
+                const updated = prev.map(m => 
+                  m === existingByContent 
+                    ? { ...m, id: message.id.toString() }
+                    : m
+                );
+                return updated;
+              }
+              console.log('📱 App: Duplicate message detected by content, skipping:', message.id || messageText.substring(0, 30));
               return prev;
             }
             
             const newMessage = {
-              id: message.id || `${Date.now()}_${message.senderId}`,
+              id: message.id?.toString() || `${Date.now()}_${message.senderId}`,
               text: messageText,
               isMe: message.senderId === currentUserId,
               timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
@@ -964,16 +993,23 @@ export default function App() {
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedContact) return;
-    const msg = {
-      id: Date.now().toString(),
-      text: newMessage.trim(),
+    
+    const messageText = newMessage.trim();
+    const optimisticId = `temp_${Date.now()}_${user?.id}`;
+    const optimisticTimestamp = new Date();
+    
+    // Add message optimistically with a temporary ID
+    const optimisticMsg = {
+      id: optimisticId,
+      text: messageText,
       isMe: true,
-      timestamp: new Date(),
+      timestamp: optimisticTimestamp,
       senderId: user?.id,
       senderName: `${user?.firstName} ${user?.lastName}`
     };
+    
     setMessages((prev) => {
-      const newMessages = [...prev, msg];
+      const newMessages = [...prev, optimisticMsg];
       // Auto-scroll to bottom when sending message
       setTimeout(() => {
         messagesScrollViewRef.current?.scrollToEnd({ animated: true });
@@ -982,20 +1018,45 @@ export default function App() {
     });
 
     try {
+      // Send via SignalR if connected (for real-time delivery)
       if (signalRConnected) {
-        await SignalRService.sendMessage(selectedContact.id, newMessage.trim());
+        await SignalRService.sendMessage(selectedContact.id, messageText);
       }
+      
+      // Send via HTTP API (this saves to DB and returns the real message ID)
       const resp = await fetch(`${API_BASE_URL}/mobile/send-message`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${await AsyncStorage.getItem('userToken')}`
         },
-        body: JSON.stringify({ targetUserId: selectedContact.id, message: newMessage.trim() })
+        body: JSON.stringify({ targetUserId: selectedContact.id, message: messageText })
       });
-      // (optional) handle resp
+      
+      if (resp.ok) {
+        const result = await resp.json();
+        const realMessageId = result.messageId?.toString();
+        
+        // Replace optimistic message with real one (if we got a real ID)
+        if (realMessageId) {
+          setMessages((prev) => {
+            // Find and replace the optimistic message
+            const index = prev.findIndex(m => m.id === optimisticId);
+            if (index !== -1) {
+              const updated = [...prev];
+              updated[index] = {
+                ...updated[index],
+                id: realMessageId // Replace temp ID with real ID
+              };
+              return updated;
+            }
+            return prev;
+          });
+        }
+      }
     } catch (e) {
       console.error('sendMessage error:', e);
+      // On error, we could remove the optimistic message, but keeping it is better UX
     } finally {
       setNewMessage('');
     }
