@@ -470,30 +470,45 @@ export default function App() {
           }
           
           // Second check: If we're in chat view, message must be for the selected contact
+          // Check both refs AND state to avoid race conditions
           const currentViewState = currentViewRef.current;
           const currentContact = selectedContactRef.current;
           
-          if (currentViewState === 'chat') {
-            if (currentContact) {
+          console.log('📱 App: Checking view state - ref:', currentViewState, 'state:', currentView, 'contact ref:', currentContact?.id, 'contact state:', selectedContact?.id);
+          
+          // Use ref first, fallback to state if ref is not set yet
+          const isInChatView = currentViewState === 'chat' || currentView === 'chat';
+          
+          if (isInChatView) {
+            const contact = currentContact || selectedContact;
+            if (contact) {
               // In chat view with a selected contact - only show messages for that contact
-              const isForCurrentChat = (message.senderId === currentContact.id && message.targetUserId === currentUserId) ||
-                                      (message.targetUserId === currentContact.id && message.senderId === currentUserId);
+              const isForCurrentChat = (message.senderId === contact.id && message.targetUserId === currentUserId) ||
+                                      (message.targetUserId === contact.id && message.senderId === currentUserId);
+              
+              console.log('📱 App: Checking if message is for current chat:', {
+                isForCurrentChat,
+                senderId: message.senderId,
+                targetUserId: message.targetUserId,
+                contactId: contact.id,
+                currentUserId: currentUserId
+              });
               
               if (!isForCurrentChat) {
-                console.log('📱 App: Message not for current chat (selectedContact:', currentContact.id, 'message sender:', message.senderId, 'target:', message.targetUserId, ')');
+                console.log('📱 App: Message not for current chat (selectedContact:', contact.id, 'message sender:', message.senderId, 'target:', message.targetUserId, ')');
                 return;
               }
             } else {
-              // In chat view but no contact selected yet - might be loading, allow message
-              console.log('📱 App: In chat view but no contact selected yet, adding message anyway');
+              // In chat view but no contact selected yet - might be loading, allow message if it's for current user
+              console.log('📱 App: In chat view but no contact selected yet, allowing message for current user');
             }
           } else {
             // Not in chat view - don't add message to UI (will be loaded when chat opens)
-            console.log('📱 App: Not in chat view (currentView:', currentViewState, '), ignoring message (will load from DB when chat opens)');
+            console.log('📱 App: Not in chat view (ref:', currentViewState, 'state:', currentView, '), ignoring message (will load from DB when chat opens)');
             return;
           }
           
-          // Message is valid - add it to messages
+          // Message is valid - add it to messages (ONLY ONCE - removed duplicate)
           setMessages((prev) => {
             // Check if message already exists to prevent duplicates
             const existingMessage = prev.find(m => 
@@ -502,54 +517,27 @@ export default function App() {
             );
             
             if (existingMessage) {
-              // Duplicate message - this can happen if message is received via SignalR and also loaded from DB
-              // Just skip it silently, no need to log every time
+              console.log('📱 App: Duplicate message detected, skipping:', message.id || messageText.substring(0, 30));
               return prev;
             }
             
             const newMessage = {
-              id: message.id || Date.now().toString(),
+              id: message.id || `${Date.now()}_${message.senderId}`,
               text: messageText,
               isMe: message.senderId === currentUserId,
               timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
               senderId: message.senderId,
               senderName: message.senderName || 'Unknown'
             };
-            console.log('📱 App: Message isMe check - senderId:', message.senderId, 'currentUserId:', currentUserId, 'isMe:', message.senderId === currentUserId);
-            console.log('📱 App: ✅ Adding new message to chat:', newMessage);
-            const newMessages = [...prev, newMessage];
             
-            // Auto-scroll to bottom when new message arrives
-            setTimeout(() => {
-              messagesScrollViewRef.current?.scrollToEnd({ animated: true });
-            }, 100);
+            console.log('📱 App: ✅ Adding new message to chat:', {
+              id: newMessage.id,
+              text: newMessage.text.substring(0, 50),
+              isMe: newMessage.isMe,
+              senderId: newMessage.senderId,
+              senderName: newMessage.senderName
+            });
             
-            return newMessages;
-          });
-          
-          // Use functional update to access current state
-          setMessages((prev) => {
-            // Check if message already exists to prevent duplicates
-            const existingMessage = prev.find(m => 
-              m.id === message.id || 
-              (m.text === messageText && m.senderId === message.senderId && Math.abs((m.timestamp?.getTime() || 0) - (message.timestamp ? new Date(message.timestamp).getTime() : Date.now())) < 5000)
-            );
-            
-            if (existingMessage) {
-              // Duplicate message - this can happen if message is received via SignalR and also loaded from DB
-              // Just skip it silently, no need to log every time
-              return prev;
-            }
-            
-            const newMessage = {
-              id: message.id || Date.now().toString(),
-              text: messageText,
-              isMe: message.senderId === currentUserId, // Use currentUserId from ref
-              timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
-              senderId: message.senderId,
-              senderName: message.senderName || 'Unknown'
-            };
-            console.log('📱 App: Adding new message to chat:', newMessage);
             const newMessages = [...prev, newMessage];
             
             // Auto-scroll to bottom when new message arrives
@@ -562,12 +550,119 @@ export default function App() {
         });
   };
 
+  // Polling fallback when SignalR is not connected
+  const pollingIntervalRef = useRef(null);
+  const lastMessageTimestampRef = useRef(0);
+  
+  const startPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      return; // Already polling
+    }
+    
+    console.log('📡 App: Starting polling fallback for messages (SignalR not connected)');
+    
+    const pollForMessages = async () => {
+      try {
+        if (!user?.id || currentView !== 'chat' || !selectedContact) {
+          return;
+        }
+        
+        const token = await AsyncStorage.getItem('userToken');
+        if (!token) return;
+        
+        // Poll for new messages - get all messages and filter for new ones
+        const resp = await fetch(`${API_BASE_URL}/mobile/messages/${selectedContact.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (resp.ok) {
+          const arr = await resp.json();
+          if (Array.isArray(arr)) {
+            // Check if we have new messages by comparing timestamps
+            setMessages((prev) => {
+              const existingIds = new Set(prev.map(m => m.id?.toString()));
+              const newMessages = arr
+                .filter(m => {
+                  const messageId = m.id?.toString();
+                  const messageTime = new Date(m.sentAt).getTime();
+                  // Only add if it's a new message (not in existing set) and is newer than last poll
+                  return !existingIds.has(messageId) && messageTime > lastMessageTimestampRef.current;
+                })
+                .map(m => {
+                  const messageTime = new Date(m.sentAt).getTime();
+                  if (messageTime > lastMessageTimestampRef.current) {
+                    lastMessageTimestampRef.current = messageTime;
+                  }
+                  return {
+                    id: m.id?.toString() || `${Date.now()}_${m.senderId}`,
+                    text: m.message,
+                    isMe: m.senderId === user.id,
+                    timestamp: new Date(m.sentAt),
+                    senderId: m.senderId,
+                    senderName: m.senderName || 'Unknown'
+                  };
+                });
+              
+              if (newMessages.length > 0) {
+                console.log('📡 App: Polling found', newMessages.length, 'new messages');
+                const updated = [...prev, ...newMessages];
+                // Auto-scroll to bottom
+                setTimeout(() => {
+                  messagesScrollViewRef.current?.scrollToEnd({ animated: true });
+                }, 100);
+                return updated;
+              }
+              return prev;
+            });
+          }
+        }
+      } catch (e) {
+        console.error('📡 App: Polling error:', e);
+      }
+    };
+    
+    // Poll immediately, then every 2 seconds
+    pollForMessages();
+    pollingIntervalRef.current = setInterval(pollForMessages, 2000);
+  }, [user, currentView, selectedContact]);
+  
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+      console.log('📡 App: Stopped polling');
+    }
+  }, []);
+  
+  // Start/stop polling based on SignalR connection and chat view
+  useEffect(() => {
+    if (!signalRConnected && currentView === 'chat' && selectedContact && user) {
+      console.log('📡 App: SignalR not connected, starting polling fallback');
+      startPolling();
+    } else {
+      stopPolling();
+    }
+    
+    return () => {
+      stopPolling();
+    };
+  }, [signalRConnected, currentView, selectedContact, user, startPolling, stopPolling]);
+
   // ---------- SIGNALR ----------
-  const initializeSignalR = async (token) => {
+  const initializeSignalR = async (token, retryCount = 0) => {
+    const maxRetries = 3;
     try {
       console.log('🔌 App: ========== INITIALIZING SIGNALR ==========');
       console.log('🔌 App: SignalR Hub URL:', SIGNALR_HUB_URL);
       console.log('🔌 App: Token available:', !!token);
+      console.log('🔌 App: Retry attempt:', retryCount);
+      
+      // Disconnect any existing connection first
+      try {
+        await SignalRService.disconnect();
+      } catch (e) {
+        // Ignore disconnect errors
+      }
       
       const connected = await SignalRService.initialize(SIGNALR_HUB_URL, token);
       console.log('🔌 App: SignalR initialization result:', connected);
@@ -587,6 +682,11 @@ export default function App() {
           if (!isConnected || state !== 'Connected') {
             console.warn('⚠️ App: SignalR connection lost! State:', state, 'isConnected:', isConnected);
             setSignalRConnected(false);
+            // Try to reconnect
+            if (user && token) {
+              console.log('🔄 App: Attempting to reconnect SignalR...');
+              setTimeout(() => initializeSignalR(token, 0), 5000);
+            }
           }
         }, 30000); // Every 30 seconds
         
@@ -624,11 +724,31 @@ export default function App() {
         console.error('❌ App: SignalR failed to connect!');
         console.error('❌ App: Connection result was false');
         setSignalRConnected(false);
+        
+        // Retry connection
+        if (retryCount < maxRetries) {
+          console.log(`🔄 App: Retrying SignalR connection (attempt ${retryCount + 1}/${maxRetries})...`);
+          setTimeout(() => {
+            initializeSignalR(token, retryCount + 1);
+          }, 3000 * (retryCount + 1)); // Exponential backoff
+        } else {
+          console.error('❌ App: SignalR connection failed after', maxRetries, 'attempts. Using polling fallback.');
+        }
       }
     } catch (e) {
       console.error('❌ App: SignalR init error:', e);
       console.error('❌ App: Error details:', JSON.stringify(e, null, 2));
       setSignalRConnected(false);
+      
+      // Retry on error
+      if (retryCount < maxRetries) {
+        console.log(`🔄 App: Retrying SignalR connection after error (attempt ${retryCount + 1}/${maxRetries})...`);
+        setTimeout(() => {
+          initializeSignalR(token, retryCount + 1);
+        }, 3000 * (retryCount + 1));
+      } else {
+        console.error('❌ App: SignalR connection failed after', maxRetries, 'attempts. Using polling fallback.');
+      }
     }
   };
 
@@ -790,10 +910,13 @@ export default function App() {
 
   // ---------- CHAT ----------
   const openChat = (contact) => {
+    console.log('📱 App: Opening chat with contact:', contact.id);
+    // Update refs FIRST to ensure they're available immediately
+    selectedContactRef.current = contact;
+    currentViewRef.current = 'chat';
+    // Then update state
     setSelectedContact(contact);
-    selectedContactRef.current = contact; // Update ref
     setCurrentView('chat');
-    currentViewRef.current = 'chat'; // Update ref
     loadChatHistory(contact.id);
   };
 
@@ -812,16 +935,24 @@ export default function App() {
       });
       if (resp.ok) {
         const arr = await resp.json();
-        setMessages(
-          (arr || []).map((m, i) => ({
-            id: m.id || `${Date.now()}_${i}`,
-            text: m.message,
-            isMe: m.isMe,
-            timestamp: new Date(m.sentAt),
-            senderId: m.senderId,
-            senderName: m.senderName || 'Unknown'
-          }))
-        );
+        const loadedMessages = (arr || []).map((m, i) => ({
+          id: m.id?.toString() || `${Date.now()}_${i}`,
+          text: m.message,
+          isMe: m.isMe,
+          timestamp: new Date(m.sentAt),
+          senderId: m.senderId,
+          senderName: m.senderName || 'Unknown'
+        }));
+        console.log('📱 App: Loaded', loadedMessages.length, 'messages from database');
+        setMessages(loadedMessages);
+        
+        // Update last message timestamp for polling
+        if (loadedMessages.length > 0) {
+          const latestMessage = loadedMessages[loadedMessages.length - 1];
+          lastMessageTimestampRef.current = latestMessage.timestamp?.getTime() || Date.now();
+        } else {
+          lastMessageTimestampRef.current = Date.now();
+        }
       } else {
         setMessages([]);
       }
@@ -1335,6 +1466,19 @@ export default function App() {
       setIncomingCall(null);
     }
   };
+
+  // Keep refs in sync with state - CRITICAL for message handling
+  useEffect(() => {
+    currentViewRef.current = currentView;
+  }, [currentView]);
+
+  useEffect(() => {
+    selectedContactRef.current = selectedContact;
+  }, [selectedContact]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   // Debug: Log when incomingCall state changes
   useEffect(() => {
