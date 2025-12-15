@@ -33,5 +33,12 @@ namespace SM_MentalHealthApp.Shared
         public string Code { get; set; } = string.Empty; // VARCHAR(30) UNIQUE
         public string Label { get; set; } = string.Empty; // VARCHAR(80)
     }
+
+    public class SymptomOngoingStatus
+    {
+        public int Id { get; set; }
+        public string Code { get; set; } = string.Empty; // VARCHAR(30) UNIQUE
+        public string Label { get; set; } = string.Empty; // VARCHAR(80)
+    }
 }
 

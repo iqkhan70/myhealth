@@ -63,6 +63,7 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<VehicleDisposition> VehicleDispositions { get; set; }
             public DbSet<TransportToCareMethod> TransportToCareMethods { get; set; }
             public DbSet<MedicalAttentionType> MedicalAttentionTypes { get; set; }
+            public DbSet<SymptomOngoingStatus> SymptomOngoingStatuses { get; set; }
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -192,6 +193,16 @@ namespace SM_MentalHealthApp.Server.Data
                   modelBuilder.Entity<MedicalAttentionType>(entity =>
                   {
                         entity.ToTable("MedicalAttentionType"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Code).IsRequired().HasMaxLength(30);
+                        entity.Property(e => e.Label).IsRequired().HasMaxLength(80);
+                        entity.HasIndex(e => e.Code).IsUnique();
+                  });
+
+                  // Configure SymptomOngoingStatus entity
+                  modelBuilder.Entity<SymptomOngoingStatus>(entity =>
+                  {
+                        entity.ToTable("SymptomOngoingStatus"); // Explicit table name (singular, matches SQL script)
                         entity.HasKey(e => e.Id);
                         entity.Property(e => e.Code).IsRequired().HasMaxLength(30);
                         entity.Property(e => e.Label).IsRequired().HasMaxLength(80);

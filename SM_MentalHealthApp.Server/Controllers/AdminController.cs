@@ -1228,6 +1228,39 @@ namespace SM_MentalHealthApp.Server.Controllers
                 patient.DoctorsInformation = request.DoctorsInformation;
                 patient.LawyersInformation = request.LawyersInformation;
                 patient.AdditionalNotes = request.AdditionalNotes;
+                
+                // New fields from Script121525.sql
+                patient.SymptomOngoingStatusId = request.SymptomOngoingStatusId;
+                patient.SymptomsHeadaches = request.SymptomsHeadaches;
+                patient.SymptomsDizziness = request.SymptomsDizziness;
+                patient.SymptomsNeckPain = request.SymptomsNeckPain;
+                patient.SymptomsBackPain = request.SymptomsBackPain;
+                patient.SymptomsJointPain = request.SymptomsJointPain;
+                patient.SymptomsNumbnessTingling = request.SymptomsNumbnessTingling;
+                patient.WentToEmergencyRoom = request.WentToEmergencyRoom;
+                patient.ERHospitalName = request.ERHospitalName;
+                patient.ERVisitDate = request.ERVisitDate;
+                patient.TreatingInjurySpecialist = request.TreatingInjurySpecialist;
+                patient.InjurySpecialistDetails = request.InjurySpecialistDetails;
+                patient.InsuranceAdjusterContacted = request.InsuranceAdjusterContacted;
+                patient.ProvidedRecordedStatement = request.ProvidedRecordedStatement;
+                patient.ReceivedSettlementOffer = request.ReceivedSettlementOffer;
+                patient.SettlementOfferAmount = request.SettlementOfferAmount;
+                patient.ClaimInsuranceCompany = request.ClaimInsuranceCompany;
+                patient.SignedDocumentsRelatedToAccident = request.SignedDocumentsRelatedToAccident;
+                patient.SignedDocumentsNotes = request.SignedDocumentsNotes;
+                patient.AttorneyName = request.AttorneyName;
+                patient.AttorneyFirm = request.AttorneyFirm;
+                patient.VehicleCurrentLocation = request.VehicleCurrentLocation;
+                patient.InsuranceEstimateCompleted = request.InsuranceEstimateCompleted;
+                patient.EstimatedRepairAmount = request.EstimatedRepairAmount;
+                patient.VehicleTotalLoss = request.VehicleTotalLoss;
+                patient.MissedWork = request.MissedWork;
+                patient.MissedWorkDays = request.MissedWorkDays;
+                patient.WorkingWithRestrictions = request.WorkingWithRestrictions;
+                patient.WorkRestrictionDetails = request.WorkRestrictionDetails;
+                patient.DailyActivitiesAffected = request.DailyActivitiesAffected;
+                patient.DailyActivitiesNotes = request.DailyActivitiesNotes;
 
                 await _context.SaveChangesAsync();
 
@@ -1842,6 +1875,39 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? DoctorsInformation { get; set; }
         public string? LawyersInformation { get; set; }
         public string? AdditionalNotes { get; set; }
+        
+        // New fields from Script121525.sql
+        public int? SymptomOngoingStatusId { get; set; }
+        public bool? SymptomsHeadaches { get; set; }
+        public bool? SymptomsDizziness { get; set; }
+        public bool? SymptomsNeckPain { get; set; }
+        public bool? SymptomsBackPain { get; set; }
+        public bool? SymptomsJointPain { get; set; }
+        public bool? SymptomsNumbnessTingling { get; set; }
+        public bool? WentToEmergencyRoom { get; set; }
+        public string? ERHospitalName { get; set; }
+        public DateTime? ERVisitDate { get; set; }
+        public bool? TreatingInjurySpecialist { get; set; }
+        public string? InjurySpecialistDetails { get; set; }
+        public bool? InsuranceAdjusterContacted { get; set; }
+        public bool? ProvidedRecordedStatement { get; set; }
+        public bool? ReceivedSettlementOffer { get; set; }
+        public decimal? SettlementOfferAmount { get; set; }
+        public string? ClaimInsuranceCompany { get; set; }
+        public bool? SignedDocumentsRelatedToAccident { get; set; }
+        public string? SignedDocumentsNotes { get; set; }
+        public string? AttorneyName { get; set; }
+        public string? AttorneyFirm { get; set; }
+        public string? VehicleCurrentLocation { get; set; }
+        public bool? InsuranceEstimateCompleted { get; set; }
+        public decimal? EstimatedRepairAmount { get; set; }
+        public bool? VehicleTotalLoss { get; set; }
+        public bool? MissedWork { get; set; }
+        public int? MissedWorkDays { get; set; }
+        public bool? WorkingWithRestrictions { get; set; }
+        public string? WorkRestrictionDetails { get; set; }
+        public bool? DailyActivitiesAffected { get; set; }
+        public string? DailyActivitiesNotes { get; set; }
     }
 
     public class CreateCoordinatorRequest

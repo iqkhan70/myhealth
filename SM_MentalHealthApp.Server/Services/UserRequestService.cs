@@ -37,6 +37,39 @@ namespace SM_MentalHealthApp.Server.Services
         public string? DoctorsInformation { get; set; }
         public string? LawyersInformation { get; set; }
         public string? AdditionalNotes { get; set; }
+        
+        // New fields from Script121525.sql
+        public int? SymptomOngoingStatusId { get; set; }
+        public bool? SymptomsHeadaches { get; set; }
+        public bool? SymptomsDizziness { get; set; }
+        public bool? SymptomsNeckPain { get; set; }
+        public bool? SymptomsBackPain { get; set; }
+        public bool? SymptomsJointPain { get; set; }
+        public bool? SymptomsNumbnessTingling { get; set; }
+        public bool? WentToEmergencyRoom { get; set; }
+        public string? ERHospitalName { get; set; }
+        public DateTime? ERVisitDate { get; set; }
+        public bool? TreatingInjurySpecialist { get; set; }
+        public string? InjurySpecialistDetails { get; set; }
+        public bool? InsuranceAdjusterContacted { get; set; }
+        public bool? ProvidedRecordedStatement { get; set; }
+        public bool? ReceivedSettlementOffer { get; set; }
+        public decimal? SettlementOfferAmount { get; set; }
+        public string? ClaimInsuranceCompany { get; set; }
+        public bool? SignedDocumentsRelatedToAccident { get; set; }
+        public string? SignedDocumentsNotes { get; set; }
+        public string? AttorneyName { get; set; }
+        public string? AttorneyFirm { get; set; }
+        public string? VehicleCurrentLocation { get; set; }
+        public bool? InsuranceEstimateCompleted { get; set; }
+        public decimal? EstimatedRepairAmount { get; set; }
+        public bool? VehicleTotalLoss { get; set; }
+        public bool? MissedWork { get; set; }
+        public int? MissedWorkDays { get; set; }
+        public bool? WorkingWithRestrictions { get; set; }
+        public string? WorkRestrictionDetails { get; set; }
+        public bool? DailyActivitiesAffected { get; set; }
+        public string? DailyActivitiesNotes { get; set; }
     }
 
     public class UpdateLeadIntakeRequest
@@ -592,6 +625,39 @@ namespace SM_MentalHealthApp.Server.Services
             userRequest.DoctorsInformation = request.DoctorsInformation;
             userRequest.LawyersInformation = request.LawyersInformation;
             userRequest.AdditionalNotes = request.AdditionalNotes;
+            
+            // New fields from Script121525.sql
+            userRequest.SymptomOngoingStatusId = request.SymptomOngoingStatusId;
+            userRequest.SymptomsHeadaches = request.SymptomsHeadaches;
+            userRequest.SymptomsDizziness = request.SymptomsDizziness;
+            userRequest.SymptomsNeckPain = request.SymptomsNeckPain;
+            userRequest.SymptomsBackPain = request.SymptomsBackPain;
+            userRequest.SymptomsJointPain = request.SymptomsJointPain;
+            userRequest.SymptomsNumbnessTingling = request.SymptomsNumbnessTingling;
+            userRequest.WentToEmergencyRoom = request.WentToEmergencyRoom;
+            userRequest.ERHospitalName = request.ERHospitalName;
+            userRequest.ERVisitDate = request.ERVisitDate;
+            userRequest.TreatingInjurySpecialist = request.TreatingInjurySpecialist;
+            userRequest.InjurySpecialistDetails = request.InjurySpecialistDetails;
+            userRequest.InsuranceAdjusterContacted = request.InsuranceAdjusterContacted;
+            userRequest.ProvidedRecordedStatement = request.ProvidedRecordedStatement;
+            userRequest.ReceivedSettlementOffer = request.ReceivedSettlementOffer;
+            userRequest.SettlementOfferAmount = request.SettlementOfferAmount;
+            userRequest.ClaimInsuranceCompany = request.ClaimInsuranceCompany;
+            userRequest.SignedDocumentsRelatedToAccident = request.SignedDocumentsRelatedToAccident;
+            userRequest.SignedDocumentsNotes = request.SignedDocumentsNotes;
+            userRequest.AttorneyName = request.AttorneyName;
+            userRequest.AttorneyFirm = request.AttorneyFirm;
+            userRequest.VehicleCurrentLocation = request.VehicleCurrentLocation;
+            userRequest.InsuranceEstimateCompleted = request.InsuranceEstimateCompleted;
+            userRequest.EstimatedRepairAmount = request.EstimatedRepairAmount;
+            userRequest.VehicleTotalLoss = request.VehicleTotalLoss;
+            userRequest.MissedWork = request.MissedWork;
+            userRequest.MissedWorkDays = request.MissedWorkDays;
+            userRequest.WorkingWithRestrictions = request.WorkingWithRestrictions;
+            userRequest.WorkRestrictionDetails = request.WorkRestrictionDetails;
+            userRequest.DailyActivitiesAffected = request.DailyActivitiesAffected;
+            userRequest.DailyActivitiesNotes = request.DailyActivitiesNotes;
             userRequest.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();

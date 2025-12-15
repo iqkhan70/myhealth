@@ -110,6 +110,59 @@ namespace SM_MentalHealthApp.Shared
         [MaxLength(2000)]
         public string? AdditionalNotes { get; set; }
 
+        // New Accident fields from Script121525.sql
+        // 1) Detailed Injury Assessment
+        public int? SymptomOngoingStatusId { get; set; }
+        public bool? SymptomsHeadaches { get; set; }
+        public bool? SymptomsDizziness { get; set; }
+        public bool? SymptomsNeckPain { get; set; }
+        public bool? SymptomsBackPain { get; set; }
+        public bool? SymptomsJointPain { get; set; }
+        public bool? SymptomsNumbnessTingling { get; set; }
+
+        // 2) Medical Treatment Details
+        public bool? WentToEmergencyRoom { get; set; }
+        [MaxLength(255)]
+        public string? ERHospitalName { get; set; }
+        public DateTime? ERVisitDate { get; set; }
+        public bool? TreatingInjurySpecialist { get; set; }
+        [MaxLength(1000)]
+        public string? InjurySpecialistDetails { get; set; }
+
+        // 3) Insurance & Claims Handling
+        public bool? InsuranceAdjusterContacted { get; set; }
+        public bool? ProvidedRecordedStatement { get; set; }
+        public bool? ReceivedSettlementOffer { get; set; }
+        public decimal? SettlementOfferAmount { get; set; }
+        [MaxLength(255)]
+        public string? ClaimInsuranceCompany { get; set; }
+
+        // 4) Legal Representation
+        public bool? SignedDocumentsRelatedToAccident { get; set; }
+        [MaxLength(1000)]
+        public string? SignedDocumentsNotes { get; set; }
+        [MaxLength(255)]
+        public string? AttorneyName { get; set; }
+        [MaxLength(255)]
+        public string? AttorneyFirm { get; set; }
+
+        // 5) Vehicle & Property Damage
+        [MaxLength(500)]
+        public string? VehicleCurrentLocation { get; set; }
+        public bool? InsuranceEstimateCompleted { get; set; }
+        public decimal? EstimatedRepairAmount { get; set; }
+        public bool? VehicleTotalLoss { get; set; }
+
+        // 6) Work & Life Impact
+        public bool? MissedWork { get; set; }
+        public int? MissedWorkDays { get; set; }
+        public bool? WorkingWithRestrictions { get; set; }
+        [MaxLength(1000)]
+        public string? WorkRestrictionDetails { get; set; }
+        public bool? DailyActivitiesAffected { get; set; }
+        [MaxLength(1000)]
+        public string? DailyActivitiesNotes { get; set; }
+
         // Lead Intake fields
         [MaxLength(2)]
         public string? ResidenceStateCode { get; set; }

@@ -286,17 +286,9 @@
                                 @if (expandedAccidentSections.Contains(request.Id))
                                 {
                                     <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label"><strong>Age:</strong></label>
-                                        <div>@(expandedRequest.Age?.ToString() ?? "Not provided")</div>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label"><strong>Race:</strong></label>
-                                        <div>@(expandedRequest.Race ?? "Not provided")</div>
-                                    </div>
-                                    <div class="col-md-12 mb-3">
-                                        <label class="form-label"><strong>Accident Address:</strong></label>
-                                        <div>@(expandedRequest.AccidentAddress ?? "Not provided")</div>
+                                    @* 1. ACCIDENT BASICS (High Priority) *@
+                                    <div class="col-md-12 mb-3" style="border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                                        <h6 style="font-weight: bold; color: #333; margin: 0;">Accident Basics</h6>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label"><strong>Accident Date:</strong></label>
@@ -307,33 +299,384 @@
                                         <div>@(expandedRequest.DateReported?.ToString("MM/dd/yyyy") ?? "Not provided")</div>
                                     </div>
                                     <div class="col-md-12 mb-3">
-                                        <label class="form-label"><strong>Vehicle Details:</strong></label>
-                                        <div>@(expandedRequest.VehicleDetails ?? "Not provided")</div>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label"><strong>Police Case Number:</strong></label>
-                                        <div>@(expandedRequest.PoliceCaseNumber ?? "Not provided")</div>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label"><strong>Road Conditions:</strong></label>
-                                        <div>@(expandedRequest.RoadConditions ?? "Not provided")</div>
-                                    </div>
-                                    <div class="col-md-12 mb-3">
                                         <label class="form-label"><strong>Accident Details:</strong></label>
                                         <div style="white-space: pre-wrap;">@(expandedRequest.AccidentDetails ?? "Not provided")</div>
                                     </div>
                                     <div class="col-md-12 mb-3">
-                                        <label class="form-label"><strong>Doctor's Information:</strong></label>
-                                        <div style="white-space: pre-wrap;">@(expandedRequest.DoctorsInformation ?? "Not provided")</div>
+                                        <label class="form-label"><strong>Accident Address:</strong></label>
+                                        <div>@(expandedRequest.AccidentAddress ?? "Not provided")</div>
                                     </div>
-                                    <div class="col-md-12 mb-3">
-                                        <label class="form-label"><strong>Lawyer's Information:</strong></label>
-                                        <div style="white-space: pre-wrap;">@(expandedRequest.LawyersInformation ?? "Not provided")</div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label"><strong>Age:</strong></label>
+                                        <div>@(expandedRequest.Age?.ToString() ?? "Not provided")</div>
                                     </div>
-                                    <div class="col-md-12 mb-3">
-                                        <label class="form-label"><strong>Additional Notes:</strong></label>
-                                        <div style="white-space: pre-wrap;">@(expandedRequest.AdditionalNotes ?? "Not provided")</div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label"><strong>Race:</strong></label>
+                                        <div>@(expandedRequest.Race ?? "Not provided")</div>
                                     </div>
+                                    
+                                    @* 2. POLICE/LEGAL (High Priority) *@
+                                    @if (expandedRequest.PoliceInvolvement == true || !string.IsNullOrEmpty(expandedRequest.PoliceCaseNumber))
+                                    {
+                                        <div class="col-md-12 mb-3" style="border-top: 2px solid #ddd; padding-top: 15px; margin-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                                            <h6 style="font-weight: bold; color: #333; margin: 0;">Police/Legal</h6>
+                                        </div>
+                                        @if (expandedRequest.PoliceInvolvement == true)
+                                        {
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label"><strong>Police Involvement:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.PoliceCaseNumber))
+                                        {
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label"><strong>Police Case Number:</strong></label>
+                                                <div>@expandedRequest.PoliceCaseNumber</div>
+                                            </div>
+                                        }
+                                    }
+                                    
+                                    @* 3. INJURY ASSESSMENT (Medical Priority) *@
+                                    @if (expandedRequest.SymptomOngoingStatusId.HasValue || expandedRequest.SymptomsHeadaches == true || expandedRequest.SymptomsDizziness == true ||
+                                         expandedRequest.SymptomsNeckPain == true || expandedRequest.SymptomsBackPain == true || expandedRequest.SymptomsJointPain == true ||
+                                         expandedRequest.SymptomsNumbnessTingling == true || expandedRequest.LostConsciousness == true ||
+                                         expandedRequest.NeuroSymptoms == true || expandedRequest.MusculoskeletalSymptoms == true ||
+                                         expandedRequest.PsychologicalSymptoms == true || !string.IsNullOrEmpty(expandedRequest.SymptomsNotes))
+                                    {
+                                        <div class="col-md-12 mb-3" style="border-top: 2px solid #ddd; padding-top: 15px; margin-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                                            <h6 style="font-weight: bold; color: #333; margin: 0;">Injury Assessment</h6>
+                                        </div>
+                                        @if (expandedRequest.SymptomOngoingStatusId.HasValue)
+                                        {
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label"><strong>Symptom Ongoing Status:</strong></label>
+                                                <div>@GetSymptomOngoingStatusLabel(expandedRequest.SymptomOngoingStatusId.Value)</div>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.LostConsciousness == true)
+                                        {
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label"><strong>Lost Consciousness:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.NeuroSymptoms == true || expandedRequest.MusculoskeletalSymptoms == true || expandedRequest.PsychologicalSymptoms == true)
+                                        {
+                                            <div class="col-md-12 mb-3">
+                                                <label class="form-label"><strong>Symptom Types:</strong></label>
+                                                <div>
+                                                    @if (expandedRequest.NeuroSymptoms == true) { <span class="badge badge-secondary mr-1">Neurological</span> }
+                                                    @if (expandedRequest.MusculoskeletalSymptoms == true) { <span class="badge badge-secondary mr-1">Musculoskeletal</span> }
+                                                    @if (expandedRequest.PsychologicalSymptoms == true) { <span class="badge badge-secondary mr-1">Psychological</span> }
+                                                </div>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.SymptomsHeadaches == true || expandedRequest.SymptomsDizziness == true ||
+                                             expandedRequest.SymptomsNeckPain == true || expandedRequest.SymptomsBackPain == true ||
+                                             expandedRequest.SymptomsJointPain == true || expandedRequest.SymptomsNumbnessTingling == true)
+                                        {
+                                            <div class="col-md-12 mb-3">
+                                                <label class="form-label"><strong>Specific Symptoms:</strong></label>
+                                                <div>
+                                                    @if (expandedRequest.SymptomsHeadaches == true) { <span class="badge badge-secondary mr-1">Headaches</span> }
+                                                    @if (expandedRequest.SymptomsDizziness == true) { <span class="badge badge-secondary mr-1">Dizziness</span> }
+                                                    @if (expandedRequest.SymptomsNeckPain == true) { <span class="badge badge-secondary mr-1">Neck Pain</span> }
+                                                    @if (expandedRequest.SymptomsBackPain == true) { <span class="badge badge-secondary mr-1">Back Pain</span> }
+                                                    @if (expandedRequest.SymptomsJointPain == true) { <span class="badge badge-secondary mr-1">Joint Pain</span> }
+                                                    @if (expandedRequest.SymptomsNumbnessTingling == true) { <span class="badge badge-secondary mr-1">Numbness/Tingling</span> }
+                                                    @if ((expandedRequest.SymptomsHeadaches != true) && (expandedRequest.SymptomsDizziness != true) && 
+                                                         (expandedRequest.SymptomsNeckPain != true) && (expandedRequest.SymptomsBackPain != true) && 
+                                                         (expandedRequest.SymptomsJointPain != true) && (expandedRequest.SymptomsNumbnessTingling != true))
+                                                    { <span>None reported</span> }
+                                                </div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.SymptomsNotes))
+                                        {
+                                            <div class="col-md-12 mb-3">
+                                                <label class="form-label"><strong>Symptoms Notes:</strong></label>
+                                                <div style="white-space: pre-wrap;">@expandedRequest.SymptomsNotes</div>
+                                            </div>
+                                        }
+                                    }
+                                    
+                                    @* 4. MEDICAL TREATMENT *@
+                                    @if (expandedRequest.WentToEmergencyRoom == true || !string.IsNullOrEmpty(expandedRequest.ERHospitalName) || 
+                                         expandedRequest.ERVisitDate.HasValue || expandedRequest.TreatingInjurySpecialist == true || 
+                                         !string.IsNullOrEmpty(expandedRequest.InjurySpecialistDetails))
+                                    {
+                                        <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                                            <h6 style="font-weight: bold; color: #333; margin: 0;">Medical Treatment</h6>
+                                        </div>
+                                        @if (expandedRequest.WentToEmergencyRoom == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Went to Emergency Room:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(expandedRequest.ERHospitalName))
+                                            {
+                                                <div class="col-md-6 mb-2">
+                                                    <label class="form-label"><strong>ER Hospital Name:</strong></label>
+                                                    <div>@expandedRequest.ERHospitalName</div>
+                                                </div>
+                                            }
+                                            @if (expandedRequest.ERVisitDate.HasValue)
+                                            {
+                                                <div class="col-md-6 mb-2">
+                                                    <label class="form-label"><strong>ER Visit Date:</strong></label>
+                                                    <div>@expandedRequest.ERVisitDate.Value.ToString("MM/dd/yyyy")</div>
+                                                </div>
+                                            }
+                                        }
+                                        @if (expandedRequest.TreatingInjurySpecialist == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Treating with Injury Specialist:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(expandedRequest.InjurySpecialistDetails))
+                                            {
+                                                <div class="col-md-12 mb-2">
+                                                    <label class="form-label"><strong>Injury Specialist Details:</strong></label>
+                                                    <div style="white-space: pre-wrap;">@expandedRequest.InjurySpecialistDetails</div>
+                                                </div>
+                                            }
+                                        }
+                                    }
+                                    
+                                    @* 5. INSURANCE & CLAIMS *@
+                                    @if (expandedRequest.InsuranceContacted == true || expandedRequest.InsuranceAdjusterContacted == true || 
+                                         expandedRequest.ProvidedRecordedStatement == true || expandedRequest.ReceivedSettlementOffer == true || 
+                                         expandedRequest.SettlementOfferAmount.HasValue || !string.IsNullOrEmpty(expandedRequest.ClaimInsuranceCompany))
+                                    {
+                                        <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                                            <h6 style="font-weight: bold; color: #333; margin: 0;">Insurance & Claims</h6>
+                                        </div>
+                                        @if (expandedRequest.InsuranceContacted == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Insurance Contacted:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.InsuranceAdjusterContacted == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Insurance Adjuster Contacted:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.ClaimInsuranceCompany))
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Claim Insurance Company:</strong></label>
+                                                <div>@expandedRequest.ClaimInsuranceCompany</div>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.ProvidedRecordedStatement == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Provided Recorded Statement:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.ReceivedSettlementOffer == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Received Settlement Offer:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                            @if (expandedRequest.SettlementOfferAmount.HasValue)
+                                            {
+                                                <div class="col-md-6 mb-2">
+                                                    <label class="form-label"><strong>Settlement Offer Amount:</strong></label>
+                                                    <div>@expandedRequest.SettlementOfferAmount.Value.ToString("C")</div>
+                                                </div>
+                                            }
+                                        }
+                                    }
+                                    
+                                    @* 6. LEGAL REPRESENTATION *@
+                                    @if (expandedRequest.RepresentedByAttorney == true || expandedRequest.SignedDocumentsRelatedToAccident == true || 
+                                         !string.IsNullOrEmpty(expandedRequest.SignedDocumentsNotes) || !string.IsNullOrEmpty(expandedRequest.AttorneyName) || 
+                                         !string.IsNullOrEmpty(expandedRequest.AttorneyFirm))
+                                    {
+                                        <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                                            <h6 style="font-weight: bold; color: #333; margin: 0;">Legal Representation</h6>
+                                        </div>
+                                        @if (expandedRequest.RepresentedByAttorney == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Represented by Attorney:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.AttorneyName))
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Attorney Name:</strong></label>
+                                                <div>@expandedRequest.AttorneyName</div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.AttorneyFirm))
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Attorney Firm:</strong></label>
+                                                <div>@expandedRequest.AttorneyFirm</div>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.SignedDocumentsRelatedToAccident == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Signed Documents Related to Accident:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(expandedRequest.SignedDocumentsNotes))
+                                            {
+                                                <div class="col-md-12 mb-2">
+                                                    <label class="form-label"><strong>Signed Documents Notes:</strong></label>
+                                                    <div style="white-space: pre-wrap;">@expandedRequest.SignedDocumentsNotes</div>
+                                                </div>
+                                            }
+                                        }
+                                    }
+                                    
+                                    @* 7. VEHICLE & PROPERTY *@
+                                    @if (!string.IsNullOrEmpty(expandedRequest.VehicleDetails) || !string.IsNullOrEmpty(expandedRequest.VehicleCurrentLocation) || 
+                                         expandedRequest.InsuranceEstimateCompleted == true || expandedRequest.EstimatedRepairAmount.HasValue || 
+                                         expandedRequest.VehicleTotalLoss == true)
+                                    {
+                                        <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                                            <h6 style="font-weight: bold; color: #333; margin: 0;">Vehicle & Property</h6>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(expandedRequest.VehicleDetails))
+                                        {
+                                            <div class="col-md-12 mb-2">
+                                                <label class="form-label"><strong>Vehicle Details:</strong></label>
+                                                <div style="white-space: pre-wrap;">@expandedRequest.VehicleDetails</div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.VehicleCurrentLocation))
+                                        {
+                                            <div class="col-md-12 mb-2">
+                                                <label class="form-label"><strong>Vehicle Current Location:</strong></label>
+                                                <div>@expandedRequest.VehicleCurrentLocation</div>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.InsuranceEstimateCompleted == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Insurance Estimate Completed:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                            @if (expandedRequest.EstimatedRepairAmount.HasValue)
+                                            {
+                                                <div class="col-md-6 mb-2">
+                                                    <label class="form-label"><strong>Estimated Repair Amount:</strong></label>
+                                                    <div>@expandedRequest.EstimatedRepairAmount.Value.ToString("C")</div>
+                                                </div>
+                                            }
+                                        }
+                                        @if (expandedRequest.VehicleTotalLoss == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Vehicle Total Loss:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                        }
+                                    }
+                                    
+                                    @* 8. WORK & LIFE IMPACT *@
+                                    @if (expandedRequest.MissedWork == true || expandedRequest.MissedWorkDays.HasValue || expandedRequest.WorkingWithRestrictions == true ||
+                                         !string.IsNullOrEmpty(expandedRequest.WorkRestrictionDetails) || expandedRequest.DailyActivitiesAffected == true ||
+                                         !string.IsNullOrEmpty(expandedRequest.DailyActivitiesNotes))
+                                    {
+                                        <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                                            <h6 style="font-weight: bold; color: #333; margin: 0;">Work & Life Impact</h6>
+                                        </div>
+                                        @if (expandedRequest.MissedWork == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Missed Work:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                            @if (expandedRequest.MissedWorkDays.HasValue)
+                                            {
+                                                <div class="col-md-6 mb-2">
+                                                    <label class="form-label"><strong>Missed Work Days:</strong></label>
+                                                    <div>@expandedRequest.MissedWorkDays</div>
+                                                </div>
+                                            }
+                                        }
+                                        @if (expandedRequest.WorkingWithRestrictions == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Working with Restrictions:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(expandedRequest.WorkRestrictionDetails))
+                                            {
+                                                <div class="col-md-12 mb-2">
+                                                    <label class="form-label"><strong>Work Restriction Details:</strong></label>
+                                                    <div style="white-space: pre-wrap;">@expandedRequest.WorkRestrictionDetails</div>
+                                                </div>
+                                            }
+                                        }
+                                        @if (expandedRequest.DailyActivitiesAffected == true)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Daily Activities Affected:</strong></label>
+                                                <div>Yes</div>
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(expandedRequest.DailyActivitiesNotes))
+                                            {
+                                                <div class="col-md-12 mb-2">
+                                                    <label class="form-label"><strong>Daily Activities Notes:</strong></label>
+                                                    <div style="white-space: pre-wrap;">@expandedRequest.DailyActivitiesNotes</div>
+                                                </div>
+                                            }
+                                        }
+                                    }
+                                    
+                                    @* 9. ADDITIONAL INFORMATION (Nice to have - Bottom) *@
+                                    @if (!string.IsNullOrEmpty(expandedRequest.RoadConditions) || !string.IsNullOrEmpty(expandedRequest.DoctorsInformation) ||
+                                         !string.IsNullOrEmpty(expandedRequest.LawyersInformation) || !string.IsNullOrEmpty(expandedRequest.AdditionalNotes))
+                                    {
+                                        <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                                            <h6 style="font-weight: bold; color: #333; margin: 0;">Additional Information</h6>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(expandedRequest.RoadConditions))
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label"><strong>Road Conditions:</strong></label>
+                                                <div>@expandedRequest.RoadConditions</div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.DoctorsInformation))
+                                        {
+                                            <div class="col-md-12 mb-2">
+                                                <label class="form-label"><strong>Doctor's Information:</strong></label>
+                                                <div style="white-space: pre-wrap;">@expandedRequest.DoctorsInformation</div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.LawyersInformation))
+                                        {
+                                            <div class="col-md-12 mb-2">
+                                                <label class="form-label"><strong>Lawyer's Information:</strong></label>
+                                                <div style="white-space: pre-wrap;">@expandedRequest.LawyersInformation</div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.AdditionalNotes))
+                                        {
+                                            <div class="col-md-12 mb-2">
+                                                <label class="form-label"><strong>Additional Notes:</strong></label>
+                                                <div style="white-space: pre-wrap;">@expandedRequest.AdditionalNotes</div>
+                                            </div>
+                                        }
+                                    }
+                                    
                                     @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator can edit
                                     {
                                         <div class="col-12 mt-3">
@@ -512,20 +855,9 @@
         <Body>
             <div class="dialog-content">
                 <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <RadzenFormField Text="Age" class="w-100">
-                            <RadzenNumeric @bind-Value="editAge" Min="0" Max="150" Style="width: 100%" />
-                        </RadzenFormField>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <RadzenFormField Text="Race" class="w-100">
-                            <RadzenTextBox @bind-Value="editRace" MaxLength="100" Style="width: 100%" />
-                        </RadzenFormField>
-                    </div>
-                    <div class="col-md-12 mb-3">
-                        <RadzenFormField Text="Accident Address" class="w-100">
-                            <RadzenTextArea @bind-Value="editAccidentAddress" MaxLength="500" Rows="2" Style="width: 100%" />
-                        </RadzenFormField>
+                    @* 1. ACCIDENT BASICS (High Priority) *@
+                    <div class="col-md-12 mb-3" style="border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                        <h6 style="font-weight: bold; color: #333; margin: 0;">Accident Basics</h6>
                     </div>
                     <div class="col-md-6 mb-3">
                         <RadzenFormField Text="Accident Date" class="w-100">
@@ -538,23 +870,302 @@
                         </RadzenFormField>
                     </div>
                     <div class="col-md-12 mb-3">
-                        <RadzenFormField Text="Vehicle Details" class="w-100">
-                            <RadzenTextArea @bind-Value="editVehicleDetails" MaxLength="1000" Rows="3" Style="width: 100%" />
+                        <RadzenFormField Text="Accident Details" class="w-100">
+                            <RadzenTextArea @bind-Value="editAccidentDetails" MaxLength="2000" Rows="4" Style="width: 100%" />
                         </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Accident Address" class="w-100">
+                            <RadzenTextArea @bind-Value="editAccidentAddress" MaxLength="500" Rows="2" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Age" class="w-100">
+                            <RadzenNumeric @bind-Value="editAge" Min="0" Max="150" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Race" class="w-100">
+                            <RadzenTextBox @bind-Value="editRace" MaxLength="100" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    
+                    @* 2. POLICE/LEGAL (High Priority) *@
+                    <div class="col-md-12 mb-3" style="border-top: 2px solid #ddd; padding-top: 15px; margin-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                        <h6 style="font-weight: bold; color: #333; margin: 0;">Police/Legal</h6>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editPoliceInvolvement" />
+                            <label @onclick="@(() => editPoliceInvolvement = !editPoliceInvolvement)">Police Involvement</label>
+                        </div>
                     </div>
                     <div class="col-md-6 mb-3">
                         <RadzenFormField Text="Police Case Number" class="w-100">
                             <RadzenTextBox @bind-Value="editPoliceCaseNumber" MaxLength="100" Style="width: 100%" />
                         </RadzenFormField>
                     </div>
+                    
+                    @* 3. INJURY ASSESSMENT (Medical Priority) *@
+                    <div class="col-md-12 mb-3" style="border-top: 2px solid #ddd; padding-top: 15px; margin-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                        <h6 style="font-weight: bold; color: #333; margin: 0;">Injury Assessment</h6>
+                    </div>
                     <div class="col-md-6 mb-3">
-                        <RadzenFormField Text="Road Conditions" class="w-100">
-                            <RadzenTextBox @bind-Value="editRoadConditions" MaxLength="200" Style="width: 100%" />
+                        <RadzenFormField Text="Symptom Ongoing Status" class="w-100">
+                            <RadzenDropDown Data="@symptomOngoingStatuses" 
+                                           ValueProperty="Id" 
+                                           TextProperty="Label" 
+                                           @bind-Value="editSymptomOngoingStatusId" 
+                                           Placeholder="Select status..."
+                                           Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editLostConsciousness" />
+                            <label @onclick="@(() => editLostConsciousness = !editLostConsciousness)">Lost Consciousness</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editNeuroSymptoms" />
+                            <label @onclick="@(() => editNeuroSymptoms = !editNeuroSymptoms)">Neurological Symptoms</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editMusculoskeletalSymptoms" />
+                            <label @onclick="@(() => editMusculoskeletalSymptoms = !editMusculoskeletalSymptoms)">Musculoskeletal Symptoms</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editPsychologicalSymptoms" />
+                            <label @onclick="@(() => editPsychologicalSymptoms = !editPsychologicalSymptoms)">Psychological Symptoms</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editSymptomsHeadaches" />
+                            <label @onclick="@(() => editSymptomsHeadaches = !editSymptomsHeadaches)">Headaches</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editSymptomsDizziness" />
+                            <label @onclick="@(() => editSymptomsDizziness = !editSymptomsDizziness)">Dizziness</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editSymptomsNeckPain" />
+                            <label @onclick="@(() => editSymptomsNeckPain = !editSymptomsNeckPain)">Neck Pain</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editSymptomsBackPain" />
+                            <label @onclick="@(() => editSymptomsBackPain = !editSymptomsBackPain)">Back Pain</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editSymptomsJointPain" />
+                            <label @onclick="@(() => editSymptomsJointPain = !editSymptomsJointPain)">Joint Pain</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editSymptomsNumbnessTingling" />
+                            <label @onclick="@(() => editSymptomsNumbnessTingling = !editSymptomsNumbnessTingling)">Numbness/Tingling</label>
+                        </div>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Symptoms Notes" class="w-100">
+                            <RadzenTextArea @bind-Value="editSymptomsNotes" MaxLength="2000" Rows="3" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    
+                    @* 4. MEDICAL TREATMENT *@
+                    <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                        <h6 style="font-weight: bold; color: #333; margin: 0;">Medical Treatment</h6>
+                    </div>
+                        <div class="col-md-6 mb-3">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <RadzenCheckBox @bind-Value="editWentToEmergencyRoom" />
+                                <label @onclick="@(() => editWentToEmergencyRoom = !editWentToEmergencyRoom)">Went to Emergency Room</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <RadzenFormField Text="ER Hospital Name" class="w-100">
+                                <RadzenTextBox @bind-Value="editERHospitalName" MaxLength="255" Style="width: 100%" />
+                            </RadzenFormField>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <RadzenFormField Text="ER Visit Date" class="w-100">
+                                <RadzenDatePicker @bind-Value="editERVisitDate" DateFormat="MM/dd/yyyy" Style="width: 100%" />
+                            </RadzenFormField>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <RadzenCheckBox @bind-Value="editTreatingInjurySpecialist" />
+                                <label @onclick="@(() => editTreatingInjurySpecialist = !editTreatingInjurySpecialist)">Treating with Injury Specialist</label>
+                            </div>
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <RadzenFormField Text="Injury Specialist Details" class="w-100">
+                                <RadzenTextArea @bind-Value="editInjurySpecialistDetails" MaxLength="1000" Rows="3" Style="width: 100%" />
+                            </RadzenFormField>
+                        </div>
+                    
+                    @* 5. INSURANCE & CLAIMS *@
+                    <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                        <h6 style="font-weight: bold; color: #333; margin: 0;">Insurance & Claims</h6>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editInsuranceContacted" />
+                            <label @onclick="@(() => editInsuranceContacted = !editInsuranceContacted)">Insurance Contacted</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editInsuranceAdjusterContacted" />
+                            <label @onclick="@(() => editInsuranceAdjusterContacted = !editInsuranceAdjusterContacted)">Insurance Adjuster Contacted</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Claim Insurance Company" class="w-100">
+                            <RadzenTextBox @bind-Value="editClaimInsuranceCompany" MaxLength="255" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editProvidedRecordedStatement" />
+                            <label @onclick="@(() => editProvidedRecordedStatement = !editProvidedRecordedStatement)">Provided Recorded Statement</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editReceivedSettlementOffer" />
+                            <label @onclick="@(() => editReceivedSettlementOffer = !editReceivedSettlementOffer)">Received Settlement Offer</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Settlement Offer Amount" class="w-100">
+                            <RadzenNumeric @bind-Value="editSettlementOfferAmount" Min="0" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    
+                    @* 6. LEGAL REPRESENTATION *@
+                    <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                        <h6 style="font-weight: bold; color: #333; margin: 0;">Legal Representation</h6>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editRepresentedByAttorney" />
+                            <label @onclick="@(() => editRepresentedByAttorney = !editRepresentedByAttorney)">Represented by Attorney</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Attorney Name" class="w-100">
+                            <RadzenTextBox @bind-Value="editAttorneyName" MaxLength="255" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Attorney Firm" class="w-100">
+                            <RadzenTextBox @bind-Value="editAttorneyFirm" MaxLength="255" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editSignedDocumentsRelatedToAccident" />
+                            <label @onclick="@(() => editSignedDocumentsRelatedToAccident = !editSignedDocumentsRelatedToAccident)">Signed Documents Related to Accident</label>
+                        </div>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Signed Documents Notes" class="w-100">
+                            <RadzenTextArea @bind-Value="editSignedDocumentsNotes" MaxLength="1000" Rows="3" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    
+                    @* 7. VEHICLE & PROPERTY *@
+                    <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                        <h6 style="font-weight: bold; color: #333; margin: 0;">Vehicle & Property</h6>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Vehicle Details" class="w-100">
+                            <RadzenTextArea @bind-Value="editVehicleDetails" MaxLength="1000" Rows="3" Style="width: 100%" />
                         </RadzenFormField>
                     </div>
                     <div class="col-md-12 mb-3">
-                        <RadzenFormField Text="Accident Details" class="w-100">
-                            <RadzenTextArea @bind-Value="editAccidentDetails" MaxLength="2000" Rows="4" Style="width: 100%" />
+                        <RadzenFormField Text="Vehicle Current Location" class="w-100">
+                            <RadzenTextArea @bind-Value="editVehicleCurrentLocation" MaxLength="500" Rows="2" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editInsuranceEstimateCompleted" />
+                            <label @onclick="@(() => editInsuranceEstimateCompleted = !editInsuranceEstimateCompleted)">Insurance Estimate Completed</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Estimated Repair Amount" class="w-100">
+                            <RadzenNumeric @bind-Value="editEstimatedRepairAmount" Min="0" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editVehicleTotalLoss" />
+                            <label @onclick="@(() => editVehicleTotalLoss = !editVehicleTotalLoss)">Vehicle Total Loss</label>
+                        </div>
+                    </div>
+                    
+                    @* 8. WORK & LIFE IMPACT *@
+                    <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                        <h6 style="font-weight: bold; color: #333; margin: 0;">Work & Life Impact</h6>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editMissedWork" />
+                            <label @onclick="@(() => editMissedWork = !editMissedWork)">Missed Work</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Missed Work Days" class="w-100">
+                            <RadzenNumeric @bind-Value="editMissedWorkDays" Min="0" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editWorkingWithRestrictions" />
+                            <label @onclick="@(() => editWorkingWithRestrictions = !editWorkingWithRestrictions)">Working with Restrictions</label>
+                        </div>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Work Restriction Details" class="w-100">
+                            <RadzenTextArea @bind-Value="editWorkRestrictionDetails" MaxLength="1000" Rows="3" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editDailyActivitiesAffected" />
+                            <label @onclick="@(() => editDailyActivitiesAffected = !editDailyActivitiesAffected)">Daily Activities Affected</label>
+                        </div>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Daily Activities Notes" class="w-100">
+                            <RadzenTextArea @bind-Value="editDailyActivitiesNotes" MaxLength="1000" Rows="3" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    
+                    @* 9. ADDITIONAL INFORMATION (Nice to have - Bottom) *@
+                    <div class="col-md-12 mb-3" style="border-top: 1px solid #eee; padding-top: 15px; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px;">
+                        <h6 style="font-weight: bold; color: #333; margin: 0;">Additional Information</h6>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Road Conditions" class="w-100">
+                            <RadzenTextBox @bind-Value="editRoadConditions" MaxLength="200" Style="width: 100%" />
                         </RadzenFormField>
                     </div>
                     <div class="col-md-12 mb-3">
@@ -763,6 +1374,47 @@
     private string editDoctorsInformation = "";
     private string editLawyersInformation = "";
     private string editAdditionalNotes = "";
+    private bool? editPoliceInvolvement;
+    
+    // New Accident fields from Script121525.sql
+    private int? editSymptomOngoingStatusId;
+    private bool? editLostConsciousness;
+    private bool? editNeuroSymptoms;
+    private bool? editMusculoskeletalSymptoms;
+    private bool? editPsychologicalSymptoms;
+    private string editSymptomsNotes = "";
+    private bool? editInsuranceContacted;
+    private bool? editRepresentedByAttorney;
+    private bool? editSymptomsHeadaches;
+    private bool? editSymptomsDizziness;
+    private bool? editSymptomsNeckPain;
+    private bool? editSymptomsBackPain;
+    private bool? editSymptomsJointPain;
+    private bool? editSymptomsNumbnessTingling;
+    private bool? editWentToEmergencyRoom;
+    private string editERHospitalName = "";
+    private DateTime? editERVisitDate;
+    private bool? editTreatingInjurySpecialist;
+    private string editInjurySpecialistDetails = "";
+    private bool? editInsuranceAdjusterContacted;
+    private bool? editProvidedRecordedStatement;
+    private bool? editReceivedSettlementOffer;
+    private decimal? editSettlementOfferAmount;
+    private string editClaimInsuranceCompany = "";
+    private bool? editSignedDocumentsRelatedToAccident;
+    private string editSignedDocumentsNotes = "";
+    private string editAttorneyName = "";
+    private string editAttorneyFirm = "";
+    private string editVehicleCurrentLocation = "";
+    private bool? editInsuranceEstimateCompleted;
+    private decimal? editEstimatedRepairAmount;
+    private bool? editVehicleTotalLoss;
+    private bool? editMissedWork;
+    private int? editMissedWorkDays;
+    private bool? editWorkingWithRestrictions;
+    private string editWorkRestrictionDetails = "";
+    private bool? editDailyActivitiesAffected;
+    private string editDailyActivitiesNotes = "";
     
     // Lead Intake lookup data
     private List<State> states = new();
@@ -770,6 +1422,7 @@
     private List<VehicleDisposition> vehicleDispositions = new();
     private List<TransportToCareMethod> transportToCareMethods = new();
     private List<MedicalAttentionType> medicalAttentionTypes = new();
+    private List<SymptomOngoingStatus> symptomOngoingStatuses = new();
     
     // Lead Intake form fields
     private DateTime? editLeadIntakeAccidentDate;
@@ -945,6 +1598,47 @@
         editDoctorsInformation = request.DoctorsInformation ?? "";
         editLawyersInformation = request.LawyersInformation ?? "";
         editAdditionalNotes = request.AdditionalNotes ?? "";
+        editPoliceInvolvement = request.PoliceInvolvement;
+        
+        // New fields from Script121525.sql
+        editSymptomOngoingStatusId = request.SymptomOngoingStatusId;
+        editLostConsciousness = request.LostConsciousness;
+        editNeuroSymptoms = request.NeuroSymptoms;
+        editMusculoskeletalSymptoms = request.MusculoskeletalSymptoms;
+        editPsychologicalSymptoms = request.PsychologicalSymptoms;
+        editSymptomsNotes = request.SymptomsNotes ?? "";
+        editInsuranceContacted = request.InsuranceContacted;
+        editRepresentedByAttorney = request.RepresentedByAttorney;
+        editSymptomsHeadaches = request.SymptomsHeadaches;
+        editSymptomsDizziness = request.SymptomsDizziness;
+        editSymptomsNeckPain = request.SymptomsNeckPain;
+        editSymptomsBackPain = request.SymptomsBackPain;
+        editSymptomsJointPain = request.SymptomsJointPain;
+        editSymptomsNumbnessTingling = request.SymptomsNumbnessTingling;
+        editWentToEmergencyRoom = request.WentToEmergencyRoom;
+        editERHospitalName = request.ERHospitalName ?? "";
+        editERVisitDate = request.ERVisitDate;
+        editTreatingInjurySpecialist = request.TreatingInjurySpecialist;
+        editInjurySpecialistDetails = request.InjurySpecialistDetails ?? "";
+        editInsuranceAdjusterContacted = request.InsuranceAdjusterContacted;
+        editProvidedRecordedStatement = request.ProvidedRecordedStatement;
+        editReceivedSettlementOffer = request.ReceivedSettlementOffer;
+        editSettlementOfferAmount = request.SettlementOfferAmount;
+        editClaimInsuranceCompany = request.ClaimInsuranceCompany ?? "";
+        editSignedDocumentsRelatedToAccident = request.SignedDocumentsRelatedToAccident;
+        editSignedDocumentsNotes = request.SignedDocumentsNotes ?? "";
+        editAttorneyName = request.AttorneyName ?? "";
+        editAttorneyFirm = request.AttorneyFirm ?? "";
+        editVehicleCurrentLocation = request.VehicleCurrentLocation ?? "";
+        editInsuranceEstimateCompleted = request.InsuranceEstimateCompleted;
+        editEstimatedRepairAmount = request.EstimatedRepairAmount;
+        editVehicleTotalLoss = request.VehicleTotalLoss;
+        editMissedWork = request.MissedWork;
+        editMissedWorkDays = request.MissedWorkDays;
+        editWorkingWithRestrictions = request.WorkingWithRestrictions;
+        editWorkRestrictionDetails = request.WorkRestrictionDetails ?? "";
+        editDailyActivitiesAffected = request.DailyActivitiesAffected;
+        editDailyActivitiesNotes = request.DailyActivitiesNotes ?? "";
         showEditAccidentInfoDialog = true;
     }
     
@@ -970,7 +1664,47 @@
                 RoadConditions = editRoadConditions,
                 DoctorsInformation = editDoctorsInformation,
                 LawyersInformation = editLawyersInformation,
-                AdditionalNotes = editAdditionalNotes
+                AdditionalNotes = editAdditionalNotes,
+                PoliceInvolvement = editPoliceInvolvement,
+                // New fields from Script121525.sql
+                SymptomOngoingStatusId = editSymptomOngoingStatusId,
+                LostConsciousness = editLostConsciousness,
+                NeuroSymptoms = editNeuroSymptoms,
+                MusculoskeletalSymptoms = editMusculoskeletalSymptoms,
+                PsychologicalSymptoms = editPsychologicalSymptoms,
+                SymptomsNotes = editSymptomsNotes,
+                InsuranceContacted = editInsuranceContacted,
+                RepresentedByAttorney = editRepresentedByAttorney,
+                SymptomsHeadaches = editSymptomsHeadaches,
+                SymptomsDizziness = editSymptomsDizziness,
+                SymptomsNeckPain = editSymptomsNeckPain,
+                SymptomsBackPain = editSymptomsBackPain,
+                SymptomsJointPain = editSymptomsJointPain,
+                SymptomsNumbnessTingling = editSymptomsNumbnessTingling,
+                WentToEmergencyRoom = editWentToEmergencyRoom,
+                ERHospitalName = editERHospitalName,
+                ERVisitDate = editERVisitDate,
+                TreatingInjurySpecialist = editTreatingInjurySpecialist,
+                InjurySpecialistDetails = editInjurySpecialistDetails,
+                InsuranceAdjusterContacted = editInsuranceAdjusterContacted,
+                ProvidedRecordedStatement = editProvidedRecordedStatement,
+                ReceivedSettlementOffer = editReceivedSettlementOffer,
+                SettlementOfferAmount = editSettlementOfferAmount,
+                ClaimInsuranceCompany = editClaimInsuranceCompany,
+                SignedDocumentsRelatedToAccident = editSignedDocumentsRelatedToAccident,
+                SignedDocumentsNotes = editSignedDocumentsNotes,
+                AttorneyName = editAttorneyName,
+                AttorneyFirm = editAttorneyFirm,
+                VehicleCurrentLocation = editVehicleCurrentLocation,
+                InsuranceEstimateCompleted = editInsuranceEstimateCompleted,
+                EstimatedRepairAmount = editEstimatedRepairAmount,
+                VehicleTotalLoss = editVehicleTotalLoss,
+                MissedWork = editMissedWork,
+                MissedWorkDays = editMissedWorkDays,
+                WorkingWithRestrictions = editWorkingWithRestrictions,
+                WorkRestrictionDetails = editWorkRestrictionDetails,
+                DailyActivitiesAffected = editDailyActivitiesAffected,
+                DailyActivitiesNotes = editDailyActivitiesNotes
             };
             
             var response = await Http.PutAsJsonAsync($"api/UserRequest/{selectedRequest.Id}/accident-info", updateRequest);
@@ -1336,6 +2070,19 @@
             {
                 Console.WriteLine($"Error loading medical attention types: {ex.Message}");
             }
+            
+            try
+            {
+                var symptomStatusResponse = await Http.GetAsync("api/lookup/symptom-ongoing-statuses");
+                if (symptomStatusResponse.IsSuccessStatusCode)
+                {
+                    symptomOngoingStatuses = await symptomStatusResponse.Content.ReadFromJsonAsync<List<SymptomOngoingStatus>>() ?? new();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading symptom ongoing statuses: {ex.Message}");
+            }
         }
         catch (Exception ex)
         {
@@ -1367,6 +2114,11 @@
     private string GetMedicalAttentionTypeLabel(int typeId)
     {
         return medicalAttentionTypes.FirstOrDefault(t => t.Id == typeId)?.Label ?? $"Type {typeId}";
+    }
+    
+    private string GetSymptomOngoingStatusLabel(int statusId)
+    {
+        return symptomOngoingStatuses.FirstOrDefault(s => s.Id == statusId)?.Label ?? $"Status {statusId}";
     }
 
     public void Dispose()

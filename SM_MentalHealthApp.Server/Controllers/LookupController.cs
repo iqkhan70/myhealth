@@ -123,6 +123,27 @@ namespace SM_MentalHealthApp.Server.Controllers
                 return StatusCode(500, new { message = "Error loading medical attention types", error = ex.Message });
             }
         }
+
+        [HttpGet("symptom-ongoing-statuses")]
+        public async Task<ActionResult<List<SymptomOngoingStatus>>> GetSymptomOngoingStatuses()
+        {
+            try
+            {
+                var statuses = await _context.SymptomOngoingStatuses
+                    .OrderBy(s => s.Label)
+                    .ToListAsync();
+                return Ok(statuses);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading symptom ongoing statuses");
+                if (ex.Message.Contains("doesn't exist") || ex.Message.Contains("Unknown table"))
+                {
+                    return Ok(new List<SymptomOngoingStatus>());
+                }
+                return StatusCode(500, new { message = "Error loading symptom ongoing statuses", error = ex.Message });
+            }
+        }
     }
 }
 
