@@ -396,6 +396,23 @@ namespace SM_MentalHealthApp.Server.Services
                 IsActive = true,
                 IsFirstLogin = true,
                 MustChangePassword = true, // Force password change on first login
+                
+                // Copy Lead Intake fields from user request
+                ResidenceStateCode = userRequest.ResidenceStateCode,
+                AccidentStateCode = userRequest.AccidentStateCode,
+                AccidentParticipantRoleId = userRequest.AccidentParticipantRoleId,
+                VehicleDispositionId = userRequest.VehicleDispositionId,
+                TransportToCareMethodId = userRequest.TransportToCareMethodId,
+                MedicalAttentionTypeId = userRequest.MedicalAttentionTypeId,
+                PoliceInvolvement = userRequest.PoliceInvolvement,
+                LostConsciousness = userRequest.LostConsciousness,
+                NeuroSymptoms = userRequest.NeuroSymptoms,
+                MusculoskeletalSymptoms = userRequest.MusculoskeletalSymptoms,
+                PsychologicalSymptoms = userRequest.PsychologicalSymptoms,
+                SymptomsNotes = userRequest.SymptomsNotes,
+                InsuranceContacted = userRequest.InsuranceContacted,
+                RepresentedByAttorney = userRequest.RepresentedByAttorney,
+                
                 // Copy accident-related fields from user request
                 Age = userRequest.Age,
                 Race = userRequest.Race,
@@ -408,7 +425,40 @@ namespace SM_MentalHealthApp.Server.Services
                 RoadConditions = userRequest.RoadConditions,
                 DoctorsInformation = userRequest.DoctorsInformation,
                 LawyersInformation = userRequest.LawyersInformation,
-                AdditionalNotes = userRequest.AdditionalNotes
+                AdditionalNotes = userRequest.AdditionalNotes,
+                
+                // Copy new Accident fields from Script121525.sql
+                SymptomOngoingStatusId = userRequest.SymptomOngoingStatusId,
+                SymptomsHeadaches = userRequest.SymptomsHeadaches,
+                SymptomsDizziness = userRequest.SymptomsDizziness,
+                SymptomsNeckPain = userRequest.SymptomsNeckPain,
+                SymptomsBackPain = userRequest.SymptomsBackPain,
+                SymptomsJointPain = userRequest.SymptomsJointPain,
+                SymptomsNumbnessTingling = userRequest.SymptomsNumbnessTingling,
+                WentToEmergencyRoom = userRequest.WentToEmergencyRoom,
+                ERHospitalName = userRequest.ERHospitalName,
+                ERVisitDate = userRequest.ERVisitDate,
+                TreatingInjurySpecialist = userRequest.TreatingInjurySpecialist,
+                InjurySpecialistDetails = userRequest.InjurySpecialistDetails,
+                InsuranceAdjusterContacted = userRequest.InsuranceAdjusterContacted,
+                ProvidedRecordedStatement = userRequest.ProvidedRecordedStatement,
+                ReceivedSettlementOffer = userRequest.ReceivedSettlementOffer,
+                SettlementOfferAmount = userRequest.SettlementOfferAmount,
+                ClaimInsuranceCompany = userRequest.ClaimInsuranceCompany,
+                SignedDocumentsRelatedToAccident = userRequest.SignedDocumentsRelatedToAccident,
+                SignedDocumentsNotes = userRequest.SignedDocumentsNotes,
+                AttorneyName = userRequest.AttorneyName,
+                AttorneyFirm = userRequest.AttorneyFirm,
+                VehicleCurrentLocation = userRequest.VehicleCurrentLocation,
+                InsuranceEstimateCompleted = userRequest.InsuranceEstimateCompleted,
+                EstimatedRepairAmount = userRequest.EstimatedRepairAmount,
+                VehicleTotalLoss = userRequest.VehicleTotalLoss,
+                MissedWork = userRequest.MissedWork,
+                MissedWorkDays = userRequest.MissedWorkDays,
+                WorkingWithRestrictions = userRequest.WorkingWithRestrictions,
+                WorkRestrictionDetails = userRequest.WorkRestrictionDetails,
+                DailyActivitiesAffected = userRequest.DailyActivitiesAffected,
+                DailyActivitiesNotes = userRequest.DailyActivitiesNotes
             };
 
             // Encrypt PII data (DateOfBirth and MobilePhone) before saving

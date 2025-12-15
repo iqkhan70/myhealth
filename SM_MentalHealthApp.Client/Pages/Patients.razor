@@ -588,8 +588,8 @@
                                         }
                                         </div>
                                     
-                                    @* Edit Accident Information Button (Admin only) *@
-                                    @if (AuthService.CurrentUser?.RoleId == 3) // Admin only
+                                    @* Edit Accident Information Button (Admin and Coordinator) *@
+                                    @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator
                                     {
                                         <div class="col-12 mt-3">
                                             <RadzenButton Text="Edit Accident Information" 
@@ -1046,7 +1046,7 @@
     </div>
 }
 
-<!-- Edit Patient Accident Information Dialog (Admin only) -->
+<!-- Edit Patient Accident Information Dialog (Admin and Coordinator) -->
 @if (showEditPatientAccidentInfoDialog && selectedUserForAccidentEdit != null)
 {
     <SMModal IsVisible="@showEditPatientAccidentInfoDialog" 

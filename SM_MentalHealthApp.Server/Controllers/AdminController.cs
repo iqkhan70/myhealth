@@ -1199,7 +1199,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Update accident information for a patient - Admin only
         /// </summary>
         [HttpPut("update-patient/{id}/accident-info")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Coordinator")]
         public async Task<ActionResult> UpdatePatientAccidentInfo(int id, [FromBody] UpdateUserAccidentInfoRequest request)
         {
             try
@@ -1228,6 +1228,14 @@ namespace SM_MentalHealthApp.Server.Controllers
                 patient.DoctorsInformation = request.DoctorsInformation;
                 patient.LawyersInformation = request.LawyersInformation;
                 patient.AdditionalNotes = request.AdditionalNotes;
+                patient.PoliceInvolvement = request.PoliceInvolvement;
+                patient.LostConsciousness = request.LostConsciousness;
+                patient.NeuroSymptoms = request.NeuroSymptoms;
+                patient.MusculoskeletalSymptoms = request.MusculoskeletalSymptoms;
+                patient.PsychologicalSymptoms = request.PsychologicalSymptoms;
+                patient.SymptomsNotes = request.SymptomsNotes;
+                patient.InsuranceContacted = request.InsuranceContacted;
+                patient.RepresentedByAttorney = request.RepresentedByAttorney;
                 
                 // New fields from Script121525.sql
                 patient.SymptomOngoingStatusId = request.SymptomOngoingStatusId;
@@ -1875,6 +1883,14 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? DoctorsInformation { get; set; }
         public string? LawyersInformation { get; set; }
         public string? AdditionalNotes { get; set; }
+        public bool? PoliceInvolvement { get; set; }
+        public bool? LostConsciousness { get; set; }
+        public bool? NeuroSymptoms { get; set; }
+        public bool? MusculoskeletalSymptoms { get; set; }
+        public bool? PsychologicalSymptoms { get; set; }
+        public string? SymptomsNotes { get; set; }
+        public bool? InsuranceContacted { get; set; }
+        public bool? RepresentedByAttorney { get; set; }
         
         // New fields from Script121525.sql
         public int? SymptomOngoingStatusId { get; set; }
