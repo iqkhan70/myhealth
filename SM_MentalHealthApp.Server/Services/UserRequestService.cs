@@ -41,6 +41,8 @@ namespace SM_MentalHealthApp.Server.Services
 
     public class UpdateLeadIntakeRequest
     {
+        public DateTime? AccidentDate { get; set; }
+        public string? AccidentDetails { get; set; }
         public string? ResidenceStateCode { get; set; }
         public string? AccidentStateCode { get; set; }
         public int? AccidentParticipantRoleId { get; set; }
@@ -609,6 +611,8 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             // Update lead intake fields
+            userRequest.AccidentDate = request.AccidentDate;
+            userRequest.AccidentDetails = request.AccidentDetails;
             userRequest.ResidenceStateCode = request.ResidenceStateCode;
             userRequest.AccidentStateCode = request.AccidentStateCode;
             userRequest.AccidentParticipantRoleId = request.AccidentParticipantRoleId;

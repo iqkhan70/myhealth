@@ -153,6 +153,20 @@
                                 @if (expandedLeadIntakeSections.Contains(request.Id))
                                 {
                                     <div class="patient-meta mb-3" style="margin-top: 12px;">
+                                        @if (expandedRequest.AccidentDate.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Date of Accident:</strong></span>
+                                                <span class="meta-value">@expandedRequest.AccidentDate.Value.ToString("MM/dd/yyyy")</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.AccidentDetails))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Accident Details:</strong></span>
+                                                <span class="meta-value" style="white-space: pre-wrap;">@expandedRequest.AccidentDetails</span>
+                                            </div>
+                                        }
                                         @if (!string.IsNullOrEmpty(expandedRequest.ResidenceStateCode))
                                         {
                                             <div class="meta-row">
@@ -584,6 +598,16 @@
             <div class="dialog-content">
                 <div class="row">
                     <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Date of Accident" class="w-100">
+                            <RadzenDatePicker @bind-Value="editLeadIntakeAccidentDate" DateFormat="MM/dd/yyyy" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <RadzenFormField Text="Accident Details" class="w-100">
+                            <RadzenTextArea @bind-Value="editLeadIntakeAccidentDetails" MaxLength="2000" Rows="4" Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
                         <RadzenFormField Text="Residence State" class="w-100">
                             <RadzenDropDown Data="@states" 
                                            ValueProperty="Code" 
@@ -748,6 +772,8 @@
     private List<MedicalAttentionType> medicalAttentionTypes = new();
     
     // Lead Intake form fields
+    private DateTime? editLeadIntakeAccidentDate;
+    private string editLeadIntakeAccidentDetails = "";
     private string? editLeadIntakeResidenceStateCode;
     private string? editLeadIntakeAccidentStateCode;
     private int? editLeadIntakeParticipantRoleId;
@@ -1155,6 +1181,8 @@
     private void ShowEditLeadIntakeDialog(UserRequest request)
     {
         selectedRequest = request;
+        editLeadIntakeAccidentDate = request.AccidentDate;
+        editLeadIntakeAccidentDetails = request.AccidentDetails ?? "";
         editLeadIntakeResidenceStateCode = request.ResidenceStateCode;
         editLeadIntakeAccidentStateCode = request.AccidentStateCode;
         editLeadIntakeParticipantRoleId = request.AccidentParticipantRoleId;
@@ -1183,6 +1211,8 @@
             
             var updateRequest = new
             {
+                AccidentDate = editLeadIntakeAccidentDate,
+                AccidentDetails = editLeadIntakeAccidentDetails,
                 ResidenceStateCode = editLeadIntakeResidenceStateCode,
                 AccidentStateCode = editLeadIntakeAccidentStateCode,
                 AccidentParticipantRoleId = editLeadIntakeParticipantRoleId,
