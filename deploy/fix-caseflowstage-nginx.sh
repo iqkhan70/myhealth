@@ -84,6 +84,9 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
     }
     
     # OData proxy
@@ -99,6 +102,9 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header Accept "application/json, application/odata+json";
         proxy_cache_bypass \$http_upgrade;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
     }
     
     # SignalR Hub

@@ -527,36 +527,41 @@ namespace SM_MentalHealthApp.Server.Services
 </body>
 </html>";
 
-            // Send SMS (don't fail approval if SMS fails, but log it)
-            try
+            // Send SMS and Email asynchronously (fire-and-forget) to avoid timeout issues
+            // This ensures the approval response returns immediately while notifications are sent in the background
+            _ = Task.Run(async () =>
             {
-                var smsSent = await smsService.SendSmsAsync(user.MobilePhone, credentialsMessage);
-                if (smsSent)
+                // Send SMS (don't fail approval if SMS fails, but log it)
+                try
                 {
-                    _logger.LogInformation("SMS sent successfully to {Phone} for user {UserId}", user.MobilePhone, user.Id);
+                    var smsSent = await smsService.SendSmsAsync(user.MobilePhone, credentialsMessage);
+                    if (smsSent)
+                    {
+                        _logger.LogInformation("SMS sent successfully to {Phone} for user {UserId}", user.MobilePhone, user.Id);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("SMS sending failed for {Phone} (user {UserId}), email will still be sent", user.MobilePhone, user.Id);
+                    }
                 }
-                else
+                catch (Exception smsEx)
                 {
-                    _logger.LogWarning("SMS sending failed for {Phone} (user {UserId}), email will still be sent", user.MobilePhone, user.Id);
+                    _logger.LogError(smsEx, "Error sending SMS to {Phone} (user {UserId}), email will still be sent", user.MobilePhone, user.Id);
                 }
-            }
-            catch (Exception smsEx)
-            {
-                _logger.LogError(smsEx, "Error sending SMS to {Phone} (user {UserId}), email will still be sent", user.MobilePhone, user.Id);
-            }
 
-            // Send Email (don't fail approval if email fails, but log it)
-            try
-            {
-                await notificationService.SendEmailNotification(user.Id, emailSubject, emailBody);
-                _logger.LogInformation("Email sent successfully to {Email} for user {UserId}", user.Email, user.Id);
-            }
-            catch (Exception emailEx)
-            {
-                _logger.LogError(emailEx, "Error sending email to {Email} (user {UserId}), SMS was still sent", user.Email, user.Id);
-            }
+                // Send Email (don't fail approval if email fails, but log it)
+                try
+                {
+                    await notificationService.SendEmailNotification(user.Id, emailSubject, emailBody);
+                    _logger.LogInformation("Email sent successfully to {Email} for user {UserId}", user.Email, user.Id);
+                }
+                catch (Exception emailEx)
+                {
+                    _logger.LogError(emailEx, "Error sending email to {Email} (user {UserId}), SMS was still sent", user.Email, user.Id);
+                }
+            });
 
-            _logger.LogInformation("User request approved: ID={Id}, User created: ID={UserId}, Email={Email}, SMS and Email notifications sent",
+            _logger.LogInformation("User request approved: ID={Id}, User created: ID={UserId}, Email={Email}, SMS and Email notifications queued",
                 userRequest.Id, user.Id, user.Email);
 
             return userRequest;

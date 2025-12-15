@@ -371,6 +371,10 @@ cd /Users/mohammedkhan/iq/health && curl -k https://${DROPLET_IP}/ 2>&1 | head -
 
 ./deploy/fix-nginx-odata.sh
 
+./deploy/fix-caseflowstage-nginx.sh
+
+./deploy/fix-nginx-api-timeout.sh
+
 echo "this is for reference in case you want to see the logs"
 echo "ssh -i ~/.ssh/id_rsa root@${DROPLET_IP} 'journalctl -u mental-health-app -f --no-pager'"
 
