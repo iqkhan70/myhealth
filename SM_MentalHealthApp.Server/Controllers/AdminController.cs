@@ -1146,6 +1146,56 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
+        /// Update lead intake information for a patient - Admin only
+        /// </summary>
+        [HttpPut("update-patient/{id}/lead-intake")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> UpdatePatientLeadIntake(int id, [FromBody] UpdateUserLeadIntakeRequest request)
+        {
+            try
+            {
+                var patient = await _context.Users.FindAsync(id);
+                if (patient == null)
+                {
+                    return NotFound("Patient not found.");
+                }
+
+                if (patient.RoleId != 1)
+                {
+                    return BadRequest("User is not a patient.");
+                }
+
+                // Update lead intake fields
+                patient.ResidenceStateCode = request.ResidenceStateCode;
+                patient.AccidentStateCode = request.AccidentStateCode;
+                patient.AccidentParticipantRoleId = request.AccidentParticipantRoleId;
+                patient.VehicleDispositionId = request.VehicleDispositionId;
+                patient.TransportToCareMethodId = request.TransportToCareMethodId;
+                patient.MedicalAttentionTypeId = request.MedicalAttentionTypeId;
+                patient.PoliceInvolvement = request.PoliceInvolvement;
+                patient.LostConsciousness = request.LostConsciousness;
+                patient.NeuroSymptoms = request.NeuroSymptoms;
+                patient.MusculoskeletalSymptoms = request.MusculoskeletalSymptoms;
+                patient.PsychologicalSymptoms = request.PsychologicalSymptoms;
+                patient.SymptomsNotes = request.SymptomsNotes;
+                patient.InsuranceContacted = request.InsuranceContacted;
+                patient.RepresentedByAttorney = request.RepresentedByAttorney;
+
+                await _context.SaveChangesAsync();
+
+                // Decrypt for return
+                UserEncryptionHelper.DecryptUserData(patient, _encryptionService);
+
+                return Ok(patient);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating patient lead intake information");
+                return StatusCode(500, $"Error updating patient lead intake information: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Update accident information for a patient - Admin only
         /// </summary>
         [HttpPut("update-patient/{id}/accident-info")]
@@ -1760,6 +1810,24 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? Password { get; set; }
     }
     
+    public class UpdateUserLeadIntakeRequest
+    {
+        public string? ResidenceStateCode { get; set; }
+        public string? AccidentStateCode { get; set; }
+        public int? AccidentParticipantRoleId { get; set; }
+        public int? VehicleDispositionId { get; set; }
+        public int? TransportToCareMethodId { get; set; }
+        public int? MedicalAttentionTypeId { get; set; }
+        public bool? PoliceInvolvement { get; set; }
+        public bool? LostConsciousness { get; set; }
+        public bool? NeuroSymptoms { get; set; }
+        public bool? MusculoskeletalSymptoms { get; set; }
+        public bool? PsychologicalSymptoms { get; set; }
+        public string? SymptomsNotes { get; set; }
+        public bool? InsuranceContacted { get; set; }
+        public bool? RepresentedByAttorney { get; set; }
+    }
+
     public class UpdateUserAccidentInfoRequest
     {
         public int? Age { get; set; }

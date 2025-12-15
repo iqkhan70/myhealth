@@ -56,6 +56,13 @@ namespace SM_MentalHealthApp.Server.Data
             // AI Model Configuration system entities
             public DbSet<AIModelConfig> AIModelConfigs { get; set; }
             public DbSet<AIModelChain> AIModelChains { get; set; }
+            
+            // Lookup tables for Lead Intake
+            public DbSet<State> States { get; set; }
+            public DbSet<AccidentParticipantRole> AccidentParticipantRoles { get; set; }
+            public DbSet<VehicleDisposition> VehicleDispositions { get; set; }
+            public DbSet<TransportToCareMethod> TransportToCareMethods { get; set; }
+            public DbSet<MedicalAttentionType> MedicalAttentionTypes { get; set; }
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -124,6 +131,71 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => new { e.RoleId, e.IsActive }); // Composite index for common filter combination
                         entity.HasIndex(e => e.FirstName); // For name searches
                         entity.HasIndex(e => e.LastName); // For name searches
+                        
+                        // Lead Intake fields
+                        entity.Property(e => e.ResidenceStateCode).HasMaxLength(2);
+                        entity.Property(e => e.AccidentStateCode).HasMaxLength(2);
+                        entity.Property(e => e.SymptomsNotes).HasMaxLength(2000);
+                        
+                        // Note: Foreign key relationships are managed at the database level via SQL script
+                        // We don't configure them in EF Core to avoid validation issues if tables don't exist yet
+                        // Indexes for Lead Intake fields (for performance)
+                        entity.HasIndex(e => e.ResidenceStateCode);
+                        entity.HasIndex(e => e.AccidentStateCode);
+                        entity.HasIndex(e => e.AccidentParticipantRoleId);
+                        entity.HasIndex(e => e.VehicleDispositionId);
+                        entity.HasIndex(e => e.TransportToCareMethodId);
+                        entity.HasIndex(e => e.MedicalAttentionTypeId);
+                  });
+                  
+                  // Configure State entity
+                  modelBuilder.Entity<State>(entity =>
+                  {
+                        entity.ToTable("States"); // Explicit table name
+                        entity.HasKey(e => e.Code);
+                        entity.Property(e => e.Code).IsRequired().HasMaxLength(2);
+                        entity.Property(e => e.Name).IsRequired().HasMaxLength(50);
+                        entity.HasIndex(e => e.Name).IsUnique();
+                  });
+                  
+                  // Configure AccidentParticipantRole entity
+                  modelBuilder.Entity<AccidentParticipantRole>(entity =>
+                  {
+                        entity.ToTable("AccidentParticipantRole"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Code).IsRequired().HasMaxLength(30);
+                        entity.Property(e => e.Label).IsRequired().HasMaxLength(50);
+                        entity.HasIndex(e => e.Code).IsUnique();
+                  });
+                  
+                  // Configure VehicleDisposition entity
+                  modelBuilder.Entity<VehicleDisposition>(entity =>
+                  {
+                        entity.ToTable("VehicleDisposition"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Code).IsRequired().HasMaxLength(30);
+                        entity.Property(e => e.Label).IsRequired().HasMaxLength(50);
+                        entity.HasIndex(e => e.Code).IsUnique();
+                  });
+                  
+                  // Configure TransportToCareMethod entity
+                  modelBuilder.Entity<TransportToCareMethod>(entity =>
+                  {
+                        entity.ToTable("TransportToCareMethod"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Code).IsRequired().HasMaxLength(30);
+                        entity.Property(e => e.Label).IsRequired().HasMaxLength(80);
+                        entity.HasIndex(e => e.Code).IsUnique();
+                  });
+                  
+                  // Configure MedicalAttentionType entity
+                  modelBuilder.Entity<MedicalAttentionType>(entity =>
+                  {
+                        entity.ToTable("MedicalAttentionType"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Code).IsRequired().HasMaxLength(30);
+                        entity.Property(e => e.Label).IsRequired().HasMaxLength(80);
+                        entity.HasIndex(e => e.Code).IsUnique();
                   });
 
                   // Configure UserRequest entity

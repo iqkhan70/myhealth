@@ -4,6 +4,7 @@ using SM_MentalHealthApp.Server.Controllers;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using UpdateAccidentInfoRequest = SM_MentalHealthApp.Server.Services.UpdateAccidentInfoRequest;
+using UpdateLeadIntakeRequest = SM_MentalHealthApp.Server.Services.UpdateLeadIntakeRequest;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -218,6 +219,31 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 _logger.LogError(ex, "Error updating accident information for user request {Id}", id);
                 return StatusCode(500, new { message = "An error occurred while updating accident information." });
+            }
+        }
+
+        /// <summary>
+        /// Update lead intake information for a user request - Admin and Coordinator only
+        /// </summary>
+        [HttpPut("{id}/lead-intake")]
+        [Authorize(Roles = "Admin,Coordinator")]
+        public async Task<ActionResult<UserRequest>> UpdateLeadIntake(
+            int id,
+            [FromBody] UpdateLeadIntakeRequest request)
+        {
+            try
+            {
+                var userRequest = await _userRequestService.UpdateLeadIntakeAsync(id, request);
+                return Ok(userRequest);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating lead intake information for user request {Id}", id);
+                return StatusCode(500, new { message = "An error occurred while updating lead intake information." });
             }
         }
     }

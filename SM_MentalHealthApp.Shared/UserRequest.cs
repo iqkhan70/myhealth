@@ -114,6 +114,38 @@ namespace SM_MentalHealthApp.Shared
         [MaxLength(2000)]
         public string? AdditionalNotes { get; set; }
         
+        // Lead Intake fields
+        [MaxLength(2)]
+        public string? ResidenceStateCode { get; set; }
+        
+        [MaxLength(2)]
+        public string? AccidentStateCode { get; set; }
+        
+        public int? AccidentParticipantRoleId { get; set; }
+        
+        public int? VehicleDispositionId { get; set; }
+        
+        public int? TransportToCareMethodId { get; set; }
+        
+        public int? MedicalAttentionTypeId { get; set; }
+        
+        public bool? PoliceInvolvement { get; set; }
+        
+        public bool? LostConsciousness { get; set; }
+        
+        public bool? NeuroSymptoms { get; set; }
+        
+        public bool? MusculoskeletalSymptoms { get; set; }
+        
+        public bool? PsychologicalSymptoms { get; set; }
+        
+        [MaxLength(2000)]
+        public string? SymptomsNotes { get; set; }
+        
+        public bool? InsuranceContacted { get; set; }
+        
+        public bool? RepresentedByAttorney { get; set; }
+        
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

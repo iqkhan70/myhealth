@@ -20,6 +20,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<UserRequest> MarkPendingUserRequestAsync(int id, int reviewerUserId, string notes);
         Task<bool> ValidateEmailAndPhoneAsync(string email, string mobilePhone);
         Task<UserRequest> UpdateAccidentInfoAsync(int id, UpdateAccidentInfoRequest request);
+        Task<UserRequest> UpdateLeadIntakeAsync(int id, UpdateLeadIntakeRequest request);
     }
 
     public class UpdateAccidentInfoRequest
@@ -36,6 +37,24 @@ namespace SM_MentalHealthApp.Server.Services
         public string? DoctorsInformation { get; set; }
         public string? LawyersInformation { get; set; }
         public string? AdditionalNotes { get; set; }
+    }
+
+    public class UpdateLeadIntakeRequest
+    {
+        public string? ResidenceStateCode { get; set; }
+        public string? AccidentStateCode { get; set; }
+        public int? AccidentParticipantRoleId { get; set; }
+        public int? VehicleDispositionId { get; set; }
+        public int? TransportToCareMethodId { get; set; }
+        public int? MedicalAttentionTypeId { get; set; }
+        public bool? PoliceInvolvement { get; set; }
+        public bool? LostConsciousness { get; set; }
+        public bool? NeuroSymptoms { get; set; }
+        public bool? MusculoskeletalSymptoms { get; set; }
+        public bool? PsychologicalSymptoms { get; set; }
+        public string? SymptomsNotes { get; set; }
+        public bool? InsuranceContacted { get; set; }
+        public bool? RepresentedByAttorney { get; set; }
     }
 
     public class UserRequestService : IUserRequestService
@@ -571,6 +590,39 @@ namespace SM_MentalHealthApp.Server.Services
             userRequest.DoctorsInformation = request.DoctorsInformation;
             userRequest.LawyersInformation = request.LawyersInformation;
             userRequest.AdditionalNotes = request.AdditionalNotes;
+            userRequest.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            // Decrypt for return
+            UserEncryptionHelper.DecryptUserRequestData(userRequest, _encryptionService);
+
+            return userRequest;
+        }
+
+        public async Task<UserRequest> UpdateLeadIntakeAsync(int id, UpdateLeadIntakeRequest request)
+        {
+            var userRequest = await _context.UserRequests.FindAsync(id);
+            if (userRequest == null)
+            {
+                throw new InvalidOperationException("User request not found.");
+            }
+
+            // Update lead intake fields
+            userRequest.ResidenceStateCode = request.ResidenceStateCode;
+            userRequest.AccidentStateCode = request.AccidentStateCode;
+            userRequest.AccidentParticipantRoleId = request.AccidentParticipantRoleId;
+            userRequest.VehicleDispositionId = request.VehicleDispositionId;
+            userRequest.TransportToCareMethodId = request.TransportToCareMethodId;
+            userRequest.MedicalAttentionTypeId = request.MedicalAttentionTypeId;
+            userRequest.PoliceInvolvement = request.PoliceInvolvement;
+            userRequest.LostConsciousness = request.LostConsciousness;
+            userRequest.NeuroSymptoms = request.NeuroSymptoms;
+            userRequest.MusculoskeletalSymptoms = request.MusculoskeletalSymptoms;
+            userRequest.PsychologicalSymptoms = request.PsychologicalSymptoms;
+            userRequest.SymptomsNotes = request.SymptomsNotes;
+            userRequest.InsuranceContacted = request.InsuranceContacted;
+            userRequest.RepresentedByAttorney = request.RepresentedByAttorney;
             userRequest.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();

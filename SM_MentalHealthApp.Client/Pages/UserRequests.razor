@@ -152,10 +152,105 @@
                                 </div>
                                 @if (expandedLeadIntakeSections.Contains(request.Id))
                                 {
-                                    <div class="row">
-                                        <div class="col-md-12 mb-3">
-                                            <p class="text-muted">Lead intake information will be displayed here.</p>
-                                        </div>
+                                    <div class="patient-meta mb-3" style="margin-top: 12px;">
+                                        @if (!string.IsNullOrEmpty(expandedRequest.ResidenceStateCode))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Residence State:</strong></span>
+                                                <span class="meta-value">@GetStateName(expandedRequest.ResidenceStateCode)</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.AccidentStateCode))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Accident State:</strong></span>
+                                                <span class="meta-value">@GetStateName(expandedRequest.AccidentStateCode)</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.AccidentParticipantRoleId.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Participant Role:</strong></span>
+                                                <span class="meta-value">@GetAccidentParticipantRoleLabel(expandedRequest.AccidentParticipantRoleId.Value)</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.VehicleDispositionId.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Vehicle Disposition:</strong></span>
+                                                <span class="meta-value">@GetVehicleDispositionLabel(expandedRequest.VehicleDispositionId.Value)</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.TransportToCareMethodId.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Transport to Care:</strong></span>
+                                                <span class="meta-value">@GetTransportToCareMethodLabel(expandedRequest.TransportToCareMethodId.Value)</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.MedicalAttentionTypeId.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Medical Attention Type:</strong></span>
+                                                <span class="meta-value">@GetMedicalAttentionTypeLabel(expandedRequest.MedicalAttentionTypeId.Value)</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.PoliceInvolvement.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Police Involvement:</strong></span>
+                                                <span class="meta-value">@(expandedRequest.PoliceInvolvement.Value ? "Yes" : "No")</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.LostConsciousness.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Lost Consciousness:</strong></span>
+                                                <span class="meta-value">@(expandedRequest.LostConsciousness.Value ? "Yes" : "No")</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.NeuroSymptoms.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Neurological Symptoms:</strong></span>
+                                                <span class="meta-value">@(expandedRequest.NeuroSymptoms.Value ? "Yes" : "No")</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.MusculoskeletalSymptoms.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Musculoskeletal Symptoms:</strong></span>
+                                                <span class="meta-value">@(expandedRequest.MusculoskeletalSymptoms.Value ? "Yes" : "No")</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.PsychologicalSymptoms.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Psychological Symptoms:</strong></span>
+                                                <span class="meta-value">@(expandedRequest.PsychologicalSymptoms.Value ? "Yes" : "No")</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(expandedRequest.SymptomsNotes))
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Symptoms Notes:</strong></span>
+                                                <span class="meta-value" style="white-space: pre-wrap;">@expandedRequest.SymptomsNotes</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.InsuranceContacted.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Insurance Contacted:</strong></span>
+                                                <span class="meta-value">@(expandedRequest.InsuranceContacted.Value ? "Yes" : "No")</span>
+                                            </div>
+                                        }
+                                        @if (expandedRequest.RepresentedByAttorney.HasValue)
+                                        {
+                                            <div class="meta-row">
+                                                <span class="meta-label"><strong>Represented by Attorney:</strong></span>
+                                                <span class="meta-value">@(expandedRequest.RepresentedByAttorney.Value ? "Yes" : "No")</span>
+                                            </div>
+                                        }
                                     </div>
                                     
                                     @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator can edit
@@ -488,9 +583,112 @@
         <Body>
             <div class="dialog-content">
                 <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Residence State" class="w-100">
+                            <RadzenDropDown Data="@states" 
+                                           ValueProperty="Code" 
+                                           TextProperty="Name" 
+                                           @bind-Value="editLeadIntakeResidenceStateCode" 
+                                           Placeholder="Select state..."
+                                           Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Accident State" class="w-100">
+                            <RadzenDropDown Data="@states" 
+                                           ValueProperty="Code" 
+                                           TextProperty="Name" 
+                                           @bind-Value="editLeadIntakeAccidentStateCode" 
+                                           Placeholder="Select state..."
+                                           Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Participant Role" class="w-100">
+                            <RadzenDropDown Data="@accidentParticipantRoles" 
+                                           ValueProperty="Id" 
+                                           TextProperty="Label" 
+                                           @bind-Value="editLeadIntakeParticipantRoleId" 
+                                           Placeholder="Select role..."
+                                           Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Vehicle Disposition" class="w-100">
+                            <RadzenDropDown Data="@vehicleDispositions" 
+                                           ValueProperty="Id" 
+                                           TextProperty="Label" 
+                                           @bind-Value="editLeadIntakeVehicleDispositionId" 
+                                           Placeholder="Select disposition..."
+                                           Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Transport to Care" class="w-100">
+                            <RadzenDropDown Data="@transportToCareMethods" 
+                                           ValueProperty="Id" 
+                                           TextProperty="Label" 
+                                           @bind-Value="editLeadIntakeTransportToCareMethodId" 
+                                           Placeholder="Select method..."
+                                           Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <RadzenFormField Text="Medical Attention Type" class="w-100">
+                            <RadzenDropDown Data="@medicalAttentionTypes" 
+                                           ValueProperty="Id" 
+                                           TextProperty="Label" 
+                                           @bind-Value="editLeadIntakeMedicalAttentionTypeId" 
+                                           Placeholder="Select type..."
+                                           Style="width: 100%" />
+                        </RadzenFormField>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editLeadIntakePoliceInvolvement" />
+                            <label @onclick="@(() => editLeadIntakePoliceInvolvement = !editLeadIntakePoliceInvolvement)">Police Involvement</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editLeadIntakeLostConsciousness" />
+                            <label @onclick="@(() => editLeadIntakeLostConsciousness = !editLeadIntakeLostConsciousness)">Lost Consciousness</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editLeadIntakeNeuroSymptoms" />
+                            <label @onclick="@(() => editLeadIntakeNeuroSymptoms = !editLeadIntakeNeuroSymptoms)">Neurological Symptoms</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editLeadIntakeMusculoskeletalSymptoms" />
+                            <label @onclick="@(() => editLeadIntakeMusculoskeletalSymptoms = !editLeadIntakeMusculoskeletalSymptoms)">Musculoskeletal Symptoms</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editLeadIntakePsychologicalSymptoms" />
+                            <label @onclick="@(() => editLeadIntakePsychologicalSymptoms = !editLeadIntakePsychologicalSymptoms)">Psychological Symptoms</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editLeadIntakeInsuranceContacted" />
+                            <label @onclick="@(() => editLeadIntakeInsuranceContacted = !editLeadIntakeInsuranceContacted)">Insurance Contacted</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenCheckBox @bind-Value="editLeadIntakeRepresentedByAttorney" />
+                            <label @onclick="@(() => editLeadIntakeRepresentedByAttorney = !editLeadIntakeRepresentedByAttorney)">Represented by Attorney</label>
+                        </div>
+                    </div>
                     <div class="col-md-12 mb-3">
-                        <p class="text-muted">Lead intake fields will be added here.</p>
-                        <!-- TODO: Add lead intake form fields when ready -->
+                        <RadzenFormField Text="Symptoms Notes" class="w-100">
+                            <RadzenTextArea @bind-Value="editLeadIntakeSymptomsNotes" MaxLength="2000" Rows="4" Style="width: 100%" />
+                        </RadzenFormField>
                     </div>
                 </div>
                 
@@ -541,6 +739,29 @@
     private string editDoctorsInformation = "";
     private string editLawyersInformation = "";
     private string editAdditionalNotes = "";
+    
+    // Lead Intake lookup data
+    private List<State> states = new();
+    private List<AccidentParticipantRole> accidentParticipantRoles = new();
+    private List<VehicleDisposition> vehicleDispositions = new();
+    private List<TransportToCareMethod> transportToCareMethods = new();
+    private List<MedicalAttentionType> medicalAttentionTypes = new();
+    
+    // Lead Intake form fields
+    private string? editLeadIntakeResidenceStateCode;
+    private string? editLeadIntakeAccidentStateCode;
+    private int? editLeadIntakeParticipantRoleId;
+    private int? editLeadIntakeVehicleDispositionId;
+    private int? editLeadIntakeTransportToCareMethodId;
+    private int? editLeadIntakeMedicalAttentionTypeId;
+    private bool? editLeadIntakePoliceInvolvement;
+    private bool? editLeadIntakeLostConsciousness;
+    private bool? editLeadIntakeNeuroSymptoms;
+    private bool? editLeadIntakeMusculoskeletalSymptoms;
+    private bool? editLeadIntakePsychologicalSymptoms;
+    private string editLeadIntakeSymptomsNotes = "";
+    private bool? editLeadIntakeInsuranceContacted;
+    private bool? editLeadIntakeRepresentedByAttorney;
 
     private class StatusFilterOption
     {
@@ -559,6 +780,7 @@
     protected override async Task OnInitializedAsync()
     {
         await AuthService.InitializeAsync();
+        await LoadLookupDataAsync();
         await LoadUserRequests();
         StartAutoRefresh();
     }
@@ -933,6 +1155,20 @@
     private void ShowEditLeadIntakeDialog(UserRequest request)
     {
         selectedRequest = request;
+        editLeadIntakeResidenceStateCode = request.ResidenceStateCode;
+        editLeadIntakeAccidentStateCode = request.AccidentStateCode;
+        editLeadIntakeParticipantRoleId = request.AccidentParticipantRoleId;
+        editLeadIntakeVehicleDispositionId = request.VehicleDispositionId;
+        editLeadIntakeTransportToCareMethodId = request.TransportToCareMethodId;
+        editLeadIntakeMedicalAttentionTypeId = request.MedicalAttentionTypeId;
+        editLeadIntakePoliceInvolvement = request.PoliceInvolvement;
+        editLeadIntakeLostConsciousness = request.LostConsciousness;
+        editLeadIntakeNeuroSymptoms = request.NeuroSymptoms;
+        editLeadIntakeMusculoskeletalSymptoms = request.MusculoskeletalSymptoms;
+        editLeadIntakePsychologicalSymptoms = request.PsychologicalSymptoms;
+        editLeadIntakeSymptomsNotes = request.SymptomsNotes ?? "";
+        editLeadIntakeInsuranceContacted = request.InsuranceContacted;
+        editLeadIntakeRepresentedByAttorney = request.RepresentedByAttorney;
         showEditLeadIntakeDialog = true;
     }
     
@@ -945,24 +1181,47 @@
             isProcessing = true;
             StateHasChanged();
             
-            // TODO: Add lead intake fields here when ready
             var updateRequest = new
             {
-                // Placeholder - fields will be added later
+                ResidenceStateCode = editLeadIntakeResidenceStateCode,
+                AccidentStateCode = editLeadIntakeAccidentStateCode,
+                AccidentParticipantRoleId = editLeadIntakeParticipantRoleId,
+                VehicleDispositionId = editLeadIntakeVehicleDispositionId,
+                TransportToCareMethodId = editLeadIntakeTransportToCareMethodId,
+                MedicalAttentionTypeId = editLeadIntakeMedicalAttentionTypeId,
+                PoliceInvolvement = editLeadIntakePoliceInvolvement,
+                LostConsciousness = editLeadIntakeLostConsciousness,
+                NeuroSymptoms = editLeadIntakeNeuroSymptoms,
+                MusculoskeletalSymptoms = editLeadIntakeMusculoskeletalSymptoms,
+                PsychologicalSymptoms = editLeadIntakePsychologicalSymptoms,
+                SymptomsNotes = editLeadIntakeSymptomsNotes,
+                InsuranceContacted = editLeadIntakeInsuranceContacted,
+                RepresentedByAttorney = editLeadIntakeRepresentedByAttorney
             };
             
-            // TODO: Update endpoint when ready
-            // var response = await Http.PutAsJsonAsync($"api/UserRequest/{selectedRequest.Id}/lead-intake", updateRequest);
+            var response = await Http.PutAsJsonAsync($"api/UserRequest/{selectedRequest.Id}/lead-intake", updateRequest);
             
-            // Placeholder success message
-            NotificationService.Notify(NotificationSeverity.Success, "Success", "Lead intake information updated successfully");
-            showEditLeadIntakeDialog = false;
-            // Refresh the request
-            await LoadUserRequests();
-            // Clear expanded cache for this request
-            if (expandedRequests.ContainsKey(selectedRequest.Id))
+            if (response.IsSuccessStatusCode)
             {
-                expandedRequests.Remove(selectedRequest.Id);
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Lead intake information updated successfully");
+                showEditLeadIntakeDialog = false;
+                
+                // Reload the request data to get updated information, but keep the row expanded
+                var requestId = selectedRequest.Id;
+                var updatedRequest = await Http.GetFromJsonAsync<UserRequest>($"api/UserRequest/{requestId}");
+                if (updatedRequest != null)
+                {
+                    // Update the expanded request data in place
+                    expandedRequests[requestId] = updatedRequest;
+                    StateHasChanged();
+                }
+                
+                selectedRequest = null;
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to update lead intake information: {errorContent}");
             }
         }
         catch (Exception ex)
@@ -974,6 +1233,110 @@
             isProcessing = false;
             StateHasChanged();
         }
+    }
+    
+    private async Task LoadLookupDataAsync()
+    {
+        try
+        {
+            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", AuthService.Token);
+            
+            // Load each lookup separately to catch individual errors
+            try
+            {
+                var statesResponse = await Http.GetAsync("api/lookup/states");
+                if (statesResponse.IsSuccessStatusCode)
+                {
+                    states = await statesResponse.Content.ReadFromJsonAsync<List<State>>() ?? new();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading states: {ex.Message}");
+            }
+            
+            try
+            {
+                var rolesResponse = await Http.GetAsync("api/lookup/accident-participant-roles");
+                if (rolesResponse.IsSuccessStatusCode)
+                {
+                    accidentParticipantRoles = await rolesResponse.Content.ReadFromJsonAsync<List<AccidentParticipantRole>>() ?? new();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading accident participant roles: {ex.Message}");
+            }
+            
+            try
+            {
+                var dispositionsResponse = await Http.GetAsync("api/lookup/vehicle-dispositions");
+                if (dispositionsResponse.IsSuccessStatusCode)
+                {
+                    vehicleDispositions = await dispositionsResponse.Content.ReadFromJsonAsync<List<VehicleDisposition>>() ?? new();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading vehicle dispositions: {ex.Message}");
+            }
+            
+            try
+            {
+                var transportResponse = await Http.GetAsync("api/lookup/transport-to-care-methods");
+                if (transportResponse.IsSuccessStatusCode)
+                {
+                    transportToCareMethods = await transportResponse.Content.ReadFromJsonAsync<List<TransportToCareMethod>>() ?? new();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading transport to care methods: {ex.Message}");
+            }
+            
+            try
+            {
+                var medicalResponse = await Http.GetAsync("api/lookup/medical-attention-types");
+                if (medicalResponse.IsSuccessStatusCode)
+                {
+                    medicalAttentionTypes = await medicalResponse.Content.ReadFromJsonAsync<List<MedicalAttentionType>>() ?? new();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading medical attention types: {ex.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in LoadLookupDataAsync: {ex.Message}");
+        }
+    }
+    
+    private string GetStateName(string? stateCode)
+    {
+        if (string.IsNullOrEmpty(stateCode)) return "";
+        return states.FirstOrDefault(s => s.Code == stateCode)?.Name ?? stateCode;
+    }
+    
+    private string GetAccidentParticipantRoleLabel(int roleId)
+    {
+        return accidentParticipantRoles.FirstOrDefault(r => r.Id == roleId)?.Label ?? $"Role {roleId}";
+    }
+    
+    private string GetVehicleDispositionLabel(int dispositionId)
+    {
+        return vehicleDispositions.FirstOrDefault(d => d.Id == dispositionId)?.Label ?? $"Disposition {dispositionId}";
+    }
+    
+    private string GetTransportToCareMethodLabel(int methodId)
+    {
+        return transportToCareMethods.FirstOrDefault(m => m.Id == methodId)?.Label ?? $"Method {methodId}";
+    }
+    
+    private string GetMedicalAttentionTypeLabel(int typeId)
+    {
+        return medicalAttentionTypes.FirstOrDefault(t => t.Id == typeId)?.Label ?? $"Type {typeId}";
     }
 
     public void Dispose()
