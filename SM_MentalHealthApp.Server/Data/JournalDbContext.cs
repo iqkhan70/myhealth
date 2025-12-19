@@ -36,27 +36,27 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<CriticalValueKeyword> CriticalValueKeywords { get; set; }
             public DbSet<AIInstructionCategory> AIInstructionCategories { get; set; }
             public DbSet<AIInstruction> AIInstructions { get; set; }
-            
+
             // Generic question pattern system entities
             public DbSet<GenericQuestionPattern> GenericQuestionPatterns { get; set; }
-            
+
             // Knowledge base system entities
             public DbSet<KnowledgeBaseCategory> KnowledgeBaseCategories { get; set; }
             public DbSet<KnowledgeBaseEntry> KnowledgeBaseEntries { get; set; }
-            
+
             // AI Response Template system entities
             public DbSet<AIResponseTemplate> AIResponseTemplates { get; set; }
-            
+
             // Medical Threshold system entities
             public DbSet<MedicalThreshold> MedicalThresholds { get; set; }
-            
+
             // Section Marker system entities
             public DbSet<SectionMarker> SectionMarkers { get; set; }
-            
+
             // AI Model Configuration system entities
             public DbSet<AIModelConfig> AIModelConfigs { get; set; }
             public DbSet<AIModelChain> AIModelChains { get; set; }
-            
+
             // Lookup tables for Lead Intake
             public DbSet<State> States { get; set; }
             public DbSet<AccidentParticipantRole> AccidentParticipantRoles { get; set; }
@@ -87,36 +87,36 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
                         entity.HasIndex(e => e.Email).IsUnique();
                         entity.Property(e => e.Gender).HasMaxLength(20);
-                        
+
                         // MobilePhone is stored encrypted as string
                         entity.Property(e => e.MobilePhoneEncrypted)
                             .HasMaxLength(500); // Enough for encrypted phone number
-                        
+
                         // Ignore the computed MobilePhone property (not stored in DB)
                         entity.Ignore(e => e.MobilePhone);
-                        
+
                         entity.Property(e => e.Specialization).HasMaxLength(100);
                         entity.Property(e => e.LicenseNumber).HasMaxLength(50);
-                        
+
                         // Accident-related fields (captured from user requests)
                         entity.Property(e => e.Age);
                         entity.Property(e => e.Race).HasMaxLength(100);
-                        entity.Property(e => e.AccidentAddress).HasMaxLength(500);
+                        entity.Property(e => e.AccidentAddress).HasColumnType("text");
                         entity.Property(e => e.AccidentDate);
-                        entity.Property(e => e.VehicleDetails).HasMaxLength(1000);
+                        entity.Property(e => e.VehicleDetails).HasColumnType("text");
                         entity.Property(e => e.DateReported);
                         entity.Property(e => e.PoliceCaseNumber).HasMaxLength(100);
-                        entity.Property(e => e.AccidentDetails).HasMaxLength(2000);
+                        entity.Property(e => e.AccidentDetails).HasColumnType("text");
                         entity.Property(e => e.RoadConditions).HasMaxLength(200);
-                        entity.Property(e => e.DoctorsInformation).HasMaxLength(1000);
-                        entity.Property(e => e.LawyersInformation).HasMaxLength(1000);
-                        entity.Property(e => e.AdditionalNotes).HasMaxLength(2000);
-                        
+                        entity.Property(e => e.DoctorsInformation).HasColumnType("text");
+                        entity.Property(e => e.LawyersInformation).HasColumnType("text");
+                        entity.Property(e => e.AdditionalNotes).HasColumnType("text");
+
                         // DateOfBirth is stored encrypted as string
                         entity.Property(e => e.DateOfBirthEncrypted)
                             .IsRequired()
                             .HasMaxLength(500); // Enough for encrypted DateTime
-                        
+
                         // Ignore the computed DateOfBirth property (not stored in DB)
                         entity.Ignore(e => e.DateOfBirth);
 
@@ -125,19 +125,19 @@ namespace SM_MentalHealthApp.Server.Data
                         .WithMany(r => r.Users)
                         .HasForeignKey(e => e.RoleId)
                         .OnDelete(DeleteBehavior.Restrict);
-                        
+
                         // Performance indexes for common queries
                         entity.HasIndex(e => e.RoleId); // Critical for filtering patients (RoleId = 1)
                         entity.HasIndex(e => e.IsActive); // Critical for filtering active users
                         entity.HasIndex(e => new { e.RoleId, e.IsActive }); // Composite index for common filter combination
                         entity.HasIndex(e => e.FirstName); // For name searches
                         entity.HasIndex(e => e.LastName); // For name searches
-                        
+
                         // Lead Intake fields
                         entity.Property(e => e.ResidenceStateCode).HasMaxLength(2);
                         entity.Property(e => e.AccidentStateCode).HasMaxLength(2);
-                        entity.Property(e => e.SymptomsNotes).HasMaxLength(2000);
-                        
+                        entity.Property(e => e.SymptomsNotes).HasColumnType("text");
+
                         // Note: Foreign key relationships are managed at the database level via SQL script
                         // We don't configure them in EF Core to avoid validation issues if tables don't exist yet
                         // Indexes for Lead Intake fields (for performance)
@@ -148,7 +148,7 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.TransportToCareMethodId);
                         entity.HasIndex(e => e.MedicalAttentionTypeId);
                   });
-                  
+
                   // Configure State entity
                   modelBuilder.Entity<State>(entity =>
                   {
@@ -158,7 +158,7 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Name).IsRequired().HasMaxLength(50);
                         entity.HasIndex(e => e.Name).IsUnique();
                   });
-                  
+
                   // Configure AccidentParticipantRole entity
                   modelBuilder.Entity<AccidentParticipantRole>(entity =>
                   {
@@ -168,7 +168,7 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Label).IsRequired().HasMaxLength(50);
                         entity.HasIndex(e => e.Code).IsUnique();
                   });
-                  
+
                   // Configure VehicleDisposition entity
                   modelBuilder.Entity<VehicleDisposition>(entity =>
                   {
@@ -178,7 +178,7 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Label).IsRequired().HasMaxLength(50);
                         entity.HasIndex(e => e.Code).IsUnique();
                   });
-                  
+
                   // Configure TransportToCareMethod entity
                   modelBuilder.Entity<TransportToCareMethod>(entity =>
                   {
@@ -188,7 +188,7 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Label).IsRequired().HasMaxLength(80);
                         entity.HasIndex(e => e.Code).IsUnique();
                   });
-                  
+
                   // Configure MedicalAttentionType entity
                   modelBuilder.Entity<MedicalAttentionType>(entity =>
                   {
@@ -217,43 +217,43 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
                         entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
                         entity.HasIndex(e => e.Email);
-                        
+
                         // MobilePhone is stored encrypted as string
                         entity.Property(e => e.MobilePhoneEncrypted)
                             .IsRequired()
                             .HasMaxLength(500); // Enough for encrypted phone number
-                        
+
                         // Note: We can't index encrypted data, so we remove the index on MobilePhone
                         // Ignore the computed MobilePhone property (not stored in DB)
                         entity.Ignore(e => e.MobilePhone);
-                        
+
                         entity.Property(e => e.Gender).IsRequired().HasMaxLength(20);
                         entity.Property(e => e.Reason).IsRequired().HasMaxLength(1000);
                         entity.Property(e => e.Status).HasConversion<int>(); // Store enum as int
                         entity.Property(e => e.Notes).HasMaxLength(2000);
-                        
+
                         // Accident-related fields
                         entity.Property(e => e.Age);
                         entity.Property(e => e.Race).HasMaxLength(100);
-                        entity.Property(e => e.AccidentAddress).HasMaxLength(500);
+                        entity.Property(e => e.AccidentAddress).HasColumnType("text");
                         entity.Property(e => e.AccidentDate);
-                        entity.Property(e => e.VehicleDetails).HasMaxLength(1000);
+                        entity.Property(e => e.VehicleDetails).HasColumnType("text");
                         entity.Property(e => e.DateReported);
                         entity.Property(e => e.PoliceCaseNumber).HasMaxLength(100);
-                        entity.Property(e => e.AccidentDetails).HasMaxLength(2000);
+                        entity.Property(e => e.AccidentDetails).HasColumnType("text");
                         entity.Property(e => e.RoadConditions).HasMaxLength(200);
-                        entity.Property(e => e.DoctorsInformation).HasMaxLength(1000);
-                        entity.Property(e => e.LawyersInformation).HasMaxLength(1000);
-                        entity.Property(e => e.AdditionalNotes).HasMaxLength(2000);
-                        
+                        entity.Property(e => e.DoctorsInformation).HasColumnType("text");
+                        entity.Property(e => e.LawyersInformation).HasColumnType("text");
+                        entity.Property(e => e.AdditionalNotes).HasColumnType("text");
+
                         // DateOfBirth is stored encrypted as string
                         entity.Property(e => e.DateOfBirthEncrypted)
                             .IsRequired()
                             .HasMaxLength(500); // Enough for encrypted DateTime
-                        
+
                         // Ignore the computed DateOfBirth property (not stored in DB)
                         entity.Ignore(e => e.DateOfBirth);
-                        
+
                         // Foreign key relationship to User (reviewer)
                         entity.HasOne(e => e.ReviewedByUser)
                         .WithMany()
@@ -275,7 +275,7 @@ namespace SM_MentalHealthApp.Server.Data
                         .WithMany(u => u.AssignedTo)
                         .HasForeignKey(e => e.AssigneeId)
                         .OnDelete(DeleteBehavior.Cascade);
-                        
+
                         // Performance indexes for common queries (critical for role-based filtering)
                         entity.HasIndex(e => e.AssignerId); // For finding patients assigned to a doctor/coordinator
                         entity.HasIndex(e => e.AssigneeId); // For finding doctors/coordinators assigned to a patient

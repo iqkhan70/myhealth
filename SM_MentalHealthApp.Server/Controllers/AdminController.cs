@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -174,7 +175,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                     // ✅ Check if there are severity sources (indicating criticality was found but AI says normal)
                     var hasCriticalSources = severitySources != null && severitySources.Any();
-                    var message = hasCriticalSources 
+                    var message = hasCriticalSources
                         ? "AI health check shows normal status. Nothing to alert at this time."
                         : "AI health check shows normal status.";
 
@@ -264,8 +265,9 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _logger.LogInformation("Manually sent {AlertsSent} AI health alerts for patient {PatientId}", alertsSent, patientId);
 
-                return Ok(new { 
-                    success = true, 
+                return Ok(new
+                {
+                    success = true,
                     alertsSent = alertsSent,
                     doctorsNotified = assignedDoctors.Count,
                     message = $"Alerts sent to {alertsSent} doctor(s)"
@@ -284,7 +286,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         private List<SeveritySource> IdentifySeveritySources(List<SeveritySourceMetadata> sources, string aiResponse, bool isHighSeverity)
         {
             var severitySources = new List<SeveritySource>();
-            
+
             if (!sources.Any())
             {
                 return severitySources;
@@ -311,7 +313,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var shouldInclude = false;
 
                 // Check if source has high severity keywords in content or title
-                var matchingKeywords = highSeverityKeywords.Where(k => 
+                var matchingKeywords = highSeverityKeywords.Where(k =>
                     sourceContentLower.Contains(k) || sourceTitleLower.Contains(k)).ToList();
 
                 // For Content sources, also check alerts
@@ -394,7 +396,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     {
                         // Check if mentioned in AI response
                         var keyPhrases = ExtractKeyPhrases(source.SourceContent);
-                        var mentionedInResponse = keyPhrases.Any(phrase => 
+                        var mentionedInResponse = keyPhrases.Any(phrase =>
                             responseLower.Contains(phrase.ToLower()));
 
                         if (mentionedInResponse)
@@ -409,7 +411,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (!shouldInclude)
                 {
                     var keyPhrases = ExtractKeyPhrases(source.SourceContent);
-                    var mentionedInResponse = keyPhrases.Any(phrase => 
+                    var mentionedInResponse = keyPhrases.Any(phrase =>
                         responseLower.Contains(phrase.ToLower()));
 
                     if (mentionedInResponse)
@@ -437,12 +439,12 @@ namespace SM_MentalHealthApp.Server.Controllers
                         SourceType = source.SourceType,
                         SourceId = source.SourceId,
                         SourceTitle = source.SourceTitle,
-                        SourcePreview = source.SourceContent.Length > 150 
-                            ? source.SourceContent.Substring(0, 150) + "..." 
+                        SourcePreview = source.SourceContent.Length > 150
+                            ? source.SourceContent.Substring(0, 150) + "..."
                             : source.SourceContent,
                         SourceDate = source.SourceDate,
-                        ContributionReason = contributionReasons.Any() 
-                            ? string.Join("; ", contributionReasons) 
+                        ContributionReason = contributionReasons.Any()
+                            ? string.Join("; ", contributionReasons)
                             : "Included in analysis",
                         NavigationRoute = navigationRoute
                     });
@@ -462,7 +464,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var phrases = new List<string>();
             var words = text.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            
+
             // Extract 3-word phrases
             for (int i = 0; i < words.Length - 2; i++)
             {
@@ -767,14 +769,14 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Get current user's role to validate assignment rules
                 var currentUserId = GetCurrentUserId();
                 var currentRoleId = GetCurrentRoleId();
-                
+
                 // For attorneys: validate they can only assign to other attorneys
                 if (currentRoleId == Shared.Constants.Roles.Attorney)
                 {
                     // Verify target is an attorney
                     var targetUser = await _context.Users
                         .FirstOrDefaultAsync(u => u.Id == request.DoctorId && u.IsActive);
-                    
+
                     if (targetUser == null || targetUser.RoleId != Shared.Constants.Roles.Attorney)
                     {
                         return BadRequest("Attorneys can only assign patients to other attorneys.");
@@ -782,7 +784,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
                 // For doctors: they can assign to doctors or attorneys (no restriction needed)
                 // For coordinators and admins: they can assign to anyone (no restriction needed)
-                
+
                 var success = await _adminService.AssignPatientToDoctorAsync(request.PatientId, request.DoctorId);
                 if (success)
                 {
@@ -1129,7 +1131,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 await _context.SaveChangesAsync();
-                
+
                 // Decrypt after saving for response
                 UserEncryptionHelper.DecryptUserData(patient, _encryptionService);
 
@@ -1236,7 +1238,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 patient.SymptomsNotes = request.SymptomsNotes;
                 patient.InsuranceContacted = request.InsuranceContacted;
                 patient.RepresentedByAttorney = request.RepresentedByAttorney;
-                
+
                 // New fields from Script121525.sql
                 patient.SymptomOngoingStatusId = request.SymptomOngoingStatusId;
                 patient.SymptomsHeadaches = request.SymptomsHeadaches;
@@ -1539,7 +1541,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 UserEncryptionHelper.EncryptUserData(coordinator, _encryptionService);
 
                 await _context.SaveChangesAsync();
-                
+
                 // Decrypt after saving for response
                 UserEncryptionHelper.DecryptUserData(coordinator, _encryptionService);
 
@@ -1700,7 +1702,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 UserEncryptionHelper.EncryptUserData(attorney, _encryptionService);
 
                 await _context.SaveChangesAsync();
-                
+
                 // Decrypt after saving for response
                 UserEncryptionHelper.DecryptUserData(attorney, _encryptionService);
 
@@ -1850,7 +1852,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? MobilePhone { get; set; }
         public string? Password { get; set; }
     }
-    
+
     public class UpdateUserLeadIntakeRequest
     {
         public string? ResidenceStateCode { get; set; }
@@ -1873,25 +1875,43 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         public int? Age { get; set; }
         public string? Race { get; set; }
+
+        [Column(TypeName = "text")]
         public string? AccidentAddress { get; set; }
+
+        [Column(TypeName = "datetime")]
         public DateTime? AccidentDate { get; set; }
+
+        [Column(TypeName = "text")]
         public string? VehicleDetails { get; set; }
         public DateTime? DateReported { get; set; }
         public string? PoliceCaseNumber { get; set; }
+
+        [Column(TypeName = "text")]
         public string? AccidentDetails { get; set; }
+
+
         public string? RoadConditions { get; set; }
+
+        [Column(TypeName = "text")]
         public string? DoctorsInformation { get; set; }
+
+        [Column(TypeName = "text")]
         public string? LawyersInformation { get; set; }
+
+        [Column(TypeName = "text")]
         public string? AdditionalNotes { get; set; }
         public bool? PoliceInvolvement { get; set; }
         public bool? LostConsciousness { get; set; }
         public bool? NeuroSymptoms { get; set; }
         public bool? MusculoskeletalSymptoms { get; set; }
         public bool? PsychologicalSymptoms { get; set; }
+
+        [Column(TypeName = "text")]
         public string? SymptomsNotes { get; set; }
         public bool? InsuranceContacted { get; set; }
         public bool? RepresentedByAttorney { get; set; }
-        
+
         // New fields from Script121525.sql
         public int? SymptomOngoingStatusId { get; set; }
         public bool? SymptomsHeadaches { get; set; }
@@ -1904,6 +1924,8 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? ERHospitalName { get; set; }
         public DateTime? ERVisitDate { get; set; }
         public bool? TreatingInjurySpecialist { get; set; }
+
+        [Column(TypeName = "text")]
         public string? InjurySpecialistDetails { get; set; }
         public bool? InsuranceAdjusterContacted { get; set; }
         public bool? ProvidedRecordedStatement { get; set; }
@@ -1911,6 +1933,8 @@ namespace SM_MentalHealthApp.Server.Controllers
         public decimal? SettlementOfferAmount { get; set; }
         public string? ClaimInsuranceCompany { get; set; }
         public bool? SignedDocumentsRelatedToAccident { get; set; }
+
+        [Column(TypeName = "text")]
         public string? SignedDocumentsNotes { get; set; }
         public string? AttorneyName { get; set; }
         public string? AttorneyFirm { get; set; }
@@ -1921,8 +1945,12 @@ namespace SM_MentalHealthApp.Server.Controllers
         public bool? MissedWork { get; set; }
         public int? MissedWorkDays { get; set; }
         public bool? WorkingWithRestrictions { get; set; }
+
+        [Column(TypeName = "text")]
         public string? WorkRestrictionDetails { get; set; }
         public bool? DailyActivitiesAffected { get; set; }
+
+        [Column(TypeName = "text")]
         public string? DailyActivitiesNotes { get; set; }
     }
 

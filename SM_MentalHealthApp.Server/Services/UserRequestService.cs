@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -27,17 +28,33 @@ namespace SM_MentalHealthApp.Server.Services
     {
         public int? Age { get; set; }
         public string? Race { get; set; }
+
+        [Column(TypeName = "text")]
         public string? AccidentAddress { get; set; }
+
         public DateTime? AccidentDate { get; set; }
+
+        [Column(TypeName = "text")]
         public string? VehicleDetails { get; set; }
+
         public DateTime? DateReported { get; set; }
         public string? PoliceCaseNumber { get; set; }
+
+
+        [Column(TypeName = "text")]
         public string? AccidentDetails { get; set; }
+
         public string? RoadConditions { get; set; }
+
+        [Column(TypeName = "text")]
         public string? DoctorsInformation { get; set; }
+
+        [Column(TypeName = "text")]
         public string? LawyersInformation { get; set; }
+
+        [Column(TypeName = "text")]
         public string? AdditionalNotes { get; set; }
-        
+
         // New fields from Script121525.sql
         public int? SymptomOngoingStatusId { get; set; }
         public bool? SymptomsHeadaches { get; set; }
@@ -50,6 +67,8 @@ namespace SM_MentalHealthApp.Server.Services
         public string? ERHospitalName { get; set; }
         public DateTime? ERVisitDate { get; set; }
         public bool? TreatingInjurySpecialist { get; set; }
+
+        [Column(TypeName = "text")]
         public string? InjurySpecialistDetails { get; set; }
         public bool? InsuranceAdjusterContacted { get; set; }
         public bool? ProvidedRecordedStatement { get; set; }
@@ -57,6 +76,8 @@ namespace SM_MentalHealthApp.Server.Services
         public decimal? SettlementOfferAmount { get; set; }
         public string? ClaimInsuranceCompany { get; set; }
         public bool? SignedDocumentsRelatedToAccident { get; set; }
+
+        [Column(TypeName = "text")]
         public string? SignedDocumentsNotes { get; set; }
         public string? AttorneyName { get; set; }
         public string? AttorneyFirm { get; set; }
@@ -67,8 +88,12 @@ namespace SM_MentalHealthApp.Server.Services
         public bool? MissedWork { get; set; }
         public int? MissedWorkDays { get; set; }
         public bool? WorkingWithRestrictions { get; set; }
+
+        [Column(TypeName = "text")]
         public string? WorkRestrictionDetails { get; set; }
         public bool? DailyActivitiesAffected { get; set; }
+
+        [Column(TypeName = "text")]
         public string? DailyActivitiesNotes { get; set; }
     }
 
@@ -87,6 +112,8 @@ namespace SM_MentalHealthApp.Server.Services
         public bool? NeuroSymptoms { get; set; }
         public bool? MusculoskeletalSymptoms { get; set; }
         public bool? PsychologicalSymptoms { get; set; }
+
+        [Column(TypeName = "text")]
         public string? SymptomsNotes { get; set; }
         public bool? InsuranceContacted { get; set; }
         public bool? RepresentedByAttorney { get; set; }
@@ -396,7 +423,7 @@ namespace SM_MentalHealthApp.Server.Services
                 IsActive = true,
                 IsFirstLogin = true,
                 MustChangePassword = true, // Force password change on first login
-                
+
                 // Copy Lead Intake fields from user request
                 ResidenceStateCode = userRequest.ResidenceStateCode,
                 AccidentStateCode = userRequest.AccidentStateCode,
@@ -412,7 +439,7 @@ namespace SM_MentalHealthApp.Server.Services
                 SymptomsNotes = userRequest.SymptomsNotes,
                 InsuranceContacted = userRequest.InsuranceContacted,
                 RepresentedByAttorney = userRequest.RepresentedByAttorney,
-                
+
                 // Copy accident-related fields from user request
                 Age = userRequest.Age,
                 Race = userRequest.Race,
@@ -426,7 +453,7 @@ namespace SM_MentalHealthApp.Server.Services
                 DoctorsInformation = userRequest.DoctorsInformation,
                 LawyersInformation = userRequest.LawyersInformation,
                 AdditionalNotes = userRequest.AdditionalNotes,
-                
+
                 // Copy new Accident fields from Script121525.sql
                 SymptomOngoingStatusId = userRequest.SymptomOngoingStatusId,
                 SymptomsHeadaches = userRequest.SymptomsHeadaches,
@@ -680,7 +707,7 @@ namespace SM_MentalHealthApp.Server.Services
             userRequest.DoctorsInformation = request.DoctorsInformation;
             userRequest.LawyersInformation = request.LawyersInformation;
             userRequest.AdditionalNotes = request.AdditionalNotes;
-            
+
             // New fields from Script121525.sql
             userRequest.SymptomOngoingStatusId = request.SymptomOngoingStatusId;
             userRequest.SymptomsHeadaches = request.SymptomsHeadaches;

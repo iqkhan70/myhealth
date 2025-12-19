@@ -27,17 +27,17 @@ ON DUPLICATE KEY UPDATE
 
 -- Step 3: Seed Users table
 -- Note: Using demo123 as password hash (you should use proper password hashing in production)
-INSERT INTO Users (Id, FirstName, LastName, Email, PasswordHash, DateOfBirth, Gender, MobilePhone, RoleId, CreatedAt, LastLoginAt, IsActive, IsFirstLogin, MustChangePassword, Specialization, LicenseNumber) VALUES
-(1, 'Admin', 'User', 'admin@mentalhealth.com', '$2a$11$demo123hash', '1980-01-01', 'Other', '+1234567890', 3, NOW(), NULL, 1, 0, 0, NULL, NULL),
-(2, 'Dr. Sarah', 'Johnson', 'dr.sarah@mentalhealth.com', '$2a$11$demo123hash', '1975-05-15', 'Female', '+1234567891', 2, NOW(), NULL, 1, 0, 0, 'Psychiatry', 'MD123456'),
-(3, 'John', 'Doe', 'john@doe.com', '$2a$11$demo123hash', '1990-08-20', 'Male', '+1234567892', 1, NOW(), NULL, 1, 1, 1, NULL, NULL)
+INSERT INTO Users (Id, FirstName, LastName, Email, PasswordHash, DateOfBirthEncrypted, Gender, MobilePhoneEncrypted, RoleId, CreatedAt, LastLoginAt, IsActive, IsFirstLogin, MustChangePassword, Specialization, LicenseNumber) VALUES
+(1, 'Admin', 'User', 'admin@mentalhealth.com', '$2a$11$demo123hash', '', 'Other', '', 3, NOW(), NULL, 1, 0, 0, NULL, NULL),
+(2, 'Dr. Sarah', 'Johnson', 'dr.sarah@mentalhealth.com', '$2a$11$demo123hash', '', 'Female', '', 2, NOW(), NULL, 1, 0, 0, 'Psychiatry', 'MD123456'),
+(3, 'John', 'Doe', 'john@doe.com', '$2a$11$demo123hash', '', 'Male', '', 1, NOW(), NULL, 1, 1, 1, NULL, NULL)
 ON DUPLICATE KEY UPDATE 
     FirstName = VALUES(FirstName),
     LastName = VALUES(LastName),
     PasswordHash = VALUES(PasswordHash),
-    DateOfBirth = VALUES(DateOfBirth),
+    DateOfBirthEncrypted = VALUES(DateOfBirthEncrypted),
     Gender = VALUES(Gender),
-    MobilePhone = VALUES(MobilePhone),
+    MobilePhoneEncrypted = VALUES(MobilePhoneEncrypted),
     RoleId = VALUES(RoleId),
     IsActive = VALUES(IsActive),
     Specialization = VALUES(Specialization),

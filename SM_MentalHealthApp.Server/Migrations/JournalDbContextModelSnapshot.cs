@@ -503,6 +503,32 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.ToTable("AIResponseTemplates");
                 });
 
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.AccidentParticipantRole", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("AccidentParticipantRole", (string)null);
+                });
+
             modelBuilder.Entity("SM_MentalHealthApp.Shared.Appointment", b =>
                 {
                     b.Property<int>("Id")
@@ -1418,6 +1444,32 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.ToTable("KnowledgeBaseEntries");
                 });
 
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.MedicalAttentionType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("MedicalAttentionType", (string)null);
+                });
+
             modelBuilder.Entity("SM_MentalHealthApp.Shared.MedicalThreshold", b =>
                 {
                     b.Property<int>("Id")
@@ -1628,6 +1680,77 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.ToTable("SmsMessages");
                 });
 
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.State", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(2)
+                        .HasColumnType("varchar(2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.HasKey("Code");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("States", (string)null);
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.SymptomOngoingStatus", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("SymptomOngoingStatus", (string)null);
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.TransportToCareMethod", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("TransportToCareMethod", (string)null);
+                });
+
             modelBuilder.Entity("SM_MentalHealthApp.Shared.User", b =>
                 {
                     b.Property<int>("Id")
@@ -1638,41 +1761,77 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.Property<string>("AccidentAddress")
                         .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime?>("AccidentDate")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("AccidentDetails")
                         .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("text");
+
+                    b.Property<int?>("AccidentParticipantRoleId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AccidentStateCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("varchar(2)");
 
                     b.Property<string>("AdditionalNotes")
                         .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("text");
 
                     b.Property<int?>("Age")
                         .HasColumnType("int");
 
+                    b.Property<string>("AttorneyFirm")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("AttorneyName")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("ClaimInsuranceCompany")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<DateTime?>("DateOfAccident")
-                        .HasColumnType("datetime(6)");
+                    b.Property<bool?>("DailyActivitiesAffected")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("DailyActivitiesNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
 
                     b.Property<string>("DateOfBirthEncrypted")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
+                    b.Property<DateTime?>("DateReported")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("DoctorsInformation")
                         .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
+                        .HasColumnType("text");
+
+                    b.Property<string>("ERHospitalName")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime?>("ERVisitDate")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
+
+                    b.Property<decimal?>("EstimatedRepairAmount")
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -1682,6 +1841,19 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Property<string>("Gender")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<string>("InjurySpecialistDetails")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<bool?>("InsuranceAdjusterContacted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("InsuranceContacted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("InsuranceEstimateCompleted")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
@@ -1699,17 +1871,35 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.Property<string>("LawyersInformation")
                         .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
+                        .HasColumnType("text");
 
                     b.Property<string>("LicenseNumber")
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
+                    b.Property<bool?>("LostConsciousness")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int?>("MedicalAttentionTypeId")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("MissedWork")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int?>("MissedWorkDays")
+                        .HasColumnType("int");
+
                     b.Property<string>("MobilePhoneEncrypted")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
+                    b.Property<bool?>("MusculoskeletalSymptoms")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<bool>("MustChangePassword")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("NeuroSymptoms")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<string>("PasswordHash")
@@ -1720,9 +1910,28 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<bool?>("PoliceInvolvement")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("ProvidedRecordedStatement")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("PsychologicalSymptoms")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Race")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
+
+                    b.Property<bool?>("ReceivedSettlementOffer")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("RepresentedByAttorney")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("ResidenceStateCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("varchar(2)");
 
                     b.Property<string>("RoadConditions")
                         .HasMaxLength(200)
@@ -1731,20 +1940,101 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Property<int>("RoleId")
                         .HasColumnType("int");
 
+                    b.Property<decimal?>("SettlementOfferAmount")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<string>("SignedDocumentsNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<bool?>("SignedDocumentsRelatedToAccident")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Specialization")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<int?>("SymptomOngoingStatusId")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("SymptomsBackPain")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("SymptomsDizziness")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("SymptomsHeadaches")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("SymptomsJointPain")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("SymptomsNeckPain")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("SymptomsNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("SymptomsNumbnessTingling")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int?>("TransportToCareMethodId")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("TreatingInjurySpecialist")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("VehicleCurrentLocation")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<string>("VehicleDetails")
+                        .HasMaxLength(1000)
+                        .HasColumnType("text");
+
+                    b.Property<int?>("VehicleDispositionId")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("VehicleTotalLoss")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("WentToEmergencyRoom")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("WorkRestrictionDetails")
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
 
+                    b.Property<bool?>("WorkingWithRestrictions")
+                        .HasColumnType("tinyint(1)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("AccidentParticipantRoleId");
+
+                    b.HasIndex("AccidentStateCode");
 
                     b.HasIndex("Email")
                         .IsUnique();
 
+                    b.HasIndex("FirstName");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("LastName");
+
+                    b.HasIndex("MedicalAttentionTypeId");
+
+                    b.HasIndex("ResidenceStateCode");
+
                     b.HasIndex("RoleId");
+
+                    b.HasIndex("TransportToCareMethodId");
+
+                    b.HasIndex("VehicleDispositionId");
+
+                    b.HasIndex("RoleId", "IsActive");
 
                     b.ToTable("Users");
                 });
@@ -1767,6 +2057,14 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.HasIndex("AssigneeId");
 
+                    b.HasIndex("AssignerId");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("AssigneeId", "IsActive");
+
+                    b.HasIndex("AssignerId", "IsActive");
+
                     b.ToTable("UserAssignments");
                 });
 
@@ -1780,41 +2078,77 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.Property<string>("AccidentAddress")
                         .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime?>("AccidentDate")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("AccidentDetails")
                         .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("text");
+
+                    b.Property<int?>("AccidentParticipantRoleId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AccidentStateCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("varchar(2)");
 
                     b.Property<string>("AdditionalNotes")
                         .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("text");
 
                     b.Property<int?>("Age")
                         .HasColumnType("int");
 
+                    b.Property<string>("AttorneyFirm")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("AttorneyName")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("ClaimInsuranceCompany")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<DateTime?>("DateOfAccident")
-                        .HasColumnType("datetime(6)");
+                    b.Property<bool?>("DailyActivitiesAffected")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("DailyActivitiesNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
 
                     b.Property<string>("DateOfBirthEncrypted")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
+                    b.Property<DateTime?>("DateReported")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("DoctorsInformation")
                         .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
+                        .HasColumnType("text");
+
+                    b.Property<string>("ERHospitalName")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime?>("ERVisitDate")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
+
+                    b.Property<decimal?>("EstimatedRepairAmount")
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -1826,6 +2160,19 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<string>("InjurySpecialistDetails")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<bool?>("InsuranceAdjusterContacted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("InsuranceContacted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("InsuranceEstimateCompleted")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1833,12 +2180,30 @@ namespace SM_MentalHealthApp.Server.Migrations
 
                     b.Property<string>("LawyersInformation")
                         .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("LostConsciousness")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int?>("MedicalAttentionTypeId")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("MissedWork")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int?>("MissedWorkDays")
+                        .HasColumnType("int");
 
                     b.Property<string>("MobilePhoneEncrypted")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
+
+                    b.Property<bool?>("MusculoskeletalSymptoms")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("NeuroSymptoms")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
@@ -1847,6 +2212,15 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.Property<string>("PoliceCaseNumber")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
+
+                    b.Property<bool?>("PoliceInvolvement")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("ProvidedRecordedStatement")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("PsychologicalSymptoms")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Race")
                         .HasMaxLength(100)
@@ -1857,8 +2231,18 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
 
+                    b.Property<bool?>("ReceivedSettlementOffer")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("RepresentedByAttorney")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<DateTime>("RequestedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ResidenceStateCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("varchar(2)");
 
                     b.Property<DateTime?>("ReviewedAt")
                         .HasColumnType("datetime(6)");
@@ -1870,15 +2254,76 @@ namespace SM_MentalHealthApp.Server.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<decimal?>("SettlementOfferAmount")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<string>("SignedDocumentsNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<bool?>("SignedDocumentsRelatedToAccident")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
+
+                    b.Property<int?>("SymptomOngoingStatusId")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("SymptomsBackPain")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("SymptomsDizziness")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("SymptomsHeadaches")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("SymptomsJointPain")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("SymptomsNeckPain")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("SymptomsNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)");
+
+                    b.Property<bool?>("SymptomsNumbnessTingling")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int?>("TransportToCareMethodId")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("TreatingInjurySpecialist")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("VehicleCurrentLocation")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<string>("VehicleDetails")
                         .HasMaxLength(1000)
+                        .HasColumnType("text");
+
+                    b.Property<int?>("VehicleDispositionId")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("VehicleTotalLoss")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool?>("WentToEmergencyRoom")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("WorkRestrictionDetails")
+                        .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
+
+                    b.Property<bool?>("WorkingWithRestrictions")
+                        .HasColumnType("tinyint(1)");
 
                     b.HasKey("Id");
 
@@ -1887,6 +2332,32 @@ namespace SM_MentalHealthApp.Server.Migrations
                     b.HasIndex("ReviewedByUserId");
 
                     b.ToTable("UserRequests");
+                });
+
+            modelBuilder.Entity("SM_MentalHealthApp.Shared.VehicleDisposition", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("VehicleDisposition", (string)null);
                 });
 
             modelBuilder.Entity("SM_MentalHealthApp.Server.Models.EmergencyIncident", b =>

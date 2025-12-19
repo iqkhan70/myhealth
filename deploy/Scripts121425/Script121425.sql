@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS MedicalAttentionType (
 ) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 
---Seeding lookup tables
+-- Seeding lookup tables
 -- Roles
 INSERT INTO AccidentParticipantRole (Code, Label) VALUES
 ('DRIVER', 'Driver'),
