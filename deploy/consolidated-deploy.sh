@@ -402,13 +402,8 @@ EOFOLLAMASERVICE
         fi
         
         echo ""
-        echo "⚠️  IMPORTANT: Update database with correct model names:"
-        echo "   Primary: $PRIMARY_MODEL"
-        echo "   Secondary: $SECONDARY_MODEL"
-        echo "   Run: UPDATE AIModelConfigs SET ApiEndpoint='$PRIMARY_MODEL' WHERE Id=1;"
-        echo "   Run: UPDATE AIModelConfigs SET ApiEndpoint='$SECONDARY_MODEL' WHERE Id=2;"
-        
         echo "✅ Model pulling and preloading complete"
+        echo "   Note: Database will be automatically updated with correct model names after seeding"
     else
         echo "✅ Ollama already installed"
         if ! systemctl is-active --quiet ollama; then
@@ -1257,6 +1252,137 @@ APPLY_SEED_SQL
 ENDSSH
 else
     echo -e "${YELLOW}⚠️  Seeding script not found, skipping...${NC}"
+fi
+
+# ============================================================================
+# Step 8.5: Sync Ollama Model Names with Database
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.5: Syncing Ollama Models with Database${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+# Only sync for local-db mode (managed-db might have different setup)
+if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+    echo "Ensuring database model names match available Ollama models..."
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME bash -s" << 'ENDSSH'
+    set -e
+    
+    # Wait for Ollama to be ready
+    echo "Checking Ollama service..."
+    if ! systemctl is-active --quiet ollama; then
+        echo "   Starting Ollama service..."
+        systemctl start ollama
+        sleep 5
+    fi
+    
+    # Wait for Ollama API
+    i=1
+    while [ $i -le 30 ]; do
+        if curl -s http://127.0.0.1:11434/api/tags > /dev/null 2>&1; then
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo "⚠️  Ollama API not ready, skipping model sync"
+            exit 0
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
+    
+    # Get available models
+    AVAILABLE_MODELS=$(curl -s http://127.0.0.1:11434/api/tags 2>/dev/null | python3 -c "import sys, json; data = json.load(sys.stdin); print('\n'.join([m.get('name', '') for m in data.get('models', [])]))" 2>/dev/null || echo "")
+    
+    if [ -z "$AVAILABLE_MODELS" ]; then
+        echo "⚠️  No models found in Ollama, skipping model sync"
+        exit 0
+    fi
+    
+    echo "Available Ollama models:"
+    echo "$AVAILABLE_MODELS" | while read model; do
+        if [ -n "$model" ]; then
+            echo "   - $model"
+        fi
+    done
+    
+    # Get MySQL root password
+    if [ -f /root/mysql_root_password.txt ]; then
+        MYSQL_ROOT_PASS=$(grep "MySQL root password:" /root/mysql_root_password.txt | cut -d' ' -f4 || echo "")
+    else
+        MYSQL_ROOT_PASS="UthmanBasima70"
+    fi
+    
+    if [ -z "$MYSQL_ROOT_PASS" ]; then
+        echo "⚠️  Cannot get MySQL root password, skipping model sync"
+        exit 0
+    fi
+    
+    export MYSQL_PWD="$MYSQL_ROOT_PASS"
+    
+    # Find correct primary model (Id=1)
+    PRIMARY_MODEL=""
+    if echo "$AVAILABLE_MODELS" | grep -qE "qwen2\.5.*8b.*instruct|qwen.*8b.*instruct"; then
+        PRIMARY_MODEL=$(echo "$AVAILABLE_MODELS" | grep -E "qwen2\.5.*8b.*instruct|qwen.*8b.*instruct" | head -1 | tr -d '\n\r')
+    elif echo "$AVAILABLE_MODELS" | grep -qE "qwen2\.5.*8b|qwen.*8b"; then
+        PRIMARY_MODEL=$(echo "$AVAILABLE_MODELS" | grep -E "qwen2\.5.*8b|qwen.*8b" | head -1 | tr -d '\n\r')
+    elif echo "$AVAILABLE_MODELS" | grep -q "tinyllama"; then
+        PRIMARY_MODEL="tinyllama"
+    else
+        PRIMARY_MODEL=$(echo "$AVAILABLE_MODELS" | head -1 | tr -d '\n\r')
+    fi
+    
+    # Find correct secondary model (Id=2)
+    SECONDARY_MODEL=""
+    if echo "$AVAILABLE_MODELS" | grep -qE "qwen2\.5.*4b.*instruct|qwen.*4b.*instruct"; then
+        SECONDARY_MODEL=$(echo "$AVAILABLE_MODELS" | grep -E "qwen2\.5.*4b.*instruct|qwen.*4b.*instruct" | head -1 | tr -d '\n\r')
+    elif echo "$AVAILABLE_MODELS" | grep -qE "qwen2\.5.*4b|qwen.*4b"; then
+        SECONDARY_MODEL=$(echo "$AVAILABLE_MODELS" | grep -E "qwen2\.5.*4b|qwen.*4b" | head -1 | tr -d '\n\r')
+    elif echo "$AVAILABLE_MODELS" | grep -q "tinyllama"; then
+        SECONDARY_MODEL="tinyllama"
+    else
+        SECONDARY_MODEL=$(echo "$AVAILABLE_MODELS" | head -1 | tr -d '\n\r')
+    fi
+    
+    # Sanitize model names (remove any special characters that could cause issues)
+    PRIMARY_MODEL=$(echo "$PRIMARY_MODEL" | sed 's/[^a-zA-Z0-9:._-]//g')
+    SECONDARY_MODEL=$(echo "$SECONDARY_MODEL" | sed 's/[^a-zA-Z0-9:._-]//g')
+    
+    if [ -z "$PRIMARY_MODEL" ] || [ -z "$SECONDARY_MODEL" ]; then
+        echo "⚠️  Could not determine model names, skipping database update"
+        unset MYSQL_PWD
+        exit 0
+    fi
+    
+    echo ""
+    echo "Updating database with correct model names:"
+    echo "   Primary model (Id=1): $PRIMARY_MODEL"
+    echo "   Secondary model (Id=2): $SECONDARY_MODEL"
+    
+    # Update primary model (use proper quoting to handle model names with colons)
+    mysql -u root "$DB_NAME" -e "UPDATE AIModelConfigs SET ApiEndpoint='$PRIMARY_MODEL', UpdatedAt=NOW() WHERE Id=1;" 2>&1 | grep -v "Warning" | grep -v "Enter password" || true
+    
+    # Update secondary model
+    mysql -u root "$DB_NAME" -e "UPDATE AIModelConfigs SET ApiEndpoint='$SECONDARY_MODEL', UpdatedAt=NOW() WHERE Id=2;" 2>&1 | grep -v "Warning" | grep -v "Enter password" || true
+    
+    # Ensure both models are active
+    mysql -u root "$DB_NAME" -e "UPDATE AIModelConfigs SET IsActive=1 WHERE Id IN (1,2);" 2>&1 | grep -v "Warning" | grep -v "Enter password" || true
+    
+    # Ensure chain is active
+    mysql -u root "$DB_NAME" -e "UPDATE AIModelChains SET IsActive=1 WHERE Id=1;" 2>&1 | grep -v "Warning" | grep -v "Enter password" || true
+    
+    echo "✅ Database model names updated"
+    
+    # Verify update
+    echo ""
+    echo "Verifying database configuration:"
+    mysql -u root "$DB_NAME" -e "SELECT Id, ModelName, Provider, ApiEndpoint, IsActive FROM AIModelConfigs WHERE Id IN (1,2);" 2>&1 | grep -v "Warning" | grep -v "Enter password"
+    
+    unset MYSQL_PWD
+    echo "✅ Ollama model sync completed"
+ENDSSH
+else
+    echo -e "${YELLOW}⚠️  Skipping Ollama model sync (managed-db mode)${NC}"
+    echo "   For managed databases, ensure model names are configured correctly in the database"
 fi
 
 # ============================================================================

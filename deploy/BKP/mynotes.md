@@ -20,6 +20,8 @@ curl -v -X POST "https://45.55.71.169/api/clinicalnotes" \
 #restart from mac
 ssh -i ~/.ssh/id_rsa root@143.198.148.50 "systemctl restart mental-health-app" # Restart app
 
+sudo systemctl restart ollama
+
 #restart from server -app
 systemctl restart mental-health-app
 
@@ -216,3 +218,10 @@ Select which to use based on branch or environment.
 ============very important---./deploy/setup-staging-connectionstring.sh
 ========this file is used in case we jack up the db password for what ever
 ==reason
+
+#Please note at the end after running
+consolidated-deploy.sh
+run
+ollama tinyllama:latest (or what ever llm you want to use)
+after that run
+fix-ollama-not-found.sh

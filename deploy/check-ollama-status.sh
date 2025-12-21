@@ -53,16 +53,31 @@ ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" <
     echo "=========================================="
     MODELS=$(curl -s http://127.0.0.1:11434/api/tags 2>/dev/null | python3 -c "import sys, json; data = json.load(sys.stdin); print('\n'.join([m.get('name', '') for m in data.get('models', [])]))" 2>/dev/null || echo "")
     
-    if echo "$MODELS" | grep -q "qwen2.5:8b"; then
-        echo "✅ qwen2.5:8b is available"
+    # Check for various qwen model name patterns
+    if echo "$MODELS" | grep -qE "qwen2\.5.*8b.*instruct|qwen.*8b.*instruct"; then
+        QWEN_8B=$(echo "$MODELS" | grep -E "qwen2\.5.*8b.*instruct|qwen.*8b.*instruct" | head -1)
+        echo "✅ qwen 8b model found: $QWEN_8B"
+    elif echo "$MODELS" | grep -qE "qwen2\.5.*8b|qwen.*8b"; then
+        QWEN_8B=$(echo "$MODELS" | grep -E "qwen2\.5.*8b|qwen.*8b" | head -1)
+        echo "✅ qwen 8b model found: $QWEN_8B"
     else
-        echo "❌ qwen2.5:8b is NOT available"
+        echo "❌ qwen 8b model is NOT available"
     fi
     
-    if echo "$MODELS" | grep -q "qwen2.5:4b"; then
-        echo "✅ qwen2.5:4b is available"
+    if echo "$MODELS" | grep -qE "qwen2\.5.*4b.*instruct|qwen.*4b.*instruct"; then
+        QWEN_4B=$(echo "$MODELS" | grep -E "qwen2\.5.*4b.*instruct|qwen.*4b.*instruct" | head -1)
+        echo "✅ qwen 4b model found: $QWEN_4B"
+    elif echo "$MODELS" | grep -qE "qwen2\.5.*4b|qwen.*4b"; then
+        QWEN_4B=$(echo "$MODELS" | grep -E "qwen2\.5.*4b|qwen.*4b" | head -1)
+        echo "✅ qwen 4b model found: $QWEN_4B"
     else
-        echo "❌ qwen2.5:4b is NOT available"
+        echo "❌ qwen 4b model is NOT available"
+    fi
+    
+    if echo "$MODELS" | grep -q "tinyllama"; then
+        echo "✅ tinyllama is available (fallback)"
+    else
+        echo "⚠️  tinyllama is NOT available"
     fi
     
     echo ""
@@ -85,6 +100,25 @@ ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" <
     mysql -u root customerhealthdb -e "SELECT Id, ModelName, Provider, ApiEndpoint, IsActive FROM AIModelConfigs;" 2>&1 | grep -v "Warning" | grep -v "Enter password"
     
     echo ""
+    echo "Checking if database model names match available Ollama models..."
+    DB_PRIMARY=$(mysql -u root customerhealthdb -e "SELECT ApiEndpoint FROM AIModelConfigs WHERE Id=1;" 2>&1 | grep -v "Warning" | grep -v "Enter password" | tail -1)
+    DB_SECONDARY=$(mysql -u root customerhealthdb -e "SELECT ApiEndpoint FROM AIModelConfigs WHERE Id=2;" 2>&1 | grep -v "Warning" | grep -v "Enter password" | tail -1)
+    
+    if echo "$MODELS" | grep -q "^${DB_PRIMARY}$"; then
+        echo "✅ Primary model '$DB_PRIMARY' matches available Ollama model"
+    else
+        echo "❌ Primary model '$DB_PRIMARY' does NOT match any available Ollama model!"
+        echo "   Available models: $MODELS"
+    fi
+    
+    if echo "$MODELS" | grep -q "^${DB_SECONDARY}$"; then
+        echo "✅ Secondary model '$DB_SECONDARY' matches available Ollama model"
+    else
+        echo "❌ Secondary model '$DB_SECONDARY' does NOT match any available Ollama model!"
+        echo "   Available models: $MODELS"
+    fi
+    
+    echo ""
     echo "AI Model Chains in database:"
     mysql -u root customerhealthdb -e "SELECT Id, ChainName, Context, PrimaryModelId, SecondaryModelId, IsActive FROM AIModelChains;" 2>&1 | grep -v "Warning" | grep -v "Enter password"
     
@@ -105,16 +139,30 @@ ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" <
     echo "=========================================="
     echo "7. Testing Model Generation"
     echo "=========================================="
-    if curl -s -X POST http://127.0.0.1:11434/api/generate \
-        -H "Content-Type: application/json" \
-        -d '{"model": "qwen2.5:8b", "prompt": "test", "stream": false, "options": {"num_predict": 5}}' > /tmp/ollama_test.json 2>&1; then
-        echo "✅ Model generation test SUCCESSFUL"
-        cat /tmp/ollama_test.json | python3 -m json.tool 2>/dev/null | head -5 || cat /tmp/ollama_test.json | head -5
+    
+    # Test with the model name from database
+    DB_PRIMARY=$(mysql -u root customerhealthdb -e "SELECT ApiEndpoint FROM AIModelConfigs WHERE Id=1;" 2>&1 | grep -v "Warning" | grep -v "Enter password" | tail -1)
+    
+    if [ -n "$DB_PRIMARY" ]; then
+        echo "Testing with database primary model: $DB_PRIMARY"
+        if curl -s -X POST http://127.0.0.1:11434/api/generate \
+            -H "Content-Type: application/json" \
+            -d "{\"model\": \"$DB_PRIMARY\", \"prompt\": \"test\", \"stream\": false, \"options\": {\"num_predict\": 5}}" > /tmp/ollama_test.json 2>&1; then
+            if grep -q "error" /tmp/ollama_test.json; then
+                echo "❌ Model generation test FAILED"
+                cat /tmp/ollama_test.json | python3 -m json.tool 2>/dev/null | head -10 || cat /tmp/ollama_test.json | head -10
+            else
+                echo "✅ Model generation test SUCCESSFUL"
+                cat /tmp/ollama_test.json | python3 -m json.tool 2>/dev/null | head -5 || cat /tmp/ollama_test.json | head -5
+            fi
+        else
+            echo "❌ Model generation test FAILED (curl error)"
+            cat /tmp/ollama_test.json 2>&1 | head -10
+        fi
+        rm -f /tmp/ollama_test.json
     else
-        echo "❌ Model generation test FAILED"
-        cat /tmp/ollama_test.json 2>&1 | head -10
+        echo "⚠️  Could not get primary model from database"
     fi
-    rm -f /tmp/ollama_test.json
     echo ""
     
     echo "=========================================="
@@ -125,7 +173,8 @@ ENDSSH
 echo ""
 echo "To fix issues:"
 echo "1. If Ollama is not running: systemctl start ollama"
-echo "2. If models are missing: ollama pull qwen2.5:8b && ollama pull qwen2.5:4b"
-echo "3. If port is not listening: check firewall and Ollama service"
+echo "2. If models are missing: ollama pull qwen2.5:8b-instruct && ollama pull qwen2.5:4b-instruct"
+echo "3. If model names don't match: run ./fix-ollama-not-found.sh"
+echo "4. If port is not listening: check firewall and Ollama service"
 echo ""
 
