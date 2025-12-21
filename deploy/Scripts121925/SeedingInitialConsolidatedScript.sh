@@ -649,3 +649,35 @@ INSERT INTO States (Code, Name) VALUES
 ('TN','Tennessee'),('TX','Texas'),('UT','Utah'),('VT','Vermont'),('VA','Virginia'),
 ('WA','Washington'),('WV','West Virginia'),('WI','Wisconsin'),('WY','Wyoming')
 ON DUPLICATE KEY UPDATE Name = VALUES(Name);
+
+-- ============================================================================
+-- Seed AI Model Configurations and Chains
+-- ============================================================================
+-- This seeds the AI model configurations for Ollama and sets up the chained AI workflow
+
+-- Insert AI Model Configs for Ollama (Primary and Secondary models)
+-- Using Qwen3 models: qwen2.5:8b-instruct for primary, qwen2.5:4b-instruct for secondary
+-- If these models don't work, you can update to use tinyllama as fallback
+INSERT INTO AIModelConfigs (Id, ModelName, ModelType, Provider, ApiEndpoint, ApiKeyConfigKey, SystemPrompt, Context, DisplayOrder, IsActive, CreatedAt, UpdatedAt) VALUES
+(1, 'Qwen3-8b', 'Primary', 'Ollama', 'qwen2.5:8b-instruct', NULL, 'You are a specialized medical AI assistant. Your task is to generate structured clinical note drafts from patient encounter data. Analyze the provided patient information and create a well-organized, professional clinical note that includes: Chief Complaint, History of Present Illness, Review of Systems, Assessment, and Plan. Ensure the note is clear, concise, and follows standard medical documentation practices.', 'ClinicalNote', 1, 1, NOW(), NULL),
+(2, 'Qwen3-4b', 'Secondary', 'Ollama', 'qwen2.5:4b-instruct', NULL, 'You are a medical AI assistant specialized in clinical decision support. Your task is to analyze clinical notes and patient encounters to identify: 1) Possible missed considerations or diagnoses that should be evaluated, 2) Recommended follow-up actions or tests, 3) Potential drug interactions or contraindications, 4) Red flags or warning signs that require attention. Provide a structured list of considerations and recommendations based on evidence-based medicine principles.', 'ClinicalNote', 2, 1, NOW(), NULL)
+ON DUPLICATE KEY UPDATE
+    ModelType = VALUES(ModelType),
+    Provider = VALUES(Provider),
+    ApiEndpoint = VALUES(ApiEndpoint),
+    SystemPrompt = VALUES(SystemPrompt),
+    DisplayOrder = VALUES(DisplayOrder),
+    IsActive = VALUES(IsActive),
+    UpdatedAt = NOW();
+
+-- Insert AI Model Chain for ClinicalNote context (Qwen3-8b-Qwen3-4b Chain)
+INSERT INTO AIModelChains (Id, ChainName, Context, Description, PrimaryModelId, SecondaryModelId, ChainOrder, IsActive, CreatedAt, UpdatedAt) VALUES
+(1, 'Qwen3-8b-Qwen3-4b Chain', 'ClinicalNote', 'Chained AI workflow: Primary model (Qwen3-8b) generates structured clinical note draft from patient encounter, then Secondary model (Qwen3-4b) analyzes the note to identify missed considerations and follow-up actions.', 1, 2, 1, 1, NOW(), NULL)
+ON DUPLICATE KEY UPDATE
+    ChainName = VALUES(ChainName),
+    Description = VALUES(Description),
+    PrimaryModelId = VALUES(PrimaryModelId),
+    SecondaryModelId = VALUES(SecondaryModelId),
+    ChainOrder = VALUES(ChainOrder),
+    IsActive = VALUES(IsActive),
+    UpdatedAt = NOW();

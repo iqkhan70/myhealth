@@ -1,0 +1,13 @@
+cd /Users/mohammedkhan/iq/health
+./deploy/consolidated-deploy.sh --local-db
+
+cd /Users/mohammedkhan/iq/health
+./deploy/consolidated-deploy.sh --managed-db "server=your-db-host;port=25060;database=mentalhealthdb;user=your-user;password=your-password"
+
+
+
+#restart from server -app
+systemctl restart mental-health-app
+
+#restart from server -nginx
+nginx -t && systemctl reload nginx

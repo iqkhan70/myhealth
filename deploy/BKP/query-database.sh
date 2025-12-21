@@ -18,7 +18,7 @@ NC='\033[0m'
 DROPLET_USER="root"
 SSH_KEY_PATH="$HOME/.ssh/id_rsa"
 APP_DIR="/opt/mental-health-app"
-DB_NAME="mentalhealthdb"
+DB_NAME="customerhealthdb"
 DB_USER="mentalhealth_user"
 
 echo -e "${GREEN}========================================${NC}"
