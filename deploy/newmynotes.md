@@ -20,8 +20,21 @@ systemctl restart mental-health-app
 #restart from server -nginx
 nginx -t && systemctl reload nginx
 
+==command to find env:
+sudo systemctl show mental-health-app.service | grep ASPNETCORE_ENVIRONMENT
+
+Please note that when we run git dev/staging, it will expect
+appsettings.Staging.json
+
+but when we build initially using consolidated script file since that cotains env as Production, it will create appsettings.Production.json and used that, in case in the initial setup if you need Staging change the script to make it Staging for Production make it Production and so on
+
 ==Also make sure mynotes in BKP folder has very valuable information
 ========necessaryfor GIT===============secret github instructions======================
+--this is my backup file in my localmachine in case you want to add this
+--and avoid below steps, please do that only for lower env
+--for prod it is necessary we generate new keys etc.
+/Users/mohammedkhan/iq/certs/authorized_keybackupfile.txt.pdf
+
 Create a CI-only SSH key on your Mac
 
 On your local Mac terminal, run:
