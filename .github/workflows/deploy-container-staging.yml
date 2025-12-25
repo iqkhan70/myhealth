@@ -1,0 +1,225 @@
+name: Deploy Containerized App to Staging
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'SM_MentalHealthApp.Server/**'
+      - 'SM_MentalHealthApp.Client/**'
+      - 'SM_MentalHealthApp.Shared/**'
+      - 'MentalHealthMobileClean/**'
+      - 'Dockerfile.api'
+      - 'Dockerfile.web'
+      - 'deploy/docker/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+env:
+  # Docker / Registry config
+  REGISTRY: registry.digitalocean.com
+  REGISTRY_NAMESPACE: cha-registry              # MUST match your DOCR registry name
+  IMAGE_REPOSITORY: mental-health-app           # Same repo name used in your script
+  API_TAG: api-staging
+  WEB_TAG: web-staging
+
+  # SSH / server config
+  SSH_USER: root
+  APP_DIR: /opt/mental-health-app
+  ENVIRONMENT: Staging
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ------------------------------
+      # 1. Checkout code
+      # ------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ------------------------------
+      # 2. Validate branch & load STAGING IP
+      # ------------------------------
+      - name: Validate branch and load STAGING server IP
+        run: |
+          if [ "${{ github.ref_name }}" != "dev" ]; then
+            echo "❌ ERROR: This workflow should only run on 'dev' branch!"
+            echo "   Current branch: ${{ github.ref_name }}"
+            exit 1
+          fi
+
+          if [ ! -f "deploy/DROPLET_IP_STAGING" ]; then
+            echo "❌ ERROR: deploy/DROPLET_IP_STAGING file not found!"
+            exit 1
+          fi
+
+          SSH_HOST_STG=$(grep -v '^#' deploy/DROPLET_IP_STAGING | grep -v '^$' | head -1 | tr -d '[:space:]')
+
+          if [ -z "$SSH_HOST_STG" ]; then
+            echo "❌ ERROR: STAGING IP address is empty!"
+            echo "File contents:"
+            cat deploy/DROPLET_IP_STAGING
+            exit 1
+          fi
+
+          echo "SSH_HOST_STG=$SSH_HOST_STG" >> $GITHUB_ENV
+          echo "✅ STAGING Environment"
+          echo "🌐 Staging Server IP: $SSH_HOST_STG"
+          echo "📦 Branch: ${{ github.ref_name }}"
+
+      # ------------------------------
+      # 3. Login to DigitalOcean Container Registry
+      # ------------------------------
+      - name: Login to DigitalOcean Container Registry
+        env:
+          DOCR_TOKEN: ${{ secrets.DOCR_TOKEN }}
+        run: |
+          if [ -z "$DOCR_TOKEN" ]; then
+            echo "❌ ERROR: DOCR_TOKEN secret is not configured!"
+            echo ""
+            echo "Create it in GitHub: Settings → Secrets and variables → Actions → New repository secret"
+            echo "Name: DOCR_TOKEN"
+            echo "Value: DigitalOcean API token with registry access"
+            exit 1
+          fi
+
+          echo "$DOCR_TOKEN" | docker login $REGISTRY -u doctl --password-stdin
+          echo "✅ Logged into DigitalOcean Container Registry"
+
+      # ------------------------------
+      # 4. Build & push API image
+      # ------------------------------
+      - name: Build and push API image
+        run: |
+          API_IMAGE="$REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_REPOSITORY:$API_TAG"
+          echo "Building API image: $API_IMAGE"
+
+          docker build \
+            -f Dockerfile.api \
+            -t "$API_IMAGE" \
+            .
+
+          docker push "$API_IMAGE"
+          echo "✅ Pushed API image: $API_IMAGE"
+
+      # ------------------------------
+      # 5. Build & push Web image
+      # ------------------------------
+      - name: Build and push Web image
+        run: |
+          WEB_IMAGE="$REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_REPOSITORY:$WEB_TAG"
+          echo "Building Web image: $WEB_IMAGE"
+
+          docker build \
+            -f Dockerfile.web \
+            -t "$WEB_IMAGE" \
+            .
+
+          docker push "$WEB_IMAGE"
+          echo "✅ Pushed Web image: $WEB_IMAGE"
+
+      # ------------------------------
+      # 6. Setup SSH (same as your existing workflow)
+      # ------------------------------
+      - name: Validate SSH secret
+        run: |
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            echo "❌ ERROR: SSH_PRIVATE_KEY secret is not configured!"
+            exit 1
+          fi
+          echo "✅ SSH_PRIVATE_KEY secret is configured"
+
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          ssh-keyscan -H ${{ env.SSH_HOST_STG }} >> ~/.ssh/known_hosts
+
+      # ------------------------------
+      # 7. Update .env on droplet (API_IMAGE / WEB_IMAGE)
+      # ------------------------------
+      - name: Update image tags in remote .env
+        run: |
+          API_IMAGE="${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_REPOSITORY }}:${{ env.API_TAG }}"
+          WEB_IMAGE="${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.IMAGE_REPOSITORY }}:${{ env.WEB_TAG }}"
+
+          echo "Using API_IMAGE=$API_IMAGE"
+          echo "Using WEB_IMAGE=$WEB_IMAGE"
+
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_STG }} << EOF
+            set -e
+            cd $APP_DIR
+
+            if [ ! -f .env ]; then
+              echo "❌ ERROR: .env not found at $APP_DIR/.env"
+              exit 1
+            fi
+
+            echo "Updating API_IMAGE and WEB_IMAGE in .env..."
+            sed -i 's|^API_IMAGE=.*|API_IMAGE=$API_IMAGE|' .env
+            sed -i 's|^WEB_IMAGE=.*|WEB_IMAGE=$WEB_IMAGE|' .env
+
+            echo "Current image lines in .env:"
+            grep '^API_IMAGE=' .env || echo "API_IMAGE not set"
+            grep '^WEB_IMAGE=' .env || echo "WEB_IMAGE not set"
+          EOF
+
+      # ------------------------------
+      # 8. Pull and restart containers via docker-compose
+      # ------------------------------
+      - name: Pull and restart containers on droplet
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST_STG }} << 'EOF'
+            set -e
+            cd /opt/mental-health-app
+
+            echo "Using .env:"
+            head -n 20 .env || echo ".env not found"
+
+            echo "Pulling images from registry..."
+            docker compose --env-file .env pull
+
+            echo "Recreating containers..."
+            docker compose --env-file .env up -d --remove-orphans
+
+            echo "Current containers:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+          EOF
+
+      # ------------------------------
+      # 9. Health check
+      # ------------------------------
+      - name: Health check
+        run: |
+          echo "Waiting for API to come up..."
+          sleep 10
+
+          echo "Checking https://${{ env.SSH_HOST_STG }}/api/health ..."
+          set +e
+          curl -k -f "https://${{ env.SSH_HOST_STG }}/api/health"
+          STATUS=$?
+          set -e
+
+          if [ $STATUS -ne 0 ]; then
+            echo "❌ Health check failed!"
+            exit 1
+          fi
+
+          echo "✅ Health check passed"
+
+      # ------------------------------
+      # 10. Summary
+      # ------------------------------
+      - name: Deployment summary
+        run: |
+          echo "✅ Containerized deployment to ${{ env.ENVIRONMENT }} completed!"
+          echo "🌐 Server: https://${{ env.SSH_HOST_STG }}"
+          echo "📦 Branch: ${{ github.ref_name }}"
+          echo "🔨 Commit: ${{ github.sha }}"
+          echo "🐳 API Image: $REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_REPOSITORY:$API_TAG"
+          echo "🐳 Web Image: $REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_REPOSITORY:$WEB_TAG"
