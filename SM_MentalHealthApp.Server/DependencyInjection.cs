@@ -106,10 +106,17 @@ public static class DependencyInjection
             var connString =
                 config.GetSection("Redis")["ConnectionString"] ??
                 Environment.GetEnvironmentVariable("Redis__ConnectionString") ??
-                "localhost:6379,password=StrongPassword123!"; // dev fallback
+                "localhost:6379"; // dev fallback (no password for local Redis)
 
             var redisConfig = ConfigurationOptions.Parse(connString);
-            redisConfig.AbortOnConnectFail = false;
+            redisConfig.AbortOnConnectFail = false; // Don't abort on connect fail - allow lazy connection
+            redisConfig.ConnectTimeout = 5000;
+            redisConfig.SyncTimeout = 5000;
+            redisConfig.AsyncTimeout = 5000;
+            redisConfig.ConnectRetry = 3;
+
+            // Create connection - it will connect lazily when first used
+            // If Redis is unavailable, operations will fail gracefully in RedisCacheService
             return ConnectionMultiplexer.Connect(redisConfig);
         });
         services.AddScoped<IRedisCacheService, RedisCacheService>();
