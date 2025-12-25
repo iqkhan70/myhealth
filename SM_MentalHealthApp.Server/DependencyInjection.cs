@@ -124,7 +124,6 @@ public static class DependencyInjection
         return services;
     }
 
-
     /// <summary>
     /// Registers application business logic services
     /// </summary>
