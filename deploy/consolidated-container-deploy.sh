@@ -462,6 +462,19 @@ else
     ASPNETCORE_ENV_VALUE="Production"
 fi
 
+# Load secrets from secrets.env if available (BEFORE creating ENV_CONTENT)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/secrets.env" ]; then
+    echo "Loading secrets from secrets.env..."
+    source "$SCRIPT_DIR/secrets.env"
+fi
+
+# Set defaults if not provided via secrets.env
+HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-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}
+HUGGINGFACE_BIOMISTRAL_MODEL_URL=${HUGGINGFACE_BIOMISTRAL_MODEL_URL:-https://api-inference.huggingface.co/models/medalpaca/medalpaca-7b}
+HUGGINGFACE_MEDITRON_MODEL_URL=${HUGGINGFACE_MEDITRON_MODEL_URL:-https://api-inference.huggingface.co/models/epfl-llm/meditron-7b}
+OPENAI_API_KEY=${OPENAI_API_KEY:-sk-your-actual-openai-api-key-here}
+
 # Create .env file on droplet
 # Generate .env content locally first to ensure variables are expanded correctly
 ENV_CONTENT="# Environment
@@ -506,7 +519,15 @@ VONAGE_FROM_NUMBER=+16148122119
 # Agora
 AGORA_APP_ID=efa11b3a7d05409ca979fb25a5b489ae
 AGORA_USE_TOKENS=true
-AGORA_APP_CERT=89ab54068fae46aeaf930ffd493e977b"
+AGORA_APP_CERT=89ab54068fae46aeaf930ffd493e977b
+
+# HuggingFace
+HUGGINGFACE_API_KEY=$HUGGINGFACE_API_KEY
+HUGGINGFACE_BIOMISTRAL_MODEL_URL=$HUGGINGFACE_BIOMISTRAL_MODEL_URL
+HUGGINGFACE_MEDITRON_MODEL_URL=$HUGGINGFACE_MEDITRON_MODEL_URL
+
+# OpenAI
+OPENAI_API_KEY=$OPENAI_API_KEY"
 
 # Write .env file to remote server
 echo "$ENV_CONTENT" | ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "cat > /opt/mental-health-app/.env && chmod 600 /opt/mental-health-app/.env && echo '✅ .env file created'"
@@ -1792,10 +1813,20 @@ ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "
     fi
     echo "✅ Read JWT_KEY from .env file (length: ${#JWT_KEY})"
     
+    # Read API keys from .env file (they were set from secrets.env during .env file creation)
+    HUGGINGFACE_API_KEY_VAL=$(grep "^HUGGINGFACE_API_KEY=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "*****no need to print api key*****")
+    HUGGINGFACE_BIOMISTRAL_URL_VAL=$(grep "^HUGGINGFACE_BIOMISTRAL_MODEL_URL=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "https://api-inference.huggingface.co/models/medalpaca/medalpaca-7b")
+    HUGGINGFACE_MEDITRON_URL_VAL=$(grep "^HUGGINGFACE_MEDITRON_MODEL_URL=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "https://api-inference.huggingface.co/models/epfl-llm/meditron-7b")
+    OPENAI_API_KEY_VAL=$(grep "^OPENAI_API_KEY=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "sk-your-actual-openai-api-key-here")
+    
     # Write values to temp files for Python to read (avoids shell escaping issues)
     echo "$MYSQL_CONN" > /tmp/mysql_conn.txt
     echo "$JWT_KEY" > /tmp/jwt_key.txt
     echo "$DB_NAME_FINAL" > /tmp/db_name.txt
+    echo "$HUGGINGFACE_API_KEY_VAL" > /tmp/huggingface_api_key.txt
+    echo "$HUGGINGFACE_BIOMISTRAL_URL_VAL" > /tmp/huggingface_biomistral_url.txt
+    echo "$HUGGINGFACE_MEDITRON_URL_VAL" > /tmp/huggingface_meditron_url.txt
+    echo "$OPENAI_API_KEY_VAL" > /tmp/openai_api_key.txt
     
     # Verify temp files were written correctly
     if [ ! -f /tmp/mysql_conn.txt ] || [ ! -s /tmp/mysql_conn.txt ]; then
@@ -1822,6 +1853,14 @@ try:
         jwt_key = f.read().strip()
     with open('/tmp/db_name.txt', 'r') as f:
         db_name = f.read().strip() or "customerhealthdb"
+    with open('/tmp/huggingface_api_key.txt', 'r') as f:
+        huggingface_api_key = f.read().strip()
+    with open('/tmp/huggingface_biomistral_url.txt', 'r') as f:
+        huggingface_biomistral_url = f.read().strip()
+    with open('/tmp/huggingface_meditron_url.txt', 'r') as f:
+        huggingface_meditron_url = f.read().strip()
+    with open('/tmp/openai_api_key.txt', 'r') as f:
+        openai_api_key = f.read().strip()
 except Exception as e:
     print(f"ERROR: Failed to read temp files: {e}", file=sys.stderr)
     sys.exit(1)
@@ -1897,6 +1936,14 @@ appsettings = {
         "FromName": "Health App",
         "EnableSsl": True
     },
+    "HuggingFace": {
+        "ApiKey": huggingface_api_key,
+        "BioMistralModelUrl": huggingface_biomistral_url,
+        "MeditronModelUrl": huggingface_meditron_url
+    },
+    "OpenAI": {
+        "ApiKey": openai_api_key
+    },
     "PiiEncryption": {
         "Key": "ThisIsAStrongEncryptionKeyForPIIData1234567890"
     },
@@ -1921,7 +1968,7 @@ try:
     with open('/tmp/appsettings.json', 'r') as f:
         written_data = json.load(f)
     
-    required_sections = ['ConnectionStrings', 'Kestrel', 'Jwt', 'Redis', 'Ollama', 'S3', 'Vonage', 'Agora', 'Email', 'Encryption', 'Logging', 'AllowedHosts']
+    required_sections = ['ConnectionStrings', 'Kestrel', 'Jwt', 'Redis', 'Ollama', 'S3', 'Vonage', 'Agora', 'Email', 'HuggingFace', 'OpenAI', 'Encryption', 'Logging', 'AllowedHosts']
     missing = [s for s in required_sections if s not in written_data]
     
     if missing:
@@ -1994,7 +2041,7 @@ PYTHON_SCRIPT
         echo "Verifying file in container has all required sections..."
         # Use a more robust check - verify each section exists
         MISSING_IN_CONTAINER=""
-        REQUIRED_SECTIONS="ConnectionStrings Kestrel Jwt Redis Ollama S3 Vonage Agora Email Encryption Logging AllowedHosts"
+        REQUIRED_SECTIONS="ConnectionStrings Kestrel Jwt Redis Ollama S3 Vonage Agora Email HuggingFace OpenAI Encryption Logging AllowedHosts"
         for section in $REQUIRED_SECTIONS; do
             # Check if section exists in JSON
             if ! docker exec "$API_CONTAINER" python3 -c "import json, sys; data = json.load(open('/app/$APPSETTINGS_FILE')); sys.exit(0 if '$section' in data else 1)" 2>/dev/null; then
@@ -2195,7 +2242,7 @@ PYTHON_SCRIPT
     fi
     
     # Clean up temp files
-    rm -f /tmp/appsettings.json /tmp/mysql_conn.txt /tmp/jwt_key.txt /tmp/db_name.txt
+    rm -f /tmp/appsettings.json /tmp/mysql_conn.txt /tmp/jwt_key.txt /tmp/db_name.txt /tmp/huggingface_api_key.txt /tmp/huggingface_biomistral_url.txt /tmp/huggingface_meditron_url.txt /tmp/openai_api_key.txt
 ENDSSH
 
 # ============================================================================
