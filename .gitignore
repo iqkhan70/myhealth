@@ -100,5 +100,4 @@ temp/
 deploy/backup/
 deploy/logs/
 deploy/secrets.env
-deploy/secrets.env.example
 deploy/README_SECRETS.md
