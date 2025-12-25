@@ -100,7 +100,15 @@ public static class DependencyInjection
         // Redis
         services.AddSingleton<IConnectionMultiplexer>(sp =>
         {
-            var redisConfig = ConfigurationOptions.Parse("localhost:6379,password=StrongPassword123!");
+            var config = sp.GetRequiredService<IConfiguration>();
+
+            // Priority: appsettings -> env var -> dev default
+            var connString =
+                config.GetSection("Redis")["ConnectionString"] ??
+                Environment.GetEnvironmentVariable("Redis__ConnectionString") ??
+                "localhost:6379,password=StrongPassword123!"; // dev fallback
+
+            var redisConfig = ConfigurationOptions.Parse(connString);
             redisConfig.AbortOnConnectFail = false;
             return ConnectionMultiplexer.Connect(redisConfig);
         });

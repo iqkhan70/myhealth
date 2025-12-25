@@ -1,0 +1,66 @@
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+
+# Node modules
+**/node_modules/
+**/npm-debug.log
+**/yarn-error.log
+
+# macOS metadata files (AppleDouble)
+**/._*
+**/.DS_Store
+**/.AppleDouble
+
+# IDE files
+**/.vs/
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*.swn
+
+# Test files
+**/TestResults/
+**/*.Test/
+**/*.Tests/
+
+# Mobile projects (not needed for API/Web)
+MentalHealthMobileClean/
+AgoraTokenServer/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+**/*.md
+**/README*
+**/LICENSE*
+
+# Deployment scripts (not needed in image)
+deploy/**
+!deploy/nginx/nginx.conf
+*.sh
+
+# Environment files
+.env
+.env.*
+*.local
+
+# Logs
+**/*.log
+**/logs/
+
+# Temporary files
+**/tmp/
+**/temp/
+**/*.tmp
+
+# Docker files themselves
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+

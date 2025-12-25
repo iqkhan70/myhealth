@@ -1,0 +1,41 @@
+# ============================
+# Stage 1: Build Blazor WASM
+# ============================
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+# Copy solution file first (for better layer caching)
+COPY SM_MentalHealthApp.sln ./
+
+# Copy project files (for dependency resolution)
+COPY SM_MentalHealthApp.Server/*.csproj ./SM_MentalHealthApp.Server/
+COPY SM_MentalHealthApp.Client/*.csproj ./SM_MentalHealthApp.Client/
+COPY SM_MentalHealthApp.Shared/*.csproj ./SM_MentalHealthApp.Shared/
+
+# Restore dependencies (this layer will be cached if project files don't change)
+RUN dotnet restore SM_MentalHealthApp.Client/SM_MentalHealthApp.Client.csproj
+
+# Copy the rest of the source code
+COPY SM_MentalHealthApp.Server/ SM_MentalHealthApp.Server/
+COPY SM_MentalHealthApp.Client/ SM_MentalHealthApp.Client/
+COPY SM_MentalHealthApp.Shared/ SM_MentalHealthApp.Shared/
+
+# Build and publish
+RUN dotnet publish SM_MentalHealthApp.Client/SM_MentalHealthApp.Client.csproj \
+    -c Release -o /app/client-publish --no-restore
+
+# ============================
+# Stage 2: nginx to serve static files & proxy API
+# ============================
+FROM nginx:alpine AS final
+
+# Blazor client static files
+COPY --from=build /app/client-publish/wwwroot /usr/share/nginx/html
+
+# nginx config
+COPY deploy/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+EXPOSE 443
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -24,7 +24,7 @@ namespace SM_MentalHealthApp.Client.Services
         {
             _authService = authService;
             // Construct hub URL from HttpClient BaseAddress
-            var baseUri = httpClient.BaseAddress ?? new Uri("http://localhost:5262/");
+            var baseUri = httpClient.BaseAddress ?? new Uri("https://localhost:5263/");
             var port = baseUri.Port != -1 ? $":{baseUri.Port}" : "";
             _hubUrl = $"{baseUri.Scheme}://{baseUri.Host}{port}/mobilehub";
         }

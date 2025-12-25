@@ -64,7 +64,8 @@ public static class DependencyInjection
                     if (string.IsNullOrEmpty(serverNgrokUrl))
                     {
                         // Use a default that will be updated by ServerUrlService
-                        serverUrl = "http://localhost:5262/";
+                        // Default to HTTPS for better security in development
+                        serverUrl = "https://localhost:5263/";
                     }
                     else
                     {
@@ -80,15 +81,20 @@ public static class DependencyInjection
 
                     if (isLocalhost)
                     {
-                        // Localhost: connect to server on port 5262, matching client scheme
-                        serverUrl = $"{clientScheme}://{baseUri.Host}:5262/";
+                        // Localhost: connect to server on correct port based on scheme
+                        // HTTP client (5282) -> HTTP server (5262)
+                        // HTTPS client (5283) -> HTTPS server (5263)
+                        var serverPort = clientScheme == "https" ? 5263 : 5262;
+                        serverUrl = $"{clientScheme}://{baseUri.Host}:{serverPort}/";
                     }
                     else if (clientPort == 5282 || clientPort == 5283)
                     {
-                        // Local network access (macip): client on 5282/5283, server on 5262
-                        // Match the client's scheme (http or https)
-                        // If client is HTTP, server should be HTTP; if HTTPS, server should be HTTPS
-                        serverUrl = $"{clientScheme}://{baseUri.Host}:5262/";
+                        // Local network access (macip): client on 5282/5283, server on 5262/5263
+                        // Match the client's scheme (http or https) and use correct server port
+                        // HTTP client (5282) -> HTTP server (5262)
+                        // HTTPS client (5283) -> HTTPS server (5263)
+                        var serverPort = clientScheme == "https" ? 5263 : 5262;
+                        serverUrl = $"{clientScheme}://{baseUri.Host}:{serverPort}/";
                     }
                     else
                     {
@@ -115,8 +121,8 @@ public static class DependencyInjection
             }
             catch (Exception ex)
             {
-                // Fallback to localhost if host extraction fails
-                var fallbackClient = new HttpClient { BaseAddress = new Uri("http://localhost:5262/") };
+                // Fallback to localhost HTTPS if host extraction fails
+                var fallbackClient = new HttpClient { BaseAddress = new Uri("https://localhost:5263/") };
                 fallbackClient.Timeout = TimeSpan.FromMinutes(15);
                 return fallbackClient;
             }

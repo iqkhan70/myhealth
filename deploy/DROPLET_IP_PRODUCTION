@@ -1,8 +1,1 @@
-# Production Environment IP Address
-# Used by main branch deployments
-# DO NOT MODIFY unless you're updating the production server IP
-# WARNING: Changes here affect PRODUCTION!
-
-# TODO: Replace with your production IP address
-159.203.100.131
-
+64.23.157.191

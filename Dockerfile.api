@@ -1,0 +1,41 @@
+# ============================
+# Stage 1: Build
+# ============================
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+# Copy solution file first (for better layer caching)
+COPY SM_MentalHealthApp.sln ./
+
+# Copy project files (for dependency resolution)
+COPY SM_MentalHealthApp.Server/*.csproj ./SM_MentalHealthApp.Server/
+COPY SM_MentalHealthApp.Client/*.csproj ./SM_MentalHealthApp.Client/
+COPY SM_MentalHealthApp.Shared/*.csproj ./SM_MentalHealthApp.Shared/
+
+# Restore dependencies (this layer will be cached if project files don't change)
+RUN dotnet restore SM_MentalHealthApp.Server/SM_MentalHealthApp.Server.csproj
+
+# Copy the rest of the source code
+COPY SM_MentalHealthApp.Server/ SM_MentalHealthApp.Server/
+COPY SM_MentalHealthApp.Client/ SM_MentalHealthApp.Client/
+COPY SM_MentalHealthApp.Shared/ SM_MentalHealthApp.Shared/
+
+# Build and publish
+RUN dotnet publish SM_MentalHealthApp.Server/SM_MentalHealthApp.Server.csproj \
+    -c Release -o /app/publish --no-restore
+
+# ============================
+# Stage 2: Runtime
+# ============================
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+WORKDIR /app
+
+COPY --from=build /app/publish .
+
+# Kestrel listens on HTTP inside the container, nginx terminates HTTPS
+ENV ASPNETCORE_URLS=http://0.0.0.0:5262
+ENV ASPNETCORE_ENVIRONMENT=Production
+
+EXPOSE 5262
+
+ENTRYPOINT ["dotnet", "SM_MentalHealthApp.Server.dll"]
