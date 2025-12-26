@@ -60,9 +60,7 @@ MentalHealthMobileClean/android/local.properties
 .env
 .env.local
 .env.*.local
-appsettings.json
-appsettings.Production.json
-appsettings.Development.json
+
 
 # Secrets
 *.pem
