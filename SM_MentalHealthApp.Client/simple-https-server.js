@@ -9,7 +9,7 @@ app.use(express.json());
 
 // ⚙️ Config
 const HTTPS_PORT = 5443;
-const BACKEND_URL = 'http://localhost:5262';
+const BACKEND_URL = 'https://localhost:5263';
 
 // 🔹 Serve Blazor static build output
 const blazorPath = path.join(__dirname, 'bin/Debug/net9.0/wwwroot');

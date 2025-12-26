@@ -2,61 +2,63 @@ using SM_MentalHealthApp.Server;
 using SM_MentalHealthApp.Server.Scripts;
 using StackExchange.Redis;
 
-// Check for encryption script arguments
+var builder = WebApplication.CreateBuilder(args);
+
+// Config: appsettings -> appsettings.{ENV} -> env vars
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+    .AddEnvironmentVariables();
+
+// One-off jobs
 if (args.Contains("--encrypt-mobilephones"))
 {
+    builder.Services.AddApplicationServices(builder.Configuration, builder.Environment);
+    var appForJob = builder.Build();
     await EncryptExistingMobilePhoneData.RunAsync();
     return;
 }
 
 if (args.Contains("--encrypt-dob"))
 {
-    var tempBuilder = WebApplication.CreateBuilder(args);
-    tempBuilder.Services.AddApplicationServices(tempBuilder.Configuration, tempBuilder.Environment);
-    var tempApp = tempBuilder.Build();
-    var serviceProvider = tempApp.Services;
-    await EncryptExistingDateOfBirthData.RunAsync(serviceProvider);
+    builder.Services.AddApplicationServices(builder.Configuration, builder.Environment);
+    var appForJob = builder.Build();
+    await EncryptExistingDateOfBirthData.RunAsync(appForJob.Services);
     return;
 }
 
-var builder = WebApplication.CreateBuilder(args);
-
-// Register all services using centralized dependency injection
+// Normal startup
 builder.Services.AddApplicationServices(builder.Configuration, builder.Environment);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// ✅ Only redirect to HTTPS in production (not needed for API server)
-// app.UseHttpsRedirection(); // Disabled - server runs on HTTP, client handles HTTPS
-
-// Enable static files (not Blazor WebAssembly)
-// app.UseStaticFiles(); // Removed - this was serving Blazor client files
-
+// nginx terminates TLS in Docker, so keep Kestrel HTTP-only
 app.UseCors("AllowBlazorClient");
-app.UseRouting(); // Required for OData routing
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Map API controllers
 app.MapControllers();
 app.MapRazorPages();
-
-// Map SignalR hub
 app.MapHub<SM_MentalHealthApp.Server.Hubs.MobileHub>("/mobilehub");
 
-// Optional: Redis health check log
-var redis = app.Services.GetRequiredService<IConnectionMultiplexer>();
-if (redis.IsConnected)
-    Console.WriteLine("✅ Redis connected successfully");
-else
-    Console.WriteLine("❌ Redis connection failed");
+// Redis check (non-fatal)
+try
+{
+    var redis = app.Services.GetService<IConnectionMultiplexer>();
+    Console.WriteLine(redis?.IsConnected == true
+        ? "✅ Redis connected successfully"
+        : "⚠️ Redis not connected (app will continue)");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"⚠️ Redis check failed (app will continue): {ex.Message}");
+}
 
-// TODO: Add database seeding later
 app.Run();
