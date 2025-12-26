@@ -473,7 +473,7 @@ fi
 HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-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}
 HUGGINGFACE_BIOMISTRAL_MODEL_URL=${HUGGINGFACE_BIOMISTRAL_MODEL_URL:-https://api-inference.huggingface.co/models/medalpaca/medalpaca-7b}
 HUGGINGFACE_MEDITRON_MODEL_URL=${HUGGINGFACE_MEDITRON_MODEL_URL:-https://api-inference.huggingface.co/models/epfl-llm/meditron-7b}
-OPENAI_API_KEY=${OPENAI_API_KEY:-sk-your-actual-openai-api-key-here}
+OPENAI_API_KEY=${OPENAI_API_KEY:-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}
 
 # Create .env file on droplet
 # Generate .env content locally first to ensure variables are expanded correctly
