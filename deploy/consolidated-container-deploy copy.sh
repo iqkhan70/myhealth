@@ -1654,6 +1654,695 @@ ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "
 ENDSSH
 
 # ============================================================================
+# Step 12: Create appsettings.Staging.json or appsettings.Production.json
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 12: Creating appsettings File${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+# Create appsettings file on droplet and copy into API container
+# Read .env file on remote server to get actual values (more reliable than passing via SSH)
+ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "ENVIRONMENT=$ENVIRONMENT bash -s" << 'ENDSSH'
+    set -e
+    
+    # Read values from .env file on the droplet (most reliable)
+    if [ -f /opt/mental-health-app/.env ]; then
+        set -a
+        source /opt/mental-health-app/.env
+        set +a
+        echo "✅ Loaded values from .env file"
+        echo "MYSQL_CONN from sourcing: '${MYSQL_CONN}'"
+        echo "MYSQL_CONN length: ${#MYSQL_CONN}"
+        
+        # Also read directly from file to compare
+        MYSQL_CONN_FROM_FILE=$(grep "^MYSQL_CONN=" /opt/mental-health-app/.env | cut -d'=' -f2- || echo "")
+        echo "MYSQL_CONN from file grep: '${MYSQL_CONN_FROM_FILE:0:80}'"
+        
+        # Use the file value if it's more complete
+        if [ ${#MYSQL_CONN_FROM_FILE} -gt ${#MYSQL_CONN} ]; then
+            echo "⚠️  File value is longer, using it instead"
+            MYSQL_CONN="$MYSQL_CONN_FROM_FILE"
+        fi
+    else
+        echo "❌ ERROR: .env file not found at /opt/mental-health-app/.env"
+        exit 1
+    fi
+    set -e
+    
+    echo "Finding API container..."
+    # Try multiple patterns to find API container
+    API_CONTAINER=$(docker ps --format "{{.Names}}" | grep -E "api|mental-health.*api" | grep -v "web" | head -1 || echo "")
+    if [ -z "$API_CONTAINER" ]; then
+        API_CONTAINER=$(docker ps -a --format "{{.Names}}" | grep -E "api|mental-health.*api" | grep -v "web" | head -1 || echo "")
+    fi
+    # Try docker compose ps format
+    if [ -z "$API_CONTAINER" ]; then
+        cd /opt/mental-health-app
+        API_CONTAINER=$(docker compose --env-file .env ps --format json 2>/dev/null | python3 -c "import sys, json; containers = json.load(sys.stdin); api = [c for c in containers if 'api' in c.get('Service', '').lower() and 'web' not in c.get('Service', '').lower()]; print(api[0]['Name'] if api else '')" 2>/dev/null || echo "")
+    fi
+    # Last resort: list all containers
+    if [ -z "$API_CONTAINER" ]; then
+        echo "All containers:"
+        docker ps -a --format "table {{.Names}}\t{{.Status}}"
+        echo ""
+        echo "Trying to find any container with 'api' in name..."
+        API_CONTAINER=$(docker ps -a --format "{{.Names}}" | grep -i api | head -1 || echo "")
+    fi
+    
+    if [ -z "$API_CONTAINER" ]; then
+        echo "❌ ERROR: No API container found"
+        echo "Available containers:"
+        docker ps -a
+        exit 1
+    fi
+    
+    echo "Found API container: $API_CONTAINER"
+    
+    # Verify MYSQL_CONN is not empty and is complete
+    if [ -z "$MYSQL_CONN" ]; then
+        echo "❌ ERROR: MYSQL_CONN is empty!"
+        echo "Reading from .env file..."
+        if [ -f /opt/mental-health-app/.env ]; then
+            MYSQL_CONN=$(grep "^MYSQL_CONN=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+            echo "MYSQL_CONN from .env: $MYSQL_CONN"
+        fi
+    fi
+    
+    # Check if MYSQL_CONN is incomplete (only has "server=mysql" without other parts)
+    if [ -n "$MYSQL_CONN" ] && echo "$MYSQL_CONN" | grep -q "^server=mysql$" || echo "$MYSQL_CONN" | grep -q "^server=mysql;port=" && ! echo "$MYSQL_CONN" | grep -q "database="; then
+        echo "⚠️  WARNING: MYSQL_CONN appears incomplete: '$MYSQL_CONN'"
+        echo "Reconstructing from individual components..."
+        
+        # Read individual components from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_NAME_FROM_ENV=$(grep "^MYSQL_DB=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "customerhealthdb")
+            DB_USER_FROM_ENV=$(grep "^MYSQL_USER=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "mentalhealth_user")
+            DB_PASSWORD_FROM_ENV=$(grep "^MYSQL_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")
+            
+            if [ -n "$DB_NAME_FROM_ENV" ] && [ -n "$DB_USER_FROM_ENV" ] && [ -n "$DB_PASSWORD_FROM_ENV" ]; then
+                MYSQL_CONN="server=mysql;port=3306;database=$DB_NAME_FROM_ENV;user=$DB_USER_FROM_ENV;password=$DB_PASSWORD_FROM_ENV"
+                echo "✅ Reconstructed MYSQL_CONN: ${MYSQL_CONN:0:50}..."
+            else
+                echo "❌ ERROR: Cannot reconstruct MYSQL_CONN - missing components"
+                echo "  DB_NAME: ${DB_NAME_FROM_ENV:-NOT SET}"
+                echo "  DB_USER: ${DB_USER_FROM_ENV:-NOT SET}"
+                echo "  DB_PASSWORD: ${DB_PASSWORD_FROM_ENV:+SET (hidden)}"
+                exit 1
+            fi
+        else
+            echo "❌ ERROR: Cannot reconstruct - .env file not found"
+            exit 1
+        fi
+    fi
+    
+    if [ -z "$MYSQL_CONN" ]; then
+        echo "❌ ERROR: MYSQL_CONN is still empty after all attempts"
+        exit 1
+    fi
+    
+    # Verify JWT_KEY is not empty
+    if [ -z "$JWT_KEY" ]; then
+        echo "⚠️  WARNING: JWT_KEY is empty, reading from .env file..."
+        if [ -f /opt/mental-health-app/.env ]; then
+            JWT_KEY=$(grep "^JWT_KEY=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+        fi
+    fi
+    
+    # Determine appsettings filename
+    if [ "$ENVIRONMENT" = "staging" ]; then
+        APPSETTINGS_FILE="appsettings.Staging.json"
+    else
+        APPSETTINGS_FILE="appsettings.Production.json"
+    fi
+    
+    echo "Creating $APPSETTINGS_FILE in container..."
+    echo "Using connection string: ${MYSQL_CONN:0:80}..." # Show first 80 chars for verification
+    
+    # Verify MYSQL_CONN has all required parts
+    if ! echo "$MYSQL_CONN" | grep -q "database=" || ! echo "$MYSQL_CONN" | grep -q "user=" || ! echo "$MYSQL_CONN" | grep -q "password="; then
+        echo "❌ ERROR: MYSQL_CONN is incomplete: '$MYSQL_CONN'"
+        echo "It must contain: server, port, database, user, and password"
+        exit 1
+    fi
+    
+    # ALWAYS reconstruct MYSQL_CONN from individual components to ensure we have the actual password
+    # Don't trust MYSQL_CONN from .env file - it might be incomplete or have CHANGE_ME
+    echo "Reading database components from .env file to build connection string..."
+    DB_NAME_FINAL=$(grep "^MYSQL_DB=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "customerhealthdb")
+    DB_USER_FINAL=$(grep "^MYSQL_USER=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "mentalhealth_user")
+    DB_PASSWORD_FINAL=$(grep "^MYSQL_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")
+    
+    if [ -z "$DB_NAME_FINAL" ] || [ -z "$DB_USER_FINAL" ] || [ -z "$DB_PASSWORD_FINAL" ]; then
+        echo "❌ ERROR: Cannot read database components from .env file"
+        echo "  DB_NAME: ${DB_NAME_FINAL:-NOT SET}"
+        echo "  DB_USER: ${DB_USER_FINAL:-NOT SET}"
+        echo "  DB_PASSWORD: ${DB_PASSWORD_FINAL:+SET (hidden)}"
+        exit 1
+    fi
+    
+    # Build connection string with actual password
+    MYSQL_CONN="server=mysql;port=3306;database=$DB_NAME_FINAL;user=$DB_USER_FINAL;password=$DB_PASSWORD_FINAL"
+    echo "✅ Built MYSQL_CONN from components: ${MYSQL_CONN:0:80}..."
+    
+    # Read JWT_KEY directly from .env file
+    JWT_KEY=$(grep "^JWT_KEY=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")
+    if [ -z "$JWT_KEY" ]; then
+        echo "❌ ERROR: JWT_KEY is empty in .env file!"
+        exit 1
+    fi
+    echo "✅ Read JWT_KEY from .env file (length: ${#JWT_KEY})"
+    
+    # Read API keys from .env file (they were set from secrets.env during .env file creation)
+    HUGGINGFACE_API_KEY_VAL=$(grep "^HUGGINGFACE_API_KEY=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "*****no need to print api key*****")
+    HUGGINGFACE_BIOMISTRAL_URL_VAL=$(grep "^HUGGINGFACE_BIOMISTRAL_MODEL_URL=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "https://api-inference.huggingface.co/models/medalpaca/medalpaca-7b")
+    HUGGINGFACE_MEDITRON_URL_VAL=$(grep "^HUGGINGFACE_MEDITRON_MODEL_URL=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "https://api-inference.huggingface.co/models/epfl-llm/meditron-7b")
+    OPENAI_API_KEY_VAL=$(grep "^OPENAI_API_KEY=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "sk-your-actual-openai-api-key-here")
+    
+    # Write values to temp files for Python to read (avoids shell escaping issues)
+    echo "$MYSQL_CONN" > /tmp/mysql_conn.txt
+    echo "$JWT_KEY" > /tmp/jwt_key.txt
+    echo "$DB_NAME_FINAL" > /tmp/db_name.txt
+    echo "$HUGGINGFACE_API_KEY_VAL" > /tmp/huggingface_api_key.txt
+    echo "$HUGGINGFACE_BIOMISTRAL_URL_VAL" > /tmp/huggingface_biomistral_url.txt
+    echo "$HUGGINGFACE_MEDITRON_URL_VAL" > /tmp/huggingface_meditron_url.txt
+    echo "$OPENAI_API_KEY_VAL" > /tmp/openai_api_key.txt
+    
+    # Verify temp files were written correctly
+    if [ ! -f /tmp/mysql_conn.txt ] || [ ! -s /tmp/mysql_conn.txt ]; then
+        echo "❌ ERROR: Failed to write /tmp/mysql_conn.txt"
+        exit 1
+    fi
+    if [ ! -f /tmp/jwt_key.txt ] || [ ! -s /tmp/jwt_key.txt ]; then
+        echo "❌ ERROR: Failed to write /tmp/jwt_key.txt"
+        exit 1
+    fi
+    echo "✅ Temp files created successfully"
+    
+    # Create JSON file using Python - read from temp files
+    python3 << 'PYTHON_SCRIPT'
+import json
+import sys
+import os
+
+# Read values from temp files
+try:
+    with open('/tmp/mysql_conn.txt', 'r') as f:
+        mysql_conn = f.read().strip()
+    with open('/tmp/jwt_key.txt', 'r') as f:
+        jwt_key = f.read().strip()
+    with open('/tmp/db_name.txt', 'r') as f:
+        db_name = f.read().strip() or "customerhealthdb"
+    with open('/tmp/huggingface_api_key.txt', 'r') as f:
+        huggingface_api_key = f.read().strip()
+    with open('/tmp/huggingface_biomistral_url.txt', 'r') as f:
+        huggingface_biomistral_url = f.read().strip()
+    with open('/tmp/huggingface_meditron_url.txt', 'r') as f:
+        huggingface_meditron_url = f.read().strip()
+    with open('/tmp/openai_api_key.txt', 'r') as f:
+        openai_api_key = f.read().strip()
+except Exception as e:
+    print(f"ERROR: Failed to read temp files: {e}", file=sys.stderr)
+    sys.exit(1)
+
+# Debug output
+print(f"DEBUG: mysql_conn length: {len(mysql_conn)}", file=sys.stderr)
+print(f"DEBUG: mysql_conn preview: {mysql_conn[:80] if mysql_conn else 'EMPTY'}...", file=sys.stderr)
+print(f"DEBUG: jwt_key length: {len(jwt_key)}", file=sys.stderr)
+print(f"DEBUG: db_name: {db_name}", file=sys.stderr)
+
+# Verify connection string is not empty and complete
+if not mysql_conn:
+    print("ERROR: MYSQL_CONN is empty!", file=sys.stderr)
+    sys.exit(1)
+
+if 'database=' not in mysql_conn or 'user=' not in mysql_conn or 'password=' not in mysql_conn:
+    print(f"ERROR: MYSQL_CONN is incomplete: '{mysql_conn[:100]}'", file=sys.stderr)
+    print("It must contain: database=, user=, and password=", file=sys.stderr)
+    sys.exit(1)
+
+if not jwt_key:
+    print("ERROR: JWT_KEY is empty!", file=sys.stderr)
+    sys.exit(1)
+
+appsettings = {
+    "ConnectionStrings": {
+        "MySQL": mysql_conn
+    },
+    "Kestrel": {
+        "Endpoints": {
+            "Http": {
+                "Url": "http://0.0.0.0:5262"
+            }
+        }
+    },
+    "Jwt": {
+        "Key": jwt_key,
+        "Issuer": "SM_MentalHealthApp",
+        "Audience": "SM_MentalHealthApp_Users"
+    },
+    "Redis": {
+        "ConnectionString": "redis:6379"
+    },
+    "Ollama": {
+        "BaseUrl": "http://ollama:11434"
+    },
+    "S3": {
+        "AccessKey": "DO00Z6VU8Q38KXLFZ7V4",
+        "SecretKey": "ZDK61LfGdaqu5FpTcKnUfK8GNSW+cTSSbK8vK8GnMno",
+        "BucketName": "mentalhealth-content",
+        "Region": "sfo3",
+        "ServiceUrl": "https://sfo3.digitaloceanspaces.com",
+        "Folder": "content/"
+    },
+    "Vonage": {
+        "Enabled": True,
+        "ApiKey": "c7dc2f50",
+        "ApiSecret": "ZsknGg4RbD1fBI4B",
+        "FromNumber": "+16148122119"
+    },
+    "Agora": {
+        "AppId": "efa11b3a7d05409ca979fb25a5b489ae",
+        "UseTokens": True,
+        "AppCertificate": "89ab54068fae46aeaf930ffd493e977b"
+    },
+    "Email": {
+        "Enabled": True,
+        "SmtpHost": "smtp.gmail.com",
+        "SmtpPort": 587,
+        "SmtpUsername": "iqmkhan70@gmail.com",
+        "SmtpPassword": "gbkounbbzauyoujj",
+        "FromEmail": "iqmkhan70@gmail.com",
+        "FromName": "Health App",
+        "EnableSsl": True
+    },
+    "HuggingFace": {
+        "ApiKey": huggingface_api_key,
+        "BioMistralModelUrl": huggingface_biomistral_url,
+        "MeditronModelUrl": huggingface_meditron_url
+    },
+    "OpenAI": {
+        "ApiKey": openai_api_key
+    },
+    "PiiEncryption": {
+        "Key": "ThisIsAStrongEncryptionKeyForPIIData1234567890"
+    },
+    "Encryption": {
+        "Key": "ThisIsAStrongEncryptionKeyForPIIData1234567890"
+    },
+    "Logging": {
+        "LogLevel": {
+            "Default": "Information",
+            "Microsoft.AspNetCore": "Warning"
+        }
+    },
+    "AllowedHosts": "*"
+}
+
+# Write to temporary file
+try:
+    with open('/tmp/appsettings.json', 'w') as f:
+        json.dump(appsettings, f, indent=2)
+    
+    # Verify file was written and has all required sections
+    with open('/tmp/appsettings.json', 'r') as f:
+        written_data = json.load(f)
+    
+    required_sections = ['ConnectionStrings', 'Kestrel', 'Jwt', 'Redis', 'Ollama', 'S3', 'Vonage', 'Agora', 'Email', 'HuggingFace', 'OpenAI', 'Encryption', 'Logging', 'AllowedHosts']
+    missing = [s for s in required_sections if s not in written_data]
+    
+    if missing:
+        print(f"ERROR: Missing sections in appsettings: {missing}", file=sys.stderr)
+        sys.exit(1)
+    
+    # Verify connection string has actual password (not CHANGE_ME)
+    conn_str = written_data.get('ConnectionStrings', {}).get('MySQL', '')
+    if 'CHANGE_ME' in conn_str or 'password=' not in conn_str or conn_str.count('password=') == 0:
+        print(f"ERROR: Connection string appears invalid: {conn_str[:100]}", file=sys.stderr)
+        sys.exit(1)
+    
+    print("✅ appsettings file created with all required sections")
+except Exception as e:
+    print(f"ERROR: Failed to write appsettings file: {e}", file=sys.stderr)
+    sys.exit(1)
+PYTHON_SCRIPT
+    
+    # Verify the JSON file was created and is valid
+    if [ ! -f /tmp/appsettings.json ]; then
+        echo "❌ ERROR: Python script did not create /tmp/appsettings.json"
+        exit 1
+    fi
+    
+    # Verify JSON is valid and has all required sections
+    echo "Verifying generated appsettings file..."
+    if python3 -m json.tool /tmp/appsettings.json > /dev/null 2>&1; then
+        echo "✅ JSON is valid"
+        # Check for required sections
+        MISSING_SECTIONS=""
+        if ! python3 -c "import json; data = json.load(open('/tmp/appsettings.json')); print('OK' if 'ConnectionStrings' in data and 'MySQL' in data.get('ConnectionStrings', {}) else 'MISSING')" | grep -q "OK"; then
+            MISSING_SECTIONS="$MISSING_SECTIONS ConnectionStrings"
+        fi
+        if ! python3 -c "import json; data = json.load(open('/tmp/appsettings.json')); print('OK' if 'Jwt' in data else 'MISSING')" | grep -q "OK"; then
+            MISSING_SECTIONS="$MISSING_SECTIONS Jwt"
+        fi
+        if ! python3 -c "import json; data = json.load(open('/tmp/appsettings.json')); print('OK' if 'S3' in data else 'MISSING')" | grep -q "OK"; then
+            MISSING_SECTIONS="$MISSING_SECTIONS S3"
+        fi
+        
+        if [ -n "$MISSING_SECTIONS" ]; then
+            echo "⚠️  WARNING: Missing sections in appsettings: $MISSING_SECTIONS"
+        else
+            echo "✅ All required sections present"
+        fi
+        
+        # Show connection string from generated file
+        echo ""
+        echo "Connection string in generated file:"
+        python3 -c "import json; data = json.load(open('/tmp/appsettings.json')); print(data.get('ConnectionStrings', {}).get('MySQL', 'NOT FOUND')[:100])"
+    else
+        echo "❌ ERROR: Generated JSON file is invalid!"
+        echo "File contents:"
+        cat /tmp/appsettings.json
+        exit 1
+    fi
+    
+    # Remove old file if it exists to ensure we're not appending
+    docker exec "$API_CONTAINER" rm -f "/app/$APPSETTINGS_FILE" 2>/dev/null || true
+    
+    # Copy file into API container
+    docker cp /tmp/appsettings.json "$API_CONTAINER:/app/$APPSETTINGS_FILE"
+    
+    # Verify file was copied and show connection string
+    if docker exec "$API_CONTAINER" test -f "/app/$APPSETTINGS_FILE"; then
+        echo "✅ $APPSETTINGS_FILE created in container"
+        
+        # Verify the file in the container has all required sections
+        echo ""
+        echo "Verifying file in container has all required sections..."
+        # Use a more robust check - verify each section exists
+        MISSING_IN_CONTAINER=""
+        REQUIRED_SECTIONS="ConnectionStrings Kestrel Jwt Redis Ollama S3 Vonage Agora Email HuggingFace OpenAI Encryption Logging AllowedHosts"
+        for section in $REQUIRED_SECTIONS; do
+            # Check if section exists in JSON
+            if ! docker exec "$API_CONTAINER" python3 -c "import json, sys; data = json.load(open('/app/$APPSETTINGS_FILE')); sys.exit(0 if '$section' in data else 1)" 2>/dev/null; then
+                MISSING_IN_CONTAINER="$MISSING_IN_CONTAINER $section"
+            fi
+        done
+        
+        if [ -n "$MISSING_IN_CONTAINER" ]; then
+            echo "❌ ERROR: Missing sections in container file: $MISSING_IN_CONTAINER"
+            echo "File contents:"
+            docker exec "$API_CONTAINER" cat "/app/$APPSETTINGS_FILE"
+            exit 1
+        fi
+        
+        echo "✅ All required sections present in container file"
+        echo ""
+        echo "Connection string in container file:"
+        docker exec "$API_CONTAINER" python3 -c "import json, sys; data = json.load(open('/app/$APPSETTINGS_FILE')); print(data.get('ConnectionStrings', {}).get('MySQL', 'NOT FOUND')[:100])" || echo "Could not read connection string"
+        
+        # Verify password is not CHANGE_ME
+        CONN_STR=$(docker exec "$API_CONTAINER" python3 -c "import json, sys; data = json.load(open('/app/$APPSETTINGS_FILE')); print(data.get('ConnectionStrings', {}).get('MySQL', ''))" 2>/dev/null || echo "")
+        if echo "$CONN_STR" | grep -q "CHANGE_ME"; then
+            echo "❌ ERROR: Connection string still contains CHANGE_ME!"
+            echo "Connection string: ${CONN_STR:0:100}..."
+            exit 1
+        fi
+        echo "✅ Connection string verified (no CHANGE_ME found)"
+    else
+        echo "❌ ERROR: Failed to create $APPSETTINGS_FILE in container"
+        exit 1
+    fi
+    
+    # Also verify environment variable is set (it might override appsettings)
+    # IMPORTANT: Environment variables override appsettings.json, so we must ensure it's correct
+    echo ""
+    echo "Checking environment variable ConnectionStrings__MySQL in container:"
+    ENV_CONN_STR=$(docker exec "$API_CONTAINER" sh -c 'echo "$ConnectionStrings__MySQL"' 2>/dev/null || echo "")
+    
+    # Check if connection string is incomplete
+    if [ -z "$ENV_CONN_STR" ] || [ "$ENV_CONN_STR" = "server=mysql" ] || ! echo "$ENV_CONN_STR" | grep -q "database=" || ! echo "$ENV_CONN_STR" | grep -q "user=" || ! echo "$ENV_CONN_STR" | grep -q "password="; then
+        echo "❌ ERROR: ConnectionStrings__MySQL environment variable is empty or incomplete: '$ENV_CONN_STR'"
+        echo "This will override the appsettings file value with an empty/incomplete string."
+        echo ""
+        echo "Fixing .env file and recreating container..."
+        
+        # Always reconstruct from components to ensure we have the correct value
+        DB_NAME_FIX=$(grep "^MYSQL_DB=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "customerhealthdb")
+        DB_USER_FIX=$(grep "^MYSQL_USER=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "mentalhealth_user")
+        DB_PASSWORD_FIX=$(grep "^MYSQL_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")
+        
+        if [ -z "$DB_NAME_FIX" ] || [ -z "$DB_USER_FIX" ] || [ -z "$DB_PASSWORD_FIX" ]; then
+            echo "❌ ERROR: Cannot reconstruct - missing components"
+            echo "  DB_NAME: ${DB_NAME_FIX:-NOT SET}"
+            echo "  DB_USER: ${DB_USER_FIX:-NOT SET}"
+            echo "  DB_PASSWORD: ${DB_PASSWORD_FIX:+SET (hidden)}"
+            exit 1
+        fi
+        
+        FIXED_MYSQL_CONN="server=mysql;port=3306;database=$DB_NAME_FIX;user=$DB_USER_FIX;password=$DB_PASSWORD_FIX"
+        
+        # Update .env file
+        sed -i "s|^MYSQL_CONN=.*|MYSQL_CONN=$FIXED_MYSQL_CONN|" /opt/mental-health-app/.env
+        sed -i "s|^ConnectionStrings__MySQL=.*|ConnectionStrings__MySQL=$FIXED_MYSQL_CONN|" /opt/mental-health-app/.env
+        
+        echo "✅ Fixed MYSQL_CONN in .env file"
+        echo "New value: ${FIXED_MYSQL_CONN:0:80}..."
+        echo ""
+        echo "Recreating API container to pick up the fix..."
+        cd /opt/mental-health-app
+        
+        # Verify .env file has the correct value before recreating
+        echo "Verifying .env file has correct MYSQL_CONN..."
+        ENV_MYSQL_CONN_CHECK=$(grep "^MYSQL_CONN=" /opt/mental-health-app/.env | cut -d'=' -f2- || echo "")
+        if [ -z "$ENV_MYSQL_CONN_CHECK" ] || ! echo "$ENV_MYSQL_CONN_CHECK" | grep -q "database=" || ! echo "$ENV_MYSQL_CONN_CHECK" | grep -q "user=" || ! echo "$ENV_MYSQL_CONN_CHECK" | grep -q "password="; then
+            echo "❌ ERROR: .env file still has incomplete MYSQL_CONN after fix attempt!"
+            echo "MYSQL_CONN in .env: '${ENV_MYSQL_CONN_CHECK:0:80}'"
+            exit 1
+        fi
+        echo "✅ .env file verified: ${ENV_MYSQL_CONN_CHECK:0:80}..."
+        
+        # Stop and remove the container to ensure fresh start
+        echo "Stopping and removing API container..."
+        docker compose --env-file .env stop api 2>/dev/null || true
+        docker compose --env-file .env rm -f api 2>/dev/null || true
+        
+        # Wait a moment for cleanup
+        sleep 2
+        
+        echo "Starting API container with updated .env file..."
+        docker compose --env-file .env up -d api
+        
+        echo "Waiting 15 seconds for container to start..."
+        sleep 15
+        
+        # Find the new container name (it might have changed)
+        NEW_API_CONTAINER=$(docker ps --format "{{.Names}}" | grep -E "api|mental-health.*api" | grep -v "web" | head -1 || echo "$API_CONTAINER")
+        
+        if [ -z "$NEW_API_CONTAINER" ]; then
+            echo "❌ ERROR: Could not find API container after recreation"
+            docker ps -a
+            exit 1
+        fi
+        
+        echo "Found API container: $NEW_API_CONTAINER"
+        
+        # Verify after restart - check both environment variable and that container is running
+        NEW_ENV_CONN_STR=$(docker exec "$NEW_API_CONTAINER" sh -c 'echo "$ConnectionStrings__MySQL"' 2>/dev/null || echo "")
+        if [ -n "$NEW_ENV_CONN_STR" ] && echo "$NEW_ENV_CONN_STR" | grep -q "database=" && echo "$NEW_ENV_CONN_STR" | grep -q "user=" && echo "$NEW_ENV_CONN_STR" | grep -q "password="; then
+            echo "✅ ConnectionStrings__MySQL is now correct: ${NEW_ENV_CONN_STR:0:80}..."
+        else
+            echo "❌ ERROR: Still incorrect after fix: '$NEW_ENV_CONN_STR'"
+            echo "Container environment variables:"
+            docker exec "$NEW_API_CONTAINER" env | grep -i "connection\|mysql" || echo "Could not read env vars"
+            echo ""
+            echo "Checking .env file one more time:"
+            grep "^MYSQL_CONN=" /opt/mental-health-app/.env || echo "MYSQL_CONN not found in .env"
+            exit 1
+        fi
+    else
+        echo "✅ ConnectionStrings__MySQL env var is set correctly: ${ENV_CONN_STR:0:80}..."
+    fi
+    
+    # Check for multiple API containers (could cause port conflict)
+    echo ""
+    echo "Checking for multiple API containers..."
+    ALL_API_CONTAINERS=$(docker ps -a --format "{{.Names}}" | grep -E "api|mental-health.*api" | grep -v "web" || echo "")
+    API_COUNT=$(echo "$ALL_API_CONTAINERS" | wc -l | tr -d ' ')
+    if [ "$API_COUNT" -gt 1 ]; then
+        echo "⚠️  WARNING: Found $API_COUNT API containers, stopping all to avoid port conflicts..."
+        echo "$ALL_API_CONTAINERS" | while read -r container; do
+            if [ -n "$container" ]; then
+                echo "  Stopping container: $container"
+                docker stop "$container" 2>/dev/null || true
+            fi
+        done
+        sleep 3
+    fi
+    
+    # Stop API container properly to release port 5262
+    echo ""
+    echo "Stopping API container to release port 5262..."
+    docker stop "$API_CONTAINER" || {
+        echo "⚠️  Warning: Failed to stop container, trying docker compose stop..."
+        cd /opt/mental-health-app
+        docker compose --env-file .env stop api || echo "⚠️  Could not stop via compose"
+    }
+    
+    # Wait for container to fully stop
+    echo "Waiting 5 seconds for container to fully stop..."
+    sleep 5
+    
+    # Kill any processes still using port 5262 inside the container (if container is still running)
+    echo "Checking for processes using port 5262..."
+    if docker ps --format "{{.Names}}" | grep -q "$API_CONTAINER"; then
+        echo "⚠️  Container still running, attempting to kill processes on port 5262..."
+        docker exec "$API_CONTAINER" sh -c "lsof -ti:5262 | xargs kill -9 2>/dev/null || true" || true
+        docker stop "$API_CONTAINER" --time 10 || true
+    fi
+    
+    # Start API container with new appsettings file
+    echo "Starting API container with new configuration..."
+    docker start "$API_CONTAINER" || {
+        echo "⚠️  Warning: Failed to start container, trying docker compose start..."
+        cd /opt/mental-health-app
+        docker compose --env-file .env start api || {
+            echo "⚠️  Start failed, trying up -d..."
+            docker compose --env-file .env up -d api
+        }
+    }
+    
+    echo "Waiting 15 seconds for API to start..."
+    sleep 15
+    
+    # Verify API is running with new config
+    echo "Checking API container status..."
+    if docker ps --format "{{.Names}}" | grep -q "$API_CONTAINER"; then
+        echo "✅ API container is running"
+        echo ""
+        echo "Checking API logs for errors (last 30 lines)..."
+        docker logs "$API_CONTAINER" --tail 30 2>&1
+        echo ""
+        echo "Checking for connection string errors specifically..."
+        docker logs "$API_CONTAINER" --tail 50 2>&1 | grep -i "connection\|mysql\|database\|access denied" || echo "No connection-related errors in recent logs"
+        echo ""
+        echo "Checking if API is listening on port 5262..."
+        if docker exec "$API_CONTAINER" netstat -tlnp 2>/dev/null | grep -q ":5262"; then
+            echo "✅ API is listening on port 5262"
+        else
+            echo "⚠️  WARNING: API is not listening on port 5262"
+        fi
+    else
+        echo "❌ ERROR: API container is not running after restart"
+        echo "Container logs (last 100 lines):"
+        docker logs "$API_CONTAINER" --tail 100 2>&1
+        echo ""
+        echo "Checking for other API containers..."
+        docker ps -a | grep -i api
+    fi
+    
+    # Clean up temp files
+    rm -f /tmp/appsettings.json /tmp/mysql_conn.txt /tmp/jwt_key.txt /tmp/db_name.txt /tmp/huggingface_api_key.txt /tmp/huggingface_biomistral_url.txt /tmp/huggingface_meditron_url.txt /tmp/openai_api_key.txt
+ENDSSH
+
+# ============================================================================
+# Step 13: Final Verification and Container Recreation
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 13: Final Verification and Container Recreation${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+# Final check: Ensure .env file is correct and recreate container if needed
+echo "Performing final verification of connection string..."
+ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" << 'ENDSSH'
+    set -e
+    cd /opt/mental-health-app
+    
+    # Find API container
+    API_CONTAINER=$(docker ps --format "{{.Names}}" | grep -E "api|mental-health.*api" | grep -v "web" | head -1 || echo "")
+    if [ -z "$API_CONTAINER" ]; then
+        API_CONTAINER=$(docker ps -a --format "{{.Names}}" | grep -E "api|mental-health.*api" | grep -v "web" | head -1 || echo "")
+    fi
+    
+    if [ -z "$API_CONTAINER" ]; then
+        echo "⚠️  No API container found, skipping verification"
+        exit 0
+    fi
+    
+    # Check current environment variable in container
+    CURRENT_ENV_CONN=$(docker exec "$API_CONTAINER" sh -c 'echo "$ConnectionStrings__MySQL"' 2>/dev/null || echo "")
+    
+    # Check .env file
+    ENV_FILE_CONN=$(grep '^MYSQL_CONN=' /opt/mental-health-app/.env | cut -d'=' -f2- || echo "")
+    
+    # Verify .env file has complete connection string
+    if [ -z "$ENV_FILE_CONN" ] || ! echo "$ENV_FILE_CONN" | grep -q "database=" || ! echo "$ENV_FILE_CONN" | grep -q "user=" || ! echo "$ENV_FILE_CONN" | grep -q "password="; then
+        echo "⚠️  .env file has incomplete MYSQL_CONN, fixing..."
+        
+        # Read individual components
+        DB_NAME_VAL=$(grep '^MYSQL_DB=' /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "customerhealthdb")
+        DB_USER_VAL=$(grep '^MYSQL_USER=' /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "mentalhealth_user")
+        DB_PASSWORD_VAL=$(grep '^MYSQL_PASSWORD=' /opt/mental-health-app/.env | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")
+        
+        if [ -z "$DB_NAME_VAL" ] || [ -z "$DB_USER_VAL" ] || [ -z "$DB_PASSWORD_VAL" ]; then
+            echo "❌ ERROR: Cannot reconstruct - missing components"
+            exit 1
+        fi
+        
+        FIXED_MYSQL_CONN="server=mysql;port=3306;database=$DB_NAME_VAL;user=$DB_USER_VAL;password=$DB_PASSWORD_VAL"
+        
+        # Update .env file
+        sed -i "s|^MYSQL_CONN=.*|MYSQL_CONN=$FIXED_MYSQL_CONN|" /opt/mental-health-app/.env
+        sed -i "s|^ConnectionStrings__MySQL=.*|ConnectionStrings__MySQL=$FIXED_MYSQL_CONN|" /opt/mental-health-app/.env
+        
+        echo "✅ Fixed .env file: ${FIXED_MYSQL_CONN:0:80}..."
+        ENV_FILE_CONN="$FIXED_MYSQL_CONN"
+    fi
+    
+    # Check if container environment variable matches .env file
+    if [ -z "$CURRENT_ENV_CONN" ] || [ "$CURRENT_ENV_CONN" = "server=mysql" ] || ! echo "$CURRENT_ENV_CONN" | grep -q "database=" || ! echo "$CURRENT_ENV_CONN" | grep -q "user=" || ! echo "$CURRENT_ENV_CONN" | grep -q "password="; then
+        echo "⚠️  Container has incorrect ConnectionStrings__MySQL: '${CURRENT_ENV_CONN:0:80}'"
+        echo "Recreating container to pick up correct value from .env file..."
+        
+        # Stop and remove container completely
+        docker compose --env-file .env stop api 2>/dev/null || true
+        docker compose --env-file .env rm -f api 2>/dev/null || true
+        sleep 2
+        
+        # Start fresh with updated .env file
+        docker compose --env-file .env up -d api
+        sleep 15
+        
+        # Find new container
+        NEW_API_CONTAINER=$(docker ps --format "{{.Names}}" | grep -E "api|mental-health.*api" | grep -v "web" | head -1 || echo "")
+        
+        if [ -n "$NEW_API_CONTAINER" ]; then
+            # Verify it's correct now
+            NEW_ENV_CONN=$(docker exec "$NEW_API_CONTAINER" sh -c 'echo "$ConnectionStrings__MySQL"' 2>/dev/null || echo "")
+            if [ -n "$NEW_ENV_CONN" ] && echo "$NEW_ENV_CONN" | grep -q "database=" && echo "$NEW_ENV_CONN" | grep -q "user=" && echo "$NEW_ENV_CONN" | grep -q "password="; then
+                echo "✅ Container recreated successfully with correct connection string: ${NEW_ENV_CONN:0:80}..."
+            else
+                echo "❌ ERROR: Container still has incorrect connection string: '$NEW_ENV_CONN'"
+                echo "This is a critical error - please check the .env file manually"
+                exit 1
+            fi
+        else
+            echo "❌ ERROR: Could not find API container after recreation"
+            exit 1
+        fi
+    else
+        echo "✅ Container has correct ConnectionStrings__MySQL: ${CURRENT_ENV_CONN:0:80}..."
+        echo "Restarting container to ensure all changes are applied..."
+        docker compose --env-file .env restart api
+        sleep 5
+    fi
+    
+    echo "✅ Services verified and restarted"
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+ENDSSH
+
+# ============================================================================
 # Summary
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
