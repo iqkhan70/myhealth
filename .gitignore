@@ -99,3 +99,5 @@ deploy/backup/
 deploy/logs/
 deploy/secrets.env
 deploy/README_SECRETS.md
+
+/SM_MentalHealthApp.Server/appsettings.Development.json
