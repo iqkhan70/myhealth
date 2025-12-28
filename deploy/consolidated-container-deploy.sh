@@ -66,6 +66,19 @@ cd "$REPO_ROOT"
 # Load droplet IP
 source "$SCRIPT_DIR/load-droplet-ip.sh" "$ENVIRONMENT"
 
+# Domain configuration (after DROPLET_IP is loaded)
+if [ "$ENVIRONMENT" = "staging" ]; then
+    DOMAIN_NAME="caseflowstage.store"
+    WWW_DOMAIN="www.caseflowstage.store"
+elif [ "$ENVIRONMENT" = "production" ]; then
+    DOMAIN_NAME="caseflow.store"  # Update with your production domain
+    WWW_DOMAIN="www.caseflow.store"
+else
+    # Default to IP if no domain configured
+    DOMAIN_NAME="$DROPLET_IP"
+    WWW_DOMAIN="$DROPLET_IP"
+fi
+
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Consolidated Containerized Deployment${NC}"
 echo -e "${GREEN}========================================${NC}"
@@ -73,6 +86,8 @@ echo ""
 echo -e "${BLUE}Configuration:${NC}"
 echo -e "  Environment: ${YELLOW}$ENVIRONMENT${NC}"
 echo -e "  Droplet IP: ${YELLOW}$DROPLET_IP${NC}"
+echo -e "  Domain: ${YELLOW}$DOMAIN_NAME${NC}"
+echo -e "  WWW Domain: ${YELLOW}$WWW_DOMAIN${NC}"
 echo -e "  Deployment Mode: ${YELLOW}$DEPLOYMENT_MODE${NC}"
 if [ "$DEPLOYMENT_MODE" = "managed-db" ]; then
     echo -e "  Managed DB: ${YELLOW}Yes${NC}"
@@ -370,22 +385,35 @@ echo -e "${GREEN}Step 3: Generating SSL Certificates${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
-ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" << ENDSSH
+ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DOMAIN_NAME=$DOMAIN_NAME WWW_DOMAIN=$WWW_DOMAIN DROPLET_IP=$DROPLET_IP bash -s" << 'ENDSSH'
     set -e
     
+    # Regenerate certificate if domain changed or doesn't exist
+    REGENERATE_CERT=false
     if [ ! -f /opt/mental-health-app/certs/server.crt ] || [ ! -f /opt/mental-health-app/certs/server.key ]; then
-        echo "Generating self-signed SSL certificates..."
+        REGENERATE_CERT=true
+        echo "SSL certificates not found, generating new ones..."
+    else
+        # Check if certificate includes the domain names
+        if ! openssl x509 -in /opt/mental-health-app/certs/server.crt -noout -text 2>/dev/null | grep -q "$DOMAIN_NAME"; then
+            REGENERATE_CERT=true
+            echo "SSL certificate doesn't include domain names, regenerating..."
+        fi
+    fi
+    
+    if [ "$REGENERATE_CERT" = true ]; then
+        echo "Generating self-signed SSL certificates with domain names..."
         openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -keyout /opt/mental-health-app/certs/server.key \
             -out /opt/mental-health-app/certs/server.crt \
-            -subj "/C=US/ST=State/L=City/O=Organization/CN=$DROPLET_IP" \
-            -addext "subjectAltName=IP:$DROPLET_IP,DNS:$DROPLET_IP"
+            -subj "/C=US/ST=State/L=City/O=Organization/CN=$DOMAIN_NAME" \
+            -addext "subjectAltName=IP:$DROPLET_IP,DNS:$DOMAIN_NAME,DNS:$WWW_DOMAIN"
         
         chmod 600 /opt/mental-health-app/certs/server.key
         chmod 644 /opt/mental-health-app/certs/server.crt
-        echo "✅ SSL certificates generated"
+        echo "✅ SSL certificates generated with domains: $DOMAIN_NAME, $WWW_DOMAIN"
     else
-        echo "✅ SSL certificates already exist"
+        echo "✅ SSL certificates already exist and include domain names"
     fi
 ENDSSH
 
@@ -1662,7 +1690,9 @@ echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "${BLUE}Deployment Summary:${NC}"
 echo -e "  Environment: ${YELLOW}$ENVIRONMENT${NC}"
-echo -e "  Application URL: ${YELLOW}https://$DROPLET_IP${NC}"
+echo -e "  Application URL (Domain): ${YELLOW}https://$DOMAIN_NAME${NC}"
+echo -e "  Application URL (WWW): ${YELLOW}https://$WWW_DOMAIN${NC}"
+echo -e "  Application URL (IP): ${YELLOW}https://$DROPLET_IP${NC}"
 echo -e "  Deployment Mode: ${YELLOW}$DEPLOYMENT_MODE${NC}"
 if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
     echo -e "  Database: ${YELLOW}Local Container${NC}"
@@ -1676,7 +1706,9 @@ fi
 echo ""
 echo -e "${BLUE}Next Steps:${NC}"
 echo "1. Test the application:"
-echo "   https://$DROPLET_IP/"
+echo "   https://$DOMAIN_NAME/"
+echo "   https://$WWW_DOMAIN/"
+echo "   https://$DROPLET_IP/ (IP fallback)"
 echo "2. Check container logs:"
 echo "   ssh $DROPLET_USER@$DROPLET_IP 'cd /opt/mental-health-app && docker compose logs -f'"
 echo "3. Scale API containers (for production):"
