@@ -91,7 +91,7 @@ namespace SM_MentalHealthApp.Server.Services
             if (string.IsNullOrWhiteSpace(messageContent))
                 return false;
 
-            var lowerContent = messageContent.ToLower();
+            var lowerContent = messageContent.ToLower().Trim();
 
             // Get patterns from database
             var patterns = await GetActivePatternsAsync();
@@ -102,23 +102,61 @@ namespace SM_MentalHealthApp.Server.Services
                 return IsGenericKnowledgeQuestionFallback(messageContent);
             }
 
-            // Check if it's a question (contains ?)
-            bool isQuestion = lowerContent.Contains("?");
+            // Check if it's a question - either has question mark OR starts with question words
+            bool hasQuestionMark = lowerContent.Contains("?");
+            bool startsWithQuestionWord = lowerContent.StartsWith("what ") ||
+                                         lowerContent.StartsWith("how ") ||
+                                         lowerContent.StartsWith("why ") ||
+                                         lowerContent.StartsWith("when ") ||
+                                         lowerContent.StartsWith("where ") ||
+                                         lowerContent.StartsWith("who ") ||
+                                         lowerContent.StartsWith("which ") ||
+                                         lowerContent.StartsWith("explain ") ||
+                                         lowerContent.StartsWith("tell me ") ||
+                                         lowerContent.StartsWith("describe ");
+            
+            bool isQuestion = hasQuestionMark || startsWithQuestionWord;
 
-            // Check if it matches any pattern
-            bool matchesGenericPattern = patterns.Any(pattern => lowerContent.Contains(pattern.Pattern.ToLower()));
+            // Check if it matches any pattern (prioritize higher priority patterns first)
+            // Sort patterns by priority descending to check most specific patterns first
+            var sortedPatterns = patterns.OrderByDescending(p => p.Priority).ThenBy(p => p.Pattern);
+            bool matchesGenericPattern = sortedPatterns.Any(pattern => 
+            {
+                var patternLower = pattern.Pattern.ToLower();
+                // Check if pattern appears at the start (most common case)
+                if (lowerContent.StartsWith(patternLower))
+                    return true;
+                
+                // Check if pattern appears as a complete phrase (with word boundaries)
+                // This handles cases like "what are normal blood pressure values"
+                var patternWithSpace = " " + patternLower;
+                if (lowerContent.Contains(patternWithSpace))
+                    return true;
+                
+                // Check if pattern appears at the end
+                if (lowerContent.EndsWith(" " + patternLower) || lowerContent.EndsWith(patternLower))
+                    return true;
+                
+                return false;
+            });
 
-            // Also check if it's asking about general information (not patient-specific)
+            // Check if it's asking about general information (not patient-specific)
             bool isGeneralInfo = lowerContent.Contains("in general") ||
                                 lowerContent.Contains("generally") ||
-                                (isQuestion && matchesGenericPattern &&
-                                 !lowerContent.Contains("my") &&
+                                (matchesGenericPattern &&
+                                 !lowerContent.Contains("my ") &&
+                                 !lowerContent.Contains(" my") &&
                                  !lowerContent.Contains("patient") &&
                                  !lowerContent.Contains("i have") &&
                                  !lowerContent.Contains("i am") &&
-                                 !lowerContent.Contains("i feel"));
+                                 !lowerContent.Contains("i feel") &&
+                                 !lowerContent.Contains("i'm ") &&
+                                 !lowerContent.Contains("i've "));
 
-            return isQuestion && (matchesGenericPattern || isGeneralInfo);
+            // Return true if it's a question AND matches pattern OR is general info
+            // Also allow if it matches pattern even without explicit question mark (for chat interfaces)
+            return (isQuestion && (matchesGenericPattern || isGeneralInfo)) || 
+                   (matchesGenericPattern && isGeneralInfo);
         }
 
         // Fallback method with hardcoded patterns (for when database is empty)
@@ -127,7 +165,7 @@ namespace SM_MentalHealthApp.Server.Services
             if (string.IsNullOrWhiteSpace(messageContent))
                 return false;
 
-            var lowerContent = messageContent.ToLower();
+            var lowerContent = messageContent.ToLower().Trim();
 
             var genericQuestionPatterns = new[]
             {
@@ -148,19 +186,56 @@ namespace SM_MentalHealthApp.Server.Services
                 "tell me about"
             };
 
-            bool isQuestion = lowerContent.Contains("?");
-            bool matchesGenericPattern = genericQuestionPatterns.Any(pattern => lowerContent.Contains(pattern));
+            // Check if it's a question - either has question mark OR starts with question words
+            bool hasQuestionMark = lowerContent.Contains("?");
+            bool startsWithQuestionWord = lowerContent.StartsWith("what ") ||
+                                         lowerContent.StartsWith("how ") ||
+                                         lowerContent.StartsWith("why ") ||
+                                         lowerContent.StartsWith("when ") ||
+                                         lowerContent.StartsWith("where ") ||
+                                         lowerContent.StartsWith("who ") ||
+                                         lowerContent.StartsWith("which ") ||
+                                         lowerContent.StartsWith("explain ") ||
+                                         lowerContent.StartsWith("tell me ") ||
+                                         lowerContent.StartsWith("describe ");
+            
+            bool isQuestion = hasQuestionMark || startsWithQuestionWord;
+            
+            // Check if it matches any pattern
+            bool matchesGenericPattern = genericQuestionPatterns.Any(pattern => 
+            {
+                // Check if pattern appears at the start (most common case)
+                if (lowerContent.StartsWith(pattern))
+                    return true;
+                
+                // Check if pattern appears as a complete phrase (with word boundaries)
+                var patternWithSpace = " " + pattern;
+                if (lowerContent.Contains(patternWithSpace))
+                    return true;
+                
+                // Check if pattern appears at the end
+                if (lowerContent.EndsWith(" " + pattern) || lowerContent.EndsWith(pattern))
+                    return true;
+                
+                return false;
+            });
 
             bool isGeneralInfo = lowerContent.Contains("in general") ||
                                 lowerContent.Contains("generally") ||
-                                (isQuestion && matchesGenericPattern &&
-                                 !lowerContent.Contains("my") &&
+                                (matchesGenericPattern &&
+                                 !lowerContent.Contains("my ") &&
+                                 !lowerContent.Contains(" my") &&
                                  !lowerContent.Contains("patient") &&
                                  !lowerContent.Contains("i have") &&
                                  !lowerContent.Contains("i am") &&
-                                 !lowerContent.Contains("i feel"));
+                                 !lowerContent.Contains("i feel") &&
+                                 !lowerContent.Contains("i'm ") &&
+                                 !lowerContent.Contains("i've "));
 
-            return isQuestion && (matchesGenericPattern || isGeneralInfo);
+            // Return true if it's a question AND matches pattern OR is general info
+            // Also allow if it matches pattern even without explicit question mark
+            return (isQuestion && (matchesGenericPattern || isGeneralInfo)) || 
+                   (matchesGenericPattern && isGeneralInfo);
         }
     }
 }

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using SM_MentalHealthApp.Shared;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -16,6 +17,7 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly IMedicalThresholdService _thresholdService;
         private readonly EnhancedContextResponseService _enhancedContextResponseService;
         private readonly ISectionMarkerService _sectionMarkerService;
+        private readonly LlmClient _llmClient;
 
         public HuggingFaceService(
             HttpClient httpClient,
@@ -28,7 +30,8 @@ namespace SM_MentalHealthApp.Server.Services
             IGenericQuestionPatternService genericQuestionPatternService,
             IMedicalThresholdService thresholdService,
             EnhancedContextResponseService enhancedContextResponseService,
-            ISectionMarkerService sectionMarkerService)
+            ISectionMarkerService sectionMarkerService,
+            LlmClient llmClient)
         {
             _httpClient = httpClient;
             _apiKey = config["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("HuggingFace API key not found");
@@ -41,6 +44,7 @@ namespace SM_MentalHealthApp.Server.Services
             _thresholdService = thresholdService;
             _enhancedContextResponseService = enhancedContextResponseService;
             _sectionMarkerService = sectionMarkerService;
+            _llmClient = llmClient;
 
             _httpClient.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
@@ -915,62 +919,88 @@ namespace SM_MentalHealthApp.Server.Services
             // Generic questions should get factual answers, not patient status assessments
             if (isGenericMode)
             {
-                _logger.LogInformation("Generic mode detected - skipping patient analysis, using simple AI response");
-                // For generic mode, just use the AI model directly without patient context
-                // The knowledge base should have already been checked above
-                // If we get here, knowledge base didn't match, so use simple AI response
-                var simpleRequestBody = new
+                _logger.LogInformation("Generic mode detected - using OpenAI for ChatGPT-like responses");
+                
+                // Extract the actual user question from the prompt text
+                // The text might contain "User question: ..." or just be the question itself
+                var userQuestion = ExtractUserQuestion(text);
+                if (string.IsNullOrWhiteSpace(userQuestion))
                 {
-                    inputs = text,
-                    parameters = new
+                    // Try to extract from "User question:" pattern (case-insensitive)
+                    var userQuestionPattern = "user question:";
+                    var index = text.IndexOf(userQuestionPattern, StringComparison.OrdinalIgnoreCase);
+                    if (index >= 0)
                     {
-                        max_new_tokens = 150,
-                        temperature = 0.7,
-                        do_sample = true,
-                        return_full_text = false
+                        var startIndex = index + userQuestionPattern.Length;
+                        // Get everything after "User question:" until the next instruction or end
+                        var remainingText = text.Substring(startIndex).Trim();
+                        // Take the first line or first sentence
+                        var newlineIndex = remainingText.IndexOf('\n');
+                        var periodIndex = remainingText.IndexOf('.');
+                        var endIndex = newlineIndex >= 0 ? newlineIndex : 
+                                      (periodIndex >= 0 && periodIndex < 100 ? periodIndex : remainingText.Length);
+                        userQuestion = remainingText.Substring(0, endIndex).Trim();
                     }
-                };
-
-                var simpleJson = JsonSerializer.Serialize(simpleRequestBody);
-                var simpleContent = new StringContent(simpleJson, Encoding.UTF8, "application/json");
+                    
+                    // If still empty, use the last meaningful line (might be just the question)
+                    if (string.IsNullOrWhiteSpace(userQuestion))
+                    {
+                        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                        // Look for the last line that looks like a question (contains ? or starts with question word)
+                        for (int i = lines.Length - 1; i >= 0; i--)
+                        {
+                            var line = lines[i].Trim();
+                            if (!string.IsNullOrWhiteSpace(line) && 
+                                (line.Contains("?") || 
+                                 line.StartsWith("what ", StringComparison.OrdinalIgnoreCase) ||
+                                 line.StartsWith("who ", StringComparison.OrdinalIgnoreCase) ||
+                                 line.StartsWith("where ", StringComparison.OrdinalIgnoreCase) ||
+                                 line.StartsWith("when ", StringComparison.OrdinalIgnoreCase) ||
+                                 line.StartsWith("why ", StringComparison.OrdinalIgnoreCase) ||
+                                 line.StartsWith("how ", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                userQuestion = line;
+                                break;
+                            }
+                        }
+                        
+                        // Final fallback: use the entire text if it's short enough (might be just the question)
+                        if (string.IsNullOrWhiteSpace(userQuestion) && text.Length < 200)
+                        {
+                            userQuestion = text.Trim();
+                        }
+                    }
+                }
 
                 try
                 {
-                    var simpleResponse = await _httpClient.PostAsync(
-                        "https://api-inference.huggingface.co/models/microsoft/DialoGPT-small",
-                        simpleContent);
-
-                    if (simpleResponse.IsSuccessStatusCode)
+                    // Use OpenAI via LlmClient for generic mode - this provides ChatGPT-like responses
+                    var llmRequest = new LlmRequest
                     {
-                        var simpleResponseContent = await simpleResponse.Content.ReadAsStringAsync();
-                        var simpleResponseData = JsonSerializer.Deserialize<JsonElement[]>(simpleResponseContent);
+                        Model = "gpt-4o-mini",
+                        Instructions = "You are a helpful AI assistant. Answer questions clearly and informatively, similar to ChatGPT. Provide factual information, explanations, and helpful responses to any question asked.",
+                        Prompt = userQuestion,
+                        Temperature = 0.7,
+                        MaxTokens = 1000,
+                        Provider = AiProvider.OpenAI
+                    };
 
-                        if (simpleResponseData.Length > 0)
-                        {
-                            var fallbackText3 = await _templateService.FormatTemplateAsync("fallback_generic", null);
-                            var defaultFallback3 = !string.IsNullOrEmpty(fallbackText3) ? fallbackText3 : "I understand. How can I help you today?";
-                            var generatedText = simpleResponseData[0].GetProperty("generated_text").GetString() ?? defaultFallback3;
-
-                            // Clean up the response
-                            if (generatedText.StartsWith(text))
-                            {
-                                generatedText = generatedText.Substring(text.Length).Trim();
-                            }
-
-                            var fallbackText4 = await _templateService.FormatTemplateAsync("fallback_generic", null);
-                            var defaultFallback4 = !string.IsNullOrEmpty(fallbackText4) ? fallbackText4 : "I understand. How can I help you today?";
-                            return string.IsNullOrWhiteSpace(generatedText) ? defaultFallback4 : generatedText;
-                        }
+                    var llmResponse = await _llmClient.GenerateTextAsync(llmRequest);
+                    
+                    if (!string.IsNullOrWhiteSpace(llmResponse?.Text))
+                    {
+                        _logger.LogInformation("OpenAI response generated successfully for generic question");
+                        return llmResponse.Text.Trim();
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error in generic mode AI response");
+                    _logger.LogError(ex, "Error calling OpenAI for generic mode question: {Question}", userQuestion);
                 }
 
-                // Final fallback for generic mode
-                var genericFallback = await _templateService.FormatTemplateAsync("fallback_generic_mode", null);
-                return !string.IsNullOrEmpty(genericFallback) ? genericFallback : "I understand your question. For specific medical information, please consult with your healthcare provider or use the patient chat feature for personalized analysis.";
+                // Fallback if OpenAI fails - try to provide a helpful message
+                _logger.LogWarning("OpenAI call failed, using fallback response");
+                return $"I apologize, but I'm having trouble processing your question right now. Please try again in a moment. (Question: {userQuestion})";
             }
 
             // Check if this is a role-based prompt with enhanced context (only for non-generic mode)

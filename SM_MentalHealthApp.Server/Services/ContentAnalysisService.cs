@@ -956,22 +956,24 @@ If you need general medical information without patient context, please switch t
                 context.AppendLine($"=== USER QUESTION ===");
                 context.AppendLine(originalPrompt);
                 context.AppendLine();
-                context.AppendLine("=== INSTRUCTIONS FOR AI HEALTH CHECK ANALYSIS ===");
-                context.AppendLine("You are a clinical AI assistant analyzing a patient's comprehensive health status. Provide a detailed analysis in the following format:");
+                context.AppendLine("=== INSTRUCTIONS FOR AI RESPONSE ===");
+                context.AppendLine("You are a clinical AI assistant helping with patient care. IMPORTANT: You must answer the user's specific question above.");
+                context.AppendLine();
+                context.AppendLine("RESPONSE GUIDELINES:");
+                context.AppendLine("1. FIRST, directly answer the user's question using the patient data provided above.");
+                context.AppendLine("2. If the question is about a specific topic (e.g., 'salman khan', 'status', 'how am I doing'), answer that specific question.");
+                context.AppendLine("3. If the question is NOT related to the patient's medical data, respond appropriately (e.g., 'I don't have information about [topic] in your medical records. Would you like to know about your health status instead?').");
+                context.AppendLine("4. If the question IS about the patient's health, use the medical data above to provide a relevant answer.");
+                context.AppendLine("5. Only provide a general medical overview if the user explicitly asks for it (e.g., 'how am I doing?', 'what's my status?', 'give me an overview').");
+                context.AppendLine("6. Be conversational and helpful - don't just repeat medical data unless it's relevant to the question.");
                 context.AppendLine();
 
-                // Load instructions from database (data-driven)
+                // Load instructions from database (data-driven) - these are additional guidelines
                 var instructions = await _instructionService.BuildInstructionsAsync("HealthCheck");
                 if (!string.IsNullOrWhiteSpace(instructions))
                 {
+                    context.AppendLine("ADDITIONAL CLINICAL GUIDELINES:");
                     context.AppendLine(instructions);
-                }
-                else
-                {
-                    // Fallback if no instructions in database
-                    context.AppendLine("**Patient Medical Overview:**");
-                    context.AppendLine("- Review all available patient data");
-                    context.AppendLine("- Provide comprehensive health assessment");
                 }
 
                 var result = context.ToString();

@@ -21,6 +21,9 @@ services:
       # Ollama
       Ollama__BaseUrl: "http://ollama:11434"
 
+      # OpenAI
+      OpenAI__ApiKey: "${OPENAI_API_KEY}"
+
       # JWT
       Jwt__Key: "${JWT_KEY}"
       Jwt__Issuer: "SM_MentalHealthApp"
@@ -71,6 +74,8 @@ services:
       MYSQL_DATABASE: "${MYSQL_DB}"
       MYSQL_USER: "${MYSQL_USER}"
       MYSQL_PASSWORD: "${MYSQL_PASSWORD}"
+    ports:
+      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
