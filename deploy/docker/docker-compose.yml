@@ -21,6 +21,9 @@ services:
       # Ollama
       Ollama__BaseUrl: "http://ollama:11434"
 
+      # OpenAI
+      OpenAI__ApiKey: "${OPENAI_API_KEY}"
+
       # JWT
       Jwt__Key: "${JWT_KEY}"
       Jwt__Issuer: "SM_MentalHealthApp"
