@@ -1,0 +1,147 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IServiceRequestService ServiceRequestService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<RadzenForm Data="@updateRequest" Submit="@OnSubmit">
+    <RadzenFieldset Text="Edit Service Request">
+        <div class="row">
+            <div class="col-12 mb-3">
+                <RadzenFormField Text="Title" class="w-100">
+                    <RadzenTextBox @bind-Value="@updateRequest.Title" Placeholder="Enter service request title..." Style="width: 100%" MaxLength="200" />
+                    <RadzenFormFieldValidator Component="Title" Text="Title is required" />
+                </RadzenFormField>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <RadzenFormField Text="Type" class="w-100">
+                    <RadzenDropDown @bind-Value="@updateRequest.Type" 
+                                   Data="@typeOptions" 
+                                   Placeholder="Select type..."
+                                   Style="width: 100%"
+                                   TValue="string" />
+                </RadzenFormField>
+            </div>
+            <div class="col-md-6 mb-3">
+                <RadzenFormField Text="Status" class="w-100">
+                    <RadzenDropDown @bind-Value="@updateRequest.Status" 
+                                   Data="@statusOptions" 
+                                   Placeholder="Select status..."
+                                   Style="width: 100%"
+                                   TValue="string" />
+                </RadzenFormField>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12 mb-3">
+                <RadzenFormField Text="Description" class="w-100">
+                    <RadzenTextArea @bind-Value="@updateRequest.Description" 
+                                   Placeholder="Enter description (optional)..." 
+                                   Style="width: 100%; min-height: 100px;"
+                                   MaxLength="1000" />
+                </RadzenFormField>
+            </div>
+        </div>
+    </RadzenFieldset>
+
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="d-flex justify-content-end gap-2">
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Success" IsBusy="@isSubmitting" 
+                    Disabled="@isSubmitting" Click="@HandleSaveClick" />
+            </div>
+        </div>
+    </div>
+</RadzenForm>
+
+@code {
+    [Parameter] public ServiceRequestDto ServiceRequest { get; set; } = null!;
+
+    private UpdateServiceRequestRequest updateRequest = new();
+    private bool isSubmitting = false;
+
+    private List<string> typeOptions = new()
+    {
+        "General",
+        "Medical",
+        "Legal",
+        "Therapy",
+        "Consultation",
+        "Follow-up",
+        "Emergency"
+    };
+
+    private List<string> statusOptions = new()
+    {
+        "Active",
+        "Pending",
+        "Completed",
+        "Archived",
+        "OnHold",
+        "Cancelled"
+    };
+
+    protected override void OnInitialized()
+    {
+        // Initialize with current values
+        updateRequest.Title = ServiceRequest.Title;
+        updateRequest.Type = ServiceRequest.Type;
+        updateRequest.Status = ServiceRequest.Status;
+        updateRequest.Description = ServiceRequest.Description;
+    }
+
+    private async Task HandleSaveClick()
+    {
+        await SaveServiceRequest();
+    }
+
+    private async Task OnSubmit(UpdateServiceRequestRequest model)
+    {
+        await SaveServiceRequest();
+    }
+
+    private async Task SaveServiceRequest()
+    {
+        if (string.IsNullOrWhiteSpace(updateRequest.Title))
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please enter a title");
+            return;
+        }
+
+        if (isSubmitting) return;
+
+        isSubmitting = true;
+        StateHasChanged();
+        
+        try
+        {
+            var updated = await ServiceRequestService.UpdateServiceRequestAsync(ServiceRequest.Id, updateRequest);
+            
+            if (updated != null)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", $"Service request '{updated.Title}' updated successfully");
+                await Task.Delay(100);
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update service request");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to update service request: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+}
+

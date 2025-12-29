@@ -68,14 +68,16 @@
                                 @sr.CreatedAt.ToString("MMM dd, yyyy")
                             </Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="ServiceRequestDto" Title="Assigned SMEs" Width="200px">
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="AssignedSmeNames" Title="Assigned SMEs" Width="250px" Filterable="true">
                             <Template Context="sr">
                                 @if (sr.Assignments != null && sr.Assignments.Any(a => a.IsActive))
                                 {
-                                    @foreach (var assignment in sr.Assignments.Where(a => a.IsActive))
-                                    {
-                                        <span class="badge bg-primary me-1">@assignment.SmeUserName</span>
-                                    }
+                                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                        @foreach (var assignment in sr.Assignments.Where(a => a.IsActive))
+                                        {
+                                            <span class="badge bg-primary" style="white-space: nowrap;">@assignment.SmeUserName</span>
+                                        }
+                                    </div>
                                 }
                                 else
                                 {
@@ -222,13 +224,77 @@
 
     private async Task ShowEditDialog(ServiceRequestDto sr)
     {
-        // For now, show a message - full implementation can be added later
-        NotificationService.Notify(NotificationSeverity.Info, "Info", $"To edit service request '{sr.Title}', use the API endpoint. Full UI dialog coming soon.");
+        try
+        {
+            var result = await DialogService.OpenAsync<SM_MentalHealthApp.Client.Components.EditServiceRequestDialog>(
+                "Edit Service Request",
+                new Dictionary<string, object> 
+                { 
+                    { "ServiceRequest", sr }
+                },
+                new DialogOptions 
+                { 
+                    Width = "600px", 
+                    Height = "auto", 
+                    Resizable = true, 
+                    Draggable = true 
+                });
+
+            if (result == true)
+            {
+                await LoadServiceRequests();
+                if (grid != null)
+                {
+                    await grid.Reload();
+                }
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to open edit dialog: {ex.Message}");
+        }
     }
 
     private async Task ShowAssignDialog(ServiceRequestDto sr)
     {
-        NotificationService.Notify(NotificationSeverity.Info, "Info", "Use API endpoint to assign SMEs. Full UI coming soon.");
+        try
+        {
+            // Ensure SMEs are loaded
+            if (smes == null || !smes.Any())
+            {
+                await LoadSMEs();
+            }
+
+            var result = await DialogService.OpenAsync<SM_MentalHealthApp.Client.Components.AssignSmeDialog>(
+                "Assign SME to Service Request",
+                new Dictionary<string, object> 
+                { 
+                    { "ServiceRequest", sr },
+                    { "SMEs", smes ?? new List<User>() }
+                },
+                new DialogOptions 
+                { 
+                    Width = "500px", 
+                    Height = "auto", 
+                    Resizable = true, 
+                    Draggable = true 
+                });
+
+            if (result == true)
+            {
+                await LoadServiceRequests();
+                if (grid != null)
+                {
+                    await grid.Reload();
+                }
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to open assign dialog: {ex.Message}");
+        }
     }
 
     private async Task ShowDeleteDialog(ServiceRequestDto sr)

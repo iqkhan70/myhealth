@@ -149,6 +149,14 @@ namespace SM_MentalHealthApp.Shared
         public DateTime? UpdatedAt { get; set; }
         public string? Description { get; set; }
         public List<ServiceRequestAssignmentDto> Assignments { get; set; } = new();
+        
+        /// <summary>
+        /// Computed property for filtering by SME names (comma-separated)
+        /// </summary>
+        public string AssignedSmeNames => 
+            Assignments != null && Assignments.Any(a => a.IsActive)
+                ? string.Join(", ", Assignments.Where(a => a.IsActive).Select(a => a.SmeUserName))
+                : string.Empty;
     }
 
     /// <summary>
