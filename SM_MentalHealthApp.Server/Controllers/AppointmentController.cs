@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Server.Services;
+using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Shared;
 using SM_MentalHealthApp.Shared.Constants;
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -14,12 +16,16 @@ namespace SM_MentalHealthApp.Server.Controllers
     public class AppointmentController : BaseController
     {
         private readonly IAppointmentService _appointmentService;
+        private readonly IServiceRequestService _serviceRequestService;
         private readonly ILogger<AppointmentController> _logger;
+        private readonly JournalDbContext _context;
 
-        public AppointmentController(IAppointmentService appointmentService, ILogger<AppointmentController> logger)
+        public AppointmentController(IAppointmentService appointmentService, IServiceRequestService serviceRequestService, ILogger<AppointmentController> logger, JournalDbContext context)
         {
             _appointmentService = appointmentService;
+            _serviceRequestService = serviceRequestService;
             _logger = logger;
+            _context = context;
         }
 
         /// <summary>
@@ -67,22 +73,32 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // If doctor, enforce restrictions:
                 // 1. Doctor can only create appointments for themselves
                 // 2. Patient must be assigned to them
-                if (roleId == Roles.Doctor)
+                int? serviceRequestId = null;
+                if (roleId == Roles.Doctor || roleId == Roles.Attorney)
                 {
                     if (request.DoctorId != userId.Value)
                     {
-                        return BadRequest("Doctors can only create appointments for themselves");
+                        return BadRequest("You can only create appointments for yourself");
                     }
 
-                    // Check if patient is assigned to this doctor
-                    var isAssigned = await _appointmentService.IsPatientAssignedToDoctorAsync(request.PatientId, userId.Value);
-                    if (!isAssigned)
+                    // Get default ServiceRequest for this patient
+                    var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(request.PatientId);
+                    if (defaultSr != null)
                     {
-                        return BadRequest("Patient must be assigned to you before scheduling an appointment. Please contact admin to assign the patient.");
+                        // Verify user is assigned to this SR
+                        var isAssigned = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(defaultSr.Id, userId.Value);
+                        if (isAssigned)
+                        {
+                            serviceRequestId = defaultSr.Id;
+                        }
+                        else
+                        {
+                            return BadRequest("You are not assigned to this patient's service request. Please contact admin to assign you.");
+                        }
                     }
                 }
 
-                var appointment = await _appointmentService.CreateAppointmentAsync(request, userId.Value);
+                var appointment = await _appointmentService.CreateAppointmentAsync(request, userId.Value, serviceRequestId);
                 return CreatedAtAction(nameof(GetAppointment), new { id = appointment.Id }, appointment);
             }
             catch (InvalidOperationException ex)
@@ -211,6 +227,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public async Task<ActionResult<List<AppointmentDto>>> GetAppointments(
             [FromQuery] int? doctorId = null,
             [FromQuery] int? patientId = null,
+            [FromQuery] int? serviceRequestId = null,
             [FromQuery] DateTime? startDate = null,
             [FromQuery] DateTime? endDate = null)
         {
@@ -225,10 +242,75 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (!int.TryParse(userClaim, out int roleId))
                     return Unauthorized("Invalid role");
 
-                // If doctor, only show their appointments
-                if (roleId == Roles.Doctor)
+                // For doctors and attorneys, filter by assigned ServiceRequests
+                if (roleId == Roles.Doctor || roleId == Roles.Attorney)
                 {
-                    doctorId = userId.Value;
+                    doctorId = userId.Value; // Show only their appointments
+                    
+                    // Get assigned ServiceRequest IDs for this SME
+                    var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(userId.Value);
+
+                    if (!serviceRequestIds.Any())
+                    {
+                        return Ok(new List<AppointmentDto>());
+                    }
+
+                    // If specific SR requested, verify access
+                    if (serviceRequestId.HasValue)
+                    {
+                        if (!serviceRequestIds.Contains(serviceRequestId.Value))
+                            return Forbid("You are not assigned to this service request");
+                        
+                        serviceRequestIds = new List<int> { serviceRequestId.Value };
+                    }
+
+                    // Filter appointments by ServiceRequestId
+                    var query = _context.Appointments
+                        .Include(a => a.Doctor)
+                        .Include(a => a.Patient)
+                        .Include(a => a.CreatedByUser)
+                        .Where(a => a.IsActive && 
+                            a.DoctorId == doctorId.Value &&
+                            a.ServiceRequestId.HasValue &&
+                            serviceRequestIds.Contains(a.ServiceRequestId.Value));
+
+                    if (patientId.HasValue)
+                        query = query.Where(a => a.PatientId == patientId.Value);
+                    if (startDate.HasValue)
+                        query = query.Where(a => a.AppointmentDateTime >= startDate.Value);
+                    if (endDate.HasValue)
+                        query = query.Where(a => a.AppointmentDateTime <= endDate.Value);
+
+                    var appointments = await query
+                        .OrderBy(a => a.AppointmentDateTime)
+                        .ToListAsync();
+
+                    // Map to DTOs
+                    var appointmentDtos = appointments.Select(a => new AppointmentDto
+                    {
+                        Id = a.Id,
+                        DoctorId = a.DoctorId,
+                        DoctorName = $"{a.Doctor.FirstName} {a.Doctor.LastName}",
+                        DoctorEmail = a.Doctor.Email,
+                        PatientId = a.PatientId,
+                        PatientName = $"{a.Patient.FirstName} {a.Patient.LastName}",
+                        PatientEmail = a.Patient.Email,
+                        AppointmentDateTime = a.AppointmentDateTime,
+                        EndDateTime = a.EndDateTime,
+                        Duration = a.Duration,
+                        AppointmentType = a.AppointmentType,
+                        Status = a.Status,
+                        Reason = a.Reason,
+                        Notes = a.Notes,
+                        IsUrgentCare = a.IsUrgentCare,
+                        IsBusinessHours = a.IsBusinessHours,
+                        TimeZoneId = a.TimeZoneId,
+                        CreatedBy = $"{a.CreatedByUser.FirstName} {a.CreatedByUser.LastName}",
+                        CreatedAt = a.CreatedAt,
+                        ServiceRequestId = a.ServiceRequestId
+                    }).ToList();
+
+                    return Ok(appointmentDtos);
                 }
                 // If patient, only show their appointments
                 else if (roleId == Roles.Patient)
@@ -237,8 +319,12 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
                 // Admin and Coordinator can see all
 
-                var appointments = await _appointmentService.GetAppointmentsAsync(doctorId, patientId, startDate, endDate);
-                return Ok(appointments);
+                var allAppointments = await _appointmentService.GetAppointmentsAsync(doctorId, patientId, startDate, endDate);
+                
+                if (serviceRequestId.HasValue)
+                    allAppointments = allAppointments.Where(a => a.ServiceRequestId == serviceRequestId.Value).ToList();
+                
+                return Ok(allAppointments);
             }
             catch (Exception ex)
             {

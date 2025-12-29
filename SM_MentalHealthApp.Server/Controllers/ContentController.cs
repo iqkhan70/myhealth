@@ -16,14 +16,16 @@ namespace SM_MentalHealthApp.Server.Controllers
     public class ContentController : BaseController
     {
         private readonly ContentService _contentService;
+        private readonly IServiceRequestService _serviceRequestService;
         private readonly ILogger<ContentController> _logger;
         private readonly IAmazonS3 _s3Client;
         private readonly IContentAnalysisService _contentAnalysisService;
         private readonly JournalDbContext _context;
 
-        public ContentController(ContentService contentService, ILogger<ContentController> logger, IAmazonS3 s3Client, IContentAnalysisService contentAnalysisService, JournalDbContext context)
+        public ContentController(ContentService contentService, IServiceRequestService serviceRequestService, ILogger<ContentController> logger, IAmazonS3 s3Client, IContentAnalysisService contentAnalysisService, JournalDbContext context)
         {
             _contentService = contentService;
+            _serviceRequestService = serviceRequestService;
             _logger = logger;
             _s3Client = s3Client;
             _contentAnalysisService = contentAnalysisService;
@@ -32,7 +34,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
         [HttpGet("patient/{patientId}")]
         [Authorize]
-        public async Task<ActionResult<List<ContentItem>>> GetContentsForPatient(int patientId)
+        public async Task<ActionResult<List<ContentItem>>> GetContentsForPatient(int patientId, [FromQuery] int? serviceRequestId = null)
         {
             try
             {
@@ -42,7 +44,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (!currentUserId.HasValue || !currentRoleId.HasValue)
                     return Unauthorized();
 
-                // Check access: Admin sees all, others see only assigned patients
+                // Check access: Admin sees all, others see only assigned ServiceRequests
                 if (currentRoleId.Value != 3) // Not admin
                 {
                     if (currentRoleId.Value == 1) // Patient
@@ -52,17 +54,43 @@ namespace SM_MentalHealthApp.Server.Controllers
                     }
                     else // Doctor, Coordinator, or Attorney
                     {
-                        var hasAccess = await _context.UserAssignments
-                            .AnyAsync(ua => ua.AssignerId == currentUserId.Value && 
-                                          ua.AssigneeId == patientId && 
-                                          ua.IsActive);
-                        if (!hasAccess)
-                            return Forbid();
+                        // Get assigned ServiceRequest IDs for this SME
+                        var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value);
+
+                        if (!serviceRequestIds.Any())
+                        {
+                            return Ok(new List<ContentItem>());
+                        }
+
+                        // If specific SR requested, verify access
+                        if (serviceRequestId.HasValue)
+                        {
+                            if (!serviceRequestIds.Contains(serviceRequestId.Value))
+                                return Forbid("You are not assigned to this service request");
+                            
+                            serviceRequestIds = new List<int> { serviceRequestId.Value };
+                        }
+
+                        // Filter contents by ServiceRequestId
+                        var contents = await _context.Contents
+                            .Where(c => c.IsActive && 
+                                c.PatientId == patientId &&
+                                c.ServiceRequestId.HasValue &&
+                                serviceRequestIds.Contains(c.ServiceRequestId.Value))
+                            .OrderByDescending(c => c.CreatedAt)
+                            .ToListAsync();
+
+                        return Ok(contents);
                     }
                 }
 
-                var contents = await _contentService.GetContentsForPatientAsync(patientId);
-                return Ok(contents);
+                // For admins, return all contents (or filter by serviceRequestId if provided)
+                var allContents = await _contentService.GetContentsForPatientAsync(patientId);
+                
+                if (serviceRequestId.HasValue)
+                    allContents = allContents.Where(c => c.ServiceRequestId == serviceRequestId.Value).ToList();
+                
+                return Ok(allContents);
             }
             catch (Exception ex)
             {
@@ -88,7 +116,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
         [HttpGet("all")]
         [Authorize]
-        public async Task<ActionResult> GetAllContents()
+        public async Task<ActionResult> GetAllContents([FromQuery] int? serviceRequestId = null)
         {
             try
             {
@@ -99,7 +127,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     .Where(c => c.IsActive)
                     .AsQueryable();
                 
-                // For doctors, coordinators, and attorneys: filter by assigned patients
+                // For doctors, coordinators, and attorneys: filter by assigned ServiceRequests
                 // Admins see all content
                 if (currentRoleId.HasValue && currentUserId.HasValue)
                 {
@@ -107,20 +135,27 @@ namespace SM_MentalHealthApp.Server.Controllers
                         currentRoleId.Value == Shared.Constants.Roles.Coordinator || 
                         currentRoleId.Value == Shared.Constants.Roles.Attorney)
                     {
-                        // Get assigned patient IDs for this doctor/coordinator/attorney
-                        var assignedPatientIds = await _context.UserAssignments
-                            .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
-                            .Select(ua => ua.AssigneeId)
-                            .ToListAsync();
+                        // Get assigned ServiceRequest IDs for this SME
+                        var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value);
                         
-                        if (!assignedPatientIds.Any())
+                        if (!serviceRequestIds.Any())
                         {
-                            // No assigned patients, return empty list (same structure as successful query)
+                            // No assigned service requests, return empty list
                             return Ok(new List<object>());
                         }
+
+                        // If specific SR requested, verify access
+                        if (serviceRequestId.HasValue)
+                        {
+                            if (!serviceRequestIds.Contains(serviceRequestId.Value))
+                                return Forbid("You are not assigned to this service request");
+                            
+                            serviceRequestIds = new List<int> { serviceRequestId.Value };
+                        }
                         
-                        // Filter content to only include assigned patients
-                        query = query.Where(c => assignedPatientIds.Contains(c.PatientId));
+                        // Filter content by ServiceRequestId
+                        query = query.Where(c => c.ServiceRequestId.HasValue && 
+                            serviceRequestIds.Contains(c.ServiceRequestId.Value));
                     }
                     // Admin (RoleId 3) sees all content - no filtering needed
                 }
@@ -169,7 +204,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (content == null)
                     return NotFound();
 
-                // Check access: Admin sees all, others see only assigned patients
+                // Check access: Admin sees all, others see only assigned ServiceRequests
                 if (currentRoleId.Value != 3) // Not admin
                 {
                     if (currentRoleId.Value == 1) // Patient
@@ -179,12 +214,25 @@ namespace SM_MentalHealthApp.Server.Controllers
                     }
                     else // Doctor, Coordinator, or Attorney
                     {
-                        var hasAccess = await _context.UserAssignments
-                            .AnyAsync(ua => ua.AssignerId == currentUserId.Value && 
-                                          ua.AssigneeId == content.PatientId && 
-                                          ua.IsActive);
-                        if (!hasAccess)
-                            return Forbid();
+                        // Verify access via ServiceRequest
+                        if (content.ServiceRequestId.HasValue)
+                        {
+                            var hasAccess = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(
+                                content.ServiceRequestId.Value, currentUserId.Value);
+                            
+                            if (!hasAccess)
+                                return Forbid("You are not assigned to this service request");
+                        }
+                        else
+                        {
+                            // Fallback to old assignment check for content without ServiceRequestId
+                            var hasAccess = await _context.UserAssignments
+                                .AnyAsync(ua => ua.AssignerId == currentUserId.Value && 
+                                              ua.AssigneeId == content.PatientId && 
+                                              ua.IsActive);
+                            if (!hasAccess)
+                                return Forbid();
+                        }
                     }
                 }
 
@@ -266,11 +314,33 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var contentType = DetermineContentType(request.File.FileName);
                 var contentGuid = Guid.NewGuid();
 
+                // Get or set ServiceRequestId - use default if not provided
+                int? serviceRequestId = null;
+                if (request.AddedByUserId.HasValue)
+                {
+                    var user = await _contentService.GetUserByIdAsync(request.AddedByUserId.Value);
+                    if (user != null && (user.RoleId == Shared.Constants.Roles.Doctor || user.RoleId == Shared.Constants.Roles.Attorney))
+                    {
+                        // Get default ServiceRequest for this patient
+                        var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(request.PatientId);
+                        if (defaultSr != null)
+                        {
+                            // Verify user is assigned to this SR
+                            var isAssigned = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(defaultSr.Id, request.AddedByUserId.Value);
+                            if (isAssigned)
+                            {
+                                serviceRequestId = defaultSr.Id;
+                            }
+                        }
+                    }
+                }
+
                 var content = new ContentItem
                 {
                     ContentGuid = contentGuid,
                     PatientId = request.PatientId,
                     AddedByUserId = request.AddedByUserId,
+                    ServiceRequestId = serviceRequestId,
                     Title = request.Title,
                     Description = request.Description ?? string.Empty, // Provide empty string if null
                     FileName = $"{contentGuid}_{request.File.FileName}",
@@ -511,13 +581,23 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return NotFound("Content not found");
                 }
 
-                // Verify doctor has access to this patient's content
-                var hasAccess = await _context.UserAssignments
-                    .AnyAsync(ua => ua.AssignerId == doctorId.Value && ua.AssigneeId == content.PatientId && ua.IsActive);
+                // Verify doctor has access to this content via ServiceRequest
+                bool hasAccess = false;
+                if (content.ServiceRequestId.HasValue)
+                {
+                    hasAccess = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(
+                        content.ServiceRequestId.Value, doctorId.Value);
+                }
+                else
+                {
+                    // Fallback to old assignment check for content without ServiceRequestId
+                    hasAccess = await _context.UserAssignments
+                        .AnyAsync(ua => ua.AssignerId == doctorId.Value && ua.AssigneeId == content.PatientId && ua.IsActive);
+                }
                 
                 if (!hasAccess && content.PatientId != doctorId.Value)
                 {
-                    return Forbid("You can only ignore content for your assigned patients");
+                    return Forbid("You can only ignore content for your assigned service requests");
                 }
 
                 // Toggle ignore status

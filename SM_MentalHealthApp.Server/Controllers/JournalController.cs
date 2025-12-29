@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using SM_MentalHealthApp.Shared;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Server.Controllers;
+using SM_MentalHealthApp.Server.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -13,12 +15,16 @@ namespace SM_MentalHealthApp.Server.Controllers
     public class JournalController : BaseController
     {
         private readonly JournalService _journalService;
+        private readonly IServiceRequestService _serviceRequestService;
         private readonly ILogger<JournalController> _logger;
+        private readonly JournalDbContext _context;
 
-        public JournalController(JournalService journalService, ILogger<JournalController> logger)
+        public JournalController(JournalService journalService, IServiceRequestService serviceRequestService, ILogger<JournalController> logger, JournalDbContext context)
         {
             _journalService = journalService;
+            _serviceRequestService = serviceRequestService;
             _logger = logger;
+            _context = context;
         }
 
         [HttpPost("user/{userId}")]
@@ -31,18 +37,77 @@ namespace SM_MentalHealthApp.Server.Controllers
         [HttpPost("doctor/{doctorId}/patient/{patientId}")]
         public async Task<ActionResult<JournalEntry>> PostDoctorEntry(int doctorId, int patientId, [FromBody] JournalEntry entry)
         {
+            // Get or set ServiceRequestId - use default if not provided
+            int? serviceRequestId = entry.ServiceRequestId;
+            if (!serviceRequestId.HasValue)
+            {
+                // Get default ServiceRequest for this patient
+                var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(patientId);
+                if (defaultSr != null)
+                {
+                    // Verify doctor is assigned to this SR
+                    var isAssigned = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(defaultSr.Id, doctorId);
+                    if (isAssigned)
+                    {
+                        serviceRequestId = defaultSr.Id;
+                        entry.ServiceRequestId = serviceRequestId;
+                    }
+                }
+            }
+
             var savedEntry = await _journalService.ProcessDoctorEntry(entry, patientId, doctorId);
             return Ok(savedEntry);
         }
 
         [HttpGet("user/{userId}")]
-        public async Task<ActionResult<List<JournalEntry>>> GetEntriesForUser(int userId)
+        public async Task<ActionResult<List<JournalEntry>>> GetEntriesForUser(int userId, [FromQuery] int? serviceRequestId = null)
         {
             try
             {
-                var entries = await _journalService.GetEntriesForUser(userId);
+                var currentUserId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+
+                // For doctors and attorneys viewing patient journals, filter by ServiceRequestId
+                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && 
+                    currentUserId.HasValue && userId != currentUserId.Value)
+                {
+                    // Get assigned ServiceRequest IDs for this SME
+                    var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value);
+
+                    if (!serviceRequestIds.Any())
+                    {
+                        return Ok(new List<JournalEntry>());
+                    }
+
+                    // If specific SR requested, verify access
+                    if (serviceRequestId.HasValue)
+                    {
+                        if (!serviceRequestIds.Contains(serviceRequestId.Value))
+                            return Forbid("You are not assigned to this service request");
+                        
+                        serviceRequestIds = new List<int> { serviceRequestId.Value };
+                    }
+
+                    // Filter journal entries by ServiceRequestId
+                    var entries = await _context.JournalEntries
+                        .Where(je => je.IsActive && 
+                            je.UserId == userId &&
+                            je.ServiceRequestId.HasValue &&
+                            serviceRequestIds.Contains(je.ServiceRequestId.Value))
+                        .OrderByDescending(je => je.CreatedAt)
+                        .ToListAsync();
+
+                    return Ok(entries);
+                }
+
+                // For patients viewing their own journals, or admins, use existing service
+                var allEntries = await _journalService.GetEntriesForUser(userId);
+                
+                if (serviceRequestId.HasValue)
+                    allEntries = allEntries?.Where(e => e.ServiceRequestId == serviceRequestId.Value).ToList() ?? new List<JournalEntry>();
+                
                 // Always return OK with list (empty list if no entries) - never error on empty
-                return Ok(entries ?? new List<JournalEntry>());
+                return Ok(allEntries ?? new List<JournalEntry>());
             }
             catch (Exception ex)
             {
@@ -107,11 +172,22 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return NotFound("Journal entry not found");
                 }
 
-                // Verify doctor has access to this patient's journal entry
-                var hasAccess = await _journalService.VerifyDoctorAccessAsync(entry.UserId, doctorId.Value);
+                // Verify doctor has access to this journal entry via ServiceRequest
+                bool hasAccess = false;
+                if (entry.ServiceRequestId.HasValue)
+                {
+                    hasAccess = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(
+                        entry.ServiceRequestId.Value, doctorId.Value);
+                }
+                else
+                {
+                    // Fallback to old access check for entries without ServiceRequestId
+                    hasAccess = await _journalService.VerifyDoctorAccessAsync(entry.UserId, doctorId.Value);
+                }
+                
                 if (!hasAccess)
                 {
-                    return StatusCode(403, "You can only ignore journal entries for your assigned patients");
+                    return StatusCode(403, "You can only ignore journal entries for your assigned service requests");
                 }
 
                 await _journalService.ToggleIgnoreAsync(entryId, doctorId.Value);

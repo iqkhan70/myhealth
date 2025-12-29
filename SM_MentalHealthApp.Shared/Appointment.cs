@@ -133,6 +133,7 @@ namespace SM_MentalHealthApp.Shared
         public string TimeZoneId { get; set; } = "UTC";
         public string CreatedBy { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
+        public int? ServiceRequestId { get; set; }
     }
 
     public class DoctorAvailabilityRequest
