@@ -64,7 +64,7 @@
 <div class="admin-container">
     <div class="admin-header">
         <h1>Assignments</h1>
-        <p>Manage patient-doctor assignments</p>
+        <p>Manage client-SME assignments</p>
     </div>
 
     @if (isLoading)
@@ -79,22 +79,22 @@
         <div class="admin-content">
             <!-- Assignment Management -->
             <div class="assignment-section">
-                <h2>Patient-Doctor Assignments</h2>
+                <h2>Client-SME Assignments</h2>
 
                 <div class="assignment-controls">
                     <div class="form-group">
-                        <label class="form-label">Select Patient:</label>
+                        <label class="form-label">Select Client:</label>
                         <RadzenDropDown Data="@patients.Where(p => p.RoleId == 1)" TextProperty="FullName"
                             ValueProperty="Id" @bind-Value="selectedPatientId" AllowFiltering="true"
-                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a patient..."
+                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a client..."
                             Style="width: 400px" />
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Select Doctor:</label>
+                        <label class="form-label">Select SME:</label>
                         <RadzenDropDown Data="@doctors.Where(d => d.RoleId == 2)" TextProperty="FullName" ValueProperty="Id"
                             @bind-Value="selectedDoctorId" AllowFiltering="true"
-                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a doctor..."
+                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose an SME..."
                             Style="width: 400px" />
                     </div>
 
@@ -127,7 +127,7 @@
                     <small class="text-muted">
                         <i class="fas fa-info-circle"></i>
                         Use the filter row below each column header to search and filter assignments.
-                        You can filter by patient name, doctor name, assignment date, or specialization.
+                        You can filter by client name, SME name, assignment date, or specialization.
                     </small>
                 </div>
 
@@ -144,7 +144,7 @@
                     ShowFilterRowButtons="true"
                     @ref="_assignmentsGrid">
                     <Columns>
-                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="PatientName" Title="Patient"
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="PatientName" Title="Client"
                             Width="200px" Filterable="true" FilterProperty="PatientName">
                             <Template Context="assignment">
                                 <div>
@@ -155,7 +155,7 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="DoctorName" Title="Doctor"
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="DoctorName" Title="SME"
                             Width="200px" Filterable="true" FilterProperty="DoctorName">
                             <Template Context="assignment">
                                 <div>
@@ -200,9 +200,9 @@
                 </SMDataGrid>
             </div>
 
-            <!-- Doctor-Patient Overview -->
+            <!-- SME-Client Overview -->
             <div class="overview-section">
-                <h2>Doctor-Patient Overview</h2>
+                <h2>SME-Client Overview</h2>
 
                 <div class="search-box mb-3">
                     <RadzenTextBox @bind-Value="doctorSearchTerm" Placeholder="Search doctors by name or email..."

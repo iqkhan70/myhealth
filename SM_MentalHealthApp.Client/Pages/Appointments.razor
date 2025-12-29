@@ -187,9 +187,9 @@
             </div>
         }
         <div class="control-group">
-            <label class="control-label">Patient</label>
+            <label class="control-label">Client</label>
             <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
-                @bind-value="filterPatientId" AllowFiltering="true" Placeholder="All Patients"
+                @bind-value="filterPatientId" AllowFiltering="true" Placeholder="All Clients"
                 Style="width: 200px" />
         </div>
         <div class="control-group">
@@ -249,11 +249,11 @@
                         <h6>Appointment Details</h6>
                         <div class="appointment-meta mb-3">
                             <div class="meta-row">
-                                <span class="meta-label"><strong>Doctor:</strong></span>
+                                <span class="meta-label"><strong>SME:</strong></span>
                                 <span class="meta-value">@expandedAppointment.DoctorName (@expandedAppointment.DoctorEmail)</span>
                             </div>
                             <div class="meta-row">
-                                <span class="meta-label"><strong>Patient:</strong></span>
+                                <span class="meta-label"><strong>Client:</strong></span>
                                 <span class="meta-value">@expandedAppointment.PatientName (@expandedAppointment.PatientEmail)</span>
                             </div>
                             <div class="meta-row">
@@ -355,7 +355,7 @@
                     @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show read-only
                     {
                         <div class="form-group">
-                            <label class="form-label">Doctor</label>
+                            <label class="form-label">SME</label>
                             <RadzenTextBox Value="@currentDoctorName" 
                                 ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
                         </div>
@@ -363,7 +363,7 @@
                     else // Admin or Coordinator - show dropdown
                     {
                         <div class="form-group">
-                            <label class="form-label">Provider (Doctor/Attorney) <span class="required-asterisk">*</span></label>
+                            <label class="form-label">Provider (SME) <span class="required-asterisk">*</span></label>
                             <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
                                 @bind-value="appointmentForm.DoctorId" Change="@OnDoctorChanged"
                                 AllowFiltering="true" Placeholder="Select Provider"
@@ -371,9 +371,9 @@
                         </div>
                     }
                     <div class="form-group">
-                        <label class="form-label">Patient <span class="required-asterisk">*</span></label>
+                        <label class="form-label">Client <span class="required-asterisk">*</span></label>
                         <RadzenDropDown Data="@availablePatients" TextProperty="FullName" ValueProperty="Id"
-                            @bind-value="appointmentForm.PatientId" AllowFiltering="true" Placeholder="Select Patient"
+                            @bind-value="appointmentForm.PatientId" AllowFiltering="true" Placeholder="Select Client"
                             Style="width: 100%" />
                     </div>
                     <div class="form-group">
@@ -391,7 +391,7 @@
                     <div class="form-row form-row-full">
                         <div class="form-group" style="width: 100%;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <label class="form-label" style="margin-bottom: 0;">Doctor Out of Office Periods</label>
+                                <label class="form-label" style="margin-bottom: 0;">SME Out of Office Periods</label>
                                 <RadzenButton Text="View All OOO" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small"
                                     Click="@(() => ShowAllOOOView(appointmentForm.DoctorId))" Icon="event_busy" />
                             </div>
@@ -399,7 +399,7 @@
                             {
                                 <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 10px; max-height: 200px; overflow-y: auto;">
                                     <div style="font-weight: 600; margin-bottom: 8px; color: #856404;">
-                                        <i class="fas fa-exclamation-triangle"></i> Doctor is unavailable during these periods:
+                                        <i class="fas fa-exclamation-triangle"></i> SME is unavailable during these periods:
                                     </div>
                                     @foreach (var ooo in doctorOOOPeriods.OrderBy(o => o.Date).ThenBy(o => o.StartTime ?? TimeSpan.Zero))
                                     {
@@ -430,7 +430,7 @@
                             else
                             {
                                 <div style="background-color: #d4edda; border: 1px solid #28a745; border-radius: 4px; padding: 10px; color: #155724;">
-                                    <i class="fas fa-check-circle"></i> Doctor is available (no OOO periods in the next 30 days)
+                                    <i class="fas fa-check-circle"></i> SME is available (no OOO periods in the next 30 days)
                                 </div>
                             }
                         </div>
@@ -496,12 +496,12 @@
     @if (showOOODialog)
     {
         <SMModal IsVisible="@showOOODialog" 
-                 Title="Manage Doctor Out of Office" 
+                 Title="Manage SME Out of Office" 
                  OnClose="CloseOOODialog"
                  Size="Large">
             <Body>
                 <div class="form-group">
-                    <label class="form-label">Doctor</label>
+                    <label class="form-label">SME</label>
                     @if (AuthService.CurrentUser?.RoleId == 2) // Doctor - show read-only
                     {
                         <RadzenTextBox Value="@currentDoctorName" 
@@ -603,7 +603,7 @@
     @if (showOOOView)
     {
         <SMModal IsVisible="@showOOOView" 
-                 Title="Doctor Out of Office Periods" 
+                 Title="SME Out of Office Periods" 
                  OnClose="CloseOOOView"
                  Size="Large">
             <Body>
@@ -613,7 +613,7 @@
                     <div style="margin-bottom: 20px;">
                         <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 15px;">
                             <div class="form-group" style="flex: 1;">
-                                <label class="form-label">Doctor</label>
+                                <label class="form-label">SME</label>
                                 <RadzenTextBox Value="@(selectedDoctor != null ? $"{selectedDoctor.FirstName} {selectedDoctor.LastName}" : "")" 
                                     ReadOnly="true" Style="width: 100%; background-color: #f5f5f5;" />
                             </div>
@@ -660,7 +660,7 @@
                                             else
                                             {
                                                 <div style="color: #dc3545; font-weight: 600; margin-bottom: 6px;">
-                                                    <i class="fas fa-ban"></i> FULL DAY - Doctor is unavailable all day
+                                                    <i class="fas fa-ban"></i> FULL DAY - SME is unavailable all day
                                                 </div>
                                             }
                                             @if (!string.IsNullOrEmpty(ooo.Reason))
@@ -686,7 +686,7 @@
                         <div style="text-align: center; padding: 40px; background-color: #d4edda; border: 1px solid #28a745; border-radius: 4px; color: #155724;">
                             <i class="fas fa-check-circle" style="font-size: 48px; margin-bottom: 15px;"></i>
                             <div style="font-size: 16px; font-weight: 600;">No Out of Office Periods</div>
-                            <div style="font-size: 14px; margin-top: 8px;">Doctor is available during the selected date range.</div>
+                            <div style="font-size: 14px; margin-top: 8px;">SME is available during the selected date range.</div>
                         </div>
                     }
                 }
@@ -911,13 +911,13 @@
             new SMDataGridColumn<AppointmentDto>
             {
                 Property = nameof(AppointmentDto.DoctorName),
-                Title = "Doctor",
+                Title = "SME",
                 Width = null
             },
             new SMDataGridColumn<AppointmentDto>
             {
                 Property = nameof(AppointmentDto.PatientName),
-                Title = "Patient",
+                Title = "Client",
                 Width = null
             },
             new SMDataGridTemplateColumn<AppointmentDto>
@@ -1747,7 +1747,7 @@
             return;
         }
 
-        var details = $"Patient: {appointment.PatientName}\n" +
+        var details = $"Client: {appointment.PatientName}\n" +
                      $"Date: {appointment.AppointmentDateTime:MM/dd/yyyy}\n" +
                      $"Time: {appointment.AppointmentDateTime:hh:mm tt}";
         
@@ -1947,7 +1947,7 @@
             var response = await Http.PostAsJsonAsync("api/appointment/doctor-availability", oooForm);
             if (response.IsSuccessStatusCode)
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Doctor availability updated successfully!");
+                await JSRuntime.InvokeVoidAsync("alert", "SME availability updated successfully!");
                 await CloseOOODialog();
             }
             else

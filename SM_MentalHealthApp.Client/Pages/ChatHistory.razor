@@ -43,7 +43,7 @@
                         <label for="patientFilter" class="form-label">Filter by Patient:</label>
                         <div class="input-group">
                             <select id="patientFilter" class="form-select" @onchange="OnPatientFilterChanged">
-                                <option value="">All Patients (@patients.Count total)</option>
+                                <option value="">All Clients (@patients.Count total)</option>
                                 @foreach (var patient in patients.OrderBy(p => p.FullName))
                                 {
                                     <option value="@patient.Id" selected="@(selectedPatientId == patient.Id)">

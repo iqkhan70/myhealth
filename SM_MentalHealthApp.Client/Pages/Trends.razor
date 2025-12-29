@@ -30,21 +30,21 @@
 <div class="trends-page">
     <div class="trends-header">
         <h2>Mood Trends</h2>
-        <p>Track your emotional journey over time with interactive charts and insights.</p>
+        <p>Track your service experience journey over time with interactive charts and insights.</p>
     </div>
 
     @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
     {
         <div class="patient-selection">
             <label style="white-space: nowrap; margin-bottom: 8px; display: block;">
-                👤 Select Patient:
+                👤 Select Client:
                 @if (selectedPatientId == 0)
                 {
                     <span class="required-indicator">*</span>
                 }
             </label>
             <RadzenDropDown @bind-Value="selectedPatientId" Data="@assignedPatients" ValueProperty="Id"
-                TextProperty="FullName" Placeholder="Search patients..." AllowClear="true" AllowFiltering="true"
+                TextProperty="FullName" Placeholder="Search clients..." AllowClear="true" AllowFiltering="true"
                 FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Change="@OnPatientSelected"
                 Style="width: 100%; min-width: 350px; max-width: 500px;" TValue="int" class="@GetPatientSelectClass()">
                 <Template Context="patient">

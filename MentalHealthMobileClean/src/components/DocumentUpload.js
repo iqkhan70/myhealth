@@ -384,7 +384,7 @@ const DocumentUpload = ({
 
       {showPatientSelector && (
         <View style={styles.patientSelector}>
-          <Text style={styles.selectorLabel}>Select Patient:</Text>
+          <Text style={styles.selectorLabel}>Select Client:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {availablePatients.map((patient) => (
               <TouchableOpacity

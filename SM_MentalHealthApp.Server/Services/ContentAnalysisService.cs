@@ -354,14 +354,14 @@ namespace SM_MentalHealthApp.Server.Services
                 // If no patient is selected (patientId = 0), return a message indicating patient selection is required
                 if (patientId <= 0)
                 {
-                    _logger.LogWarning("No patient selected (patientId = {PatientId}), cannot build patient context", patientId);
-                    return $@"**⚠️ PATIENT SELECTION REQUIRED**
+                    _logger.LogWarning("No client selected  (patientId = {PatientId}), cannot build patient context", patientId);
+                    return $@"**⚠️ CLIENT SELECTION REQUIRED**
 
 {originalPrompt}
 
 To provide personalized medical insights and patient-specific analysis, please:
 1. **Select a specific patient** from the dropdown above
-2. **Ensure you are in 'Patient Chat' mode** (not Generic AI mode)
+2. **Ensure you are in 'Client Chat' mode** (not Generic AI mode)
 
 This will allow me to:
 - Access the patient's medical history and test results

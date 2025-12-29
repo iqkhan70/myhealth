@@ -121,7 +121,7 @@
                 <div class="form-group">
                     <label class="form-label">Patient: <span class="required-asterisk">*</span></label>
                     <RadzenDropDown @bind-Value="noteForm.PatientId" Data="@patients" TextProperty="FullName"
-                        ValueProperty="Id" Placeholder="Select Patient" Style="width: 100%;" 
+                        ValueProperty="Id" Placeholder="Select Client" Style="width: 100%;" 
                         AllowClear="false" TValue="int" />
                     @if (noteForm.PatientId == 0 && showPatientRequiredError)
                     {

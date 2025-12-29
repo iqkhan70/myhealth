@@ -14,7 +14,7 @@
             <div class="form-group">
                 <label class="form-label">Patient</label>
                 <RadzenDropDown @bind-Value="selectedPatientId" Data="@Patients" TextProperty="FullName" 
-                    ValueProperty="Id" Placeholder="Select Patient" Style="width: 100%;" />
+                    ValueProperty="Id" Placeholder="Select Client" Style="width: 100%;" />
             </div>
 
             <div class="form-group">
@@ -356,7 +356,7 @@
                 $"Generated: {DateTime.Now:yyyy-MM-dd HH:mm}\n\n" +
                 "IMMEDIATE ACTIONS:\n" +
                 string.Join("\n", recommendations.ImmediateActions.Select((a, i) => $"{i + 1}. {a}")) + "\n\n" +
-                "PATIENT-SPECIFIC NOTES:\n" +
+                "CLIENT-SPECIFIC NOTES:\n" +
                 string.Join("\n", recommendations.PatientSpecificNotes.Select((n, i) => $"{i + 1}. {n}")) + "\n\n" +
                 "RISK FACTORS:\n" +
                 string.Join("\n", recommendations.RiskFactors.Select((r, i) => $"{i + 1}. {r}")) + "\n\n" +

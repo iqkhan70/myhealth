@@ -920,7 +920,7 @@ namespace SM_MentalHealthApp.Server.Services
             if (isGenericMode)
             {
                 _logger.LogInformation("Generic mode detected - using OpenAI for ChatGPT-like responses");
-                
+
                 // Extract the actual user question from the prompt text
                 // The text might contain "User question: ..." or just be the question itself
                 var userQuestion = ExtractUserQuestion(text);
@@ -937,11 +937,11 @@ namespace SM_MentalHealthApp.Server.Services
                         // Take the first line or first sentence
                         var newlineIndex = remainingText.IndexOf('\n');
                         var periodIndex = remainingText.IndexOf('.');
-                        var endIndex = newlineIndex >= 0 ? newlineIndex : 
+                        var endIndex = newlineIndex >= 0 ? newlineIndex :
                                       (periodIndex >= 0 && periodIndex < 100 ? periodIndex : remainingText.Length);
                         userQuestion = remainingText.Substring(0, endIndex).Trim();
                     }
-                    
+
                     // If still empty, use the last meaningful line (might be just the question)
                     if (string.IsNullOrWhiteSpace(userQuestion))
                     {
@@ -950,8 +950,8 @@ namespace SM_MentalHealthApp.Server.Services
                         for (int i = lines.Length - 1; i >= 0; i--)
                         {
                             var line = lines[i].Trim();
-                            if (!string.IsNullOrWhiteSpace(line) && 
-                                (line.Contains("?") || 
+                            if (!string.IsNullOrWhiteSpace(line) &&
+                                (line.Contains("?") ||
                                  line.StartsWith("what ", StringComparison.OrdinalIgnoreCase) ||
                                  line.StartsWith("who ", StringComparison.OrdinalIgnoreCase) ||
                                  line.StartsWith("where ", StringComparison.OrdinalIgnoreCase) ||
@@ -963,7 +963,7 @@ namespace SM_MentalHealthApp.Server.Services
                                 break;
                             }
                         }
-                        
+
                         // Final fallback: use the entire text if it's short enough (might be just the question)
                         if (string.IsNullOrWhiteSpace(userQuestion) && text.Length < 200)
                         {
@@ -986,7 +986,7 @@ namespace SM_MentalHealthApp.Server.Services
                     };
 
                     var llmResponse = await _llmClient.GenerateTextAsync(llmRequest);
-                    
+
                     if (!string.IsNullOrWhiteSpace(llmResponse?.Text))
                     {
                         _logger.LogInformation("OpenAI response generated successfully for generic question");
@@ -1167,7 +1167,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                     if (!hasPatientData)
                     {
-                        // No patient selected or no data available - use template
+                        // No client selected  or no data available - use template
                         var template = await _templateService.FormatTemplateAsync("fallback_no_patient_selected", null);
                         if (!string.IsNullOrEmpty(template)) return template;
 
@@ -2466,7 +2466,7 @@ namespace SM_MentalHealthApp.Server.Services
             var recentLine = lines.FirstOrDefault(l => l.Contains("RECENT JOURNAL ENTRIES"));
             if (recentLine != null)
             {
-                var recentLines = lines.SkipWhile(l => !l.Contains("RECENT JOURNAL ENTRIES")).Skip(1).TakeWhile(l => !string.IsNullOrWhiteSpace(l) && !l.StartsWith("DOCTOR"));
+                var recentLines = lines.SkipWhile(l => !l.Contains("RECENT JOURNAL ENTRIES")).Skip(1).TakeWhile(l => !string.IsNullOrWhiteSpace(l) && !l.StartsWith("SME"));
                 recentPatterns = string.Join("; ", recentLines.Take(2).Select(l => l.Trim().TrimStart('-', ' ')));
             }
 

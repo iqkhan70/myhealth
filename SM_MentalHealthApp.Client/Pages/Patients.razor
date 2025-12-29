@@ -26,12 +26,12 @@
     <div class="users-header">
         @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
         {
-            <h2>My Patients</h2>
+            <h2>My Clients</h2>
             <p>View and manage your assigned users' health journey.</p>
         }
         else if (AuthService.CurrentUser?.RoleId == 3) // Admin
         {
-            <h2>All Patients</h2>
+            <h2>All Clients</h2>
             <p>Manage all patient records and view their health journey.</p>
             <button @onclick="ShowAddPatientForm" class="add-patient-btn">
                 ➕ Add New Patient
@@ -44,7 +44,7 @@
         }
         else if (AuthService.CurrentUser?.RoleId == 5) // Attorney
         {
-            <h2>My Patients</h2>
+            <h2>My Clients</h2>
             <p>View your assigned patients.</p>
         }
         else
@@ -74,7 +74,7 @@
                                    ValueProperty="Value"
                                    TextProperty="Text"
                                    @bind-Value="selectedJournalFilter"
-                                   Placeholder="All Patients"
+                                   Placeholder="All Clients"
                                    Style="width: 100%" />
                 </div>
                 <div class="col-md-3">
@@ -854,7 +854,7 @@
                                    ValueProperty="Id"
                                    TextProperty="FullName"
                                    @bind-Value="selectedDoctorId"
-                                   Placeholder="@(AuthService.CurrentUser?.RoleId == 5 ? "Choose an attorney..." : "Choose a doctor or attorney...")"
+                                   Placeholder="@(AuthService.CurrentUser?.RoleId == 5 ? "Choose an attorney..." : "Choose an SME or attorney...")"
                                    Style="width: 100%" />
                 </div>
             </div>
@@ -992,7 +992,7 @@
                                    ValueProperty="Id"
                                    TextProperty="FullName"
                                    @bind-Value="selectedDoctorId"
-                                   Placeholder="Choose a doctor/coordinator..."
+                                   Placeholder="Choose an SME/coordinator..."
                                    Style="width: 100%" />
                 </div>
             </div>
@@ -1646,7 +1646,7 @@
     
     private readonly List<object> journalFilterOptions = new()
     {
-        new { Value = (string?)null, Text = "All Patients" },
+        new { Value = (string?)null, Text = "All Clients" },
         new { Value = "0", Text = "No Journal Entries" },
         new { Value = "1-5", Text = "1-5 Entries" },
         new { Value = "6-10", Text = "6-10 Entries" },

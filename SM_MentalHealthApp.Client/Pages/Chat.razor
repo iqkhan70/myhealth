@@ -18,7 +18,7 @@
                 <label style="white-space: nowrap; margin-bottom: 8px; display: block;">🤖 Chat Mode:</label>
                 <div class="mode-buttons">
                     <button class="mode-button @(IsGenericMode ? "" : "active")" @onclick="() => SetMode(false)">
-                        👤 Patient Chat
+                        👤 Client Chat
                     </button>
                     <button class="mode-button @(IsGenericMode ? "active" : "")" @onclick="() => SetMode(true)">
                         🌐 Generic AI
@@ -29,12 +29,12 @@
             @if (!IsGenericMode)
             {
                 <div class="patient-selector">
-                    <label style="white-space: nowrap; margin-bottom: 8px; display: block;">👤 Select Patient:</label>
+                    <label style="white-space: nowrap; margin-bottom: 8px; display: block;">👤 Select Client:</label>
                     <RadzenDropDown @bind-Value="SelectedUserId" 
                                    Data="@Users" 
                                    ValueProperty="Id" 
                                    TextProperty="FullName"
-                                   Placeholder="Search patients..." 
+                                   Placeholder="Search clients..." 
                                    AllowClear="true"
                                    AllowFiltering="true"
                                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
@@ -152,7 +152,7 @@
             {
                 <div style="padding: 12px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; margin-bottom: 8px; color: #856404;">
                     <strong>⚠️ Patient Selection Required</strong>
-                    <p style="margin: 4px 0 0 0; font-size: 14px;">Please select a patient from the dropdown above to enable Patient Chat mode.</p>
+                    <p style="margin: 4px 0 0 0; font-size: 14px;">Please select a patient from the dropdown above to enable Client Chat mode.</p>
                 </div>
             }
             <input 
@@ -284,7 +284,7 @@
         {
             // Clear messages when switching to patient mode
             Messages.Clear();
-            Messages.Add("Bot: Hello! I'm your health AI assistant. Select a patient to get personalized clinical insights and recommendations.");
+            Messages.Add("Bot: Hello! I'm your health AI assistant. Select a client to get personalized clinical insights and recommendations.");
         }
         StateHasChanged();
     }
@@ -306,8 +306,8 @@
             else
             {
                 SelectedUser = null;
-                Messages.Add($"System: 🌐 No patient selected - AI will provide generic responses");
-                Messages.Add($"System: 💡 Select a patient from the dropdown above to get personalized insights");
+                Messages.Add($"System: 🌐 No client selected  - AI will provide generic responses");
+                Messages.Add($"System: 💡 Select a client from the dropdown above to get personalized insights");
             }
         }
         catch (Exception ex)
@@ -344,7 +344,7 @@
     
     private bool IsInputDisabled()
     {
-        // Disable input if in Patient Chat mode but no patient is selected (for doctors/admins)
+        // Disable input if in Client Chat mode but no patient is selected (for doctors/admins)
         if (!IsGenericMode && (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3))
         {
             return SelectedUserId <= 0;
@@ -376,10 +376,10 @@
             else if (AuthService.CurrentUser?.RoleId == 2) // Doctor
             {
                 patientId = SelectedUserId; // Use selected patient
-                // Require patient selection for Patient Chat mode
+                // Require patient selection for Client Chat mode
                 if (patientId <= 0)
                 {
-                    Messages.Add($"System: ⚠️ Please select a patient before sending a message in Patient Chat mode.");
+                    Messages.Add($"System: ⚠️ Please select a patient before sending a message in Client Chat mode.");
                     return;
                 }
             }
@@ -390,10 +390,10 @@
             else if (AuthService.CurrentUser?.RoleId == 3) // Admin
             {
                 patientId = SelectedUserId; // Use selected patient
-                // Require patient selection for Patient Chat mode
+                // Require patient selection for Client Chat mode
                 if (patientId <= 0)
                 {
-                    Messages.Add($"System: ⚠️ Please select a patient before sending a message in Patient Chat mode.");
+                    Messages.Add($"System: ⚠️ Please select a patient before sending a message in Client Chat mode.");
                     return;
                 }
             }

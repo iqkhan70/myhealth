@@ -49,7 +49,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Extract user question
                 var userQuestion = await _questionExtractor.ExtractUserQuestionAsync(text, context.IsAiHealthCheck);
-                
+
                 if (string.IsNullOrEmpty(userQuestion) && context.IsAiHealthCheck)
                 {
                     userQuestion = "AI Health Check for Patient";
@@ -59,15 +59,15 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // For specific questions, always use OpenAI for intelligent responses
                 // This ensures questions are actually answered, not just template responses
-                if (!string.IsNullOrWhiteSpace(userQuestion) && 
+                if (!string.IsNullOrWhiteSpace(userQuestion) &&
                     userQuestion != "AI Health Check for Patient" &&
                     userQuestion.Length < 200) // Only for reasonable length questions
                 {
                     _logger.LogInformation("Using OpenAI to intelligently answer question: {Question}", userQuestion);
                     var intelligentResponse = await GetIntelligentFallbackAsync(userQuestion, text, context);
-                    
+
                     // Only use handler response if OpenAI fails or returns empty
-                    if (string.IsNullOrWhiteSpace(intelligentResponse) || 
+                    if (string.IsNullOrWhiteSpace(intelligentResponse) ||
                         intelligentResponse.Contains("I apologize, but I'm having trouble"))
                     {
                         _logger.LogWarning("OpenAI response was empty or error, falling back to handler");
@@ -85,7 +85,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Get appropriate handler for AI Health Check or when no specific question
                 var defaultHandler = await _handlerFactory.GetHandlerAsync(userQuestion, context);
-                
+
                 if (defaultHandler == null)
                 {
                     _logger.LogWarning("No handler found, using OpenAI to answer question intelligently");
@@ -112,11 +112,11 @@ namespace SM_MentalHealthApp.Server.Services
                 try
                 {
                     _logger.LogInformation("Using OpenAI to answer question: {Question}", userQuestion);
-                    
+
                     // Build a prompt that includes the patient context and asks to answer the specific question
                     var prompt = $@"Based on the following patient medical data, please answer the user's question: ""{userQuestion}""
 
-PATIENT MEDICAL DATA:
+CLIENT MEDICAL DATA:
 {fullContext}
 
 INSTRUCTIONS:
@@ -136,7 +136,7 @@ INSTRUCTIONS:
                     };
 
                     var llmResponse = await _llmClient.GenerateTextAsync(llmRequest);
-                    
+
                     if (!string.IsNullOrWhiteSpace(llmResponse?.Text))
                     {
                         _logger.LogInformation("OpenAI successfully answered question");
