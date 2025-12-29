@@ -16,10 +16,11 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly IContentAnalysisService _contentAnalysisService;
         private readonly IIntelligentContextService _intelligentContextService;
         private readonly IChatHistoryService _chatHistoryService;
+        private readonly IServiceRequestService _serviceRequestService;
         private readonly JournalDbContext _context;
         private readonly ILogger<ChatService> _logger;
 
-        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, IIntelligentContextService intelligentContextService, IChatHistoryService chatHistoryService, JournalDbContext context, ILogger<ChatService> logger)
+        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, IIntelligentContextService intelligentContextService, IChatHistoryService chatHistoryService, IServiceRequestService serviceRequestService, JournalDbContext context, ILogger<ChatService> logger)
         {
             _conversationRepository = conversationRepository;
             _huggingFaceService = huggingFaceService;
@@ -28,6 +29,7 @@ namespace SM_MentalHealthApp.Server.Services
             _contentAnalysisService = contentAnalysisService;
             _intelligentContextService = intelligentContextService;
             _chatHistoryService = chatHistoryService;
+            _serviceRequestService = serviceRequestService;
             _context = context;
             _logger = logger;
         }
@@ -42,8 +44,26 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogInformation("UserRoleId: {UserRoleId}", userRoleId);
                 _logger.LogInformation("IsGenericMode: {IsGenericMode}", isGenericMode);
 
+                // Determine ServiceRequestId for patient mode chats
+                int? serviceRequestId = null;
+                if (!isGenericMode && patientId > 0 && (userRoleId == Shared.Constants.Roles.Doctor || userRoleId == Shared.Constants.Roles.Attorney))
+                {
+                    // Get default ServiceRequest for this patient
+                    var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(patientId);
+                    if (defaultSr != null)
+                    {
+                        // Verify user is assigned to this SR
+                        var isAssigned = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(defaultSr.Id, userId);
+                        if (isAssigned)
+                        {
+                            serviceRequestId = defaultSr.Id;
+                            _logger.LogInformation("Using ServiceRequest {ServiceRequestId} for chat session", serviceRequestId);
+                        }
+                    }
+                }
+
                 // Get or create chat session
-                var session = await _chatHistoryService.GetOrCreateSessionAsync(userId, patientId > 0 ? patientId : null);
+                var session = await _chatHistoryService.GetOrCreateSessionAsync(userId, patientId > 0 ? patientId : null, serviceRequestId);
 
                 if (session == null)
                 {

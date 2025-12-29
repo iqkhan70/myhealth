@@ -8,7 +8,7 @@ namespace SM_MentalHealthApp.Server.Services
 {
     public interface IChatHistoryService
     {
-        Task<ChatSession> GetOrCreateSessionAsync(int userId, int? patientId = null);
+        Task<ChatSession> GetOrCreateSessionAsync(int userId, int? patientId = null, int? serviceRequestId = null);
         Task<ChatMessage> AddMessageAsync(int sessionId, MessageRole role, string content, MessageType messageType = MessageType.Question, bool isMedicalData = false, string? metadata = null);
         Task<List<ChatMessage>> GetRecentMessagesAsync(int sessionId, int maxMessages = 20, JournalDbContext? dbContext = null);
         Task<string> BuildConversationContextAsync(int sessionId, JournalDbContext? dbContext = null);
@@ -36,7 +36,7 @@ namespace SM_MentalHealthApp.Server.Services
             _logger = logger;
         }
 
-        public async Task<ChatSession> GetOrCreateSessionAsync(int userId, int? patientId = null)
+        public async Task<ChatSession> GetOrCreateSessionAsync(int userId, int? patientId = null, int? serviceRequestId = null)
         {
             try
             {
@@ -47,20 +47,32 @@ namespace SM_MentalHealthApp.Server.Services
                 // This handles the case where Session1 was ignored, Session2 was created, then Session1 was unignored
                 // In that case, Session2 should continue to be used (it's the most recent)
                 var today = DateTime.UtcNow.Date;
-                var existingSession = await _context.ChatSessions
+                var query = _context.ChatSessions
                     .Where(s => s.UserId == userId &&
                                s.PatientId == patientId &&
                                s.IsActive &&
                                !s.IsIgnoredByDoctor && // Exclude ignored sessions
-                               s.CreatedAt.Date == today)
+                               s.CreatedAt.Date == today);
+
+                // If ServiceRequestId is provided, match it; otherwise match NULL ServiceRequestId
+                if (serviceRequestId.HasValue)
+                {
+                    query = query.Where(s => s.ServiceRequestId == serviceRequestId.Value);
+                }
+                else
+                {
+                    query = query.Where(s => s.ServiceRequestId == null);
+                }
+
+                var existingSession = await query
                     .OrderByDescending(s => s.LastActivityAt) // Use most recently active session
                     .ThenByDescending(s => s.CreatedAt) // If same activity time, use most recently created
                     .FirstOrDefaultAsync();
 
                 if (existingSession != null)
                 {
-                    _logger.LogInformation("Found existing active, non-ignored session for today {SessionId} for user {UserId}, patient {PatientId} (LastActivity: {LastActivity})",
-                        existingSession.SessionId, userId, patientId, existingSession.LastActivityAt);
+                    _logger.LogInformation("Found existing active, non-ignored session for today {SessionId} for user {UserId}, patient {PatientId}, serviceRequest {ServiceRequestId} (LastActivity: {LastActivity})",
+                        existingSession.SessionId, userId, patientId, serviceRequestId, existingSession.LastActivityAt);
                     return existingSession;
                 }
 
@@ -91,6 +103,7 @@ namespace SM_MentalHealthApp.Server.Services
                 {
                     UserId = userId,
                     PatientId = patientId,
+                    ServiceRequestId = serviceRequestId,
                     SessionId = sessionId,
                     CreatedAt = DateTime.UtcNow,
                     LastActivityAt = DateTime.UtcNow,
@@ -102,8 +115,8 @@ namespace SM_MentalHealthApp.Server.Services
                 _context.ChatSessions.Add(newSession);
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("Created new session {SessionId} for user {UserId}, patient {PatientId}",
-                    sessionId, userId, patientId);
+                _logger.LogInformation("Created new session {SessionId} for user {UserId}, patient {PatientId}, serviceRequest {ServiceRequestId}",
+                    sessionId, userId, patientId, serviceRequestId);
 
                 return newSession;
             }
