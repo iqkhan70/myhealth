@@ -20,11 +20,11 @@
             <h3>
                 @if (AuthService.CurrentUser?.RoleId == 2)
                 {
-                    <text>💬 Patient Chat</text>
+                    <text>💬 Client Chat</text>
                 }
                 else
                 {
-                    <text>💬 Doctor Chat</text>
+                    <text>💬 SME Chat</text>
                 }
             </h3>
         </div>
@@ -86,11 +86,11 @@
                 <h4>
                     @if (AuthService.CurrentUser?.RoleId == 2)
                     {
-                        <text>My Patients</text>
+                        <text>My Clients</text>
                     }
                     else
                     {
-                        <text>My Doctors</text>
+                        <text>My SMEs</text>
                     }
                 </h4>
                 <button class="refresh-btn" @onclick="LoadUsers" disabled="@isLoadingUsers">
@@ -241,11 +241,11 @@
                     <p>
                         @if (AuthService.CurrentUser?.RoleId == 2)
                         {
-                            <text>Choose a patient from the sidebar to start chatting</text>
+                            <text>Choose a client from the sidebar to start chatting</text>
                         }
                         else
                         {
-                            <text>Choose a doctor from the sidebar to start chatting</text>
+                            <text>Choose an SME from the sidebar to start chatting</text>
                         }
                     </p>
                 </div>

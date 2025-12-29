@@ -169,7 +169,7 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             // Patient-specific instructions - conservative and supportive
-            context.AppendLine("\nIMPORTANT GUIDELINES FOR PATIENT RESPONSES:");
+            context.AppendLine("\nIMPORTANT GUIDELINES FOR CLIENT RESPONSES:");
             context.AppendLine("- You are NOT a doctor and cannot provide medical advice, diagnoses, or prescriptions");
             context.AppendLine("- For any medical concerns, symptoms, or requests for prescriptions, ALWAYS direct them to consult their doctor");
             context.AppendLine("- You can provide general wellness advice like exercise, diet, sleep, and stress management");
@@ -182,7 +182,7 @@ namespace SM_MentalHealthApp.Server.Services
             // Use intelligent context service for smart question processing
             try
             {
-                _logger.LogInformation("=== USING INTELLIGENT CONTEXT SERVICE FOR PATIENT ===");
+                _logger.LogInformation("=== USING INTELLIGENT CONTEXT SERVICE FOR CLIENT ===");
                 _logger.LogInformation("Patient ID: {PatientId}, User ID: {UserId}, Original Prompt: {OriginalPrompt}", userId, userId, originalPrompt);
                 var intelligentContext = await _intelligentContextService.ProcessQuestionAsync(originalPrompt, userId, userId);
                 _logger.LogInformation("Intelligent context length: {Length}", intelligentContext.Length);
@@ -338,7 +338,7 @@ namespace SM_MentalHealthApp.Server.Services
                 if (moodDistribution.Any())
                 {
                     var topMoods = moodDistribution.OrderByDescending(kvp => kvp.Value).Take(2);
-                    context.AppendLine($"Their recent mood patterns: {string.Join(", ", topMoods.Select(kvp => $"{kvp.Key} ({kvp.Value} times)"))}");
+                    context.AppendLine($"Their recent journalentry patterns: {string.Join(", ", topMoods.Select(kvp => $"{kvp.Key} ({kvp.Value} times)"))}");
                 }
 
                 if (recentEntries.Any())

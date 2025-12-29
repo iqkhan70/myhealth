@@ -23,7 +23,7 @@
             <h3>
                 @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
                 {
-                    <text>💬 Patient Chat</text>
+                    <text>💬 Client Chat</text>
                 }
                 else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
                 {
@@ -31,7 +31,7 @@
                 }
                 else
                 {
-                    <text>💬 Doctor Chat</text>
+                    <text>💬 SME Chat</text>
                 }
             </h3>
         </div>
@@ -109,7 +109,7 @@
                 <h4>
                     @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
                     {
-                        <text>My Patients</text>
+                        <text>My Clients</text>
                     }
                     else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
                     {
@@ -117,7 +117,7 @@
                     }
                     else
                     {
-                        <text>My Doctors</text>
+                        <text>My SMEs</text>
                     }
                 </h4>
                 <button class="refresh-btn" @onclick="LoadUsers" disabled="@isLoadingUsers">
@@ -211,17 +211,13 @@
                                 </div>
                             }
                             <div class="selected-user-role">
-                                @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
-                                {
-                                    <text>Patient</text>
-                                }
-                                else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
+                                @if (AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
                                 {
                                     <text>Client</text>
                                 }
                                 else
                                 {
-                                    <text>Doctor - @selectedUser.Specialization</text>
+                                    <text>SME - @selectedUser.Specialization</text>
                                 }
                             </div>
                         </div>
@@ -287,7 +283,7 @@
                     <p>
                         @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
                         {
-                            <text>Choose a patient from the sidebar to start chatting</text>
+                            <text>Choose a client from the sidebar to start chatting</text>
                         }
                         else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
                         {
@@ -295,7 +291,7 @@
                         }
                         else
                         {
-                            <text>Choose a doctor from the sidebar to start chatting</text>
+                            <text>Choose an SME from the sidebar to start chatting</text>
                         }
                     </p>
                 </div>

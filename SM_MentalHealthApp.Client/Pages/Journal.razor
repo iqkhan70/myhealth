@@ -31,7 +31,7 @@
                     {
                         <div class="patient-selection mb-3">
                             <label style="white-space: nowrap; margin-bottom: 8px; display: block;">
-                                👤 Select Patient: 
+                                👤 Select Client: 
                                 @if (selectedPatientId == 0)
                                 {
                                     <span class="required-indicator">*</span>
@@ -41,7 +41,7 @@
                                            Data="@assignedPatients" 
                                            ValueProperty="Id" 
                                            TextProperty="FullName"
-                                           Placeholder="Search patients..." 
+                                           Placeholder="Search clients..." 
                                            AllowClear="true"
                                            AllowFiltering="true"
                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
@@ -90,8 +90,8 @@
             <div class="entries-section">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <div>
-                        <h3><i class="fas fa-list me-2"></i>@(AuthService.CurrentUser?.RoleId == 2 ? "Patient Journal Entries" : "Your Journal Entries")</h3>
-                        <p class="text-muted mb-0">@(AuthService.CurrentUser?.RoleId == 2 && selectedPatientId == 0 ? "Select a patient to view their journal entries" : "View and manage journal entries")</p>
+                        <h3><i class="fas fa-list me-2"></i>@(AuthService.CurrentUser?.RoleId == 2 ? "Client Journal Entries" : "Your Journal Entries")</h3>
+                        <p class="text-muted mb-0">@(AuthService.CurrentUser?.RoleId == 2 && selectedPatientId == 0 ? "Select a client to view their journal entries" : "View and manage journal entries")</p>
                     </div>
                 </div>
 
@@ -138,7 +138,7 @@
                                             @if (!string.IsNullOrEmpty(expandedEntry.Mood))
                                             {
                                                 <div class="meta-row">
-                                                    <span class="meta-label"><strong>Mood:</strong></span>
+                                                    <span class="meta-label"><strong>JournalEntry:</strong></span>
                                                     <span class="meta-value">
                                                         <span class="badge @GetMoodClass(expandedEntry.Mood)">@expandedEntry.Mood</span>
                                                     </span>
@@ -181,8 +181,8 @@
                 else
                 {
                     <SMEmptyState Icon="📝" 
-                                 Title="@(AuthService.CurrentUser?.RoleId == 2 ? (selectedPatientId == 0 ? "Select a patient to view their journal entries" : "No journal entries for this patient yet") : "No journal entries yet")"
-                                 Message="@(AuthService.CurrentUser?.RoleId == 2 ? (selectedPatientId == 0 ? "Choose a patient from the dropdown above to see their journal entries, or create a new entry for them." : "This patient hasn't written any journal entries yet. You can create one for them above.") : "Start by writing your first entry above!")" />
+                                 Title="@(AuthService.CurrentUser?.RoleId == 2 ? (selectedPatientId == 0 ? "Select a client to view their journal entries" : "No journal entries for this patient yet") : "No journal entries yet")"
+                                 Message="@(AuthService.CurrentUser?.RoleId == 2 ? (selectedPatientId == 0 ? "Choose a client from the dropdown above to see their journal entries, or create a new entry for them." : "This patient hasn't written any journal entries yet. You can create one for them above.") : "Start by writing your first entry above!")" />
                 }
             </div>
         </div>
@@ -333,7 +333,7 @@
             new SMDataGridTemplateColumn<JournalEntryDto>
             {
                 Property = nameof(JournalEntryDto.Mood),
-                Title = "Mood",
+                Title = "JournalEntry",
                 Width = "120px",
                 Template = entry => builder =>
                 {

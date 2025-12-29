@@ -47,7 +47,7 @@ ON DUPLICATE KEY UPDATE
 
 -- Insert AI Instructions for Recent Patient Activity category
 INSERT INTO AIInstructions (Id, CategoryId, Content, Title, DisplayOrder, IsActive, CreatedAt) VALUES
-(16, 3, 'Review journal entries and mood patterns', NULL, 1, 1, NOW()),
+(16, 3, 'Review journal entries and journalentry patterns', NULL, 1, 1, NOW()),
 (17, 3, 'Analyze chat history for concerning conversations or medical data', NULL, 2, 1, NOW()),
 (18, 3, 'Review clinical notes for doctor observations and assessments', NULL, 3, 1, NOW())
 ON DUPLICATE KEY UPDATE

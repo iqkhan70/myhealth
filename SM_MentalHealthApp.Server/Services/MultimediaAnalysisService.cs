@@ -392,7 +392,7 @@ Format as JSON:
                     .ToListAsync();
 
                 var context = new StringBuilder();
-                context.AppendLine("=== ENHANCED PATIENT CONTEXT ===");
+                context.AppendLine("=== ENHANCED CLIENT CONTEXT ===");
                 context.AppendLine($"Patient ID: {patientId}");
                 context.AppendLine($"Current Time: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
                 context.AppendLine();

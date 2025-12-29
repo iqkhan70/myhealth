@@ -206,13 +206,13 @@ namespace SM_MentalHealthApp.Server.Services
             // Add patient context if available
             if (!string.IsNullOrEmpty(patientContext))
             {
-                prompt.AppendLine("=== PATIENT CONTEXT ===");
+                prompt.AppendLine("=== CLIENT CONTEXT ===");
                 prompt.AppendLine(patientContext);
                 prompt.AppendLine();
             }
 
             // Add encounter data
-            prompt.AppendLine("=== PATIENT ENCOUNTER DATA ===");
+            prompt.AppendLine("=== CLIENT ENCOUNTER DATA ===");
             prompt.AppendLine(encounterData);
             prompt.AppendLine();
 
@@ -243,7 +243,7 @@ namespace SM_MentalHealthApp.Server.Services
             // Add patient context if available
             if (!string.IsNullOrEmpty(patientContext))
             {
-                prompt.AppendLine("=== PATIENT CONTEXT ===");
+                prompt.AppendLine("=== CLIENT CONTEXT ===");
                 prompt.AppendLine(patientContext);
                 prompt.AppendLine();
             }

@@ -12,7 +12,7 @@
             <div class="form-group">
                 <label for="patientSelect">Patient:</label>
                 <select id="patientSelect" @bind="SelectedPatientId" class="form-control">
-                    <option value="">Select Patient</option>
+                    <option value="">Select Client</option>
                     @foreach (var patient in AvailablePatients)
                     {
                         <option value="@patient.Id">@patient.FullName</option>
