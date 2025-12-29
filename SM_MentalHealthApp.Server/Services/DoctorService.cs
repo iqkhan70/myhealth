@@ -28,12 +28,21 @@ namespace SM_MentalHealthApp.Server.Services
 
         public async Task<List<User>> GetMyPatientsAsync(int doctorId)
         {
-            var patients = await _context.UserAssignments
-                .Where(ua => ua.AssignerId == doctorId)
-                .Include(ua => ua.Assignee)
-                .ThenInclude(a => a.Role)
-                .Select(ua => ua.Assignee)
-                .Where(p => p.IsActive)
+            // Get clients from ServiceRequests assigned to this SME
+            var serviceRequestIds = await _context.ServiceRequestAssignments
+                .Where(a => a.SmeUserId == doctorId && a.IsActive)
+                .Select(a => a.ServiceRequestId)
+                .ToListAsync();
+            
+            var clientIds = await _context.ServiceRequests
+                .Where(sr => serviceRequestIds.Contains(sr.Id) && sr.IsActive)
+                .Select(sr => sr.ClientId)
+                .Distinct()
+                .ToListAsync();
+            
+            var patients = await _context.Users
+                .Include(u => u.Role)
+                .Where(u => clientIds.Contains(u.Id) && u.IsActive && u.RoleId == 1)
                 .OrderBy(p => p.LastName)
                 .ThenBy(p => p.FirstName)
                 .ToListAsync();

@@ -49,11 +49,20 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _logger.LogInformation("Getting patients for doctor {DoctorId}", doctorId);
 
-                var patients = await _context.UserAssignments
-                    .Where(ua => ua.AssignerId == doctorId)
-                    .Include(ua => ua.Assignee)
-                    .Select(ua => ua.Assignee)
-                    .Where(p => p.IsActive && p.RoleId == 1) // Active patients only
+                // Get clients from ServiceRequests assigned to this SME
+                var serviceRequestIds = await _context.ServiceRequestAssignments
+                    .Where(a => a.SmeUserId == doctorId && a.IsActive)
+                    .Select(a => a.ServiceRequestId)
+                    .ToListAsync();
+                
+                var clientIds = await _context.ServiceRequests
+                    .Where(sr => serviceRequestIds.Contains(sr.Id) && sr.IsActive)
+                    .Select(sr => sr.ClientId)
+                    .Distinct()
+                    .ToListAsync();
+                
+                var patients = await _context.Users
+                    .Where(u => clientIds.Contains(u.Id) && u.IsActive && u.RoleId == 1) // Active patients only
                     .OrderBy(p => p.LastName)
                     .ThenBy(p => p.FirstName)
                     .ToListAsync();

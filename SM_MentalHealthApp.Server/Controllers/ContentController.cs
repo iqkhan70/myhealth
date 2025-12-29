@@ -225,13 +225,20 @@ namespace SM_MentalHealthApp.Server.Controllers
                         }
                         else
                         {
-                            // Fallback to old assignment check for content without ServiceRequestId
-                            var hasAccess = await _context.UserAssignments
-                                .AnyAsync(ua => ua.AssignerId == currentUserId.Value && 
-                                              ua.AssigneeId == content.PatientId && 
-                                              ua.IsActive);
-                            if (!hasAccess)
-                                return Forbid();
+                            // Content without ServiceRequestId - use default ServiceRequest for the client
+                            var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(content.PatientId);
+                            if (defaultSr != null)
+                            {
+                                var hasAccess = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(
+                                    defaultSr.Id, currentUserId.Value);
+                                
+                                if (!hasAccess)
+                                    return Forbid("You are not assigned to this client's default service request");
+                            }
+                            else
+                            {
+                                return Forbid("No service request found for this content");
+                            }
                         }
                     }
                 }
@@ -590,9 +597,17 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
                 else
                 {
-                    // Fallback to old assignment check for content without ServiceRequestId
-                    hasAccess = await _context.UserAssignments
-                        .AnyAsync(ua => ua.AssignerId == doctorId.Value && ua.AssigneeId == content.PatientId && ua.IsActive);
+                    // Content without ServiceRequestId - use default ServiceRequest for the client
+                    var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(content.PatientId);
+                    if (defaultSr != null)
+                    {
+                        hasAccess = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(
+                            defaultSr.Id, doctorId.Value);
+                    }
+                    else
+                    {
+                        hasAccess = false;
+                    }
                 }
                 
                 if (!hasAccess && content.PatientId != doctorId.Value)
