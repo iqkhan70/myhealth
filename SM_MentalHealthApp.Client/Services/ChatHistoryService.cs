@@ -9,12 +9,16 @@ public class ChatHistoryService : BaseService, IChatHistoryService
     {
     }
 
-    public async Task<IEnumerable<ChatSession>> ListAsync(int? patientId, CancellationToken ct = default)
+    public async Task<IEnumerable<ChatSession>> ListAsync(int? patientId, int? serviceRequestId = null, CancellationToken ct = default)
     {
         AddAuthorizationHeader();
 
-        var url = patientId.HasValue
-            ? $"api/chathistory/sessions?patientId={patientId.Value}"
+        var queryParams = new List<string>();
+        if (patientId.HasValue) queryParams.Add($"patientId={patientId.Value}");
+        if (serviceRequestId.HasValue) queryParams.Add($"serviceRequestId={serviceRequestId.Value}");
+
+        var url = queryParams.Any()
+            ? $"api/chathistory/sessions?{string.Join("&", queryParams)}"
             : "api/chathistory/sessions";
 
         var response = await _http.GetFromJsonAsync<List<ChatSession>>(url, ct);

@@ -4,6 +4,7 @@
 @using SM_MentalHealthApp.Client.Components.Grid
 @using SM_MentalHealthApp.Client.Components.Common
 @using SM_MentalHealthApp.Client.Helpers
+@using SM_MentalHealthApp.Client.Components
 @using Radzen
 @using Radzen.Blazor
 @using System.Linq
@@ -174,6 +175,12 @@
         <RadzenButton Icon="add" Text="New Appointment" ButtonStyle="ButtonStyle.Success"
             Click="@(async () => await ShowAddDialog())" />
     </div>
+
+    <!-- Service Request Selector (for SMEs) -->
+    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 4)
+    {
+        <ServiceRequestSelector ClientId="@filterPatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
+    }
 
     <!-- Filters -->
     <div class="appointment-controls">
@@ -724,6 +731,16 @@
     private int? filterPatientId = null;
     private DateTime? filterStartDate = null;
     private DateTime? filterEndDate = null;
+    private int? selectedServiceRequestId;
+    
+    private async Task OnServiceRequestChanged(int? serviceRequestId)
+    {
+        selectedServiceRequestId = serviceRequestId;
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
+    }
 
     // Appointment form
     private DateTime? appointmentDateTime = DateTime.Now.Date.AddDays(1);
@@ -1038,6 +1055,14 @@
                 if (!string.IsNullOrEmpty(odataFilter))
                     odataFilter += " and ";
                 odataFilter += $"PatientId eq {filterPatientId.Value}";
+            }
+            
+            // Add ServiceRequest filter if specified
+            if (selectedServiceRequestId.HasValue)
+            {
+                if (!string.IsNullOrEmpty(odataFilter))
+                    odataFilter += " and ";
+                odataFilter += $"ServiceRequestId eq {selectedServiceRequestId.Value}";
             }
             
             // Add date range filters if specified

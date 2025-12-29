@@ -4,6 +4,7 @@
 @using SM_MentalHealthApp.Client.Components.Grid
 @using SM_MentalHealthApp.Client.Components.Common
 @using SM_MentalHealthApp.Client.Helpers
+@using SM_MentalHealthApp.Client.Components
 @using Radzen
 @using Radzen.Blazor
 @using System.Text.Json
@@ -36,6 +37,12 @@
                          Icon="fas fa-comments" 
                          Description="View and search your conversation history with the AI assistant" />
 
+            <!-- Service Request Selector (for SMEs) -->
+            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 4)
+            {
+                <ServiceRequestSelector ClientId="@selectedPatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
+            }
+
             @if ((currentUserRole == "Doctor" || currentUserRole == "Attorney") && patients != null && patients.Any())
             {
                 <div class="row mb-3">
@@ -63,7 +70,7 @@
             }
 
             <SMDataGrid TItem="ChatSession" Columns="_columns" Actions="_actions" ActionsWidth="120px"
-                LoadItems="ct => ChatHistoryService.ListAsync(selectedPatientId, ct)" @ref="_grid" PageSize="10"
+                LoadItems="ct => ChatHistoryService.ListAsync(selectedPatientId, selectedServiceRequestId, ct)" @ref="_grid" PageSize="10"
                 OnRowExpandCallback="@OnRowExpand">
         <ExpansionTemplate Context="session">
             @{
@@ -186,9 +193,19 @@
 @code {
     private SMDataGrid<ChatSession>? _grid;
     private int? selectedPatientId = null;
+    private int? selectedServiceRequestId;
     private List<User>? patients;
     private string? currentUserRole;
     private Dictionary<int, ChatSession> expandedSessions = new Dictionary<int, ChatSession>();
+    
+    private async Task OnServiceRequestChanged(int? serviceRequestId)
+    {
+        selectedServiceRequestId = serviceRequestId;
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
+    }
 
     private List<SMDataGridColumn<ChatSession>> _columns = new();
 

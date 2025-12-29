@@ -3,6 +3,7 @@
 @using SM_MentalHealthApp.Client.Components.Grid
 @using SM_MentalHealthApp.Client.Components.Common
 @using SM_MentalHealthApp.Client.Helpers
+@using SM_MentalHealthApp.Client.Components
 @using SM_MentalHealthApp.Shared
 @using Radzen
 @using Radzen.Blazor
@@ -85,6 +86,12 @@
                     }
                 </div>
             </div>
+
+            <!-- Service Request Selector (for SMEs viewing client journals) -->
+            @if (AuthService.CurrentUser?.RoleId == 2 && selectedPatientId > 0)
+            {
+                <ServiceRequestSelector ClientId="@selectedPatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
+            }
 
             <!-- Journal Entries Grid -->
             <div class="entries-section">
@@ -193,11 +200,21 @@
     private string entryText = string.Empty;
     private List<User> assignedPatients = new();
     private int selectedPatientId = 0;
+    private int? selectedServiceRequestId;
     private Dictionary<int, User> doctorCache = new();
     private Dictionary<int, User> patientCache = new(); // Cache for patient names
     private Dictionary<int, JournalEntryDto> expandedEntries = new();
     private SMDataGrid<JournalEntryDto>? _grid;
     private RadzenTextArea? entryTextAreaRef;
+    
+    private async Task OnServiceRequestChanged(int? serviceRequestId)
+    {
+        selectedServiceRequestId = serviceRequestId;
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
+    }
 
     // Helper class for grid
     public class JournalEntryDto
@@ -401,7 +418,7 @@
         try
         {
             var targetUserId = AuthService.CurrentUser!.RoleId == 2 ? selectedPatientId : AuthService.CurrentUser.Id;
-            var entries = await JournalService.GetEntriesForUserAsync(targetUserId, ct);
+            var entries = await JournalService.GetEntriesForUserAsync(targetUserId, selectedServiceRequestId, ct);
             
             // Load doctor information for entries that were entered by doctors
             await LoadDoctorInformation(entries);
