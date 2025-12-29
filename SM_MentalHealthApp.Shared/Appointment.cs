@@ -23,6 +23,7 @@ namespace SM_MentalHealthApp.Shared
         public int Id { get; set; }
         public int DoctorId { get; set; }
         public int PatientId { get; set; }
+        public int? ServiceRequestId { get; set; } // Optional: links to ServiceRequest for data isolation
         public DateTime AppointmentDateTime { get; set; }
         public TimeSpan Duration { get; set; } = TimeSpan.FromMinutes(30); // Default 30 minutes
         public AppointmentType AppointmentType { get; set; } = AppointmentType.Regular;
@@ -44,6 +45,8 @@ namespace SM_MentalHealthApp.Shared
         public User Patient { get; set; } = null!;
         [JsonIgnore]
         public User CreatedByUser { get; set; } = null!;
+        [JsonIgnore]
+        public ServiceRequest? ServiceRequest { get; set; } // Navigation to service request
 
         // Computed properties
         public DateTime EndDateTime => AppointmentDateTime.Add(Duration);

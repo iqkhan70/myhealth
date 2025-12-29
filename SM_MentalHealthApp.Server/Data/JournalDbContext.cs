@@ -12,6 +12,8 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<User> Users { get; set; }
             public DbSet<UserAssignment> UserAssignments { get; set; }
             public DbSet<UserRequest> UserRequests { get; set; }
+            public DbSet<ServiceRequest> ServiceRequests { get; set; }
+            public DbSet<ServiceRequestAssignment> ServiceRequestAssignments { get; set; }
             public DbSet<JournalEntry> JournalEntries { get; set; }
             public DbSet<ChatSession> ChatSessions { get; set; }
             public DbSet<ChatMessage> ChatMessages { get; set; }
@@ -933,6 +935,134 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.IsActive);
                         entity.HasIndex(e => e.PrimaryModelId);
                         entity.HasIndex(e => e.SecondaryModelId);
+                  });
+
+                  // Configure ServiceRequest entity
+                  modelBuilder.Entity<ServiceRequest>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+                        entity.Property(e => e.Type).HasMaxLength(100);
+                        entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Active");
+                        entity.Property(e => e.Description).HasMaxLength(1000);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.Client)
+                        .WithMany()
+                        .HasForeignKey(e => e.ClientId)
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.CreatedByUser)
+                        .WithMany()
+                        .HasForeignKey(e => e.CreatedByUserId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.ClientId);
+                        entity.HasIndex(e => e.Status);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.CreatedAt);
+                        entity.HasIndex(e => new { e.ClientId, e.IsActive });
+                  });
+
+                  // Configure ServiceRequestAssignment entity
+                  modelBuilder.Entity<ServiceRequestAssignment>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.AssignedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.ServiceRequest)
+                        .WithMany(sr => sr.Assignments)
+                        .HasForeignKey(e => e.ServiceRequestId)
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.SmeUser)
+                        .WithMany()
+                        .HasForeignKey(e => e.SmeUserId)
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                        entity.HasOne(e => e.AssignedByUser)
+                        .WithMany()
+                        .HasForeignKey(e => e.AssignedByUserId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        // Indexes for performance
+                        entity.HasIndex(e => e.ServiceRequestId);
+                        entity.HasIndex(e => e.SmeUserId);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => new { e.ServiceRequestId, e.IsActive });
+                        entity.HasIndex(e => new { e.SmeUserId, e.IsActive });
+                  });
+
+                  // Add ServiceRequestId foreign keys to content entities
+                  // ClinicalNote
+                  modelBuilder.Entity<ClinicalNote>(entity =>
+                  {
+                        entity.HasOne(e => e.ServiceRequest)
+                        .WithMany()
+                        .HasForeignKey(e => e.ServiceRequestId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasIndex(e => e.ServiceRequestId);
+                  });
+
+                  // ContentItem
+                  modelBuilder.Entity<ContentItem>(entity =>
+                  {
+                        entity.HasOne(e => e.ServiceRequest)
+                        .WithMany()
+                        .HasForeignKey(e => e.ServiceRequestId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasIndex(e => e.ServiceRequestId);
+                  });
+
+                  // JournalEntry
+                  modelBuilder.Entity<JournalEntry>(entity =>
+                  {
+                        entity.HasOne(e => e.ServiceRequest)
+                        .WithMany()
+                        .HasForeignKey(e => e.ServiceRequestId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasIndex(e => e.ServiceRequestId);
+                  });
+
+                  // ChatSession
+                  modelBuilder.Entity<ChatSession>(entity =>
+                  {
+                        entity.HasOne(e => e.ServiceRequest)
+                        .WithMany()
+                        .HasForeignKey(e => e.ServiceRequestId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasIndex(e => e.ServiceRequestId);
+                  });
+
+                  // Appointment
+                  modelBuilder.Entity<Appointment>(entity =>
+                  {
+                        entity.HasOne(e => e.ServiceRequest)
+                        .WithMany()
+                        .HasForeignKey(e => e.ServiceRequestId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasIndex(e => e.ServiceRequestId);
+                  });
+
+                  // ContentAlert
+                  modelBuilder.Entity<ContentAlert>(entity =>
+                  {
+                        entity.HasOne(e => e.ServiceRequest)
+                        .WithMany()
+                        .HasForeignKey(e => e.ServiceRequestId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasIndex(e => e.ServiceRequestId);
                   });
             }
       }

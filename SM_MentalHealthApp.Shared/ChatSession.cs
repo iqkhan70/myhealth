@@ -15,6 +15,8 @@ namespace SM_MentalHealthApp.Shared
 
         public int? PatientId { get; set; } // For doctor-patient conversations
 
+        public int? ServiceRequestId { get; set; } // Optional: links to ServiceRequest for data isolation
+
         [StringLength(2000)]
         public string? Summary { get; set; } // AI-generated conversation summary
 
@@ -37,6 +39,7 @@ namespace SM_MentalHealthApp.Shared
         public User? User { get; set; }
         public User? Patient { get; set; }
         public User? IgnoredByDoctor { get; set; } // Navigation to the doctor who ignored it
+        public ServiceRequest? ServiceRequest { get; set; } // Navigation to service request
         public ICollection<ChatMessage> Messages { get; set; } = new List<ChatMessage>();
 
         // Computed properties for search/filtering

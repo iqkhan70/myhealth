@@ -144,6 +144,7 @@ public static class DependencyInjection
         services.AddScoped<IDoctorService, DoctorService>();
         services.AddScoped<IContentAnalysisService, ContentAnalysisService>();
         services.AddScoped<IClinicalNotesService, ClinicalNotesService>();
+        services.AddScoped<IServiceRequestService, ServiceRequestService>();
         services.AddScoped<IMultimediaAnalysisService, MultimediaAnalysisService>();
         services.AddScoped<IChatHistoryService, ChatHistoryService>();
         services.AddScoped<IIntelligentContextService, IntelligentContextService>();
@@ -377,10 +378,11 @@ public static class DependencyInjection
         appointmentSet.EntityType.HasKey(a => a.Id);
         // Allow navigation properties to be expanded (don't ignore them)
         // Note: Navigation properties are marked [JsonIgnore] in the entity, but OData can still expand them
-        // Ignore only computed properties
+        // Ignore only computed properties and ServiceRequest (not exposed via OData)
         appointmentSet.EntityType.Ignore(a => a.EndDateTime);
         appointmentSet.EntityType.Ignore(a => a.IsUrgentCare);
         appointmentSet.EntityType.Ignore(a => a.IsBusinessHours);
+        appointmentSet.EntityType.Ignore(a => a.ServiceRequest);
 
         // Contents
         var contentSet = builder.EntitySet<ContentItem>("Contents");
@@ -390,12 +392,22 @@ public static class DependencyInjection
         contentSet.EntityType.Ignore(c => c.S3Key);
         contentSet.EntityType.Ignore(c => c.FileName);
         contentSet.EntityType.Ignore(c => c.ContentGuid);
+        contentSet.EntityType.Ignore(c => c.ServiceRequest);
         // Note: Navigation properties are marked [JsonIgnore] in the entity, but OData can still expand them
 
         // UserAssignments
         var userAssignmentSet = builder.EntitySet<UserAssignment>("UserAssignments");
         userAssignmentSet.EntityType.HasKey(ua => new { ua.AssignerId, ua.AssigneeId });
         // Navigation properties are NOT ignored to allow expansion
+
+        // ServiceRequests - Register but don't expose as EntitySet (only used internally)
+        // This prevents OData from trying to discover it as an unknown type
+        var serviceRequestType = builder.EntityType<ServiceRequest>();
+        serviceRequestType.HasKey(sr => sr.Id);
+        serviceRequestType.Ignore(sr => sr.Client);
+        serviceRequestType.Ignore(sr => sr.CreatedByUser);
+        serviceRequestType.Ignore(sr => sr.Assignments);
+        // Don't create EntitySet - ServiceRequests are not exposed via OData
 
         return builder.GetEdmModel();
     }
