@@ -164,6 +164,7 @@ public static class DependencyInjection
         services.AddScoped<IPatientService, PatientService>();
         services.AddScoped<IJournalService, JournalService>();
         services.AddScoped<IEmergencyService, EmergencyService>();
+        services.AddScoped<IServiceRequestService, ServiceRequestService>();
         services.AddScoped<ODataService>(); // OData service for server-side pagination
 
         return services;

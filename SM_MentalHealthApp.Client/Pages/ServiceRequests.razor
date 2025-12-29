@@ -1,0 +1,236 @@
+@page "/service-requests"
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using Radzen
+@using Radzen.Blazor
+@inject IServiceRequestService ServiceRequestService
+@inject IPatientService PatientService
+@inject IAuthService AuthService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<PageTitle>Service Requests</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <SMPageHeader Title="Service Requests" Icon="fas fa-tasks">
+                @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator
+                {
+                    <ActionButton>
+                        <RadzenButton Icon="add" Text="Create Service Request" ButtonStyle="ButtonStyle.Success"
+                            Click="@(async () => await ShowCreateDialog())" />
+                    </ActionButton>
+                }
+            </SMPageHeader>
+
+            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
+            {
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>My Service Requests:</strong> Below are the service requests assigned to you.
+                </div>
+            }
+
+            @if (serviceRequests == null)
+            {
+                <div class="text-center p-4">
+                    <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+                    <p>Loading service requests...</p>
+                </div>
+            }
+            else if (!serviceRequests.Any())
+            {
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    No service requests found.
+                </div>
+            }
+            else
+            {
+                <RadzenDataGrid @ref="grid" Data="@serviceRequests" TItem="ServiceRequestDto" 
+                    AllowPaging="true" PageSize="10" AllowSorting="true" AllowFiltering="true"
+                    FilterMode="FilterMode.Advanced" ShowPagingSummary="true">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Id" Title="ID" Width="80px" />
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="ClientName" Title="Client" Width="200px" />
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Title" Title="Title" Width="250px" />
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Type" Title="Type" Width="120px" />
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Status" Title="Status" Width="120px">
+                            <Template Context="sr">
+                                <span class="badge @GetStatusClass(sr.Status)">@sr.Status</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="CreatedAt" Title="Created" Width="150px">
+                            <Template Context="sr">
+                                @sr.CreatedAt.ToString("MMM dd, yyyy")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Title="Assigned SMEs" Width="200px">
+                            <Template Context="sr">
+                                @if (sr.Assignments != null && sr.Assignments.Any(a => a.IsActive))
+                                {
+                                    @foreach (var assignment in sr.Assignments.Where(a => a.IsActive))
+                                    {
+                                        <span class="badge bg-primary me-1">@assignment.SmeUserName</span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted">No assignments</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Title="Actions" Width="200px" Sortable="false" Filterable="false">
+                            <Template Context="sr">
+                                <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.ExtraSmall"
+                                    Click="@(async () => await ShowEditDialog(sr))" />
+                                @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4)
+                                {
+                                    <RadzenButton Icon="person_add" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.ExtraSmall"
+                                        Click="@(async () => await ShowAssignDialog(sr))" />
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
+                                        Click="@(async () => await ShowDeleteDialog(sr))" />
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private RadzenDataGrid<ServiceRequestDto>? grid;
+    private List<ServiceRequestDto>? serviceRequests;
+    private List<User>? clients;
+    private List<User>? smes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthService.InitializeAsync();
+        await LoadServiceRequests();
+        if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4)
+        {
+            await LoadClients();
+            await LoadSMEs();
+        }
+    }
+
+    private async Task LoadServiceRequests()
+    {
+        try
+        {
+            if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
+            {
+                serviceRequests = await ServiceRequestService.GetMyServiceRequestsAsync();
+            }
+            else
+            {
+                serviceRequests = await ServiceRequestService.GetServiceRequestsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load service requests: {ex.Message}");
+        }
+    }
+
+    private async Task LoadClients()
+    {
+        try
+        {
+            clients = await PatientService.ListAsync();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load clients: {ex.Message}");
+        }
+    }
+
+    private async Task LoadSMEs()
+    {
+        try
+        {
+            // Load doctors and attorneys
+            AddAuthorizationHeader();
+            var doctors = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors") ?? new List<User>();
+            var attorneys = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys") ?? new List<User>();
+            smes = doctors.Concat(attorneys).ToList();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load SMEs: {ex.Message}");
+        }
+    }
+
+    private async Task ShowCreateDialog()
+    {
+        // For now, show a message - full implementation can be added later
+        NotificationService.Notify(NotificationSeverity.Info, "Info", "Use the API endpoint to create service requests. Full UI dialog coming soon.");
+    }
+
+    private async Task ShowEditDialog(ServiceRequestDto sr)
+    {
+        // For now, show a message - full implementation can be added later
+        NotificationService.Notify(NotificationSeverity.Info, "Info", $"To edit service request '{sr.Title}', use the API endpoint. Full UI dialog coming soon.");
+    }
+
+    private async Task ShowAssignDialog(ServiceRequestDto sr)
+    {
+        NotificationService.Notify(NotificationSeverity.Info, "Info", "Use API endpoint to assign SMEs. Full UI coming soon.");
+    }
+
+    private async Task ShowDeleteDialog(ServiceRequestDto sr)
+    {
+        var result = await DialogService.Confirm("Are you sure you want to delete this service request?",
+            "Delete Service Request", new ConfirmOptions { OkButtonText = "Yes", CancelButtonText = "No" });
+
+        if (result == true)
+        {
+            try
+            {
+                var deleted = await ServiceRequestService.DeleteServiceRequestAsync(sr.Id);
+                if (deleted)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Service request deleted successfully");
+                    await LoadServiceRequests();
+                    StateHasChanged();
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to delete service request");
+                }
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to delete service request: {ex.Message}");
+            }
+        }
+    }
+
+    private string GetStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "active" => "bg-success",
+            "completed" => "bg-secondary",
+            "cancelled" => "bg-danger",
+            "onhold" => "bg-warning",
+            _ => "bg-info"
+        };
+    }
+
+    private void AddAuthorizationHeader()
+    {
+        var token = AuthService.Token;
+        if (!string.IsNullOrEmpty(token))
+        {
+            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+    }
+
+    [Inject] private HttpClient Http { get; set; } = null!;
+}
+

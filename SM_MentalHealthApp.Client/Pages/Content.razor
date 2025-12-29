@@ -14,6 +14,7 @@
 @using Microsoft.AspNetCore.Components
 @using Radzen
 @using Radzen.Blazor
+@using SM_MentalHealthApp.Client.Components
 
 <div class="content-page">
     <div class="content-header">
@@ -52,6 +53,12 @@
     @if (AuthService.CurrentUser?.RoleId == 1 || AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId
         == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5)
     {
+        <!-- Service Request Selector (for SMEs) -->
+        @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 4)
+        {
+            <ServiceRequestSelector ClientId="@selectedPatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
+        }
+
         <!-- Add Content Button (hidden for Coordinator and Attorney) -->
         @if (AuthService.CurrentUser?.RoleId != 4 && AuthService.CurrentUser?.RoleId != 5)
         {
@@ -178,6 +185,8 @@
 
     private List<SMDataGridColumn<ContentItemDto>> _columns = new();
     private readonly List<SMDataGridActionButton<ContentItemDto>> _actions = [];
+    private int? selectedServiceRequestId;
+    private int? selectedPatientId; // For ServiceRequest selector
 
     protected override async Task OnInitializedAsync()
     {
@@ -185,6 +194,15 @@
         await LoadPatients();
         InitializeColumns();
         InitializeActions();
+    }
+
+    private async Task OnServiceRequestChanged(int? serviceRequestId)
+    {
+        selectedServiceRequestId = serviceRequestId;
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
     }
 
     private async Task LoadPatients()
