@@ -2246,11 +2246,11 @@ namespace SM_MentalHealthApp.Server.Services
             return !string.IsNullOrEmpty(finalFallback) ? finalFallback : "I understand you're asking about the patient. Based on the available information, I can see their recent activity and medical content. How can I help you further with their care?";
 
             // Legacy personalized prompt handling
-            if (text.Contains("You are talking to") && text.Contains("Their recent mood patterns"))
+            if (text.Contains("You are talking to") && text.Contains("Their recent journalentry patterns"))
             {
                 var lines = text.Split('\n');
                 var patientName = lines.FirstOrDefault(l => l.StartsWith("You are talking to"))?.Replace("You are talking to ", "").Replace(".", "");
-                var moodPatterns = lines.FirstOrDefault(l => l.StartsWith("Their recent mood patterns"))?.Replace("Their recent mood patterns: ", "");
+                var moodPatterns = lines.FirstOrDefault(l => l.StartsWith("Their recent journalentry patterns"))?.Replace("Their recent journalentry patterns: ", "");
                 var latestEntry = lines.FirstOrDefault(l => l.StartsWith("Their latest journal entry"));
 
                 // Legacy prompt handling - use templates

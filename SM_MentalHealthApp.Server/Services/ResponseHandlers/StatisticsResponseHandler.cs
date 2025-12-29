@@ -20,10 +20,10 @@ namespace SM_MentalHealthApp.Server.Services.ResponseHandlers
 
             var lower = question.ToLower();
             return Task.FromResult(
-                lower.Contains("stats") || 
-                lower.Contains("statistics") || 
-                lower.Contains("data") || 
-                lower.Contains("snapshot") || 
+                lower.Contains("stats") ||
+                lower.Contains("statistics") ||
+                lower.Contains("data") ||
+                lower.Contains("snapshot") ||
                 lower.Contains("results")
             );
         }
@@ -62,9 +62,9 @@ namespace SM_MentalHealthApp.Server.Services.ResponseHandlers
                 response.AppendLine();
                 await AppendTemplateAsync(response, "section_mood_statistics",
                     hardcodedFallback: "**Mood Statistics:**");
-                
+
                 await AppendTemplateAsync(response, "mood_statistics_content",
-                    hardcodedFallback: "- Recent entries show mixed mood patterns\n- Patient actively tracking health status");
+                    hardcodedFallback: "- Recent entries show mixed journalentry patterns\n- Patient actively tracking health status");
             }
 
             return response.ToString().Trim();

@@ -48,11 +48,11 @@
                                 <h6>Clinical Note Details</h6>
                                 <div class="note-meta mb-3">
                                     <div class="meta-row">
-                                        <span class="meta-label"><strong>Patient:</strong></span>
+                                        <span class="meta-label"><strong>Client:</strong></span>
                                         <span class="meta-value">@expandedNote.PatientName (ID: @expandedNote.PatientId)</span>
                                     </div>
                                     <div class="meta-row">
-                                        <span class="meta-label"><strong>Doctor:</strong></span>
+                                        <span class="meta-label"><strong>SME:</strong></span>
                                         <span class="meta-value">@expandedNote.DoctorName (ID: @expandedNote.DoctorId)</span>
                                     </div>
                                     <div class="meta-row">
@@ -119,7 +119,7 @@
         <Body>
             <form @onsubmit="@SaveNote" @onsubmit:preventDefault="true">
                 <div class="form-group">
-                    <label class="form-label">Patient: <span class="required-asterisk">*</span></label>
+                    <label class="form-label">Client: <span class="required-asterisk">*</span></label>
                     <RadzenDropDown @bind-Value="noteForm.PatientId" Data="@patients" TextProperty="FullName"
                         ValueProperty="Id" Placeholder="Select Client" Style="width: 100%;" 
                         AllowClear="false" TValue="int" />
@@ -216,11 +216,11 @@
                     <h4>@viewingNote.Title</h4>
                     <div class="note-meta">
                         <div class="meta-row">
-                            <span class="meta-label">Patient:</span>
+                            <span class="meta-label">Client:</span>
                             <span class="meta-value">@viewingNote.PatientName</span>
                         </div>
                         <div class="meta-row">
-                            <span class="meta-label">Doctor:</span>
+                            <span class="meta-label">SME:</span>
                             <span class="meta-value">@viewingNote.DoctorName</span>
                         </div>
                         <div class="meta-row">
@@ -317,7 +317,7 @@
             new SMDataGridTemplateColumn<ClinicalNoteDto>
             {
                 Property = nameof(ClinicalNoteDto.PatientName),
-                Title = "Patient",
+                Title = "Client",
                 Width = "150px",
                 Template = note => builder =>
                 {
@@ -394,7 +394,7 @@
             new SMDataGridTemplateColumn<ClinicalNoteDto>
             {
                 Property = nameof(ClinicalNoteDto.DoctorName),
-                Title = "Doctor",
+                Title = "SME",
                 Width = "150px",
                 Template = note => builder =>
                 {

@@ -338,7 +338,7 @@ namespace SM_MentalHealthApp.Server.Services
                 if (moodDistribution.Any())
                 {
                     var topMoods = moodDistribution.OrderByDescending(kvp => kvp.Value).Take(2);
-                    context.AppendLine($"Their recent mood patterns: {string.Join(", ", topMoods.Select(kvp => $"{kvp.Key} ({kvp.Value} times)"))}");
+                    context.AppendLine($"Their recent journalentry patterns: {string.Join(", ", topMoods.Select(kvp => $"{kvp.Key} ({kvp.Value} times)"))}");
                 }
 
                 if (recentEntries.Any())

@@ -1890,7 +1890,7 @@
                 ButtonStyle = ButtonStyle.Info,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "View patient details",
+                Tooltip = "View client details",
                 OnClick = async (row, ct) => await ViewUserDetailsAsync(row, ct)
             });
 
@@ -1900,7 +1900,7 @@
                 ButtonStyle = ButtonStyle.Success,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Edit patient information",
+                Tooltip = "Edit clientinformation",
                 OnClick = async (row, ct) => await EditUserAsync(row, ct)
             });
 
@@ -1910,7 +1910,7 @@
                 ButtonStyle = ButtonStyle.Primary,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "View patient statistics",
+                Tooltip = "View client statistics",
                 OnClick = async (row, ct) => await ViewUserStatsAsync(row, ct)
             });
 
@@ -1936,7 +1936,7 @@
                 ButtonStyle = ButtonStyle.Warning,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Assign patient to another doctor or attorney",
+                Tooltip = "Assign client to another SME",
                 OnClick = async (row, ct) => await ShowAssignPatientModalAsync(row, ct)
             });
 
@@ -1947,7 +1947,7 @@
                 ButtonStyle = ButtonStyle.Danger,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Unassign patient from me",
+                Tooltip = "Unassign client from me",
                 OnClick = async (row, ct) => 
                 {
                     ShowUnassignConfirmation(row);
@@ -1966,7 +1966,7 @@
                 ButtonStyle = ButtonStyle.Warning,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Assign patient to another attorney",
+                Tooltip = "Assign client to another attorney",
                 OnClick = async (row, ct) => await ShowAssignPatientModalAsync(row, ct)
             });
 
@@ -1977,7 +1977,7 @@
                 ButtonStyle = ButtonStyle.Danger,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Unassign patient from me",
+                Tooltip = "Unassign client from me",
                 OnClick = async (row, ct) => 
                 {
                     ShowUnassignConfirmation(row);
@@ -2007,7 +2007,7 @@
                 ButtonStyle = ButtonStyle.Danger,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Unassign patient from doctor",
+                Tooltip = "Unassign client from doctor",
                 OnClick = async (row, ct) => await ShowUnassignFromDoctorModalAsync(row, ct)
             });
         }

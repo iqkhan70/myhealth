@@ -81,7 +81,7 @@
 
                         @if (expandedSession.PatientId.HasValue)
                         {
-                            <p><strong>About Patient:</strong> @(expandedSession.Patient?.FullName ?? $"Patient {expandedSession.PatientId}")</p>
+                            <p><strong>About Client:</strong> @(expandedSession.Patient?.FullName ?? $"Patient {expandedSession.PatientId}")</p>
                         }
 
                         @{
@@ -199,7 +199,7 @@
         // Initialize columns (must be done here to access instance methods)
         _columns = new List<SMDataGridColumn<ChatSession>>
         {
-            new() { Property = nameof(ChatSession.PatientDisplayName), Title = "About Patient", Width = "200px" },
+            new() { Property = nameof(ChatSession.PatientDisplayName), Title = "About Client", Width = "200px" },
             new() { Property = nameof(ChatSession.UserDisplayName), Title = "Conducted By", Width = "150px" },
             new SMDataGridBadgeColumn<ChatSession>
             {

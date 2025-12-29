@@ -40,7 +40,7 @@
         else if (AuthService.CurrentUser?.RoleId == 5) // Attorney
         {
             <h2>Client Content</h2>
-            <p>View patient content and documents.</p>
+            <p>View client content and documents.</p>
         }
         else
         {
@@ -647,7 +647,7 @@
         }
         else
         {
-            dto.PatientName = $"Patient #{content.PatientId}";
+            dto.PatientName = $"Client #{content.PatientId}";
         }
         
         // Populate AddedByName from navigation property or cache
@@ -701,7 +701,7 @@
             new SMDataGridColumn<ContentItemDto>
             {
                 Property = nameof(ContentItemDto.PatientName),
-                Title = AuthService.CurrentUser?.RoleId == 4 ? "Client" : "Patient", // Coordinator sees "Client", others see "Patient"
+                Title = "Client", 
                 Width = "150px"
             },
             new SMDataGridTemplateColumn<ContentItemDto>

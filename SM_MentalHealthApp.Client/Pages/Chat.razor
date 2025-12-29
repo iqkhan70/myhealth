@@ -151,7 +151,7 @@
             @if (!IsGenericMode && (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) && SelectedUserId <= 0)
             {
                 <div style="padding: 12px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; margin-bottom: 8px; color: #856404;">
-                    <strong>⚠️ Patient Selection Required</strong>
+                    <strong>⚠️ Client Selection Required</strong>
                     <p style="margin: 4px 0 0 0; font-size: 14px;">Please select a patient from the dropdown above to enable Client Chat mode.</p>
                 </div>
             }
@@ -300,7 +300,7 @@
                 if (SelectedUser != null)
                 {
                     Messages.Add($"System: 👤 Now chatting as {SelectedUser.FirstName} {SelectedUser.LastName} (User ID: {SelectedUser.Id})");
-                    Messages.Add($"System: 📊 AI will provide personalized responses based on {SelectedUser.FirstName}'s journal entries and mood patterns");
+                    Messages.Add($"System: 📊 AI will provide personalized responses based on {SelectedUser.FirstName}'s journal entries and journalentry patterns");
                 }
             }
             else

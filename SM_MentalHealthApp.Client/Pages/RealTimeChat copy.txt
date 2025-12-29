@@ -24,7 +24,7 @@
                 }
                 else
                 {
-                    <text>💬 Doctor Chat</text>
+                    <text>💬 SME Chat</text>
                 }
             </h3>
         </div>
@@ -90,7 +90,7 @@
                     }
                     else
                     {
-                        <text>My Doctors</text>
+                        <text>My SMEs</text>
                     }
                 </h4>
                 <button class="refresh-btn" @onclick="LoadUsers" disabled="@isLoadingUsers">
