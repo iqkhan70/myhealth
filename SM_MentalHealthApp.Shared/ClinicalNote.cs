@@ -125,5 +125,6 @@ namespace SM_MentalHealthApp.Shared
         public bool IsIgnoredByDoctor { get; set; }
         public int? IgnoredByDoctorId { get; set; }
         public DateTime? IgnoredAt { get; set; }
+        public int? ServiceRequestId { get; set; }
     }
 }
