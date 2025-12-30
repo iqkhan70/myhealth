@@ -1842,7 +1842,7 @@ export default function App() {
 
       <View style={styles.contactsHeader}>
         <Text style={styles.contactsTitle}>
-          {user?.roleId === 2 ? 'Your Patients' : 'Your Doctors, Coordinators & Attorneys'}
+          {user?.roleId === 2 ? 'Your Clients' : 'Your Coordinators & SMEs'}
         </Text>
         <Text style={styles.contactsCount}>({contacts.length})</Text>
       </View>

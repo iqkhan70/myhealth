@@ -2442,7 +2442,7 @@
             if (editingUser == null)
             {
                 await PatientService.CreateAsync(patientForm);
-                NotificationService.ShowSuccess("Patient added successfully!");
+                NotificationService.ShowSuccess("Client added successfully!");
                 if (_grid != null)
                 {
                     await _grid.RefreshAsync();
@@ -2496,7 +2496,7 @@
                 }
 
                 var updatedPatient = await PatientService.UpdateAsync(editingUser.Id, updateRequest);
-                NotificationService.ShowSuccess("Patient updated successfully!");
+                NotificationService.ShowSuccess("Client updated successfully!");
                 
                 // Update only the specific row instead of reloading the entire grid
                 if (_grid != null)
@@ -2847,7 +2847,7 @@
         try
         {
             await PatientService.DeleteAsync(user.Id, ct);
-            NotificationService.ShowSuccess("Patient deactivated successfully!");
+            NotificationService.ShowSuccess("Client deactivated successfully!");
             if (_grid != null)
             {
                 await _grid.RefreshAsync();
@@ -2876,7 +2876,7 @@
                 MobilePhone = user.MobilePhone
             }, ct);
             
-            NotificationService.ShowSuccess("Patient reactivated successfully!");
+            NotificationService.ShowSuccess("Client reactivated successfully!");
             if (_grid != null)
             {
                 await _grid.RefreshAsync();
@@ -2978,7 +2978,7 @@
             // Determine assigner type based on selected assigner's role
             var selectedAssigner = availableDoctors.FirstOrDefault(d => d.Id == selectedDoctorId);
             var assignerType = selectedAssigner?.RoleId == 5 ? "attorney" : "doctor";
-            NotificationService.ShowSuccess($"Patient assigned to {assignerType} successfully!");
+            NotificationService.ShowSuccess($"Client assigned to {assignerType} successfully!");
             CloseAssignModal();
             if (_grid != null)
             {
@@ -3135,7 +3135,7 @@
     {
         if (currentHealthCheckPatient == null || currentHealthCheckResult == null)
         {
-            NotificationService.ShowError("Cannot send alerts: Patient information not available");
+            NotificationService.ShowError("Cannot send alerts: Client information not available");
             return;
         }
 
@@ -3217,7 +3217,7 @@
                 await PatientService.UnassignFromDoctorAsync(request);
             }
             
-            NotificationService.ShowSuccess("Patient unassigned from you successfully!");
+            NotificationService.ShowSuccess("Client unassigned from you successfully!");
             CloseUnassignConfirmation();
             if (_grid != null)
             {
@@ -3344,7 +3344,7 @@
 
             if (response.IsSuccessStatusCode)
             {
-                NotificationService.ShowSuccess("Patient unassigned successfully!");
+                NotificationService.ShowSuccess("Client unassigned successfully!");
                 CloseUnassignFromDoctorModal();
                 if (_grid != null)
                 {
