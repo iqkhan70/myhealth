@@ -198,6 +198,9 @@ public static class DependencyInjection
         services.AddScoped<ContentService>();
         services.AddScoped<AgoraTokenService>();
 
+        // Content Cleanup Service
+        services.AddScoped<IContentCleanupService, ContentCleanupService>();
+
         // Background Services
         services.AddHostedService<AppointmentReminderService>();
 

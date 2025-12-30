@@ -22,13 +22,15 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly JournalDbContext _context;
         private readonly ILogger<AdminController> _logger;
         private readonly IPiiEncryptionService _encryptionService;
+        private readonly IContentCleanupService _contentCleanupService;
 
-        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger, IPiiEncryptionService encryptionService)
+        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger, IPiiEncryptionService encryptionService, IContentCleanupService contentCleanupService)
         {
             _adminService = adminService;
             _context = context;
             _logger = logger;
             _encryptionService = encryptionService;
+            _contentCleanupService = contentCleanupService;
         }
 
         [HttpGet("doctors")]
@@ -1790,6 +1792,27 @@ namespace SM_MentalHealthApp.Server.Controllers
             Array.Copy(hash, 0, hashBytes, 32, 32);
 
             return Convert.ToBase64String(hashBytes);
+        }
+
+        /// <summary>
+        /// Cleanup deleted content from S3 bucket
+        /// Admin only endpoint to trigger cleanup of S3 files for content marked as deleted
+        /// </summary>
+        [HttpPost("cleanup-deleted-content")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<Shared.ContentCleanupResult>> CleanupDeletedContent()
+        {
+            try
+            {
+                _logger.LogInformation("Admin user triggered content cleanup job");
+                var result = await _contentCleanupService.CleanupDeletedContentAsync();
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error running content cleanup job");
+                return StatusCode(500, new { message = "An error occurred while running the content cleanup job.", error = ex.Message });
+            }
         }
     }
 
