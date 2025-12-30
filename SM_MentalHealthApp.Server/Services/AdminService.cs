@@ -174,12 +174,26 @@ namespace SM_MentalHealthApp.Server.Services
 
         public async Task<List<User>> GetDoctorsForPatientAsync(int patientId)
         {
-            var assigners = await _context.UserAssignments
-                .Where(ua => ua.AssigneeId == patientId)
-                .Include(ua => ua.Assigner)
-                .ThenInclude(a => a.Role)
-                .Select(ua => ua.Assigner)
-                .Where(d => d.IsActive && (d.RoleId == 2 || d.RoleId == 4 || d.RoleId == 5)) // Doctors, Coordinators, and Attorneys
+            // Get all SMEs (doctors, coordinators, attorneys) assigned to this patient's ServiceRequests
+            // Step 1: Get all ServiceRequests for this patient
+            var serviceRequestIds = await _context.ServiceRequests
+                .Where(sr => sr.ClientId == patientId && sr.IsActive)
+                .Select(sr => sr.Id)
+                .ToListAsync();
+
+            // Step 2: Get all active assignments for these ServiceRequests
+            var smeUserIds = await _context.ServiceRequestAssignments
+                .Where(a => serviceRequestIds.Contains(a.ServiceRequestId) && a.IsActive)
+                .Select(a => a.SmeUserId)
+                .Distinct()
+                .ToListAsync();
+
+            // Step 3: Get the full User entities for these SMEs
+            var assigners = await _context.Users
+                .Include(u => u.Role)
+                .Where(u => smeUserIds.Contains(u.Id) && 
+                           u.IsActive && 
+                           (u.RoleId == 2 || u.RoleId == 4 || u.RoleId == 5)) // Active doctors, coordinators, and attorneys
                 .OrderBy(d => d.LastName)
                 .ThenBy(d => d.FirstName)
                 .ToListAsync();

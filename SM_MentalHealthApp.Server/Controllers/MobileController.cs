@@ -117,16 +117,26 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _logger.LogInformation("Getting doctors and coordinators for patient {PatientId}", patientId);
 
-                // Get all assigners (doctors and coordinators) for this patient
-                // Materialize full User entities first, then decrypt, then project
-                var assignerUsers = await _context.UserAssignments
-                    .Where(ua => ua.AssigneeId == patientId)
-                    .Include(ua => ua.Assigner)
-                        .ThenInclude(a => a.Role)
-                    .Where(ua => ua.Assigner != null && 
-                                 ua.Assigner.IsActive && 
-                                 (ua.Assigner.RoleId == 2 || ua.Assigner.RoleId == 4 || ua.Assigner.RoleId == 5)) // Active doctors, coordinators, and attorneys
-                    .Select(ua => ua.Assigner)
+                // Get all SMEs (doctors, coordinators, attorneys) assigned to this patient's ServiceRequests
+                // Step 1: Get all ServiceRequests for this patient
+                var serviceRequestIds = await _context.ServiceRequests
+                    .Where(sr => sr.ClientId == patientId && sr.IsActive)
+                    .Select(sr => sr.Id)
+                    .ToListAsync();
+
+                // Step 2: Get all active assignments for these ServiceRequests
+                var smeUserIds = await _context.ServiceRequestAssignments
+                    .Where(a => serviceRequestIds.Contains(a.ServiceRequestId) && a.IsActive)
+                    .Select(a => a.SmeUserId)
+                    .Distinct()
+                    .ToListAsync();
+
+                // Step 3: Get the full User entities for these SMEs
+                var assignerUsers = await _context.Users
+                    .Include(u => u.Role)
+                    .Where(u => smeUserIds.Contains(u.Id) && 
+                               u.IsActive && 
+                               (u.RoleId == 2 || u.RoleId == 4 || u.RoleId == 5)) // Active doctors, coordinators, and attorneys
                     .OrderBy(d => d.LastName)
                     .ThenBy(d => d.FirstName)
                     .ToListAsync();
@@ -134,7 +144,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Decrypt PII data (MobilePhone and DateOfBirth) before projecting
                 UserEncryptionHelper.DecryptUserData(assignerUsers, _encryptionService);
 
-                _logger.LogInformation("Found {AssignerCount} assigners (doctors/coordinators/attorneys) for patient {PatientId}", assignerUsers.Count, patientId);
+                _logger.LogInformation("Found {AssignerCount} assigners (doctors/coordinators/attorneys) for patient {PatientId} via ServiceRequests", assignerUsers.Count, patientId);
 
                 // Create response objects with roleName included (after decryption)
                 // ASP.NET Core will serialize these with camelCase by default
