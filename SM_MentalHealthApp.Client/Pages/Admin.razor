@@ -62,6 +62,17 @@
     .mb-3 {
         margin-bottom: 1rem !important;
     }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 1rem;
+    }
+
+    .form-label {
+        margin-bottom: 0.5rem;
+        min-width: 250px;
+    }
 </style>
 
 <div class="admin-container">
@@ -90,52 +101,54 @@
 
                 <div class="assignment-controls">
                     <div class="form-group">
-                        <label class="form-label">Select Client:</label>
+                        <label class="form-label" style="user-select: none;">Select Client:</label>
                         <RadzenDropDown Data="@patients.Where(p => p.RoleId == 1)" TextProperty="FullName"
-                            ValueProperty="Id" Value="@selectedPatientId" ValueChanged="@((int value) => OnClientSelected(value))" AllowFiltering="true"
+                            ValueProperty="Id" Value="@selectedPatientId" ValueChanged="@((int? value) => OnClientSelected(value))" AllowFiltering="true"
                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a client..."
-                            Style="width: 400px" TValue="int" />
+                            Style="width: 380px" TValue="int?" AllowClear="true" />
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Select or Create Service Request:</label>
-                        <RadzenDropDown Data="@availableServiceRequests" TextProperty="Title" ValueProperty="Id"
-                            @bind-Value="selectedServiceRequestId" AllowFiltering="true"
-                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
-                            Placeholder="@(selectedPatientId == 0 ? "Select a client first..." : "Choose a service request...")"
-                            Style="width: 400px"
-                            AllowClear="true">
-                            <Template Context="sr">
-                                <div>
-                                    <strong>@sr.Title</strong>
-                                    <br />
-                                    <small class="text-muted">@sr.Type - @sr.Status</small>
-                                </div>
-                            </Template>
-                        </RadzenDropDown>
-                        @if (selectedPatientId > 0)
-                        {
-                            <button class="btn btn-sm btn-outline-primary mt-2" @onclick="ShowCreateServiceRequestDialog">
-                                <i class="fas fa-plus"></i> Create New Service Request
-                            </button>
-                        }
+                        <label class="form-label" style="user-select: none;">Select or Create Service Request:</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenDropDown Data="@availableServiceRequests" TextProperty="Title" ValueProperty="Id"
+                                @bind-Value="selectedServiceRequestId" AllowFiltering="true"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
+                                Placeholder="@(selectedPatientId == null || selectedPatientId == 0 ? "Select a client first..." : "Choose a service request...")"
+                                Style="width: 380px; flex-shrink: 0;"
+                                AllowClear="true">
+                                <Template Context="sr">
+                                    <div>
+                                        <strong>@sr.Title</strong>
+                                        <br />
+                                        <small class="text-muted">@sr.Type - @sr.Status</small>
+                                    </div>
+                                </Template>
+                            </RadzenDropDown>
+                            @if (selectedPatientId.HasValue && selectedPatientId.Value > 0)
+                            {
+                                <button class="btn btn-sm btn-outline-primary" style="flex-shrink: 0; white-space: nowrap; padding: 0.25rem 0.5rem; font-size: 0.875rem; height: 38px;" @onclick="ShowCreateServiceRequestDialog">
+                                    <i class="fas fa-plus"></i> Create New
+                                </button>
+                            }
+                        </div>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Select SME:</label>
+                        <label class="form-label" style="user-select: none;">Select SME:</label>
                         <RadzenDropDown Data="@doctors.Where(d => d.RoleId == 2 || d.RoleId == 5)" TextProperty="FullName" ValueProperty="Id"
                             @bind-Value="selectedDoctorId" AllowFiltering="true"
                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose an SME..."
-                            Style="width: 400px" />
+                            Style="width: 380px" TValue="int?" AllowClear="true" />
                     </div>
 
                     <div class="button-group">
                         <button class="btn btn-primary" @onclick="AssignSmeToServiceRequest"
-                            disabled="@(selectedServiceRequestId == null || selectedDoctorId == 0)">
+                            disabled="@(selectedServiceRequestId == null || selectedDoctorId == null || selectedDoctorId == 0)">
                             Assign SME to Service Request
                         </button>
                         <button class="btn btn-danger" @onclick="UnassignSmeFromServiceRequest"
-                            disabled="@(selectedServiceRequestId == null || selectedDoctorId == 0)">
+                            disabled="@(selectedServiceRequestId == null || selectedDoctorId == null || selectedDoctorId == 0)">
                             Unassign
                         </button>
                     </div>
@@ -177,7 +190,7 @@
                                     <label class="form-label">Description</label>
                                     <RadzenTextArea @bind-Value="newServiceRequestDescription" Placeholder="Enter description (optional)..." Rows="3" Style="width: 100%" />
                                 </div>
-                                @if (selectedDoctorId > 0)
+                                @if (selectedDoctorId.HasValue && selectedDoctorId.Value > 0)
                                 {
                                     <div class="alert alert-info">
                                         <i class="fas fa-info-circle"></i>
@@ -335,9 +348,9 @@
     private List<User> patients = new();
     private List<User> doctors = new();
     private List<UserAssignment> assignments = new();
-    private int selectedPatientId = 0;
+    private int? selectedPatientId = null;
     private int? selectedServiceRequestId;
-    private int selectedDoctorId = 0;
+    private int? selectedDoctorId = null;
     private SMDataGrid<AssignmentDisplayModel>? _assignmentsGrid;
     private bool isLoading = true;
     private string message = "";
@@ -960,13 +973,13 @@
         }
     }
 
-    private async Task OnClientSelected(int clientId)
+    private async Task OnClientSelected(int? clientId)
     {
         selectedPatientId = clientId;
         selectedServiceRequestId = null;
-        if (selectedPatientId > 0)
+        if (selectedPatientId.HasValue && selectedPatientId.Value > 0)
         {
-            await LoadServiceRequestsForClient(selectedPatientId);
+            await LoadServiceRequestsForClient(selectedPatientId.HasValue ? selectedPatientId.Value : 0);
         }
         else
         {
@@ -999,7 +1012,7 @@
 
     private async Task CreateServiceRequest()
     {
-        if (selectedPatientId == 0 || string.IsNullOrWhiteSpace(newServiceRequestTitle))
+        if (selectedPatientId == null || selectedPatientId == 0 || string.IsNullOrWhiteSpace(newServiceRequestTitle))
         {
             NotificationService.ShowWarning("Please select a client and enter a title for the service request.");
             return;
@@ -1009,19 +1022,19 @@
         {
             var request = new CreateServiceRequestRequest
             {
-                ClientId = selectedPatientId,
+                ClientId = selectedPatientId.HasValue ? selectedPatientId.Value : 0,
                 Title = newServiceRequestTitle,
                 Type = newServiceRequestType,
                 Description = string.IsNullOrWhiteSpace(newServiceRequestDescription) ? null : newServiceRequestDescription,
-                SmeUserId = selectedDoctorId > 0 ? selectedDoctorId : null
+                SmeUserId = selectedDoctorId.HasValue && selectedDoctorId.Value > 0 ? selectedDoctorId.Value : null
             };
 
             var created = await ServiceRequestService.CreateServiceRequestAsync(request);
             showCreateServiceRequestDialog = false;
-            await LoadServiceRequestsForClient(selectedPatientId);
+            await LoadServiceRequestsForClient(selectedPatientId.HasValue ? selectedPatientId.Value : 0);
             selectedServiceRequestId = created.Id;
             
-            if (selectedDoctorId > 0)
+            if (selectedDoctorId.HasValue && selectedDoctorId.Value > 0)
             {
                 NotificationService.ShowSuccess($"Service Request created and SME assigned successfully!");
             }
@@ -1038,7 +1051,7 @@
 
     private async Task AssignSmeToServiceRequest()
     {
-        if (selectedServiceRequestId == null || selectedDoctorId == 0)
+        if (selectedServiceRequestId == null || selectedDoctorId == null || selectedDoctorId == 0)
         {
             NotificationService.ShowWarning("Please select a Service Request and an SME.");
             return;
@@ -1046,13 +1059,13 @@
 
         try
         {
-            var success = await ServiceRequestService.AssignSmeToServiceRequestAsync(selectedServiceRequestId.Value, selectedDoctorId);
+            var success = await ServiceRequestService.AssignSmeToServiceRequestAsync(selectedServiceRequestId.Value, selectedDoctorId.HasValue ? selectedDoctorId.Value : 0);
             if (success)
             {
                 message = "SME assigned to Service Request successfully!";
                 isError = false;
                 await LoadData();
-                await LoadServiceRequestsForClient(selectedPatientId);
+                await LoadServiceRequestsForClient(selectedPatientId.HasValue ? selectedPatientId.Value : 0);
             }
             else
             {
@@ -1069,7 +1082,7 @@
 
     private async Task UnassignSmeFromServiceRequest()
     {
-        if (selectedServiceRequestId == null || selectedDoctorId == 0)
+        if (selectedServiceRequestId == null || selectedDoctorId == null || selectedDoctorId == 0)
         {
             NotificationService.ShowWarning("Please select a Service Request and an SME.");
             return;
@@ -1077,13 +1090,13 @@
 
         try
         {
-            var success = await ServiceRequestService.UnassignSmeFromServiceRequestAsync(selectedServiceRequestId.Value, selectedDoctorId);
+            var success = await ServiceRequestService.UnassignSmeFromServiceRequestAsync(selectedServiceRequestId.Value, selectedDoctorId.HasValue ? selectedDoctorId.Value : 0);
             if (success)
             {
                 message = "SME unassigned from Service Request successfully!";
                 isError = false;
                 await LoadData();
-                await LoadServiceRequestsForClient(selectedPatientId);
+                await LoadServiceRequestsForClient(selectedPatientId.HasValue ? selectedPatientId.Value : 0);
             }
             else
             {
@@ -1110,8 +1123,8 @@
         {
             var request = new UnassignPatientRequest
             {
-                PatientId = selectedPatientId,
-                DoctorId = selectedDoctorId
+                PatientId = selectedPatientId.HasValue ? selectedPatientId.Value : 0,
+                DoctorId = selectedDoctorId.HasValue ? selectedDoctorId.Value : 0
             };
 
             var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/admin/unassign")
