@@ -41,6 +41,13 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var currentUserId = GetCurrentUserId();
                 var currentRoleId = GetCurrentRoleId();
 
+                // For patients, only show their own service requests
+                if (currentRoleId == Roles.Patient && currentUserId.HasValue)
+                {
+                    var serviceRequests = await _serviceRequestService.GetServiceRequestsAsync(currentUserId.Value, null);
+                    return Ok(serviceRequests);
+                }
+
                 // For doctors and attorneys, only show service requests they're assigned to
                 if ((currentRoleId == Roles.Doctor || currentRoleId == Roles.Attorney) && currentUserId.HasValue)
                 {

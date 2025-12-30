@@ -95,7 +95,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get list of documents for a patient
         /// </summary>
         [HttpGet("list")]
-        public async Task<ActionResult<DocumentListResponse>> GetDocuments([FromQuery] DocumentListRequest request)
+        public async Task<ActionResult<DocumentListResponse>> GetDocuments([FromQuery] DocumentListRequest request, [FromQuery] int? serviceRequestId = null)
         {
             try
             {
@@ -103,6 +103,12 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (!currentUserId.HasValue)
                 {
                     return Unauthorized("Invalid user token");
+                }
+
+                // Explicitly set ServiceRequestId if provided as separate query parameter (for mobile app compatibility)
+                if (serviceRequestId.HasValue && !request.ServiceRequestId.HasValue)
+                {
+                    request.ServiceRequestId = serviceRequestId;
                 }
 
                 var response = await _documentUploadService.GetDocumentsAsync(request, currentUserId.Value);

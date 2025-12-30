@@ -8,6 +8,8 @@ namespace SM_MentalHealthApp.Shared
         [Required]
         public int PatientId { get; set; }
 
+        public int? ServiceRequestId { get; set; } // Tie document to ServiceRequest
+
         [Required]
         public string Title { get; set; } = string.Empty;
 
@@ -45,6 +47,7 @@ namespace SM_MentalHealthApp.Shared
     public class DocumentListRequest
     {
         public int PatientId { get; set; }
+        public int? ServiceRequestId { get; set; } // Filter by ServiceRequest
         public ContentTypeEnum? Type { get; set; }
         public string? Category { get; set; }
         public DateTime? FromDate { get; set; }

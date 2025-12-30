@@ -2183,9 +2183,9 @@ export default function App() {
             {/* Empty actions to maintain layout */}
           </View>
         </View>
-        <ScrollView style={{ flex: 1, padding: 16 }}>
+        <View style={{ flex: 1 }}>
           {selectedServiceRequest && (
-            <View style={{ marginBottom: 16 }}>
+            <View style={{ padding: 16, paddingBottom: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' }}>
               <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>
                 {selectedServiceRequest.title || selectedServiceRequest.Title}
               </Text>
@@ -2199,21 +2199,21 @@ export default function App() {
                 Status: {selectedServiceRequest.status || selectedServiceRequest.Status || 'Active'}
               </Text>
               {(selectedServiceRequest.description || selectedServiceRequest.Description) && (
-                <Text style={{ fontSize: 14, color: '#666', marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, color: '#666', marginBottom: 0 }}>
                   {selectedServiceRequest.description || selectedServiceRequest.Description}
                 </Text>
               )}
             </View>
           )}
           <DocumentUpload 
-            patientId={selectedServiceRequest?.clientId || selectedServiceRequest?.ClientId || user.id}
+            patientId={user?.roleId === 1 ? user.id : (selectedServiceRequest?.clientId || selectedServiceRequest?.ClientId || user.id)}
             serviceRequestId={selectedServiceRequest?.id || selectedServiceRequest?.Id || null}
             availablePatients={availablePatients}
             showPatientSelector={false}
             onDocumentUploaded={() => console.log('Document uploaded')}
             user={user}
           />
-        </ScrollView>
+        </View>
       </SafeAreaView>
     );
   }

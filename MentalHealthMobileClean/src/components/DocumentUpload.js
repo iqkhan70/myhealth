@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -64,12 +64,12 @@ const DocumentUpload = ({
     }
   }, [patientId]);
 
-  // Load documents when selectedPatient changes (for doctor selecting different patients)
+  // Load documents when selectedPatient or serviceRequestId changes
   useEffect(() => {
     if (selectedPatient) {
       loadDocuments();
     }
-  }, [selectedPatient]);
+  }, [selectedPatient, serviceRequestId, loadDocuments]);
 
   const loadCategories = async () => {
     try {
@@ -80,7 +80,7 @@ const DocumentUpload = ({
     }
   };
 
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     if (!selectedPatient) return;
     
     setLoading(true);
@@ -93,7 +93,7 @@ const DocumentUpload = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedPatient, serviceRequestId]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -261,6 +261,13 @@ const DocumentUpload = ({
       // Also need to map file type to ContentTypeEnum
       const contentTypeEnum = mapFileTypeToContentTypeEnum(selectedFile.type, selectedFile.contentType);
       
+      // Ensure ServiceRequestId is set - if null, this is a problem
+      if (!serviceRequestId) {
+        Alert.alert('Error', 'ServiceRequestId is required. Please select a Service Request first.');
+        setIsUploading(false);
+        return;
+      }
+
       const uploadRequest = {
         PatientId: selectedPatient, // PascalCase
         ServiceRequestId: serviceRequestId, // PascalCase - tie content to ServiceRequest
@@ -273,7 +280,6 @@ const DocumentUpload = ({
         Category: uploadForm.category || null, // Optional
       };
 
-      console.log('📄 Upload request:', JSON.stringify(uploadRequest, null, 2));
       await DocumentUploadService.uploadDocument(selectedFile.uri, uploadRequest);
       
       Alert.alert('Success', 'Document uploaded successfully!');
