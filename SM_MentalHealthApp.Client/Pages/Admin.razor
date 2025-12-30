@@ -340,6 +340,56 @@
                     }
                 </div>
             </div>
+
+            <!-- Content Cleanup Section -->
+            <div class="assignment-section" style="margin-top: 2rem; padding: 1.5rem; border: 1px solid #dee2e6; border-radius: 0.375rem; background-color: #fff;">
+                <h2>Content Cleanup</h2>
+                <p class="text-muted mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    Clean up deleted content files from S3 storage. This job will find all content items marked as deleted (IsActive = false) and permanently remove their files from the S3 bucket.
+                </p>
+                
+                <div style="margin-bottom: 1rem;">
+                    <button @onclick="RunContentCleanup" 
+                            disabled="@isRunningCleanup" 
+                            class="btn btn-danger" 
+                            style="padding: 0.5rem 1rem; background-color: #dc3545; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                        @if (isRunningCleanup)
+                        {
+                            <span>Running Cleanup...</span>
+                        }
+                        else
+                        {
+                            <span>🗑️ Run Content Cleanup</span>
+                        }
+                    </button>
+                </div>
+
+                @if (cleanupResult != null)
+                {
+                    <div style="margin-top: 1rem; padding: 1rem; background-color: #f8f9fa; border-radius: 0.25rem;">
+                        <h3>Cleanup Results</h3>
+                        <p><strong>Completed At:</strong> @cleanupResult.CompletedAt.ToString("yyyy-MM-dd HH:mm:ss UTC")</p>
+                        <p><strong>Total Deleted Content Found:</strong> @cleanupResult.TotalDeletedContentFound</p>
+                        <p><strong>Successfully Deleted from S3:</strong> <span style="color: #28a745;">@cleanupResult.SuccessfullyDeletedFromS3</span></p>
+                        <p><strong>Already Deleted from S3:</strong> <span style="color: #6c757d;">@cleanupResult.AlreadyDeletedFromS3</span></p>
+                        <p><strong>Failed to Delete:</strong> <span style="color: #dc3545;">@cleanupResult.FailedToDeleteFromS3</span></p>
+                        
+                        @if (cleanupResult.Errors != null && cleanupResult.Errors.Any())
+                        {
+                            <div style="margin-top: 1rem;">
+                                <strong style="color: #dc3545;">Errors:</strong>
+                                <ul style="margin-top: 0.5rem;">
+                                    @foreach (var error in cleanupResult.Errors)
+                                    {
+                                        <li style="color: #dc3545;">@error</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
         </div>
     }
 </div>
@@ -363,6 +413,54 @@
 
     // Search functionality for doctor overview
     private string doctorSearchTerm = string.Empty;
+
+    // Content cleanup
+    private bool isRunningCleanup = false;
+    private ContentCleanupResult? cleanupResult = null;
+
+    private async Task RunContentCleanup()
+    {
+        try
+        {
+            isRunningCleanup = true;
+            cleanupResult = null;
+            StateHasChanged();
+
+            var token = AuthService.Token;
+            if (string.IsNullOrEmpty(token))
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "You must be logged in to run this job.");
+                return;
+            }
+
+            var request = new HttpRequestMessage(HttpMethod.Post, "api/admin/cleanup-deleted-content");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            var response = await Http.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                cleanupResult = await response.Content.ReadFromJsonAsync<ContentCleanupResult>();
+                NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                    $"Cleanup completed. Deleted {cleanupResult?.SuccessfullyDeletedFromS3 ?? 0} files from S3.");
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", 
+                    $"Failed to run cleanup: {response.StatusCode}. {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Error running cleanup: {ex.Message}");
+        }
+        finally
+        {
+            isRunningCleanup = false;
+            StateHasChanged();
+        }
+    }
 
 
     protected override async Task OnInitializedAsync()
