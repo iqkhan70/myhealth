@@ -321,9 +321,11 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var contentType = DetermineContentType(request.File.FileName);
                 var contentGuid = Guid.NewGuid();
 
-                // Get or set ServiceRequestId - use default if not provided
-                int? serviceRequestId = null;
-                if (request.AddedByUserId.HasValue)
+                // Get or set ServiceRequestId - use provided value, otherwise use default if not provided
+                int? serviceRequestId = request.ServiceRequestId;
+                
+                // If ServiceRequestId not provided, try to get default for SMEs
+                if (!serviceRequestId.HasValue && request.AddedByUserId.HasValue)
                 {
                     var user = await _contentService.GetUserByIdAsync(request.AddedByUserId.Value);
                     if (user != null && (user.RoleId == Shared.Constants.Roles.Doctor || user.RoleId == Shared.Constants.Roles.Attorney))
@@ -338,6 +340,20 @@ namespace SM_MentalHealthApp.Server.Controllers
                             {
                                 serviceRequestId = defaultSr.Id;
                             }
+                        }
+                    }
+                }
+                
+                // If ServiceRequestId is provided, verify access for SMEs
+                if (serviceRequestId.HasValue && request.AddedByUserId.HasValue)
+                {
+                    var user = await _contentService.GetUserByIdAsync(request.AddedByUserId.Value);
+                    if (user != null && (user.RoleId == Shared.Constants.Roles.Doctor || user.RoleId == Shared.Constants.Roles.Attorney || user.RoleId == Shared.Constants.Roles.Coordinator))
+                    {
+                        var isAssigned = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(serviceRequestId.Value, request.AddedByUserId.Value);
+                        if (!isAssigned)
+                        {
+                            return Forbid("You don't have permission to add content to this ServiceRequest");
                         }
                     }
                 }
@@ -742,6 +758,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         public int PatientId { get; set; }
         public int? AddedByUserId { get; set; }
+        public int? ServiceRequestId { get; set; } // ServiceRequest to tie content to
         public string Title { get; set; } = string.Empty;
         public string? Description { get; set; }
         public IFormFile File { get; set; } = null!;

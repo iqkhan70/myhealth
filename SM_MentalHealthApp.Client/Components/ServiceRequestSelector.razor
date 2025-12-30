@@ -81,7 +81,17 @@
     {
         try
         {
-            if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
+            if (AuthService.CurrentUser?.RoleId == 1) // Patient
+            {
+                // For patients, get their own service requests
+                // If ClientId is provided and matches the current user, use it; otherwise use current user ID
+                int? clientIdToUse = ClientId.HasValue && ClientId.Value == AuthService.CurrentUser?.Id 
+                    ? ClientId.Value 
+                    : AuthService.CurrentUser?.Id;
+                
+                serviceRequests = await ServiceRequestService.GetServiceRequestsAsync(clientIdToUse);
+            }
+            else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
             {
                 // Get my service requests
                 serviceRequests = await ServiceRequestService.GetMyServiceRequestsAsync();
