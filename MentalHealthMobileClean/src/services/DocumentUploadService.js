@@ -186,7 +186,7 @@ class DocumentUploadService {
   }
 
   // Get documents list
-  async getDocuments(patientId, filters = {}) {
+  async getDocuments(patientId, filters = {}, serviceRequestId = null) {
     try {
       const headers = await this.getHeaders();
       const queryParams = new URLSearchParams({
@@ -197,6 +197,7 @@ class DocumentUploadService {
         ...(filters.category && { category: filters.category }),
         ...(filters.fromDate && { fromDate: filters.fromDate }),
         ...(filters.toDate && { toDate: filters.toDate }),
+        ...(serviceRequestId && { serviceRequestId: serviceRequestId.toString() }),
       });
 
       const response = await fetch(`${this.baseUrl}/DocumentUpload/list?${queryParams}`, {

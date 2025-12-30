@@ -36,7 +36,8 @@ const mapFileTypeToContentTypeEnum = (fileType, mimeType) => {
 
 const DocumentUpload = ({ 
   patientId, 
-  onDocumentUploaded, 
+  serviceRequestId = null, // New: Service Request ID to tie content to
+  onDocumentUploaded,
   showPatientSelector = false,
   availablePatients = [],
   onPatientSelect,
@@ -84,7 +85,7 @@ const DocumentUpload = ({
     
     setLoading(true);
     try {
-      const response = await DocumentUploadService.getDocuments(selectedPatient);
+      const response = await DocumentUploadService.getDocuments(selectedPatient, {}, serviceRequestId);
       setDocuments(response.documents || []);
     } catch (error) {
       console.error('Error loading documents:', error);
@@ -262,6 +263,7 @@ const DocumentUpload = ({
       
       const uploadRequest = {
         PatientId: selectedPatient, // PascalCase
+        ServiceRequestId: serviceRequestId, // PascalCase - tie content to ServiceRequest
         Title: uploadForm.title.trim(), // PascalCase
         Description: uploadForm.description.trim() || null, // Optional
         FileName: selectedFile.name, // PascalCase
