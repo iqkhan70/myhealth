@@ -12,7 +12,7 @@
     {
         <div class="diagnosis-input-section">
             <div class="form-group">
-                <label class="form-label">Patient</label>
+                <label class="form-label">Client</label>
                 <RadzenDropDown @bind-Value="selectedPatientId" Data="@Patients" TextProperty="FullName" 
                     ValueProperty="Id" Placeholder="Select Client" Style="width: 100%;" />
             </div>
@@ -171,7 +171,7 @@
                 @if (recommendations.PatientSpecificNotes.Any())
                 {
                     <div class="recommendation-section">
-                        <h5>👤 Patient-Specific Considerations</h5>
+                        <h5>👤 Client-Specific Considerations</h5>
                         <ul class="notes-list">
                             @foreach (var note in recommendations.PatientSpecificNotes)
                             {
@@ -350,7 +350,7 @@
             // Create a treatment plan based on recommendations
             var reportContent = "TREATMENT PLAN\n" +
                 "========================\n" +
-                $"Patient ID: {selectedPatientId}\n" +
+                $"Client ID: {selectedPatientId}\n" +
                 $"Diagnosis: {recommendations.Diagnosis}\n" +
                 $"Severity: {recommendations.Severity}\n" +
                 $"Generated: {DateTime.Now:yyyy-MM-dd HH:mm}\n\n" +
@@ -425,7 +425,7 @@
 
             var followUpContent = "FOLLOW-UP SCHEDULE\n" +
                 "====================\n" +
-                $"Patient ID: {selectedPatientId}\n" +
+                $"Client ID: {selectedPatientId}\n" +
                 $"Diagnosis: {recommendations.Diagnosis}\n" +
                 $"Schedule Created: {DateTime.Now:yyyy-MM-dd}\n\n" +
                 "HIGH PRIORITY FOLLOW-UP ITEMS:\n" +
@@ -461,7 +461,7 @@
             var reportContent = "CLINICAL DECISION SUPPORT REPORT\n" +
                 "===================================\n" +
                 $"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n" +
-                $"Patient ID: {selectedPatientId}\n" +
+                $"Client ID: {selectedPatientId}\n" +
                 $"Diagnosis: {recommendations.Diagnosis}\n" +
                 $"Severity Assessment: {recommendations.Severity}\n\n" +
                 "CLINICAL RECOMMENDATIONS\n" +

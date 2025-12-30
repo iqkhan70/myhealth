@@ -24,7 +24,7 @@ public class ClinicalNotesService : BaseService, IClinicalNotesService
         return response ?? new List<ClinicalNoteDto>();
     }
 
-    public async Task<PagedResult<ClinicalNoteDto>> ListPagedAsync(int skip, int take, int? patientId = null, int? doctorId = null, string? searchTerm = null, string? noteType = null, string? priority = null, bool? isIgnoredByDoctor = null, DateTime? createdDateFrom = null, DateTime? createdDateTo = null, CancellationToken ct = default)
+    public async Task<PagedResult<ClinicalNoteDto>> ListPagedAsync(int skip, int take, int? patientId = null, int? doctorId = null, int? serviceRequestId = null, string? searchTerm = null, string? noteType = null, string? priority = null, bool? isIgnoredByDoctor = null, DateTime? createdDateFrom = null, DateTime? createdDateTo = null, CancellationToken ct = default)
     {
         AddAuthorizationHeader();
         var queryParams = new List<string>
@@ -34,6 +34,7 @@ public class ClinicalNotesService : BaseService, IClinicalNotesService
         };
         if (patientId.HasValue) queryParams.Add($"patientId={patientId.Value}");
         if (doctorId.HasValue) queryParams.Add($"doctorId={doctorId.Value}");
+        if (serviceRequestId.HasValue) queryParams.Add($"serviceRequestId={serviceRequestId.Value}");
         if (!string.IsNullOrWhiteSpace(searchTerm)) queryParams.Add($"searchTerm={Uri.EscapeDataString(searchTerm)}");
         if (!string.IsNullOrWhiteSpace(noteType)) queryParams.Add($"noteType={Uri.EscapeDataString(noteType)}");
         if (!string.IsNullOrWhiteSpace(priority)) queryParams.Add($"priority={Uri.EscapeDataString(priority)}");

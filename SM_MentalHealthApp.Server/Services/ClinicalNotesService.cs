@@ -9,7 +9,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<List<ClinicalNoteDto>> GetClinicalNotesAsync(int? patientId = null, int? doctorId = null);
         Task<PagedResult<ClinicalNoteDto>> GetClinicalNotesPagedAsync(int skip, int take, int? patientId = null, int? doctorId = null, string? searchTerm = null, string? noteType = null, string? priority = null, bool? isIgnoredByDoctor = null, DateTime? createdDateFrom = null, DateTime? createdDateTo = null);
         Task<ClinicalNoteDto?> GetClinicalNoteByIdAsync(int id);
-        Task<ClinicalNoteDto> CreateClinicalNoteAsync(CreateClinicalNoteRequest request, int doctorId);
+        Task<ClinicalNoteDto> CreateClinicalNoteAsync(CreateClinicalNoteRequest request, int doctorId, int? serviceRequestId = null);
         Task<ClinicalNoteDto?> UpdateClinicalNoteAsync(int id, UpdateClinicalNoteRequest request, int doctorId);
         Task<bool> DeleteClinicalNoteAsync(int id, int? doctorId);
         Task<bool> ToggleIgnoreAsync(int noteId, int doctorId);
@@ -175,7 +175,7 @@ namespace SM_MentalHealthApp.Server.Services
             }
         }
 
-        public async Task<ClinicalNoteDto> CreateClinicalNoteAsync(CreateClinicalNoteRequest request, int doctorId)
+        public async Task<ClinicalNoteDto> CreateClinicalNoteAsync(CreateClinicalNoteRequest request, int doctorId, int? serviceRequestId = null)
         {
             try
             {
@@ -201,6 +201,7 @@ namespace SM_MentalHealthApp.Server.Services
                 {
                     PatientId = request.PatientId,
                     DoctorId = doctorId,
+                    ServiceRequestId = serviceRequestId,
                     Title = request.Title,
                     Content = request.Content,
                     NoteType = request.NoteType,
@@ -460,7 +461,8 @@ namespace SM_MentalHealthApp.Server.Services
                 DoctorName = note.Doctor?.FullName ?? "Unknown",
                 IsIgnoredByDoctor = note.IsIgnoredByDoctor,
                 IgnoredByDoctorId = note.IgnoredByDoctorId,
-                IgnoredAt = note.IgnoredAt
+                IgnoredAt = note.IgnoredAt,
+                ServiceRequestId = note.ServiceRequestId
             };
         }
     }

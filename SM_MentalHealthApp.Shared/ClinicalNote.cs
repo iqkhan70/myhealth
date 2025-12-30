@@ -15,6 +15,8 @@ namespace SM_MentalHealthApp.Shared
         [Required]
         public int DoctorId { get; set; }
 
+        public int? ServiceRequestId { get; set; } // Optional: links to ServiceRequest for data isolation
+
         [Required]
         [MaxLength(200)]
         public string Title { get; set; } = string.Empty;
@@ -50,6 +52,7 @@ namespace SM_MentalHealthApp.Shared
         public User Patient { get; set; } = null!;
         public User Doctor { get; set; } = null!;
         public User? IgnoredByDoctor { get; set; } // Navigation to the doctor who ignored it
+        public ServiceRequest? ServiceRequest { get; set; } // Navigation to service request
     }
 
     /// <summary>
@@ -122,5 +125,6 @@ namespace SM_MentalHealthApp.Shared
         public bool IsIgnoredByDoctor { get; set; }
         public int? IgnoredByDoctorId { get; set; }
         public DateTime? IgnoredAt { get; set; }
+        public int? ServiceRequestId { get; set; }
     }
 }

@@ -7,7 +7,7 @@ namespace SM_MentalHealthApp.Server.Services
     public interface IAppointmentService
     {
         Task<AppointmentValidationResult> ValidateAppointmentAsync(CreateAppointmentRequest request);
-        Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentRequest request, int createdByUserId);
+        Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentRequest request, int createdByUserId, int? serviceRequestId = null);
         Task<AppointmentDto?> UpdateAppointmentAsync(UpdateAppointmentRequest request);
         Task<bool> CancelAppointmentAsync(int appointmentId);
         Task<List<AppointmentDto>> GetAppointmentsAsync(int? doctorId = null, int? patientId = null, DateTime? startDate = null, DateTime? endDate = null);
@@ -170,7 +170,7 @@ namespace SM_MentalHealthApp.Server.Services
             return result;
         }
 
-        public async Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentRequest request, int createdByUserId)
+        public async Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentRequest request, int createdByUserId, int? serviceRequestId = null)
         {
             // Validate first
             var validation = await ValidateAppointmentAsync(request);
@@ -185,6 +185,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 DoctorId = request.DoctorId,
                 PatientId = request.PatientId,
+                ServiceRequestId = serviceRequestId,
                 AppointmentDateTime = request.AppointmentDateTime,
                 Duration = request.Duration,
                 AppointmentType = request.AppointmentType,
@@ -549,7 +550,8 @@ namespace SM_MentalHealthApp.Server.Services
                     CreatedBy = appointment.CreatedByUser != null
                         ? $"{appointment.CreatedByUser.FirstName} {appointment.CreatedByUser.LastName}"
                         : "Unknown",
-                    CreatedAt = appointment.CreatedAt
+                    CreatedAt = appointment.CreatedAt,
+                    ServiceRequestId = appointment.ServiceRequestId
                 };
             }
             catch (Exception ex)
@@ -582,7 +584,8 @@ namespace SM_MentalHealthApp.Server.Services
                     CreatedBy = appointment.CreatedByUser != null
                         ? $"{appointment.CreatedByUser.FirstName} {appointment.CreatedByUser.LastName}"
                         : "Unknown",
-                    CreatedAt = appointment.CreatedAt
+                    CreatedAt = appointment.CreatedAt,
+                    ServiceRequestId = appointment.ServiceRequestId
                 };
             }
         }

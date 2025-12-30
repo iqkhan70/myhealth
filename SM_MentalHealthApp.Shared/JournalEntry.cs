@@ -229,6 +229,7 @@ namespace SM_MentalHealthApp.Shared
         public int Id { get; set; }
         public int UserId { get; set; } // The patient whose journal this entry belongs to
         public int? EnteredByUserId { get; set; } // Who actually entered this (null if patient entered for themselves)
+        public int? ServiceRequestId { get; set; } // Optional: links to ServiceRequest for data isolation
         public string Text { get; set; } = string.Empty;
         public string? AIResponse { get; set; }
         public string? Mood { get; set; }
@@ -245,6 +246,7 @@ namespace SM_MentalHealthApp.Shared
         public User? User { get; set; } // The patient
         public User? EnteredByUser { get; set; } // Who entered it (doctor or patient)
         public User? IgnoredByDoctor { get; set; } // Doctor who ignored this entry
+        public ServiceRequest? ServiceRequest { get; set; } // Navigation to service request
     }
 
 
@@ -348,6 +350,7 @@ namespace SM_MentalHealthApp.Shared
         public string S3Key { get; set; } = string.Empty; // S3 object key
         // public string S3Url { get; set; } = string.Empty; // Removed - URLs generated on-demand for security
         public int ContentTypeModelId { get; set; } // Foreign key to ContentTypeModel
+        public int? ServiceRequestId { get; set; } // Optional: links to ServiceRequest for data isolation
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastAccessedAt { get; set; }
         public bool IsActive { get; set; } = true;
@@ -362,6 +365,7 @@ namespace SM_MentalHealthApp.Shared
         public User? AddedByUser { get; set; }
         public User? IgnoredByDoctor { get; set; } // Navigation to the doctor who ignored it
         public ContentTypeModel ContentTypeModel { get; set; } = null!;
+        public ServiceRequest? ServiceRequest { get; set; } // Navigation to service request
     }
 
     public enum ContentTypeEnum
@@ -453,6 +457,7 @@ namespace SM_MentalHealthApp.Shared
         public int Id { get; set; }
         public int ContentId { get; set; }
         public int PatientId { get; set; }
+        public int? ServiceRequestId { get; set; } // Optional: links to ServiceRequest for data isolation
         public string AlertType { get; set; } = string.Empty; // "Critical", "Warning", "Info"
         public string Title { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
@@ -464,6 +469,7 @@ namespace SM_MentalHealthApp.Shared
         // Navigation properties
         public ContentItem Content { get; set; } = null!;
         public User Patient { get; set; } = null!;
+        public ServiceRequest? ServiceRequest { get; set; } // Navigation to service request
     }
 
     // Medical Document Analysis Models

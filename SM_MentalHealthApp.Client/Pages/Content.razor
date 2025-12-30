@@ -4,6 +4,7 @@
 @inject IAuthService AuthService
 @inject IJSRuntime JSRuntime
 @inject ODataService ODataService
+@inject IServiceRequestService ServiceRequestService
 @using Microsoft.JSInterop
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
@@ -14,6 +15,7 @@
 @using Microsoft.AspNetCore.Components
 @using Radzen
 @using Radzen.Blazor
+@using SM_MentalHealthApp.Client.Components
 
 <div class="content-page">
     <div class="content-header">
@@ -52,6 +54,12 @@
     @if (AuthService.CurrentUser?.RoleId == 1 || AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId
         == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5)
     {
+        <!-- Service Request Selector (for SMEs) -->
+        @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 4)
+        {
+            <ServiceRequestSelector ClientId="@selectedPatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
+        }
+
         <!-- Add Content Button (hidden for Coordinator and Attorney) -->
         @if (AuthService.CurrentUser?.RoleId != 4 && AuthService.CurrentUser?.RoleId != 5)
         {
@@ -86,11 +94,20 @@
                 <div class="form-group">
                     <label class="form-label @GetPatientLabelClass()">Select Client: <span class="required-asterisk">*</span></label>
                     <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
-                        @bind-Value="contentForm.PatientId" AllowFiltering="true"
+                        @bind-Value="contentForm.PatientId" 
+                        @bind-Value:after="OnPatientSelectedInForm"
+                        AllowFiltering="true"
                         FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a client..."
                         Style="width: 100%" 
                         @onchange="@(() => { showPatientError = false; StateHasChanged(); })" />
                 </div>
+                
+                @if (contentForm.PatientId > 0)
+                {
+                    <div class="form-group">
+                        <ServiceRequestSelector ClientId="@contentForm.PatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
+                    </div>
+                }
             }
             else if (AuthService.CurrentUser?.RoleId == 1)
             {
@@ -100,6 +117,13 @@
                         <span>Uploading content for: <strong>@(AuthService.CurrentUser?.FirstName) @(AuthService.CurrentUser?.LastName)</strong></span>
                     </div>
                 </div>
+                
+                @if (contentForm.PatientId > 0)
+                {
+                    <div class="form-group">
+                        <ServiceRequestSelector ClientId="@contentForm.PatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
+                    </div>
+                }
             }
 
             <div class="form-group">
@@ -178,6 +202,8 @@
 
     private List<SMDataGridColumn<ContentItemDto>> _columns = new();
     private readonly List<SMDataGridActionButton<ContentItemDto>> _actions = [];
+    private int? selectedServiceRequestId;
+    private int? selectedPatientId; // For ServiceRequest selector
 
     protected override async Task OnInitializedAsync()
     {
@@ -185,6 +211,15 @@
         await LoadPatients();
         InitializeColumns();
         InitializeActions();
+    }
+
+    private async Task OnServiceRequestChanged(int? serviceRequestId)
+    {
+        selectedServiceRequestId = serviceRequestId;
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
     }
 
     private async Task LoadPatients()
@@ -391,8 +426,38 @@
                 }
             }
             
-            // Map ContentItem to ContentItemDto with PatientName and AddedByName
-            var items = result.Items.Select(c => MapContentToDto(c, userCache)).ToList();
+            // Fetch ServiceRequests for all content items to populate ServiceRequestTitle
+            var serviceRequestIds = result.Items.Where(c => c.ServiceRequestId.HasValue).Select(c => c.ServiceRequestId!.Value).Distinct().ToList();
+            var serviceRequestCache = new Dictionary<int, ServiceRequestDto>();
+            if (serviceRequestIds.Any())
+            {
+                try
+                {
+                    // Fetch ServiceRequests by ID
+                    foreach (var srId in serviceRequestIds)
+                    {
+                        try
+                        {
+                            var sr = await ServiceRequestService.GetServiceRequestByIdAsync(srId);
+                            if (sr != null)
+                            {
+                                serviceRequestCache[srId] = sr;
+                            }
+                        }
+                        catch
+                        {
+                            // Skip if individual fetch fails
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Continue even if ServiceRequest fetch fails
+                }
+            }
+            
+            // Map ContentItem to ContentItemDto with PatientName, AddedByName, and ServiceRequestTitle
+            var items = result.Items.Select(c => MapContentToDto(c, userCache, serviceRequestCache)).ToList();
             
             // If we sorted by PatientName or AddedByName, we need to sort the results client-side
             // because OData can't sort by computed DTO properties
@@ -574,12 +639,14 @@
         // We'll sort client-side instead, but we need to remove them from the OData orderBy
         var result = orderBy;
         
-        // Remove PatientName and AddedByName from orderBy (we'll sort client-side)
-        // Pattern: "PatientName asc" or "AddedByName desc" or "PatientName, OtherProperty asc"
+        // Remove PatientName, AddedByName, and ServiceRequestTitle from orderBy (we'll sort client-side)
+        // Pattern: "PatientName asc" or "AddedByName desc" or "ServiceRequestTitle asc"
         result = System.Text.RegularExpressions.Regex.Replace(result, @"PatientName\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         result = System.Text.RegularExpressions.Regex.Replace(result, @"AddedByName\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"ServiceRequestTitle\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*PatientName\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*AddedByName\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*ServiceRequestTitle\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         
         // Clean up extra commas
         result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*,", ",", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -614,11 +681,17 @@
                 ? items.OrderByDescending(a => a.AddedByName).ToList()
                 : items.OrderBy(a => a.AddedByName).ToList();
         }
+        else if (orderByLower.Contains("servicerequesttitle"))
+        {
+            items = isDescending
+                ? items.OrderByDescending(a => a.ServiceRequestTitle).ToList()
+                : items.OrderBy(a => a.ServiceRequestTitle).ToList();
+        }
         
         return items;
     }
     
-    private ContentItemDto MapContentToDto(ContentItem content, Dictionary<int, Shared.User>? userCache = null)
+    private ContentItemDto MapContentToDto(ContentItem content, Dictionary<int, Shared.User>? userCache = null, Dictionary<int, ServiceRequestDto>? serviceRequestCache = null)
     {
         var dto = new ContentItemDto
         {
@@ -631,6 +704,7 @@
             ContentTypeModelId = content.ContentTypeModelId,
             PatientId = content.PatientId,
             AddedByUserId = content.AddedByUserId,
+            ServiceRequestId = content.ServiceRequestId,
             IsIgnoredByDoctor = content.IsIgnoredByDoctor,
             IgnoredByDoctorId = content.IgnoredByDoctorId,
             IgnoredAt = content.IgnoredAt
@@ -671,6 +745,27 @@
             dto.AddedByName = "Self";
         }
         
+        // Populate ServiceRequestTitle from cache or navigation property - format as "ID - Title" or just "ID" if title not available
+        if (content.ServiceRequestId.HasValue)
+        {
+            if (serviceRequestCache != null && serviceRequestCache.TryGetValue(content.ServiceRequestId.Value, out var serviceRequest))
+            {
+                dto.ServiceRequestTitle = $"{serviceRequest.Id} - {serviceRequest.Title}";
+            }
+            else if (content.ServiceRequest != null)
+            {
+                dto.ServiceRequestTitle = $"{content.ServiceRequest.Id} - {content.ServiceRequest.Title}";
+            }
+            else
+            {
+                dto.ServiceRequestTitle = content.ServiceRequestId.Value.ToString();
+            }
+        }
+        else
+        {
+            dto.ServiceRequestTitle = "None";
+        }
+        
         return dto;
     }
 
@@ -703,6 +798,12 @@
                 Property = nameof(ContentItemDto.PatientName),
                 Title = "Client", 
                 Width = "150px"
+            },
+            new SMDataGridColumn<ContentItemDto>
+            {
+                Property = nameof(ContentItemDto.ServiceRequestTitle),
+                Title = "Service Request", 
+                Width = "180px"
             },
             new SMDataGridTemplateColumn<ContentItemDto>
             {
@@ -836,6 +937,11 @@
         if (AuthService.CurrentUser?.RoleId == 1) // Patient
         {
             contentForm.PatientId = AuthService.CurrentUser.Id;
+            selectedPatientId = AuthService.CurrentUser.Id; // Set for ServiceRequestSelector
+        }
+        else
+        {
+            selectedPatientId = null; // Reset when opening form
         }
         
         // Clear validation errors (in same order as validation)
@@ -845,6 +951,14 @@
         
         showContentForm = true;
         await InvokeAsync(StateHasChanged);
+    }
+    
+    private void OnPatientSelectedInForm()
+    {
+        // Update selectedPatientId when patient is selected in the form
+        selectedPatientId = contentForm.PatientId > 0 ? contentForm.PatientId : null;
+        // Reset ServiceRequestId when patient changes
+        selectedServiceRequestId = null;
     }
 
     private async Task EditContent(ContentItemDto content)
@@ -916,6 +1030,12 @@
                 if (AuthService.CurrentUser?.Id != null)
                 {
                     formData.Add(new StringContent(AuthService.CurrentUser.Id.ToString()), "AddedByUserId");
+                }
+                
+                // Add ServiceRequestId if selected
+                if (selectedServiceRequestId.HasValue)
+                {
+                    formData.Add(new StringContent(selectedServiceRequestId.Value.ToString()), "ServiceRequestId");
                 }
                 
                 formData.Add(new StringContent(contentForm.Title), "Title");
@@ -1219,6 +1339,8 @@
         public string PatientName { get; set; } = string.Empty; // DTO-only property for display and filtering
         public int? AddedByUserId { get; set; }
         public string AddedByName { get; set; } = string.Empty; // DTO-only property for display and filtering
+        public int? ServiceRequestId { get; set; }
+        public string ServiceRequestTitle { get; set; } = string.Empty; // DTO-only property for display and filtering
         public bool IsIgnoredByDoctor { get; set; } = false;
         public int? IgnoredByDoctorId { get; set; }
         public DateTime? IgnoredAt { get; set; }

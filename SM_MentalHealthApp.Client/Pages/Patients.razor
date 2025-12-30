@@ -27,14 +27,14 @@
         @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
         {
             <h2>My Clients</h2>
-            <p>View and manage your assigned users' health journey.</p>
+            <p>View and manage your assigned users' case journey.</p>
         }
         else if (AuthService.CurrentUser?.RoleId == 3) // Admin
         {
             <h2>All Clients</h2>
-            <p>Manage all patient records and view their health journey.</p>
+            <p>Manage all client records and view their case journey.</p>
             <button @onclick="ShowAddPatientForm" class="add-patient-btn">
-                ➕ Add New Patient
+                ➕ Add New Client
             </button>
         }
         else if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
@@ -45,7 +45,7 @@
         else if (AuthService.CurrentUser?.RoleId == 5) // Attorney
         {
             <h2>My Clients</h2>
-            <p>View your assigned patients.</p>
+            <p>View your assigned clients.</p>
         }
         else
         {
@@ -919,7 +919,7 @@
                 {
                     <div class="severity-sources-section mt-4">
                         <h5>🔍 Sources Contributing to Severity Assessment</h5>
-                        <p class="text-muted small mb-3">The following items were analyzed and contributed to the severity assessment. You can review them or mark them as not applicable if the patient's condition has improved.</p>
+                        <p class="text-muted small mb-3">The following items were analyzed and contributed to the severity assessment. You can review them or mark them as not applicable if the condition has improved.</p>
                         
                         <div class="alert alert-info small mb-3">
                             <strong>Found @currentHealthCheckResult.SeveritySources.Count source(s)</strong> that contributed to this assessment.
@@ -1996,7 +1996,7 @@
                 ButtonStyle = ButtonStyle.Warning,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Assign patient to a doctor or attorney",
+                Tooltip = "Assign client to an SME",
                 OnClick = async (row, ct) => await ShowAssignPatientModalAsync(row, ct)
             });
 
@@ -2021,7 +2021,7 @@
                 ButtonStyle = ButtonStyle.Danger,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Deactivate patient",
+                Tooltip = "Deactivate client",
                 OnClick = async (row, ct) => await DeactivateUserAsync(row, ct),
                 Disabled = (user) => !user.IsActive
             });
@@ -2032,7 +2032,7 @@
                 ButtonStyle = ButtonStyle.Success,
                 Variant = Variant.Flat,
                 Size = ButtonSize.Small,
-                Tooltip = "Reactivate patient",
+                Tooltip = "Reactivate client",
                 OnClick = async (row, ct) => await ReactivateUserAsync(row, ct),
                 Disabled = (user) => user.IsActive
             });
@@ -2186,7 +2186,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Failed to load patient details: {ex.Message}");
+            NotificationService.ShowError($"Failed to load client case details: {ex.Message}");
         }
     }
 
@@ -2442,7 +2442,7 @@
             if (editingUser == null)
             {
                 await PatientService.CreateAsync(patientForm);
-                NotificationService.ShowSuccess("Patient added successfully!");
+                NotificationService.ShowSuccess("Client added successfully!");
                 if (_grid != null)
                 {
                     await _grid.RefreshAsync();
@@ -2496,7 +2496,7 @@
                 }
 
                 var updatedPatient = await PatientService.UpdateAsync(editingUser.Id, updateRequest);
-                NotificationService.ShowSuccess("Patient updated successfully!");
+                NotificationService.ShowSuccess("Client updated successfully!");
                 
                 // Update only the specific row instead of reloading the entire grid
                 if (_grid != null)
@@ -2528,7 +2528,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Failed to save patient: {ex.Message}");
+            NotificationService.ShowError($"Failed to save client: {ex.Message}");
             // Don't close dialog on error - keep it open so user can fix the issue
         }
         finally
@@ -2565,7 +2565,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Failed to load patient stats: {ex.Message}");
+            NotificationService.ShowError($"Failed to load client stats: {ex.Message}");
         }
     }
 
@@ -2847,7 +2847,7 @@
         try
         {
             await PatientService.DeleteAsync(user.Id, ct);
-            NotificationService.ShowSuccess("Patient deactivated successfully!");
+            NotificationService.ShowSuccess("Client deactivated successfully!");
             if (_grid != null)
             {
                 await _grid.RefreshAsync();
@@ -2855,7 +2855,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Failed to deactivate patient: {ex.Message}");
+            NotificationService.ShowError($"Failed to deactivate client: {ex.Message}");
         }
     }
 
@@ -2876,7 +2876,7 @@
                 MobilePhone = user.MobilePhone
             }, ct);
             
-            NotificationService.ShowSuccess("Patient reactivated successfully!");
+            NotificationService.ShowSuccess("Client reactivated successfully!");
             if (_grid != null)
             {
                 await _grid.RefreshAsync();
@@ -2884,7 +2884,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Failed to reactivate patient: {ex.Message}");
+            NotificationService.ShowError($"Failed to reactivate client: {ex.Message}");
         }
     }
 
@@ -2942,7 +2942,7 @@
     {
         if (selectedUser == null || selectedDoctorId == 0)
         {
-            NotificationService.ShowWarning("Please select a doctor to assign the patient to.");
+            NotificationService.ShowWarning("Please select an SME to assign the client to.");
             return;
         }
 
@@ -2978,7 +2978,7 @@
             // Determine assigner type based on selected assigner's role
             var selectedAssigner = availableDoctors.FirstOrDefault(d => d.Id == selectedDoctorId);
             var assignerType = selectedAssigner?.RoleId == 5 ? "attorney" : "doctor";
-            NotificationService.ShowSuccess($"Patient assigned to {assignerType} successfully!");
+            NotificationService.ShowSuccess($"Client assigned to {assignerType} successfully!");
             CloseAssignModal();
             if (_grid != null)
             {
@@ -2987,7 +2987,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error assigning patient: {ex.Message}");
+            NotificationService.ShowError($"Error assigning client: {ex.Message}");
         }
         finally
         {
@@ -3135,7 +3135,7 @@
     {
         if (currentHealthCheckPatient == null || currentHealthCheckResult == null)
         {
-            NotificationService.ShowError("Cannot send alerts: Patient information not available");
+            NotificationService.ShowError("Cannot send alerts: Client information not available");
             return;
         }
 
@@ -3217,7 +3217,7 @@
                 await PatientService.UnassignFromDoctorAsync(request);
             }
             
-            NotificationService.ShowSuccess("Patient unassigned from you successfully!");
+            NotificationService.ShowSuccess("Client unassigned from you successfully!");
             CloseUnassignConfirmation();
             if (_grid != null)
             {
@@ -3226,7 +3226,7 @@
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error unassigning patient: {ex.Message}");
+            NotificationService.ShowError($"Error unassigning client: {ex.Message}");
         }
         finally
         {
@@ -3263,7 +3263,7 @@
                     if (!isAssignedToUser)
                     {
                         var roleName = AuthService.CurrentUser?.RoleId == 4 ? "coordinator" : "attorney";
-                        NotificationService.ShowWarning($"This patient is not assigned to you. You can only unassign patients that are assigned to you.");
+                        NotificationService.ShowWarning($"This client is not assigned to you. You can only unassign patients that are assigned to you.");
                         return;
                     }
                     
@@ -3276,7 +3276,7 @@
             else
             {
                 assignedDoctorsForUnassign = new();
-                NotificationService.ShowWarning("This patient is not assigned to any doctor or coordinator.");
+                NotificationService.ShowWarning("This client is not assigned to any doctor or coordinator.");
                 return;
             }
             
@@ -3303,7 +3303,7 @@
     {
         if (selectedUser == null || selectedDoctorId == 0)
         {
-            NotificationService.ShowWarning("Please select a doctor/coordinator to unassign the patient from.");
+            NotificationService.ShowWarning("Please select a SME to unassign the client from.");
             return;
         }
 
@@ -3323,7 +3323,7 @@
                     
                     if (!remainingDoctors.Any())
                     {
-                        NotificationService.ShowWarning("This patient must be assigned to at least one doctor. You cannot unassign yourself if the patient will have no doctors assigned.");
+                        NotificationService.ShowWarning("This client must be assigned to at least one SME. You cannot unassign yourself if the client will have no SMEs assigned.");
                         return;
                     }
                 }
@@ -3344,7 +3344,7 @@
 
             if (response.IsSuccessStatusCode)
             {
-                NotificationService.ShowSuccess("Patient unassigned successfully!");
+                NotificationService.ShowSuccess("Client unassigned successfully!");
                 CloseUnassignFromDoctorModal();
                 if (_grid != null)
                 {
@@ -3354,12 +3354,12 @@
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                NotificationService.ShowError($"Failed to unassign patient: {errorContent}");
+                NotificationService.ShowError($"Failed to unassign client: {errorContent}");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error unassigning patient: {ex.Message}");
+            NotificationService.ShowError($"Error unassigning client: {ex.Message}");
         }
         finally
         {

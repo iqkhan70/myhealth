@@ -64,13 +64,21 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                         currentRoleId.Value == 4 ||   // Coordinator
                         currentRoleId.Value == 5)     // Attorney
                     {
-                        var assignedPatientIds = _context.UserAssignments
-                            .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
-                            .Select(ua => ua.AssigneeId);
+                        // Get clients from ServiceRequests assigned to this SME
+                        var serviceRequestIds = _context.ServiceRequestAssignments
+                            .Where(a => a.SmeUserId == currentUserId.Value && a.IsActive)
+                            .Select(a => a.ServiceRequestId)
+                            .ToList();
+                        
+                        var clientIds = _context.ServiceRequests
+                            .Where(sr => serviceRequestIds.Contains(sr.Id) && sr.IsActive)
+                            .Select(sr => sr.ClientId)
+                            .Distinct()
+                            .ToList();
 
                         query = query.Where(u =>
                             u.RoleId == 1 &&                  // Patient
-                            assignedPatientIds.Contains(u.Id));
+                            clientIds.Contains(u.Id));
                     }
                 }
 

@@ -37,6 +37,7 @@ try {
 }
 
 import DocumentUpload from './src/components/DocumentUpload';
+import ServiceRequestList from './src/components/ServiceRequestList';
 import SmsComponent from './src/components/SmsComponent';
 import EmergencyComponent from './src/components/EmergencyComponent';
 import GuestRegistrationForm from './src/components/GuestRegistrationForm';
@@ -161,9 +162,10 @@ export default function App() {
   const incomingCallTimeoutRef = useRef(null);
 
   // 📄 Document upload state
-  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password'
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password', 'service-requests', 'service-request-detail'
   const [availablePatients, setAvailablePatients] = useState([]);
   const [selectedContactDetail, setSelectedContactDetail] = useState(null);
+  const [selectedServiceRequest, setSelectedServiceRequest] = useState(null);
 
   // 📱 SMS state
   const [smsModalVisible, setSmsModalVisible] = useState(false);
@@ -1840,12 +1842,27 @@ export default function App() {
 
       <View style={styles.contactsHeader}>
         <Text style={styles.contactsTitle}>
-          {user?.roleId === 2 ? 'Your Patients' : 'Your Doctors, Coordinators & Attorneys'}
+          {user?.roleId === 2 ? 'Your Clients' : 'Your Coordinators & SMEs'}
         </Text>
         <Text style={styles.contactsCount}>({contacts.length})</Text>
       </View>
 
       <ScrollView style={styles.contactsList}>
+        {/* Service Requests Button - First item in scroll view */}
+        <View style={{ padding: 16, paddingBottom: 12 }}>
+          <TouchableOpacity 
+            style={styles.serviceRequestButton}
+            onPress={() => {
+              setCurrentView('service-requests');
+              currentViewRef.current = 'service-requests';
+            }}
+          >
+            <Text style={styles.serviceRequestButtonIcon}>📋</Text>
+            <Text style={styles.serviceRequestButtonText}>Service Requests</Text>
+            <Text style={styles.serviceRequestButtonArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
+
         {contacts.map((contact) => (
           <TouchableOpacity key={contact.id} style={styles.contactItem} onPress={() => openContactDetail(contact)}>
             <View style={styles.contactInfo}>
@@ -1944,22 +1961,7 @@ export default function App() {
               </TouchableOpacity>
             )}
 
-            {(user?.roleId === 1 || user?.roleId === 2) && (
-              <TouchableOpacity 
-                style={styles.contactDetailButton} 
-                onPress={() => {
-                  setCurrentView('documents');
-                  currentViewRef.current = 'documents';
-                  // Set the selected patient for document upload
-                  if (user?.roleId === 2) { // Doctor uploading for patient
-                    setAvailablePatients([selectedContactDetail]);
-                  }
-                }}
-              >
-                <Text style={styles.contactDetailButtonIcon}>📄</Text>
-                <Text style={styles.contactDetailButtonText}>Documents</Text>
-              </TouchableOpacity>
-            )}
+            {/* Documents button removed - documents should be uploaded through Service Requests */}
           </View>
         </View>
       )}
@@ -2137,30 +2139,87 @@ export default function App() {
   }
 
   // Render different views based on currentView
-  if (currentView === 'documents') {
+  if (currentView === 'service-requests') {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar style="auto" />
         <View style={styles.chatHeader}>
-          <TouchableOpacity onPress={() => { setCurrentView('contact-detail'); currentViewRef.current = 'contact-detail'; }} style={styles.backButton}>
+          <TouchableOpacity onPress={() => { setCurrentView('main'); currentViewRef.current = 'main'; }} style={styles.backButton}>
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.chatTitle}>Document Management</Text>
+          <Text style={styles.chatTitle}>Service Requests</Text>
           <View style={styles.chatActions}>
             {/* Empty actions to maintain layout */}
           </View>
         </View>
-        <DocumentUpload 
-          patientId={user.id}
-          availablePatients={availablePatients}
-          showPatientSelector={user.roleId === 2}
-          onPatientSelect={(patient) => console.log('Selected patient:', patient)}
-          onDocumentUploaded={() => console.log('Document uploaded')}
+        <ServiceRequestList 
+          onServiceRequestSelect={(sr) => {
+            setSelectedServiceRequest(sr);
+            setCurrentView('service-request-detail');
+            currentViewRef.current = 'service-request-detail';
+          }}
           user={user}
         />
       </SafeAreaView>
     );
   }
+
+  if (currentView === 'service-request-detail') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="auto" />
+        <View style={styles.chatHeader}>
+          <TouchableOpacity onPress={() => { 
+            setSelectedServiceRequest(null);
+            setCurrentView('service-requests'); 
+            currentViewRef.current = 'service-requests'; 
+          }} style={styles.backButton}>
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.chatTitle}>
+            {selectedServiceRequest?.title || 'Service Request'}
+          </Text>
+          <View style={styles.chatActions}>
+            {/* Empty actions to maintain layout */}
+          </View>
+        </View>
+        <View style={{ flex: 1 }}>
+          {selectedServiceRequest && (
+            <View style={{ padding: 16, paddingBottom: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' }}>
+              <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>
+                {selectedServiceRequest.title || selectedServiceRequest.Title}
+              </Text>
+              <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                Client: {selectedServiceRequest.clientName || selectedServiceRequest.ClientName}
+              </Text>
+              <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                Type: {selectedServiceRequest.type || selectedServiceRequest.Type || 'General'}
+              </Text>
+              <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                Status: {selectedServiceRequest.status || selectedServiceRequest.Status || 'Active'}
+              </Text>
+              {(selectedServiceRequest.description || selectedServiceRequest.Description) && (
+                <Text style={{ fontSize: 14, color: '#666', marginBottom: 0 }}>
+                  {selectedServiceRequest.description || selectedServiceRequest.Description}
+                </Text>
+              )}
+            </View>
+          )}
+          <DocumentUpload 
+            patientId={user?.roleId === 1 ? user.id : (selectedServiceRequest?.clientId || selectedServiceRequest?.ClientId || user.id)}
+            serviceRequestId={selectedServiceRequest?.id || selectedServiceRequest?.Id || null}
+            availablePatients={availablePatients}
+            showPatientSelector={false}
+            onDocumentUploaded={() => console.log('Document uploaded')}
+            user={user}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Old 'documents' view removed - documents should be uploaded through Service Requests
+  // Users should navigate: Service Requests → Select SR → Upload Documents
 
   // Render incoming call modal
   const renderIncomingCallModal = () => {
@@ -2921,5 +2980,34 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  serviceRequestButton: {
+    backgroundColor: '#007bff',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 0,
+    marginHorizontal: 0,
+  },
+  serviceRequestButtonIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  serviceRequestButtonText: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  serviceRequestButtonArrow: {
+    fontSize: 24,
+    color: '#fff',
+    opacity: 0.9,
   },
 });

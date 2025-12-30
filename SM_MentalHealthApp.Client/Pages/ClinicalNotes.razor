@@ -5,6 +5,7 @@
 @using SM_MentalHealthApp.Client.Components.Common
 @using SM_MentalHealthApp.Client.Helpers
 @using SM_MentalHealthApp.Client.Helpers
+@using SM_MentalHealthApp.Client.Components
 @using Radzen
 @using Radzen.Blazor
 @inject IClinicalNotesService ClinicalNotesService
@@ -25,6 +26,12 @@
                         Click="@(async () => await ShowAddNoteDialog())" />
                 </ActionButton>
             </SMPageHeader>
+
+            <!-- Service Request Selector (for SMEs) -->
+            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 4)
+            {
+                <ServiceRequestSelector ClientId="@selectedPatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
+            }
 
             <SMDataGrid TItem="ClinicalNoteDto" 
                        Columns="_columns" 
@@ -278,6 +285,17 @@
     private List<SMDataGridColumn<ClinicalNoteDto>> _columns = new();
     private List<SMDataGridActionButton<ClinicalNoteDto>> _actions = new();
     private Dictionary<int, ClinicalNoteDto> expandedNotes = new Dictionary<int, ClinicalNoteDto>();
+    private int? selectedServiceRequestId;
+    private int? selectedPatientId; // For ServiceRequest selector
+
+    private async Task OnServiceRequestChanged(int? serviceRequestId)
+    {
+        selectedServiceRequestId = serviceRequestId;
+        if (_grid != null)
+        {
+            await _grid.RefreshAsync();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -497,7 +515,7 @@
             // Parse Radzen filter string using helper (similar to how Patients page does it)
             var (searchTerm, noteType, priority, isIgnoredByDoctor, createdDateFrom, createdDateTo) = ClinicalNotesFilterHelper.ParseFilter(filter);
             
-            var result = await ClinicalNotesService.ListPagedAsync(skip, take, null, null, searchTerm, noteType, priority, isIgnoredByDoctor, createdDateFrom, createdDateTo, ct);
+            var result = await ClinicalNotesService.ListPagedAsync(skip, take, null, null, selectedServiceRequestId, searchTerm, noteType, priority, isIgnoredByDoctor, createdDateFrom, createdDateTo, ct);
             return result;
         }
         catch (Exception ex)

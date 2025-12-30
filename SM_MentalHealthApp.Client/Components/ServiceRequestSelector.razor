@@ -1,0 +1,175 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IServiceRequestService ServiceRequestService
+@inject IAuthService AuthService
+
+<div class="service-request-selector mb-3">
+    <div class="row align-items-center">
+        <div class="col-md-4">
+            <label class="form-label">
+                <i class="fas fa-tasks"></i> Service Request:
+            </label>
+            <RadzenDropDown Data="@serviceRequestOptions"
+                           ValueProperty="Value"
+                           TextProperty="Text"
+                           @bind-Value="selectedServiceRequestId"
+                           Placeholder="All Service Requests"
+                           Style="width: 100%" />
+        </div>
+        <div class="col-md-8">
+            @if (selectedServiceRequest != null)
+            {
+                <div class="service-request-info">
+                    <span class="badge bg-primary me-2">@selectedServiceRequest.Title</span>
+                    <span class="badge @GetStatusClass(selectedServiceRequest.Status)">@selectedServiceRequest.Status</span>
+                    @if (selectedServiceRequest.Assignments != null && selectedServiceRequest.Assignments.Any(a => a.IsActive))
+                    {
+                        <span class="ms-2 text-muted">
+                            <i class="fas fa-user-md"></i>
+                            @string.Join(", ", selectedServiceRequest.Assignments.Where(a => a.IsActive).Select(a => a.SmeUserName))
+                        </span>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="text-muted">
+                    <small>Showing content from all assigned service requests</small>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int? ClientId { get; set; }
+    [Parameter] public EventCallback<int?> ServiceRequestIdChanged { get; set; }
+    
+    private List<ServiceRequestDto>? serviceRequests;
+    private List<ServiceRequestOption> serviceRequestOptions = new();
+    private int? _selectedServiceRequestId;
+    private ServiceRequestDto? selectedServiceRequest;
+    
+    private int? selectedServiceRequestId
+    {
+        get => _selectedServiceRequestId;
+        set
+        {
+            if (_selectedServiceRequestId != value)
+            {
+                _selectedServiceRequestId = value;
+                _ = OnServiceRequestIdChanged();
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthService.InitializeAsync();
+        await LoadServiceRequests();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ClientId.HasValue)
+        {
+            await LoadServiceRequests();
+        }
+    }
+
+    private async Task LoadServiceRequests()
+    {
+        try
+        {
+            if (AuthService.CurrentUser?.RoleId == 1) // Patient
+            {
+                // For patients, get their own service requests
+                // If ClientId is provided and matches the current user, use it; otherwise use current user ID
+                int? clientIdToUse = ClientId.HasValue && ClientId.Value == AuthService.CurrentUser?.Id 
+                    ? ClientId.Value 
+                    : AuthService.CurrentUser?.Id;
+                
+                serviceRequests = await ServiceRequestService.GetServiceRequestsAsync(clientIdToUse);
+            }
+            else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
+            {
+                // Get my service requests
+                serviceRequests = await ServiceRequestService.GetMyServiceRequestsAsync();
+                
+                // Filter by client if provided
+                if (ClientId.HasValue)
+                {
+                    serviceRequests = serviceRequests.Where(sr => sr.ClientId == ClientId.Value).ToList();
+                }
+            }
+            else if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator
+            {
+                // Get all service requests, optionally filtered by client
+                serviceRequests = await ServiceRequestService.GetServiceRequestsAsync(ClientId);
+            }
+            else
+            {
+                serviceRequests = new List<ServiceRequestDto>();
+            }
+
+            // Build options list
+            serviceRequestOptions = new List<ServiceRequestOption>
+            {
+                new ServiceRequestOption { Value = null, Text = "All Service Requests" }
+            };
+
+            if (serviceRequests != null)
+            {
+                foreach (var sr in serviceRequests.OrderBy(s => s.Title))
+                {
+                    serviceRequestOptions.Add(new ServiceRequestOption
+                    {
+                        Value = sr.Id,
+                        Text = $"{sr.Title} ({sr.ClientName})"
+                    });
+                }
+            }
+
+            // Auto-select default if client is provided
+            if (ClientId.HasValue && _selectedServiceRequestId == null)
+            {
+                var defaultSr = await ServiceRequestService.GetDefaultServiceRequestForClientAsync(ClientId.Value);
+                if (defaultSr != null)
+                {
+                    _selectedServiceRequestId = defaultSr.Id;
+                    selectedServiceRequest = defaultSr;
+                    await ServiceRequestIdChanged.InvokeAsync(_selectedServiceRequestId);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading service requests: {ex.Message}");
+        }
+    }
+
+    private async Task OnServiceRequestIdChanged()
+    {
+        selectedServiceRequest = serviceRequests?.FirstOrDefault(sr => sr.Id == selectedServiceRequestId);
+        await ServiceRequestIdChanged.InvokeAsync(selectedServiceRequestId);
+    }
+
+    private string GetStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "active" => "bg-success",
+            "completed" => "bg-secondary",
+            "cancelled" => "bg-danger",
+            "onhold" => "bg-warning",
+            _ => "bg-info"
+        };
+    }
+
+    private class ServiceRequestOption
+    {
+        public int? Value { get; set; }
+        public string Text { get; set; } = string.Empty;
+    }
+}
+

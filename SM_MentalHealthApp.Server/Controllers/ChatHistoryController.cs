@@ -15,20 +15,26 @@ namespace SM_MentalHealthApp.Server.Controllers
     public class ChatHistoryController : BaseController
     {
         private readonly IChatHistoryService _chatHistoryService;
+        private readonly IServiceRequestService _serviceRequestService;
         private readonly ILogger<ChatHistoryController> _logger;
+        private readonly JournalDbContext _context;
 
-        public ChatHistoryController(IChatHistoryService chatHistoryService, ILogger<ChatHistoryController> logger)
+        public ChatHistoryController(IChatHistoryService chatHistoryService, IServiceRequestService serviceRequestService, ILogger<ChatHistoryController> logger, JournalDbContext context)
         {
             _chatHistoryService = chatHistoryService;
+            _serviceRequestService = serviceRequestService;
             _logger = logger;
+            _context = context;
         }
 
         [HttpGet("sessions")]
-        public async Task<ActionResult<List<ChatSession>>> GetUserSessions([FromQuery] int? patientId = null)
+        public async Task<ActionResult<List<ChatSession>>> GetUserSessions([FromQuery] int? patientId = null, [FromQuery] int? serviceRequestId = null)
         {
             try
             {
                 var userId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+                
                 if (!userId.HasValue)
                 {
                     _logger.LogWarning("GetUserSessions: User not authenticated - GetCurrentUserId returned null. User.Identity: {IsAuthenticated}, Claims: {Claims}",
@@ -37,9 +43,52 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return Unauthorized("User not authenticated");
                 }
 
-                var sessions = await _chatHistoryService.GetUserSessionsAsync(userId.Value, patientId);
+                // For doctors and attorneys, filter by assigned ServiceRequests
+                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && userId.HasValue)
+                {
+                    // Get assigned ServiceRequest IDs for this SME
+                    var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(userId.Value);
+
+                    if (!serviceRequestIds.Any())
+                    {
+                        return Ok(new List<ChatSession>());
+                    }
+
+                    // If specific SR requested, verify access
+                    if (serviceRequestId.HasValue)
+                    {
+                        if (!serviceRequestIds.Contains(serviceRequestId.Value))
+                            return Forbid("You are not assigned to this service request");
+                        
+                        serviceRequestIds = new List<int> { serviceRequestId.Value };
+                    }
+
+                    // Filter sessions by ServiceRequestId
+                    var query = _context.ChatSessions
+                        .Where(cs => cs.IsActive && 
+                            cs.ServiceRequestId.HasValue && 
+                            serviceRequestIds.Contains(cs.ServiceRequestId.Value));
+
+                    if (patientId.HasValue)
+                        query = query.Where(cs => cs.PatientId == patientId.Value);
+                    else if (userId.HasValue)
+                        query = query.Where(cs => cs.UserId == userId.Value);
+
+                    var sessions = await query
+                        .OrderByDescending(cs => cs.LastActivityAt)
+                        .ToListAsync();
+
+                    return Ok(sessions);
+                }
+
+                // For patients and admins, use existing service
+                var allSessions = await _chatHistoryService.GetUserSessionsAsync(userId.Value, patientId);
+                
+                if (serviceRequestId.HasValue)
+                    allSessions = allSessions?.Where(s => s.ServiceRequestId == serviceRequestId.Value).ToList() ?? new List<ChatSession>();
+                
                 // Always return OK with list (empty list if no sessions) - never error on empty
-                return Ok(sessions ?? new List<ChatSession>());
+                return Ok(allSessions ?? new List<ChatSession>());
             }
             catch (Exception ex)
             {
@@ -78,10 +127,18 @@ namespace SM_MentalHealthApp.Server.Controllers
                         return StatusCode(403, "Access denied to this session");
                     }
                 }
-                else if (userRole == Shared.Constants.Roles.Doctor)
+                else if (userRole == Shared.Constants.Roles.Doctor || userRole == Shared.Constants.Roles.Attorney)
                 {
-                    // Doctors can only see their own conversations
-                    if (session.UserId != userId.Value)
+                    // Doctors and attorneys can see sessions they created OR sessions in their assigned ServiceRequests
+                    bool hasAccess = session.UserId == userId.Value;
+                    
+                    if (!hasAccess && session.ServiceRequestId.HasValue)
+                    {
+                        hasAccess = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(
+                            session.ServiceRequestId.Value, userId.Value);
+                    }
+                    
+                    if (!hasAccess)
                     {
                         return StatusCode(403, "Access denied to this session");
                     }

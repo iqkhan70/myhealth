@@ -26,17 +26,20 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly IAmazonS3 _s3Client;
         private readonly S3Config _s3Config;
         private readonly ILogger<DocumentUploadService> _logger;
+        private readonly IServiceRequestService _serviceRequestService;
 
         public DocumentUploadService(
             JournalDbContext context,
             IAmazonS3 s3Client,
             IOptions<S3Config> s3Config,
-            ILogger<DocumentUploadService> logger)
+            ILogger<DocumentUploadService> logger,
+            IServiceRequestService serviceRequestService)
         {
             _context = context;
             _s3Client = s3Client;
             _s3Config = s3Config.Value;
             _logger = logger;
+            _serviceRequestService = serviceRequestService;
         }
 
         public async Task<DocumentUploadResponse> InitiateUploadAsync(DocumentUploadRequest request, int currentUserId)
@@ -77,6 +80,7 @@ namespace SM_MentalHealthApp.Server.Services
                 {
                     ContentGuid = Guid.NewGuid(),
                     PatientId = request.PatientId,
+                    ServiceRequestId = request.ServiceRequestId, // Set ServiceRequestId
                     AddedByUserId = currentUserId,
                     Title = request.Title,
                     Description = request.Description ?? string.Empty,
@@ -170,8 +174,8 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
-                // Validate user access
-                if (!await ValidateUserAccessAsync(request.PatientId, currentUserId))
+                var currentUser = await _context.Users.FindAsync(currentUserId);
+                if (currentUser == null)
                 {
                     return new DocumentListResponse();
                 }
@@ -180,6 +184,75 @@ namespace SM_MentalHealthApp.Server.Services
                     .Where(c => c.PatientId == request.PatientId && c.IsActive)
                     .Include(c => c.AddedByUser)
                     .AsQueryable();
+
+                // ServiceRequest-based access control
+                if (currentUser.RoleId == 1) // Patient
+                {
+                    // Patients see only their own documents
+                    if (currentUser.Id != request.PatientId)
+                    {
+                        _logger.LogWarning("Patient {PatientId} tried to access documents for patient {RequestPatientId}", currentUser.Id, request.PatientId);
+                        return new DocumentListResponse();
+                    }
+                    // If ServiceRequestId specified, filter by it
+                    if (request.ServiceRequestId.HasValue)
+                    {
+                        // Check if this is the "General" ServiceRequest - if so, also include NULL documents
+                        var generalSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(request.PatientId);
+                        if (generalSr != null && generalSr.Id == request.ServiceRequestId.Value)
+                        {
+                            // For General SR, show documents with this SR ID OR NULL (legacy documents)
+                            query = query.Where(c => c.ServiceRequestId == request.ServiceRequestId.Value || c.ServiceRequestId == null);
+                        }
+                        else
+                        {
+                            // For non-General SRs, exact match only
+                            query = query.Where(c => c.ServiceRequestId == request.ServiceRequestId.Value);
+                        }
+                    }
+                }
+                else if (currentUser.RoleId == 3) // Admin
+                {
+                    // Admin sees all documents, but can filter by ServiceRequestId if specified
+                    if (request.ServiceRequestId.HasValue)
+                    {
+                        query = query.Where(c => c.ServiceRequestId == request.ServiceRequestId.Value);
+                    }
+                }
+                else // Doctor, Coordinator, or Attorney
+                {
+                    // Get assigned ServiceRequest IDs for this SME
+                    var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId);
+
+                    if (!serviceRequestIds.Any())
+                    {
+                        // No assigned service requests, return empty
+                        return new DocumentListResponse();
+                    }
+
+                    // If specific SR requested, verify access
+                    if (request.ServiceRequestId.HasValue)
+                    {
+                        if (!serviceRequestIds.Contains(request.ServiceRequestId.Value))
+                        {
+                            return new DocumentListResponse(); // Access denied
+                        }
+                        query = query.Where(c => c.ServiceRequestId == request.ServiceRequestId.Value);
+                    }
+                    else
+                    {
+                        // Filter to only documents in assigned ServiceRequests
+                        query = query.Where(c => 
+                            (c.ServiceRequestId.HasValue && serviceRequestIds.Contains(c.ServiceRequestId.Value)) ||
+                            (!c.ServiceRequestId.HasValue && _context.ServiceRequests.Any(sr => 
+                                sr.ClientId == request.PatientId && 
+                                sr.Title == "General" && 
+                                sr.IsActive && 
+                                serviceRequestIds.Contains(sr.Id)
+                            ))
+                        );
+                    }
+                }
 
                 // Apply filters
                 if (request.Type.HasValue)

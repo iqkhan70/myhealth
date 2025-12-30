@@ -1,0 +1,160 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IServiceRequestService ServiceRequestService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<div class="p-3">
+    <RadzenFieldset Text="Assign SME to Service Request">
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Service Request:</strong> @ServiceRequest.Title
+            </label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Client:</strong> @ServiceRequest.ClientName
+            </label>
+        </div>
+        
+        <div class="mb-3">
+            <RadzenFormField Text="Select SME" class="w-100">
+                <RadzenDropDown @bind-Value="@selectedSmeUserId" 
+                               Data="@SMEs" 
+                               ValueProperty="Id" 
+                               TextProperty="FullName"
+                               Placeholder="Select an SME to assign..."
+                               AllowFiltering="true"
+                               FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                               Style="width: 100%"
+                               TValue="int">
+                    <EmptyMessageTemplate>
+                        No SMEs found
+                    </EmptyMessageTemplate>
+                </RadzenDropDown>
+                <RadzenFormFieldValidator Component="selectedSmeUserId" Text="SME is required" />
+            </RadzenFormField>
+        </div>
+
+        @if (ServiceRequest.Assignments != null && ServiceRequest.Assignments.Any(a => a.IsActive))
+        {
+            <div class="mb-3">
+                <label class="form-label"><strong>Currently Assigned SMEs:</strong></label>
+                <div>
+                    @foreach (var assignment in ServiceRequest.Assignments.Where(a => a.IsActive))
+                    {
+                        <span class="badge bg-primary me-2 mb-2">
+                            @assignment.SmeUserName
+                            <button class="btn-close btn-close-white ms-2" style="font-size: 0.7em;" 
+                                @onclick="@(() => UnassignSme(assignment.SmeUserId))" 
+                                title="Unassign @assignment.SmeUserName"></button>
+                        </span>
+                    }
+                </div>
+            </div>
+        }
+    </RadzenFieldset>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="Assign SME" ButtonStyle="ButtonStyle.Success" IsBusy="@isSubmitting" 
+            Disabled="@(isSubmitting || selectedSmeUserId == 0)" Click="@HandleAssignClick" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public ServiceRequestDto ServiceRequest { get; set; } = null!;
+    [Parameter] public List<User> SMEs { get; set; } = new();
+
+    private int selectedSmeUserId = 0;
+    private bool isSubmitting = false;
+
+    private async Task HandleAssignClick()
+    {
+        await AssignSme();
+    }
+
+    private async Task AssignSme()
+    {
+        if (selectedSmeUserId == 0)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please select an SME");
+            return;
+        }
+
+        // Check if already assigned
+        if (ServiceRequest.Assignments != null && 
+            ServiceRequest.Assignments.Any(a => a.IsActive && a.SmeUserId == selectedSmeUserId))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Warning", "This SME is already assigned to this service request");
+            return;
+        }
+
+        if (isSubmitting) return;
+
+        isSubmitting = true;
+        StateHasChanged();
+        
+        try
+        {
+            var success = await ServiceRequestService.AssignSmeToServiceRequestAsync(ServiceRequest.Id, selectedSmeUserId);
+            
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "SME assigned successfully");
+                await Task.Delay(100);
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to assign SME");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to assign SME: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UnassignSme(int smeUserId)
+    {
+        var smeName = ServiceRequest.Assignments?.FirstOrDefault(a => a.SmeUserId == smeUserId)?.SmeUserName ?? "SME";
+        
+        var confirm = await DialogService.Confirm($"Are you sure you want to unassign {smeName} from this service request?",
+            "Unassign SME", new ConfirmOptions { OkButtonText = "Yes", CancelButtonText = "No" });
+
+        if (confirm == true)
+        {
+            try
+            {
+                var success = await ServiceRequestService.UnassignSmeFromServiceRequestAsync(ServiceRequest.Id, smeUserId);
+                
+                if (success)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", $"{smeName} unassigned successfully");
+                    // Remove from local list
+                    var assignment = ServiceRequest.Assignments?.FirstOrDefault(a => a.SmeUserId == smeUserId);
+                    if (assignment != null)
+                    {
+                        assignment.IsActive = false;
+                    }
+                    StateHasChanged();
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to unassign SME");
+                }
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to unassign SME: {ex.Message}");
+            }
+        }
+    }
+}
+

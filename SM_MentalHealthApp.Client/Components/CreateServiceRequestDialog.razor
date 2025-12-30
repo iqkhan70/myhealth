@@ -1,0 +1,174 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IServiceRequestService ServiceRequestService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<RadzenForm Data="@request" Submit="@OnSubmit">
+    <RadzenFieldset Text="Service Request Details">
+        <div class="row">
+            <div class="col-12 mb-3">
+                <RadzenFormField Text="Client" class="w-100">
+                    <RadzenDropDown @bind-Value="@request.ClientId" 
+                                   Data="@Clients" 
+                                   ValueProperty="Id" 
+                                   TextProperty="FullName"
+                                   Placeholder="Select a client..."
+                                   AllowFiltering="true"
+                                   FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                   Style="width: 100%"
+                                   TValue="int">
+                        <EmptyMessageTemplate>
+                            No clients found
+                        </EmptyMessageTemplate>
+                    </RadzenDropDown>
+                    <RadzenFormFieldValidator Component="ClientId" Text="Client is required" />
+                </RadzenFormField>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12 mb-3">
+                <RadzenFormField Text="Title" class="w-100">
+                    <RadzenTextBox @bind-Value="@request.Title" Placeholder="Enter service request title..." Style="width: 100%" MaxLength="200" />
+                    <RadzenFormFieldValidator Component="Title" Text="Title is required" />
+                </RadzenFormField>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <RadzenFormField Text="Type" class="w-100">
+                    <RadzenDropDown @bind-Value="@request.Type" 
+                                   Data="@typeOptions" 
+                                   Placeholder="Select type..."
+                                   Style="width: 100%"
+                                   TValue="string" />
+                </RadzenFormField>
+            </div>
+            <div class="col-md-6 mb-3">
+                <RadzenFormField Text="Initial SME (Optional)" class="w-100">
+                    <RadzenDropDown @bind-Value="@initialSmeUserId" 
+                                   Data="@SMEs" 
+                                   ValueProperty="Id" 
+                                   TextProperty="FullName"
+                                   Placeholder="Select an SME to assign..."
+                                   AllowFiltering="true"
+                                   FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                   AllowClear="true"
+                                   Style="width: 100%"
+                                   TValue="int?" />
+                </RadzenFormField>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12 mb-3">
+                <RadzenFormField Text="Description" class="w-100">
+                    <RadzenTextArea @bind-Value="@request.Description" 
+                                   Placeholder="Enter description (optional)..." 
+                                   Style="width: 100%; min-height: 100px;"
+                                   MaxLength="1000" />
+                </RadzenFormField>
+            </div>
+        </div>
+    </RadzenFieldset>
+
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="d-flex justify-content-end gap-2">
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                <RadzenButton Text="Create" ButtonStyle="ButtonStyle.Success" IsBusy="@isSubmitting" 
+                    Disabled="@isSubmitting" Click="@HandleCreateClick" />
+            </div>
+        </div>
+    </div>
+</RadzenForm>
+
+@code {
+    [Parameter] public List<User> Clients { get; set; } = new();
+    [Parameter] public List<User> SMEs { get; set; } = new();
+
+    private CreateServiceRequestRequest request = new();
+    private int? initialSmeUserId;
+    private bool isSubmitting = false;
+
+    private List<string> typeOptions = new()
+    {
+        "General",
+        "Medical",
+        "Legal",
+        "Therapy",
+        "Consultation",
+        "Follow-up",
+        "Emergency"
+    };
+
+    private async Task HandleCreateClick()
+    {
+        await CreateServiceRequest();
+    }
+
+    private async Task OnSubmit(CreateServiceRequestRequest model)
+    {
+        await CreateServiceRequest();
+    }
+
+    private async Task CreateServiceRequest()
+    {
+        Console.WriteLine("CreateServiceRequest called!");
+        NotificationService.Notify(NotificationSeverity.Info, "Debug", "Create button clicked!");
+        
+        // Validate
+        if (request.ClientId <= 0)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please select a client");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please enter a title");
+            return;
+        }
+
+        if (isSubmitting) return; // Prevent double submission
+
+        isSubmitting = true;
+        StateHasChanged();
+        
+        try
+        {
+            Console.WriteLine($"Creating service request: ClientId={request.ClientId}, Title={request.Title}");
+            
+            // Set the SmeUserId if an initial SME was selected
+            if (initialSmeUserId.HasValue)
+            {
+                request.SmeUserId = initialSmeUserId.Value;
+            }
+
+            var created = await ServiceRequestService.CreateServiceRequestAsync(request);
+            Console.WriteLine($"Service request created successfully: {created.Id}");
+            
+            NotificationService.Notify(NotificationSeverity.Success, "Success", $"Service request '{created.Title}' created successfully");
+            
+            // Small delay to ensure notification is shown
+            await Task.Delay(100);
+            
+            // Close the dialog
+            DialogService.Close(true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error creating service request: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to create service request: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+}
+

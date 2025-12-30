@@ -9,10 +9,17 @@ public class JournalService : BaseService, IJournalService
     {
     }
 
-    public async Task<IEnumerable<JournalEntry>> GetEntriesForUserAsync(int userId, CancellationToken ct = default)
+    public async Task<IEnumerable<JournalEntry>> GetEntriesForUserAsync(int userId, int? serviceRequestId = null, CancellationToken ct = default)
     {
         AddAuthorizationHeader();
-        var response = await _http.GetFromJsonAsync<List<JournalEntry>>($"api/journal/user/{userId}", ct);
+        var queryParams = new List<string>();
+        if (serviceRequestId.HasValue) queryParams.Add($"serviceRequestId={serviceRequestId.Value}");
+        
+        var url = queryParams.Any()
+            ? $"api/journal/user/{userId}?{string.Join("&", queryParams)}"
+            : $"api/journal/user/{userId}";
+        
+        var response = await _http.GetFromJsonAsync<List<JournalEntry>>(url, ct);
         return response ?? new List<JournalEntry>();
     }
 

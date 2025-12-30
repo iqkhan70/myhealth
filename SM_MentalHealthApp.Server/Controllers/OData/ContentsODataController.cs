@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.OData.Results;
 using Microsoft.AspNetCore.OData.Routing.Controllers;
 using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Server.Data;
+using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using System.Security.Claims;
 
@@ -16,13 +17,16 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
     {
         private readonly JournalDbContext _context;
         private readonly ILogger<ContentsODataController> _logger;
+        private readonly IServiceRequestService _serviceRequestService;
 
         public ContentsODataController(
             JournalDbContext context,
-            ILogger<ContentsODataController> logger)
+            ILogger<ContentsODataController> logger,
+            IServiceRequestService serviceRequestService)
         {
             _context = context;
             _logger = logger;
+            _serviceRequestService = serviceRequestService;
         }
 
         [EnableQuery(
@@ -44,6 +48,7 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                     .Include(c => c.Patient)
                     .Include(c => c.AddedByUser)
                     .Include(c => c.IgnoredByDoctor)
+                    .Include(c => c.ServiceRequest)
                     .Where(c => c.IsActive)
                     .AsQueryable();
 
@@ -57,13 +62,19 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                     }
                     else if (currentRoleId.Value == 2 || currentRoleId.Value == 4 || currentRoleId.Value == 5) // Doctor, Coordinator, or Attorney
                     {
-                        // Get assigned patient IDs
-                        var assignedPatientIds = _context.UserAssignments
-                            .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
-                            .Select(ua => ua.AssigneeId);
-
-                        // Filter content to only assigned patients
-                        query = query.Where(c => assignedPatientIds.Contains(c.PatientId));
+                        // Get ServiceRequest IDs assigned to this SME
+                        var serviceRequestIds = _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value).Result;
+                        
+                        // Filter content to only ServiceRequests assigned to this SME
+                        query = query.Where(c => 
+                            (c.ServiceRequestId.HasValue && serviceRequestIds.Contains(c.ServiceRequestId.Value)) ||
+                            (!c.ServiceRequestId.HasValue && _context.ServiceRequests.Any(sr => 
+                                sr.ClientId == c.PatientId && 
+                                sr.Title == "General" && 
+                                sr.IsActive && 
+                                serviceRequestIds.Contains(sr.Id)
+                            ))
+                        );
                     }
                     // Admin (3) sees all content
                 }
@@ -88,6 +99,7 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                 .Include(c => c.Patient)
                 .Include(c => c.AddedByUser)
                 .Include(c => c.IgnoredByDoctor)
+                .Include(c => c.ServiceRequest)
                 .Where(c => c.Id == key && c.IsActive);
 
             // Role-based filtering
@@ -99,11 +111,19 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                 }
                 else if (currentRoleId.Value == 2 || currentRoleId.Value == 4 || currentRoleId.Value == 5) // Doctor, Coordinator, or Attorney
                 {
-                    var assignedPatientIds = _context.UserAssignments
-                        .Where(ua => ua.AssignerId == currentUserId.Value && ua.IsActive)
-                        .Select(ua => ua.AssigneeId);
-
-                    query = query.Where(c => assignedPatientIds.Contains(c.PatientId));
+                    // Get ServiceRequest IDs assigned to this SME
+                    var serviceRequestIds = _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value).Result;
+                    
+                    // Filter content to only ServiceRequests assigned to this SME
+                    query = query.Where(c => 
+                        (c.ServiceRequestId.HasValue && serviceRequestIds.Contains(c.ServiceRequestId.Value)) ||
+                        (!c.ServiceRequestId.HasValue && _context.ServiceRequests.Any(sr => 
+                            sr.ClientId == c.PatientId && 
+                            sr.Title == "General" && 
+                            sr.IsActive && 
+                            serviceRequestIds.Contains(sr.Id)
+                        ))
+                    );
                 }
             }
 

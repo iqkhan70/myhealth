@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -36,7 +36,8 @@ const mapFileTypeToContentTypeEnum = (fileType, mimeType) => {
 
 const DocumentUpload = ({ 
   patientId, 
-  onDocumentUploaded, 
+  serviceRequestId = null, // New: Service Request ID to tie content to
+  onDocumentUploaded,
   showPatientSelector = false,
   availablePatients = [],
   onPatientSelect,
@@ -63,12 +64,12 @@ const DocumentUpload = ({
     }
   }, [patientId]);
 
-  // Load documents when selectedPatient changes (for doctor selecting different patients)
+  // Load documents when selectedPatient or serviceRequestId changes
   useEffect(() => {
     if (selectedPatient) {
       loadDocuments();
     }
-  }, [selectedPatient]);
+  }, [selectedPatient, serviceRequestId, loadDocuments]);
 
   const loadCategories = async () => {
     try {
@@ -79,12 +80,12 @@ const DocumentUpload = ({
     }
   };
 
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     if (!selectedPatient) return;
     
     setLoading(true);
     try {
-      const response = await DocumentUploadService.getDocuments(selectedPatient);
+      const response = await DocumentUploadService.getDocuments(selectedPatient, {}, serviceRequestId);
       setDocuments(response.documents || []);
     } catch (error) {
       console.error('Error loading documents:', error);
@@ -92,7 +93,7 @@ const DocumentUpload = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedPatient, serviceRequestId]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -260,8 +261,16 @@ const DocumentUpload = ({
       // Also need to map file type to ContentTypeEnum
       const contentTypeEnum = mapFileTypeToContentTypeEnum(selectedFile.type, selectedFile.contentType);
       
+      // Ensure ServiceRequestId is set - if null, this is a problem
+      if (!serviceRequestId) {
+        Alert.alert('Error', 'ServiceRequestId is required. Please select a Service Request first.');
+        setIsUploading(false);
+        return;
+      }
+
       const uploadRequest = {
         PatientId: selectedPatient, // PascalCase
+        ServiceRequestId: serviceRequestId, // PascalCase - tie content to ServiceRequest
         Title: uploadForm.title.trim(), // PascalCase
         Description: uploadForm.description.trim() || null, // Optional
         FileName: selectedFile.name, // PascalCase
@@ -271,7 +280,6 @@ const DocumentUpload = ({
         Category: uploadForm.category || null, // Optional
       };
 
-      console.log('📄 Upload request:', JSON.stringify(uploadRequest, null, 2));
       await DocumentUploadService.uploadDocument(selectedFile.uri, uploadRequest);
       
       Alert.alert('Success', 'Document uploaded successfully!');

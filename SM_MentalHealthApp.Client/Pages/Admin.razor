@@ -2,13 +2,16 @@
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Client.Components.Grid
+@using SM_MentalHealthApp.Client.Components
 @using SM_MentalHealthApp.Client.Helpers
 @using System.Net.Http.Json
 @inject HttpClient Http
 @inject IAuthService AuthService
+@inject IServiceRequestService ServiceRequestService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject ODataService ODataService
+@inject NotificationService NotificationService
 
 <PageTitle>Assignments</PageTitle>
 
@@ -59,6 +62,17 @@
     .mb-3 {
         margin-bottom: 1rem !important;
     }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 1rem;
+    }
+
+    .form-label {
+        margin-bottom: 0.5rem;
+        min-width: 250px;
+    }
 </style>
 
 <div class="admin-container">
@@ -79,32 +93,62 @@
         <div class="admin-content">
             <!-- Assignment Management -->
             <div class="assignment-section">
-                <h2>Client-SME Assignments</h2>
+                <h2>Service Request - SME Assignments</h2>
+                <p class="text-muted mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    Assign SMEs to specific Service Requests. Each Service Request can have its own assigned SME, allowing multiple SMEs to work on different requests for the same client.
+                </p>
 
                 <div class="assignment-controls">
                     <div class="form-group">
-                        <label class="form-label">Select Client:</label>
+                        <label class="form-label" style="user-select: none;">Select Client:</label>
                         <RadzenDropDown Data="@patients.Where(p => p.RoleId == 1)" TextProperty="FullName"
-                            ValueProperty="Id" @bind-Value="selectedPatientId" AllowFiltering="true"
+                            ValueProperty="Id" Value="@selectedPatientId" ValueChanged="@((int? value) => OnClientSelected(value))" AllowFiltering="true"
                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a client..."
-                            Style="width: 400px" />
+                            Style="width: 380px" TValue="int?" AllowClear="true" />
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Select SME:</label>
-                        <RadzenDropDown Data="@doctors.Where(d => d.RoleId == 2)" TextProperty="FullName" ValueProperty="Id"
+                        <label class="form-label" style="user-select: none;">Select or Create Service Request:</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <RadzenDropDown Data="@availableServiceRequests" TextProperty="Title" ValueProperty="Id"
+                                @bind-Value="selectedServiceRequestId" AllowFiltering="true"
+                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
+                                Placeholder="@(selectedPatientId == null || selectedPatientId == 0 ? "Select a client first..." : "Choose a service request...")"
+                                Style="width: 380px; flex-shrink: 0;"
+                                AllowClear="true">
+                                <Template Context="sr">
+                                    <div>
+                                        <strong>@sr.Title</strong>
+                                        <br />
+                                        <small class="text-muted">@sr.Type - @sr.Status</small>
+                                    </div>
+                                </Template>
+                            </RadzenDropDown>
+                            @if (selectedPatientId.HasValue && selectedPatientId.Value > 0)
+                            {
+                                <button class="btn btn-sm btn-outline-primary" style="flex-shrink: 0; white-space: nowrap; padding: 0.25rem 0.5rem; font-size: 0.875rem; height: 38px;" @onclick="ShowCreateServiceRequestDialog">
+                                    <i class="fas fa-plus"></i> Create New
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" style="user-select: none;">Select SME:</label>
+                        <RadzenDropDown Data="@doctors.Where(d => d.RoleId == 2 || d.RoleId == 5)" TextProperty="FullName" ValueProperty="Id"
                             @bind-Value="selectedDoctorId" AllowFiltering="true"
                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose an SME..."
-                            Style="width: 400px" />
+                            Style="width: 380px" TValue="int?" AllowClear="true" />
                     </div>
 
                     <div class="button-group">
-                        <button class="btn btn-primary" @onclick="AssignPatient"
-                            disabled="@(selectedPatientId == 0 || selectedDoctorId == 0)">
-                            Assign
+                        <button class="btn btn-primary" @onclick="AssignSmeToServiceRequest"
+                            disabled="@(selectedServiceRequestId == null || selectedDoctorId == null || selectedDoctorId == 0)">
+                            Assign SME to Service Request
                         </button>
-                        <button class="btn btn-danger" @onclick="UnassignPatient"
-                            disabled="@(selectedPatientId == 0 || selectedDoctorId == 0)">
+                        <button class="btn btn-danger" @onclick="UnassignSmeFromServiceRequest"
+                            disabled="@(selectedServiceRequestId == null || selectedDoctorId == null || selectedDoctorId == 0)">
                             Unassign
                         </button>
                     </div>
@@ -118,6 +162,53 @@
                     </div>
                 }
             </div>
+
+            <!-- Create Service Request Dialog -->
+            @if (showCreateServiceRequestDialog)
+            {
+                <div class="modal" style="display: block; background: rgba(0,0,0,0.5);">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Create New Service Request</h5>
+                                <button type="button" class="btn-close" @onclick="() => showCreateServiceRequestDialog = false"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Title <span class="text-danger">*</span></label>
+                                    <RadzenTextBox @bind-Value="newServiceRequestTitle" Placeholder="Enter service request title..." Style="width: 100%" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Type</label>
+                                    @{
+                                        var serviceRequestTypes = new[] { "General", "Medical", "Legal", "Therapy", "Other" };
+                                    }
+                                    <RadzenDropDown Data="@serviceRequestTypes" 
+                                        @bind-Value="newServiceRequestType" Style="width: 100%" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Description</label>
+                                    <RadzenTextArea @bind-Value="newServiceRequestDescription" Placeholder="Enter description (optional)..." Rows="3" Style="width: 100%" />
+                                </div>
+                                @if (selectedDoctorId.HasValue && selectedDoctorId.Value > 0)
+                                {
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle"></i>
+                                        The selected SME will be automatically assigned to this Service Request.
+                                    </div>
+                                }
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" @onclick="() => showCreateServiceRequestDialog = false">Cancel</button>
+                                <button type="button" class="btn btn-primary" @onclick="CreateServiceRequest" 
+                                    disabled="@string.IsNullOrWhiteSpace(newServiceRequestTitle)">
+                                    Create Service Request
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
 
             <!-- Current Assignments -->
             <div class="assignments-section">
@@ -144,24 +235,35 @@
                     ShowFilterRowButtons="true"
                     @ref="_assignmentsGrid">
                     <Columns>
-                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="PatientName" Title="Client"
-                            Width="200px" Filterable="true" FilterProperty="PatientName">
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="ServiceRequestTitle" Title="Service Request"
+                            Width="200px" Filterable="true" FilterProperty="ServiceRequestTitle">
                             <Template Context="assignment">
                                 <div>
-                                    <strong>@assignment.PatientName</strong>
+                                    <strong>@assignment.ServiceRequestTitle</strong>
                                     <br />
-                                    <small class="text-muted">@assignment.PatientEmail</small>
+                                    <small class="text-muted">@assignment.ServiceRequestType - @assignment.ServiceRequestStatus</small>
                                 </div>
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="DoctorName" Title="SME"
-                            Width="200px" Filterable="true" FilterProperty="DoctorName">
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="ClientName" Title="Client"
+                            Width="200px" Filterable="true" FilterProperty="ClientName">
                             <Template Context="assignment">
                                 <div>
-                                    <strong>@assignment.DoctorName</strong>
+                                    <strong>@assignment.ClientName</strong>
                                     <br />
-                                    <small class="text-muted">@assignment.DoctorEmail</small>
+                                    <small class="text-muted">@assignment.ClientEmail</small>
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="SmeUserName" Title="SME"
+                            Width="200px" Filterable="true" FilterProperty="SmeUserName">
+                            <Template Context="assignment">
+                                <div>
+                                    <strong>@assignment.SmeUserName</strong>
+                                    <br />
+                                    <small class="text-muted">@assignment.SmeUserEmail</small>
                                 </div>
                             </Template>
                         </RadzenDataGridColumn>
@@ -173,12 +275,12 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="DoctorSpecialization"
-                            Title="Specialization" Width="150px" Filterable="true" FilterProperty="DoctorSpecialization">
+                        <RadzenDataGridColumn TItem="AssignmentDisplayModel" Property="SmeUserSpecialization"
+                            Title="Specialization" Width="150px" Filterable="true" FilterProperty="SmeUserSpecialization">
                             <Template Context="assignment">
-                                @if (!string.IsNullOrEmpty(assignment.DoctorSpecialization))
+                                @if (!string.IsNullOrEmpty(assignment.SmeUserSpecialization))
                                 {
-                                    <span class="badge badge-info">@assignment.DoctorSpecialization</span>
+                                    <span class="badge badge-info">@assignment.SmeUserSpecialization</span>
                                 }
                                 else
                                 {
@@ -192,7 +294,7 @@
                             <Template Context="assignment">
                                 <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" ButtonType="ButtonType.Button"
                                     Size="ButtonSize.Small"
-                                    Click="@(async () => await UnassignPatientFromGrid(assignment.PatientId, assignment.DoctorId))"
+                                    Click="@(async () => await UnassignSmeFromGrid(assignment.ServiceRequestId, assignment.SmeUserId))"
                                     Title="Remove Assignment" />
                             </Template>
                         </RadzenDataGridColumn>
@@ -205,7 +307,7 @@
                 <h2>SME-Client Overview</h2>
 
                 <div class="search-box mb-3">
-                    <RadzenTextBox @bind-Value="doctorSearchTerm" Placeholder="Search doctors by name or email..."
+                    <RadzenTextBox @bind-Value="doctorSearchTerm" Placeholder="Search SMEs by name or email..."
                         Style="width: 100%; max-width: 400px;" />
                 </div>
 
@@ -246,12 +348,18 @@
     private List<User> patients = new();
     private List<User> doctors = new();
     private List<UserAssignment> assignments = new();
-    private int selectedPatientId = 0;
-    private int selectedDoctorId = 0;
+    private int? selectedPatientId = null;
+    private int? selectedServiceRequestId;
+    private int? selectedDoctorId = null;
     private SMDataGrid<AssignmentDisplayModel>? _assignmentsGrid;
     private bool isLoading = true;
     private string message = "";
     private bool isError = false;
+    private List<ServiceRequestDto> availableServiceRequests = new();
+    private bool showCreateServiceRequestDialog = false;
+    private string newServiceRequestTitle = "";
+    private string newServiceRequestType = "General";
+    private string newServiceRequestDescription = "";
 
     // Search functionality for doctor overview
     private string doctorSearchTerm = string.Empty;
@@ -305,6 +413,119 @@
 
 
     private async Task<PagedResult<AssignmentDisplayModel>> LoadAssignmentsPagedAsync(int skip, int take, string? orderBy, string? filter, CancellationToken ct)
+    {
+        try
+        {
+            // Load all ServiceRequests with their assignments
+            var allServiceRequests = await ServiceRequestService.GetServiceRequestsAsync();
+            
+            // Get all unique user IDs (clients and SMEs)
+            var clientIds = allServiceRequests.Select(sr => sr.ClientId).Distinct().ToList();
+            var smeUserIds = allServiceRequests.SelectMany(sr => sr.Assignments.Select(a => a.SmeUserId)).Distinct().ToList();
+            var allUserIds = clientIds.Concat(smeUserIds).Distinct().ToList();
+            
+            // Load user details in parallel
+            var allUsers = new Dictionary<int, User>();
+            var userLoadTasks = allUserIds.Select(async userId =>
+            {
+                try
+                {
+                    var user = await Http.GetFromJsonAsync<User>($"api/admin/users/{userId}");
+                    if (user != null)
+                    {
+                        allUsers[userId] = user;
+                    }
+                }
+                catch { }
+            });
+            await Task.WhenAll(userLoadTasks);
+            
+            // Flatten ServiceRequests and their assignments into AssignmentDisplayModel
+            var allAssignments = new List<AssignmentDisplayModel>();
+            
+            foreach (var sr in allServiceRequests)
+            {
+                var client = allUsers.GetValueOrDefault(sr.ClientId);
+                foreach (var assignment in sr.Assignments.Where(a => a.IsActive))
+                {
+                    var sme = allUsers.GetValueOrDefault(assignment.SmeUserId);
+                    allAssignments.Add(new AssignmentDisplayModel
+                    {
+                        ServiceRequestId = sr.Id,
+                        ServiceRequestTitle = sr.Title,
+                        ServiceRequestType = sr.Type ?? "General",
+                        ServiceRequestStatus = sr.Status,
+                        ClientId = sr.ClientId,
+                        ClientName = client != null ? $"{client.FirstName} {client.LastName}" : sr.ClientName,
+                        ClientEmail = client?.Email ?? "",
+                        SmeUserId = assignment.SmeUserId,
+                        SmeUserName = sme != null ? $"{sme.FirstName} {sme.LastName}" : assignment.SmeUserName,
+                        SmeUserEmail = sme?.Email ?? "",
+                        SmeUserSpecialization = sme?.Specialization ?? "",
+                        AssignedDate = assignment.AssignedAt
+                    });
+                }
+            }
+            
+            // Apply client-side filtering if needed
+            // TODO: Implement filter parsing for ServiceRequest assignments
+            
+            // Apply sorting
+            if (!string.IsNullOrEmpty(orderBy))
+            {
+                if (orderBy.Contains("ServiceRequestTitle", StringComparison.OrdinalIgnoreCase))
+                {
+                    allAssignments = orderBy.Contains("desc", StringComparison.OrdinalIgnoreCase)
+                        ? allAssignments.OrderByDescending(a => a.ServiceRequestTitle).ToList()
+                        : allAssignments.OrderBy(a => a.ServiceRequestTitle).ToList();
+                }
+                else if (orderBy.Contains("ClientName", StringComparison.OrdinalIgnoreCase))
+                {
+                    allAssignments = orderBy.Contains("desc", StringComparison.OrdinalIgnoreCase)
+                        ? allAssignments.OrderByDescending(a => a.ClientName).ToList()
+                        : allAssignments.OrderBy(a => a.ClientName).ToList();
+                }
+                else if (orderBy.Contains("SmeUserName", StringComparison.OrdinalIgnoreCase))
+                {
+                    allAssignments = orderBy.Contains("desc", StringComparison.OrdinalIgnoreCase)
+                        ? allAssignments.OrderByDescending(a => a.SmeUserName).ToList()
+                        : allAssignments.OrderBy(a => a.SmeUserName).ToList();
+                }
+                else if (orderBy.Contains("AssignedDate", StringComparison.OrdinalIgnoreCase))
+                {
+                    allAssignments = orderBy.Contains("desc", StringComparison.OrdinalIgnoreCase)
+                        ? allAssignments.OrderByDescending(a => a.AssignedDate).ToList()
+                        : allAssignments.OrderBy(a => a.AssignedDate).ToList();
+                }
+            }
+            
+            // Apply paging
+            var totalCount = allAssignments.Count;
+            var pagedItems = allAssignments.Skip(skip).Take(take).ToList();
+            
+            return new PagedResult<AssignmentDisplayModel>
+            {
+                Items = pagedItems,
+                TotalCount = totalCount,
+                PageNumber = (skip / take) + 1,
+                PageSize = take
+            };
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error loading assignments: {ex.Message}");
+            return new PagedResult<AssignmentDisplayModel>
+            {
+                Items = new List<AssignmentDisplayModel>(),
+                TotalCount = 0,
+                PageNumber = 1,
+                PageSize = take
+            };
+        }
+    }
+
+    // Legacy method - keeping for backward compatibility but not used
+    private async Task<PagedResult<AssignmentDisplayModel>> LoadAssignmentsPagedAsync_OLD(int skip, int take, string? orderBy, string? filter, CancellationToken ct)
     {
         try
         {
@@ -486,28 +707,8 @@
             // Map UserAssignment to AssignmentDisplayModel
             var items = result.Items.Select(ua => MapAssignmentToDisplayModel(ua)).ToList();
 
-            // Client-side sort if needed
-            if (needsClientSort && !string.IsNullOrEmpty(clientSortProperty))
-            {
-                if (clientSortProperty == "PatientName")
-                {
-                    items = isDescending
-                        ? items.OrderByDescending(a => a.PatientName).ToList()
-                        : items.OrderBy(a => a.PatientName).ToList();
-                }
-                else if (clientSortProperty == "DoctorName")
-                {
-                    items = isDescending
-                        ? items.OrderByDescending(a => a.DoctorName).ToList()
-                        : items.OrderBy(a => a.DoctorName).ToList();
-                }
-                else if (clientSortProperty == "DoctorSpecialization")
-                {
-                    items = isDescending
-                        ? items.OrderByDescending(a => a.DoctorSpecialization ?? "").ToList()
-                        : items.OrderBy(a => a.DoctorSpecialization ?? "").ToList();
-                }
-            }
+            // Client-side sort if needed (for old OData method - not used in new implementation)
+            // This code is kept for backward compatibility but won't be reached in new LoadAssignmentsPagedAsync
 
             return new PagedResult<AssignmentDisplayModel>
             {
@@ -529,21 +730,12 @@
         }
     }
 
+    // Legacy method - kept for backward compatibility but not used in new ServiceRequest-based implementation
+    [Obsolete("Use ServiceRequest-based assignment loading instead")]
     private AssignmentDisplayModel MapAssignmentToDisplayModel(UserAssignment ua)
     {
-        var model = new AssignmentDisplayModel
-        {
-            PatientId = ua.AssigneeId,
-            PatientName = $"{ua.Assignee?.FirstName} {ua.Assignee?.LastName}".Trim(),
-            PatientEmail = ua.Assignee?.Email ?? "",
-            DoctorId = ua.AssignerId,
-            DoctorName = $"{ua.Assigner?.FirstName} {ua.Assigner?.LastName}".Trim(),
-            DoctorEmail = ua.Assigner?.Email ?? "",
-            DoctorSpecialization = ua.Assigner?.Specialization,
-            AssignedDate = ua.AssignedAt
-        };
-        
-        return model;
+        // This method is no longer used - assignments are now loaded from ServiceRequests
+        throw new NotImplementedException("This method is obsolete. Use ServiceRequest-based assignment loading.");
     }
 
     private string? ExtractNameFilter(string filter, string propertyName)
@@ -752,25 +944,14 @@
         return string.IsNullOrWhiteSpace(cleaned);
     }
 
-    private async Task UnassignPatientFromGrid(int patientId, int doctorId)
+    private async Task UnassignSmeFromGrid(int serviceRequestId, int smeUserId)
     {
         try
         {
-            var request = new UnassignPatientRequest
+            var success = await ServiceRequestService.UnassignSmeFromServiceRequestAsync(serviceRequestId, smeUserId);
+            if (success)
             {
-                PatientId = patientId,
-                DoctorId = doctorId
-            };
-
-            // Use DELETE method as the server endpoint expects
-            var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/admin/unassign")
-            {
-                Content = JsonContent.Create(request)
-            });
-
-            if (response.IsSuccessStatusCode)
-            {
-                message = "Patient unassigned from doctor successfully!";
+                message = "SME unassigned from Service Request successfully!";
                 isError = false;
                 // Refresh the assignments grid
                 if (_assignmentsGrid != null)
@@ -781,50 +962,159 @@
             }
             else
             {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                message = $"Error unassigning patient: {errorContent}";
+                message = "Failed to unassign SME from Service Request.";
                 isError = true;
             }
         }
         catch (Exception ex)
         {
-            message = $"Error unassigning patient: {ex.Message}";
+            message = $"Error unassigning SME: {ex.Message}";
             isError = true;
         }
     }
 
-    private async Task AssignPatient()
+    private async Task OnClientSelected(int? clientId)
+    {
+        selectedPatientId = clientId;
+        selectedServiceRequestId = null;
+        if (selectedPatientId.HasValue && selectedPatientId.Value > 0)
+        {
+            await LoadServiceRequestsForClient(selectedPatientId.HasValue ? selectedPatientId.Value : 0);
+        }
+        else
+        {
+            availableServiceRequests = new();
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadServiceRequestsForClient(int clientId)
     {
         try
         {
-            var request = new AssignPatientRequest
+            var serviceRequests = await ServiceRequestService.GetServiceRequestsAsync(clientId: clientId);
+            availableServiceRequests = serviceRequests;
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error loading service requests: {ex.Message}");
+            availableServiceRequests = new();
+        }
+    }
+
+    private async Task ShowCreateServiceRequestDialog()
+    {
+        newServiceRequestTitle = "";
+        newServiceRequestType = "General";
+        newServiceRequestDescription = "";
+        showCreateServiceRequestDialog = true;
+    }
+
+    private async Task CreateServiceRequest()
+    {
+        if (selectedPatientId == null || selectedPatientId == 0 || string.IsNullOrWhiteSpace(newServiceRequestTitle))
+        {
+            NotificationService.ShowWarning("Please select a client and enter a title for the service request.");
+            return;
+        }
+
+        try
+        {
+            var request = new CreateServiceRequestRequest
             {
-                PatientId = selectedPatientId,
-                DoctorId = selectedDoctorId
+                ClientId = selectedPatientId.HasValue ? selectedPatientId.Value : 0,
+                Title = newServiceRequestTitle,
+                Type = newServiceRequestType,
+                Description = string.IsNullOrWhiteSpace(newServiceRequestDescription) ? null : newServiceRequestDescription,
+                SmeUserId = selectedDoctorId.HasValue && selectedDoctorId.Value > 0 ? selectedDoctorId.Value : null
             };
 
-            var response = await Http.PostAsJsonAsync("api/admin/assign", request);
-
-            if (response.IsSuccessStatusCode)
+            var created = await ServiceRequestService.CreateServiceRequestAsync(request);
+            showCreateServiceRequestDialog = false;
+            await LoadServiceRequestsForClient(selectedPatientId.HasValue ? selectedPatientId.Value : 0);
+            selectedServiceRequestId = created.Id;
+            
+            if (selectedDoctorId.HasValue && selectedDoctorId.Value > 0)
             {
-                message = "Patient assigned to doctor successfully!";
-                isError = false;
-                await LoadData(); // Reload data to show updated assignments
-                selectedPatientId = 0;
-                selectedDoctorId = 0;
+                NotificationService.ShowSuccess($"Service Request created and SME assigned successfully!");
             }
             else
             {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                message = $"Failed to assign patient: {errorContent}";
+                NotificationService.ShowSuccess($"Service Request created successfully!");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error creating service request: {ex.Message}");
+        }
+    }
+
+    private async Task AssignSmeToServiceRequest()
+    {
+        if (selectedServiceRequestId == null || selectedDoctorId == null || selectedDoctorId == 0)
+        {
+            NotificationService.ShowWarning("Please select a Service Request and an SME.");
+            return;
+        }
+
+        try
+        {
+            var success = await ServiceRequestService.AssignSmeToServiceRequestAsync(selectedServiceRequestId.Value, selectedDoctorId.HasValue ? selectedDoctorId.Value : 0);
+            if (success)
+            {
+                message = "SME assigned to Service Request successfully!";
+                isError = false;
+                await LoadData();
+                await LoadServiceRequestsForClient(selectedPatientId.HasValue ? selectedPatientId.Value : 0);
+            }
+            else
+            {
+                message = "Failed to assign SME. They may already be assigned to this Service Request.";
                 isError = true;
             }
         }
         catch (Exception ex)
         {
-            message = $"Error assigning patient: {ex.Message}";
+            message = $"Error assigning SME: {ex.Message}";
             isError = true;
         }
+    }
+
+    private async Task UnassignSmeFromServiceRequest()
+    {
+        if (selectedServiceRequestId == null || selectedDoctorId == null || selectedDoctorId == 0)
+        {
+            NotificationService.ShowWarning("Please select a Service Request and an SME.");
+            return;
+        }
+
+        try
+        {
+            var success = await ServiceRequestService.UnassignSmeFromServiceRequestAsync(selectedServiceRequestId.Value, selectedDoctorId.HasValue ? selectedDoctorId.Value : 0);
+            if (success)
+            {
+                message = "SME unassigned from Service Request successfully!";
+                isError = false;
+                await LoadData();
+                await LoadServiceRequestsForClient(selectedPatientId.HasValue ? selectedPatientId.Value : 0);
+            }
+            else
+            {
+                message = "Failed to unassign SME.";
+                isError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"Error unassigning SME: {ex.Message}";
+            isError = true;
+        }
+    }
+
+    // Legacy method - redirects to new ServiceRequest-based assignment
+    private async Task AssignPatient()
+    {
+        await AssignSmeToServiceRequest();
     }
 
     private async Task UnassignPatient()
@@ -833,8 +1123,8 @@
         {
             var request = new UnassignPatientRequest
             {
-                PatientId = selectedPatientId,
-                DoctorId = selectedDoctorId
+                PatientId = selectedPatientId.HasValue ? selectedPatientId.Value : 0,
+                DoctorId = selectedDoctorId.HasValue ? selectedDoctorId.Value : 0
             };
 
             var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/admin/unassign")
@@ -879,13 +1169,17 @@
 
     public class AssignmentDisplayModel
     {
-        public int PatientId { get; set; }
-        public string PatientName { get; set; } = string.Empty;
-        public string PatientEmail { get; set; } = string.Empty;
-        public int DoctorId { get; set; }
-        public string DoctorName { get; set; } = string.Empty;
-        public string DoctorEmail { get; set; } = string.Empty;
-        public string? DoctorSpecialization { get; set; }
+        public int ServiceRequestId { get; set; }
+        public string ServiceRequestTitle { get; set; } = string.Empty;
+        public string ServiceRequestType { get; set; } = string.Empty;
+        public string ServiceRequestStatus { get; set; } = string.Empty;
+        public int ClientId { get; set; }
+        public string ClientName { get; set; } = string.Empty;
+        public string ClientEmail { get; set; } = string.Empty;
+        public int SmeUserId { get; set; }
+        public string SmeUserName { get; set; } = string.Empty;
+        public string SmeUserEmail { get; set; } = string.Empty;
+        public string? SmeUserSpecialization { get; set; }
         public DateTime AssignedDate { get; set; }
     }
 

@@ -124,12 +124,14 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly JournalDbContext _context;
         private readonly ILogger<UserRequestService> _logger;
         private readonly IPiiEncryptionService _encryptionService;
+        private readonly IServiceRequestService? _serviceRequestService;
 
-        public UserRequestService(JournalDbContext context, ILogger<UserRequestService> logger, IPiiEncryptionService encryptionService)
+        public UserRequestService(JournalDbContext context, ILogger<UserRequestService> logger, IPiiEncryptionService encryptionService, IServiceRequestService? serviceRequestService = null)
         {
             _context = context;
             _logger = logger;
             _encryptionService = encryptionService;
+            _serviceRequestService = serviceRequestService;
         }
 
         private string NormalizePhoneNumber(string phone)
@@ -513,27 +515,64 @@ namespace SM_MentalHealthApp.Server.Services
             // Save changes first to get the user ID
             await _context.SaveChangesAsync();
 
-            // If reviewer is a Coordinator, automatically assign the new patient to the Coordinator
-            if (reviewer != null && reviewer.RoleId == Roles.Coordinator)
+            // If reviewer is a Coordinator, automatically create a default ServiceRequest and assign the Coordinator
+            if (reviewer != null && reviewer.RoleId == Roles.Coordinator && _serviceRequestService != null)
             {
-                // Check if assignment already exists (shouldn't, but be safe)
-                var existingAssignment = await _context.UserAssignments
-                    .FirstOrDefaultAsync(ua => ua.AssignerId == reviewerUserId && ua.AssigneeId == user.Id);
-
-                if (existingAssignment == null)
+                try
                 {
-                    var assignment = new UserAssignment
+                    // Check if default ServiceRequest already exists for this client
+                    var existingDefaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(user.Id);
+
+                    ServiceRequestDto serviceRequest;
+                    if (existingDefaultSr == null)
                     {
-                        AssignerId = reviewerUserId,
-                        AssigneeId = user.Id,
-                        AssignedAt = DateTime.UtcNow,
-                        IsActive = true
-                    };
+                        // Create default "General" ServiceRequest for the new user
+                        var createRequest = new CreateServiceRequestRequest
+                        {
+                            ClientId = user.Id,
+                            Title = "General",
+                            Type = "General",
+                            Status = "Active",
+                            Description = "Default service request created automatically when user account was approved."
+                        };
 
-                    _context.UserAssignments.Add(assignment);
-                    await _context.SaveChangesAsync();
+                        serviceRequest = await _serviceRequestService.CreateServiceRequestAsync(createRequest, reviewerUserId);
+                    }
+                    else
+                    {
+                        serviceRequest = existingDefaultSr;
+                    }
 
-                    _logger.LogInformation("Patient {PatientId} automatically assigned to Coordinator {CoordinatorId} upon approval",
+                    // Assign the coordinator to this ServiceRequest
+                    // Note: We need to directly create the assignment since AssignSmeToServiceRequestAsync
+                    // only allows Doctors and Attorneys. For Coordinators, we'll create the assignment directly.
+                    var existingAssignment = await _context.ServiceRequestAssignments
+                        .FirstOrDefaultAsync(a => a.ServiceRequestId == serviceRequest.Id && 
+                            a.SmeUserId == reviewerUserId && 
+                            a.IsActive);
+
+                    if (existingAssignment == null)
+                    {
+                        var assignment = new ServiceRequestAssignment
+                        {
+                            ServiceRequestId = serviceRequest.Id,
+                            SmeUserId = reviewerUserId,
+                            AssignedByUserId = reviewerUserId,
+                            AssignedAt = DateTime.UtcNow,
+                            IsActive = true
+                        };
+
+                        _context.ServiceRequestAssignments.Add(assignment);
+                        await _context.SaveChangesAsync();
+
+                        _logger.LogInformation("Patient {PatientId} automatically assigned to Coordinator {CoordinatorId} via ServiceRequest {ServiceRequestId} upon approval",
+                            user.Id, reviewerUserId, serviceRequest.Id);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log error but don't fail the approval - ServiceRequest assignment can be done manually later
+                    _logger.LogError(ex, "Failed to create ServiceRequest assignment for Patient {PatientId} to Coordinator {CoordinatorId} upon approval. Approval succeeded, but assignment needs to be done manually.",
                         user.Id, reviewerUserId);
                 }
             }
