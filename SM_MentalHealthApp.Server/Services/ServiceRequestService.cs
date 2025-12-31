@@ -247,7 +247,10 @@ namespace SM_MentalHealthApp.Server.Services
                     SmeUserId = smeUserId,
                     AssignedByUserId = assignedByUserId,
                     AssignedAt = DateTime.UtcNow,
-                    IsActive = true
+                    IsActive = true,
+                    Status = AssignmentStatus.Assigned.ToString(), // Initial status
+                    IsBillable = false, // Not billable until work starts
+                    BillingStatus = BillingStatus.NotBillable.ToString() // Not billable initially
                 };
 
                 _context.ServiceRequestAssignments.Add(assignment);
@@ -376,8 +379,18 @@ namespace SM_MentalHealthApp.Server.Services
                         ServiceRequestId = a.ServiceRequestId,
                         SmeUserId = a.SmeUserId,
                         SmeUserName = $"{a.SmeUser.FirstName} {a.SmeUser.LastName}",
+                        SmeScore = a.SmeUser.SmeScore,
                         AssignedAt = a.AssignedAt,
-                        IsActive = a.IsActive
+                        AcceptedAt = a.AcceptedAt,
+                        StartedAt = a.StartedAt,
+                        CompletedAt = a.CompletedAt,
+                        IsActive = a.IsActive,
+                        Status = a.Status ?? "Assigned",
+                        OutcomeReason = a.OutcomeReason,
+                        ResponsibilityParty = a.ResponsibilityParty,
+                        IsBillable = a.IsBillable,
+                        AssignedByUserId = a.AssignedByUserId,
+                        AssignedByUserName = a.AssignedByUser != null ? $"{a.AssignedByUser.FirstName} {a.AssignedByUser.LastName}" : null
                     })
                     .ToList()
             };

@@ -31,6 +31,13 @@
                 <div class="alert alert-info">
                     <i class="fas fa-info-circle"></i>
                     <strong>My Service Requests:</strong> Below are the service requests assigned to you.
+                    @if (mySmeScore.HasValue)
+                    {
+                        <span class="ms-3">
+                            <strong>My SME Score:</strong> 
+                            <span class="badge @GetScoreClass(mySmeScore.Value)">@mySmeScore</span>
+                        </span>
+                    }
                 </div>
             }
 
@@ -68,14 +75,27 @@
                                 @sr.CreatedAt.ToString("MMM dd, yyyy")
                             </Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="AssignedSmeNames" Title="Assigned SMEs" Width="250px" Filterable="true">
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="AssignedSmeNames" Title="Assigned SMEs" Width="300px" Filterable="true">
                             <Template Context="sr">
                                 @if (sr.Assignments != null && sr.Assignments.Any(a => a.IsActive))
                                 {
-                                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px;">
                                         @foreach (var assignment in sr.Assignments.Where(a => a.IsActive))
                                         {
-                                            <span class="badge bg-primary" style="white-space: nowrap;">@assignment.SmeUserName</span>
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <span class="badge @GetAssignmentStatusClass(assignment.Status)" style="white-space: nowrap;">
+                                                    @assignment.SmeUserName
+                                                </span>
+                                                <span class="badge bg-secondary" style="font-size: 0.75em;">
+                                                    @assignment.Status
+                                                </span>
+                                                @if (assignment.SmeScore.HasValue)
+                                                {
+                                                    <span class="badge @GetScoreClass(assignment.SmeScore.Value)" style="font-size: 0.7em;" title="SME Score">
+                                                        ⭐ @assignment.SmeScore
+                                                    </span>
+                                                }
+                                            </div>
                                         }
                                     </div>
                                 }
@@ -85,17 +105,57 @@
                                 }
                             </Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="ServiceRequestDto" Title="Actions" Width="200px" Sortable="false" Filterable="false">
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Title="Actions" Width="250px" Sortable="false" Filterable="false">
                             <Template Context="sr">
-                                <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.ExtraSmall"
-                                    Click="@(async () => await ShowEditDialog(sr))" />
-                                @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4)
-                                {
-                                    <RadzenButton Icon="person_add" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.ExtraSmall"
-                                        Click="@(async () => await ShowAssignDialog(sr))" />
-                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
-                                        Click="@(async () => await ShowDeleteDialog(sr))" />
-                                }
+                                <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                                    <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.ExtraSmall"
+                                        Click="@(async () => await ShowEditDialog(sr))" Title="Edit" />
+                                    @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4)
+                                    {
+                                        <RadzenButton Icon="person_add" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.ExtraSmall"
+                                            Click="@(async () => await ShowAssignDialog(sr))" Title="Assign SME" />
+                                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
+                                            Click="@(async () => await ShowDeleteDialog(sr))" Title="Delete" />
+                                    }
+                                    @if (AuthService.CurrentUser?.RoleId == 3) // Admin only
+                                    {
+                                        @* Show admin override button for assignments *@
+                                        @foreach (var assignment in sr.Assignments?.Where(a => a.IsActive) ?? Enumerable.Empty<ServiceRequestAssignmentDto>())
+                                        {
+                                            @if (assignment.Status == "Completed" || assignment.Status == "InProgress")
+                                            {
+                                                <RadzenButton Icon="settings" ButtonStyle="ButtonStyle.Warning" Size="ButtonSize.ExtraSmall"
+                                                    Click="@(async () => await ShowAdminOverrideDialog(assignment, sr))" 
+                                                    Title="Admin Override Status" />
+                                                break; // Only show one button per SR
+                                            }
+                                        }
+                                    }
+                                    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5)
+                                    {
+                                        @* Show assignment actions for SMEs *@
+                                        @foreach (var assignment in sr.Assignments?.Where(a => a.IsActive && a.SmeUserId == AuthService.CurrentUser?.Id) ?? Enumerable.Empty<ServiceRequestAssignmentDto>())
+                                        {
+                                            @if (assignment.Status == "Assigned")
+                                            {
+                                                <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.ExtraSmall"
+                                                    Click="@(async () => await AcceptAssignment(assignment.Id))" Title="Accept" />
+                                                <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
+                                                    Click="@(async () => await ShowRejectDialog(assignment.Id, sr))" Title="Reject" />
+                                            }
+                                            else if (assignment.Status == "Accepted")
+                                            {
+                                                <RadzenButton Icon="play_arrow" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.ExtraSmall"
+                                                    Click="@(async () => await StartAssignment(assignment.Id))" Title="Start Work" />
+                                            }
+                                            else if (assignment.Status == "InProgress")
+                                            {
+                                                <RadzenButton Icon="done" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.ExtraSmall"
+                                                    Click="@(async () => await CompleteAssignment(assignment.Id))" Title="Complete" />
+                                            }
+                                        }
+                                    }
+                                </div>
                             </Template>
                         </RadzenDataGridColumn>
                     </Columns>
@@ -110,6 +170,7 @@
     private List<ServiceRequestDto>? serviceRequests;
     private List<User>? clients;
     private List<User>? smes;
+    private int? mySmeScore;
 
     protected override async Task OnInitializedAsync()
     {
@@ -119,6 +180,10 @@
         {
             await LoadClients();
             await LoadSMEs();
+        }
+        else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5)
+        {
+            await LoadMySmeScore();
         }
     }
 
@@ -335,6 +400,161 @@
             "onhold" => "bg-warning",
             _ => "bg-info"
         };
+    }
+
+    private string GetAssignmentStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "assigned" => "bg-info",
+            "accepted" => "bg-primary",
+            "inprogress" => "bg-warning",
+            "completed" => "bg-success",
+            "rejected" => "bg-danger",
+            "abandoned" => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetScoreClass(int score)
+    {
+        if (score >= 120) return "bg-success";
+        if (score >= 100) return "bg-primary";
+        if (score >= 80) return "bg-warning";
+        return "bg-danger";
+    }
+
+    private async Task LoadMySmeScore()
+    {
+        try
+        {
+            mySmeScore = await ServiceRequestService.GetMySmeScoreAsync();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Warning", $"Could not load SME score: {ex.Message}");
+        }
+    }
+
+    private async Task AcceptAssignment(int assignmentId)
+    {
+        try
+        {
+            var success = await ServiceRequestService.AcceptAssignmentAsync(assignmentId);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Assignment accepted successfully");
+                await LoadServiceRequests();
+                await LoadMySmeScore();
+                StateHasChanged();
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to accept assignment");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to accept assignment: {ex.Message}");
+        }
+    }
+
+    private async Task ShowRejectDialog(int assignmentId, ServiceRequestDto sr)
+    {
+        var reasons = new Dictionary<OutcomeReason, string>
+        {
+            { OutcomeReason.SME_Overloaded, "Overloaded - Too many active assignments" },
+            { OutcomeReason.SME_Conflict, "Conflict of Interest" },
+            { OutcomeReason.SME_OutOfScope, "Out of Scope - Not my expertise" },
+            { OutcomeReason.Other, "Other" }
+        };
+
+        var result = await DialogService.OpenAsync<RejectAssignmentDialog>(
+            "Reject Assignment",
+            new Dictionary<string, object>
+            {
+                { "AssignmentId", assignmentId },
+                { "ServiceRequestTitle", sr.Title },
+                { "Reasons", reasons }
+            },
+            new DialogOptions { Width = "500px", Height = "auto" });
+
+        if (result == true)
+        {
+            await LoadServiceRequests();
+            await LoadMySmeScore();
+            StateHasChanged();
+        }
+    }
+
+    private async Task StartAssignment(int assignmentId)
+    {
+        try
+        {
+            var success = await ServiceRequestService.StartAssignmentAsync(assignmentId);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Assignment started. This assignment is now billable.");
+                await LoadServiceRequests();
+                StateHasChanged();
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to start assignment");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to start assignment: {ex.Message}");
+        }
+    }
+
+    private async Task CompleteAssignment(int assignmentId)
+    {
+        try
+        {
+            var success = await ServiceRequestService.CompleteAssignmentAsync(assignmentId);
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Assignment completed successfully");
+                await LoadServiceRequests();
+                await LoadMySmeScore();
+                StateHasChanged();
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to complete assignment");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to complete assignment: {ex.Message}");
+        }
+    }
+
+    private async Task ShowAdminOverrideDialog(ServiceRequestAssignmentDto assignment, ServiceRequestDto sr)
+    {
+        try
+        {
+            var result = await DialogService.OpenAsync<SM_MentalHealthApp.Client.Components.AdminOverrideStatusDialog>(
+                "Admin Override Assignment Status",
+                new Dictionary<string, object>
+                {
+                    { "Assignment", assignment },
+                    { "ServiceRequest", sr }
+                },
+                new DialogOptions { Width = "600px", Height = "auto", Resizable = true, Draggable = true });
+
+            if (result == true)
+            {
+                await LoadServiceRequests();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to open admin override dialog: {ex.Message}");
+        }
     }
 
     private void AddAuthorizationHeader()

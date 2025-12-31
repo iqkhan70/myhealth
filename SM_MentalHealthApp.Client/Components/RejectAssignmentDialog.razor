@@ -1,0 +1,106 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IServiceRequestService ServiceRequestService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<div class="p-3">
+    <RadzenFieldset Text="Reject Assignment">
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Service Request:</strong> @ServiceRequestTitle
+            </label>
+        </div>
+        
+        <div class="mb-3">
+            <RadzenFormField Text="Reason for Rejection" class="w-100">
+                <RadzenDropDown @bind-Value="@selectedReason" 
+                               Data="@Reasons" 
+                               ValueProperty="Key" 
+                               TextProperty="Value"
+                               Placeholder="Select a reason..."
+                               Style="width: 100%"
+                               TValue="OutcomeReason?">
+                </RadzenDropDown>
+                <RadzenFormFieldValidator Component="selectedReason" Text="Reason is required" />
+            </RadzenFormField>
+        </div>
+
+        <div class="mb-3">
+            <RadzenFormField Text="Notes (Optional)" class="w-100">
+                <RadzenTextArea @bind-Value="@notes" 
+                               Placeholder="Add any additional notes..."
+                               Rows="3"
+                               Style="width: 100%"
+                               MaxLength="500" />
+            </RadzenFormField>
+        </div>
+
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Note:</strong> Rejecting without a legitimate reason (Overloaded, Conflict, Out of Scope) will negatively impact your SME score.
+        </div>
+    </RadzenFieldset>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="Reject Assignment" ButtonStyle="ButtonStyle.Danger" IsBusy="@isSubmitting" 
+            Disabled="@(isSubmitting || selectedReason == null)" Click="@HandleRejectClick" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public int AssignmentId { get; set; }
+    [Parameter] public string ServiceRequestTitle { get; set; } = string.Empty;
+    [Parameter] public Dictionary<OutcomeReason, string> Reasons { get; set; } = new();
+
+    private OutcomeReason? selectedReason;
+    private string? notes;
+    private bool isSubmitting = false;
+
+    private async Task HandleRejectClick()
+    {
+        if (selectedReason == null)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please select a reason");
+            return;
+        }
+
+        if (isSubmitting) return;
+
+        isSubmitting = true;
+        StateHasChanged();
+        
+        try
+        {
+            if (!selectedReason.HasValue)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please select a reason");
+                return;
+            }
+            
+            var success = await ServiceRequestService.RejectAssignmentAsync(AssignmentId, selectedReason.Value, notes);
+            
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Assignment rejected successfully");
+                await Task.Delay(100);
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reject assignment");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to reject assignment: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+}
+

@@ -16,6 +16,52 @@
                 <strong>Client:</strong> @ServiceRequest.ClientName
             </label>
         </div>
+
+        @if (recommendations != null && recommendations.Any())
+        {
+            <div class="mb-3">
+                <label class="form-label"><strong>Recommended SMEs (sorted by score):</strong></label>
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>SME</th>
+                                <th>Score</th>
+                                <th>Active</th>
+                                <th>Rejections</th>
+                                <th>Completion</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var rec in recommendations.Take(5))
+                            {
+                                <tr style="cursor: pointer;" @onclick="@(() => SelectRecommendedSme(rec.SmeUserId))">
+                                    <td>
+                                        <strong>@rec.SmeUserName</strong>
+                                        @if (!string.IsNullOrEmpty(rec.Specialization))
+                                        {
+                                            <br /><small class="text-muted">@rec.Specialization</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge @GetScoreClass(rec.SmeScore)">@rec.SmeScore</span>
+                                    </td>
+                                    <td>@rec.ActiveAssignmentsCount</td>
+                                    <td>@rec.RecentRejectionsCount</td>
+                                    <td>@(rec.CompletionRate.ToString("P0"))</td>
+                                    <td>
+                                        <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.ExtraSmall"
+                                            Click="@(() => SelectRecommendedSme(rec.SmeUserId))" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <small class="text-muted">Click on a row or use the button to select</small>
+            </div>
+        }
         
         <div class="mb-3">
             <RadzenFormField Text="Select SME" class="w-100">
@@ -68,6 +114,40 @@
 
     private int selectedSmeUserId = 0;
     private bool isSubmitting = false;
+    private List<SmeRecommendationDto>? recommendations;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRecommendations();
+    }
+
+    private async Task LoadRecommendations()
+    {
+        try
+        {
+            recommendations = await ServiceRequestService.GetSmeRecommendationsAsync(ServiceRequest.Id);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            // Silently fail - recommendations are optional
+            Console.WriteLine($"Could not load recommendations: {ex.Message}");
+        }
+    }
+
+    private void SelectRecommendedSme(int smeUserId)
+    {
+        selectedSmeUserId = smeUserId;
+        StateHasChanged();
+    }
+
+    private string GetScoreClass(int score)
+    {
+        if (score >= 120) return "bg-success";
+        if (score >= 100) return "bg-primary";
+        if (score >= 80) return "bg-warning";
+        return "bg-danger";
+    }
 
     private async Task HandleAssignClick()
     {

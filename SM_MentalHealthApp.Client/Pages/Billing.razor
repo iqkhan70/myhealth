@@ -1,0 +1,366 @@
+@page "/billing"
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
+@using Radzen
+@using Radzen.Blazor
+@inject IServiceRequestService ServiceRequestService
+@inject IAuthService AuthService
+@inject NotificationService NotificationService
+@inject HttpClient Http
+
+<PageTitle>SME Billing</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <SMPageHeader Title="SME Billing Report" Icon="fas fa-dollar-sign">
+                <ActionButton>
+                    <RadzenButton Icon="download" Text="Export CSV" ButtonStyle="ButtonStyle.Info"
+                        Click="@ExportToCsv" Disabled="@(billableAssignments == null || !billableAssignments.Any())" />
+                </ActionButton>
+            </SMPageHeader>
+
+            @if (AuthService.CurrentUser?.RoleId != 3 && AuthService.CurrentUser?.RoleId != 4)
+            {
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Access Denied:</strong> Only Administrators and Coordinators can view billing reports.
+                </div>
+            }
+            else
+            {
+                <!-- Filters -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-filter"></i> Filters</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <RadzenFormField Text="SME">
+                                    <RadzenDropDown @bind-Value="@selectedSmeUserId" 
+                                                   Data="@smes" 
+                                                   ValueProperty="Id" 
+                                                   TextProperty="FullName"
+                                                   Placeholder="All SMEs"
+                                                   AllowClear="true"
+                                                   AllowFiltering="true"
+                                                   Style="width: 100%"
+                                                   TValue="int?" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-3">
+                                <RadzenFormField Text="Start Date">
+                                    <RadzenDatePicker @bind-Value="@startDate" 
+                                                     DateFormat="MM/dd/yyyy"
+                                                     Style="width: 100%" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-3">
+                                <RadzenFormField Text="End Date">
+                                    <RadzenDatePicker @bind-Value="@endDate" 
+                                                     DateFormat="MM/dd/yyyy"
+                                                     Style="width: 100%" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end">
+                                <RadzenButton Text="Apply Filters" Icon="search" ButtonStyle="ButtonStyle.Primary"
+                                    Click="@LoadBillableAssignments" Style="width: 100%;" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Summary Cards -->
+                @if (billableAssignments != null && billableAssignments.Any())
+                {
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <div class="card text-white bg-primary">
+                                <div class="card-body">
+                                    <h5 class="card-title">Total Billable</h5>
+                                    <h2>@billableAssignments.Count</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-white bg-success">
+                                <div class="card-body">
+                                    <h5 class="card-title">Completed</h5>
+                                    <h2>@billableAssignments.Count(a => a.Status == "Completed")</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-white bg-warning">
+                                <div class="card-body">
+                                    <h5 class="card-title">In Progress</h5>
+                                    <h2>@billableAssignments.Count(a => a.Status == "InProgress")</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-white bg-info">
+                                <div class="card-body">
+                                    <h5 class="card-title">Avg Days</h5>
+                                    <h2>@(billableAssignments.Where(a => a.DaysToComplete.HasValue).Any() 
+                                        ? billableAssignments.Where(a => a.DaysToComplete.HasValue).Average(a => a.DaysToComplete!.Value).ToString("F1")
+                                        : "N/A")</h2>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <!-- Billing Grid -->
+                @if (billableAssignments == null)
+                {
+                    <div class="text-center p-4">
+                        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+                        <p>Loading billing data...</p>
+                    </div>
+                }
+                else if (!billableAssignments.Any())
+                {
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        No billable assignments found for the selected filters.
+                    </div>
+                }
+                else
+                {
+                    <div class="card">
+                        <div class="card-body">
+                            <RadzenDataGrid @ref="grid" Data="@billableAssignments" TItem="BillableAssignmentDto" 
+                                AllowPaging="true" PageSize="20" AllowSorting="true" AllowFiltering="true"
+                                FilterMode="FilterMode.Advanced" ShowPagingSummary="true">
+                                <Columns>
+                                    <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="ServiceRequestId" Title="SR ID" Width="80px" />
+                                    <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="ServiceRequestTitle" Title="Service Request" Width="200px" />
+                                    <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="ClientName" Title="Client" Width="150px" />
+                                    <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="SmeUserName" Title="SME" Width="150px">
+                                        <Template Context="assignment">
+                                            <div>
+                                                <strong>@assignment.SmeUserName</strong>
+                                                @if (!string.IsNullOrEmpty(assignment.SmeCompany))
+                                                {
+                                                    <br /><small class="text-muted">@assignment.SmeCompany</small>
+                                                }
+                                            </div>
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="Status" Title="Status" Width="120px">
+                                        <Template Context="assignment">
+                                            <span class="badge @GetStatusClass(assignment.Status)">@assignment.Status</span>
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="StartedAt" Title="Started" Width="120px">
+                                        <Template Context="assignment">
+                                            @(assignment.StartedAt?.ToString("MM/dd/yyyy") ?? "N/A")
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="CompletedAt" Title="Completed" Width="120px">
+                                        <Template Context="assignment">
+                                            @(assignment.CompletedAt?.ToString("MM/dd/yyyy") ?? "-")
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="DaysToComplete" Title="Days" Width="80px">
+                                        <Template Context="assignment">
+                                            @if (assignment.DaysToComplete.HasValue)
+                                            {
+                                                <span class="badge @GetDaysClass(assignment.DaysToComplete.Value)">
+                                                    @assignment.DaysToComplete.Value
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                </Columns>
+                            </RadzenDataGrid>
+                        </div>
+                    </div>
+
+                    <!-- Grouped by Company Summary -->
+                    @if (billableAssignments.Any(a => !string.IsNullOrEmpty(a.SmeCompany)))
+                    {
+                        <div class="card mt-3">
+                            <div class="card-header">
+                                <h5><i class="fas fa-building"></i> Summary by Company</h5>
+                            </div>
+                            <div class="card-body">
+                                <RadzenDataGrid Data="@GetCompanySummary()" TItem="BillingSummaryDto" 
+                                    AllowPaging="true" PageSize="10" AllowSorting="true">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="BillingSummaryDto" Property="CompanyName" Title="Company" Width="200px" />
+                                        <RadzenDataGridColumn TItem="BillingSummaryDto" Property="TotalBillableAssignments" Title="Total Billable" Width="120px" />
+                                        <RadzenDataGridColumn TItem="BillingSummaryDto" Property="CompletedAssignments" Title="Completed" Width="120px" />
+                                        <RadzenDataGridColumn TItem="BillingSummaryDto" Property="InProgressAssignments" Title="In Progress" Width="120px" />
+                                        <RadzenDataGridColumn TItem="BillingSummaryDto" Property="AverageDaysToComplete" Title="Avg Days" Width="100px">
+                                            <Template Context="summary">
+                                                @summary.AverageDaysToComplete.ToString("F1")
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                    </Columns>
+                                </RadzenDataGrid>
+                            </div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private RadzenDataGrid<BillableAssignmentDto>? grid;
+    private List<BillableAssignmentDto>? billableAssignments;
+    private List<User>? smes;
+    private int? selectedSmeUserId;
+    private DateTime? startDate;
+    private DateTime? endDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthService.InitializeAsync();
+        if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4)
+        {
+            await LoadSMEs();
+            // Default to current month
+            startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+            endDate = DateTime.Now.Date.AddDays(1).AddTicks(-1); // End of today
+            await LoadBillableAssignments();
+        }
+    }
+
+    private async Task LoadSMEs()
+    {
+        try
+        {
+            AddAuthorizationHeader();
+            var doctors = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors") ?? new List<User>();
+            var attorneys = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys") ?? new List<User>();
+            smes = doctors.Concat(attorneys).ToList();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load SMEs: {ex.Message}");
+        }
+    }
+
+    private async Task LoadBillableAssignments()
+    {
+        try
+        {
+            billableAssignments = await ServiceRequestService.GetBillableAssignmentsAsync(
+                selectedSmeUserId, 
+                startDate, 
+                endDate);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load billable assignments: {ex.Message}");
+        }
+    }
+
+    private string GetStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "inprogress" => "bg-warning",
+            "completed" => "bg-success",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetDaysClass(int days)
+    {
+        if (days <= 3) return "bg-success";
+        if (days <= 7) return "bg-primary";
+        if (days <= 14) return "bg-warning";
+        return "bg-danger";
+    }
+
+    private List<BillingSummaryDto> GetCompanySummary()
+    {
+        if (billableAssignments == null) return new List<BillingSummaryDto>();
+
+        return billableAssignments
+            .Where(a => !string.IsNullOrEmpty(a.SmeCompany))
+            .GroupBy(a => a.SmeCompany)
+            .Select(g => new BillingSummaryDto
+            {
+                CompanyName = g.Key,
+                TotalBillableAssignments = g.Count(),
+                CompletedAssignments = g.Count(a => a.Status == "Completed"),
+                InProgressAssignments = g.Count(a => a.Status == "InProgress"),
+                AverageDaysToComplete = g.Where(a => a.DaysToComplete.HasValue).Any()
+                    ? g.Where(a => a.DaysToComplete.HasValue).Average(a => a.DaysToComplete!.Value)
+                    : 0,
+                FirstAssignmentDate = g.Min(a => a.StartedAt ?? a.AssignedAt),
+                LastAssignmentDate = g.Max(a => a.CompletedAt ?? a.StartedAt ?? a.AssignedAt)
+            })
+            .OrderByDescending(s => s.TotalBillableAssignments)
+            .ToList();
+    }
+
+    private async Task ExportToCsv()
+    {
+        if (billableAssignments == null || !billableAssignments.Any())
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Warning", "No data to export");
+            return;
+        }
+
+        try
+        {
+            var csv = new System.Text.StringBuilder();
+            csv.AppendLine("SR ID,Service Request,Client,SME,Company,Status,Started,Completed,Days to Complete");
+
+            foreach (var assignment in billableAssignments)
+            {
+                csv.AppendLine($"{assignment.ServiceRequestId}," +
+                    $"\"{assignment.ServiceRequestTitle}\"," +
+                    $"\"{assignment.ClientName}\"," +
+                    $"\"{assignment.SmeUserName}\"," +
+                    $"\"{assignment.SmeCompany ?? ""}\"," +
+                    $"{assignment.Status}," +
+                    $"{(assignment.StartedAt?.ToString("yyyy-MM-dd") ?? "")}," +
+                    $"{(assignment.CompletedAt?.ToString("yyyy-MM-dd") ?? "")}," +
+                    $"{(assignment.DaysToComplete?.ToString() ?? "")}");
+            }
+
+            var fileName = $"SME_Billing_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+            var csvContent = csv.ToString();
+            var dataUri = $"data:text/csv;charset=utf-8,{Uri.EscapeDataString(csvContent)}";
+            await JSRuntime.InvokeVoidAsync("eval", 
+                $"var link = document.createElement('a'); " +
+                $"link.href = '{dataUri}'; " +
+                $"link.download = '{fileName}'; " +
+                $"document.body.appendChild(link); " +
+                $"link.click(); " +
+                $"document.body.removeChild(link);");
+            NotificationService.Notify(NotificationSeverity.Success, "Success", "Billing report exported successfully");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to export: {ex.Message}");
+        }
+    }
+
+    private void AddAuthorizationHeader()
+    {
+        var token = AuthService.Token;
+        if (!string.IsNullOrEmpty(token))
+        {
+            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+    }
+
+    [Inject] private IJSRuntime JSRuntime { get; set; } = null!;
+}
+

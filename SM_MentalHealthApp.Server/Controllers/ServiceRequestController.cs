@@ -15,15 +15,18 @@ namespace SM_MentalHealthApp.Server.Controllers
     public class ServiceRequestController : BaseController
     {
         private readonly IServiceRequestService _serviceRequestService;
+        private readonly IAssignmentLifecycleService _assignmentLifecycleService;
         private readonly ILogger<ServiceRequestController> _logger;
         private readonly JournalDbContext _context;
 
         public ServiceRequestController(
             IServiceRequestService serviceRequestService,
+            IAssignmentLifecycleService assignmentLifecycleService,
             ILogger<ServiceRequestController> logger,
             JournalDbContext context)
         {
             _serviceRequestService = serviceRequestService;
+            _assignmentLifecycleService = assignmentLifecycleService;
             _logger = logger;
             _context = context;
         }
@@ -261,6 +264,309 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 _logger.LogError(ex, "Error getting default service request for client: {ClientId}", clientId);
                 return StatusCode(500, "An error occurred while retrieving the default service request");
+            }
+        }
+
+        /// <summary>
+        /// Get SME recommendations for a service request (sorted by score, workload, etc.)
+        /// </summary>
+        [HttpGet("{id}/sme-recommendations")]
+        [Authorize(Roles = "Admin,Coordinator")]
+        public async Task<ActionResult<List<SmeRecommendationDto>>> GetSmeRecommendations(int id, [FromQuery] string? specialization = null)
+        {
+            try
+            {
+                var recommendations = await _assignmentLifecycleService.GetSmeRecommendationsAsync(id, specialization);
+                return Ok(recommendations);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting SME recommendations for service request: {Id}", id);
+                return StatusCode(500, "An error occurred while retrieving SME recommendations");
+            }
+        }
+
+        /// <summary>
+        /// SME accepts an assignment
+        /// </summary>
+        [HttpPost("assignments/{assignmentId}/accept")]
+        [Authorize(Roles = "Doctor,Attorney")]
+        public async Task<ActionResult> AcceptAssignment(int assignmentId)
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                    return Unauthorized();
+
+                var accepted = await _assignmentLifecycleService.AcceptAssignmentAsync(assignmentId, currentUserId.Value);
+                if (!accepted)
+                    return BadRequest("Failed to accept assignment. The assignment may not exist or is not in the correct status.");
+
+                return Ok(new { message = "Assignment accepted successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error accepting assignment: {AssignmentId}", assignmentId);
+                return StatusCode(500, "An error occurred while accepting the assignment");
+            }
+        }
+
+        /// <summary>
+        /// SME rejects an assignment
+        /// </summary>
+        [HttpPost("assignments/{assignmentId}/reject")]
+        [Authorize(Roles = "Doctor,Attorney")]
+        public async Task<ActionResult> RejectAssignment(int assignmentId, [FromBody] RejectAssignmentRequest request)
+        {
+            try
+            {
+                if (request.AssignmentId != assignmentId)
+                    return BadRequest("Assignment ID mismatch");
+
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                    return Unauthorized();
+
+                var rejected = await _assignmentLifecycleService.RejectAssignmentAsync(assignmentId, currentUserId.Value, request.Reason, request.Notes);
+                if (!rejected)
+                    return BadRequest("Failed to reject assignment. The assignment may not exist or is not in the correct status.");
+
+                return Ok(new { message = "Assignment rejected successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error rejecting assignment: {AssignmentId}", assignmentId);
+                return StatusCode(500, "An error occurred while rejecting the assignment");
+            }
+        }
+
+        /// <summary>
+        /// SME starts working on an assignment
+        /// </summary>
+        [HttpPost("assignments/{assignmentId}/start")]
+        [Authorize(Roles = "Doctor,Attorney")]
+        public async Task<ActionResult> StartAssignment(int assignmentId)
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                    return Unauthorized();
+
+                var started = await _assignmentLifecycleService.StartAssignmentAsync(assignmentId, currentUserId.Value);
+                if (!started)
+                    return BadRequest("Failed to start assignment. The assignment may not exist or is not in the correct status.");
+
+                return Ok(new { message = "Assignment started successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error starting assignment: {AssignmentId}", assignmentId);
+                return StatusCode(500, "An error occurred while starting the assignment");
+            }
+        }
+
+        /// <summary>
+        /// SME completes an assignment
+        /// </summary>
+        [HttpPost("assignments/{assignmentId}/complete")]
+        [Authorize(Roles = "Doctor,Attorney")]
+        public async Task<ActionResult> CompleteAssignment(int assignmentId)
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                    return Unauthorized();
+
+                var completed = await _assignmentLifecycleService.CompleteAssignmentAsync(assignmentId, currentUserId.Value);
+                if (!completed)
+                    return BadRequest("Failed to complete assignment. The assignment may not exist or is not in the correct status.");
+
+                return Ok(new { message = "Assignment completed successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error completing assignment: {AssignmentId}", assignmentId);
+                return StatusCode(500, "An error occurred while completing the assignment");
+            }
+        }
+
+        /// <summary>
+        /// Update assignment status (for coordinators/admins)
+        /// </summary>
+        [HttpPut("assignments/{assignmentId}/status")]
+        [Authorize(Roles = "Admin,Coordinator")]
+        public async Task<ActionResult> UpdateAssignmentStatus(int assignmentId, [FromBody] UpdateAssignmentStatusRequest request)
+        {
+            try
+            {
+                if (request.AssignmentId != assignmentId)
+                    return BadRequest("Assignment ID mismatch");
+
+                var updated = await _assignmentLifecycleService.UpdateAssignmentStatusAsync(
+                    assignmentId, 
+                    request.Status, 
+                    request.OutcomeReason, 
+                    request.ResponsibilityParty, 
+                    request.Notes);
+
+                if (!updated)
+                    return BadRequest("Failed to update assignment status. The assignment may not exist.");
+
+                return Ok(new { message = "Assignment status updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating assignment status: {AssignmentId}", assignmentId);
+                return StatusCode(500, "An error occurred while updating the assignment status");
+            }
+        }
+
+        /// <summary>
+        /// Admin-only: Override assignment status (for correcting mistakes, e.g., SME marked complete but client reports incomplete)
+        /// </summary>
+        [HttpPut("assignments/{assignmentId}/status/admin-override")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> AdminOverrideAssignmentStatus(int assignmentId, [FromBody] UpdateAssignmentStatusRequest request)
+        {
+            try
+            {
+                if (request.AssignmentId != assignmentId)
+                    return BadRequest("Assignment ID mismatch");
+
+                var currentUserId = GetCurrentUserId();
+                var updated = await _assignmentLifecycleService.AdminOverrideAssignmentStatusAsync(
+                    assignmentId, 
+                    request.Status, 
+                    request.OutcomeReason, 
+                    request.ResponsibilityParty, 
+                    request.Notes,
+                    currentUserId);
+
+                if (!updated)
+                    return BadRequest("Failed to update assignment status. The assignment may not exist.");
+
+                _logger.LogWarning("Admin {AdminUserId} overrode assignment {AssignmentId} status to {Status}. Notes: {Notes}", 
+                    currentUserId, assignmentId, request.Status, request.Notes);
+
+                return Ok(new { message = "Assignment status overridden successfully by admin" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error overriding assignment status: {AssignmentId}", assignmentId);
+                return StatusCode(500, "An error occurred while overriding the assignment status");
+            }
+        }
+
+        /// <summary>
+        /// Get current SME score
+        /// </summary>
+        [HttpGet("sme-score")]
+        [Authorize(Roles = "Doctor,Attorney")]
+        public async Task<ActionResult<int>> GetMySmeScore()
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                    return Unauthorized();
+
+                var score = await _assignmentLifecycleService.GetSmeScoreAsync(currentUserId.Value);
+                return Ok(new { score });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting SME score");
+                return StatusCode(500, "An error occurred while retrieving the SME score");
+            }
+        }
+
+        /// <summary>
+        /// Get billable assignments for billing reports
+        /// </summary>
+        [HttpGet("billing/assignments")]
+        [Authorize(Roles = "Admin,Coordinator")]
+        public async Task<ActionResult<List<BillableAssignmentDto>>> GetBillableAssignments(
+            [FromQuery] int? smeUserId = null,
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null)
+        {
+            try
+            {
+                // Get billable assignments that are Ready to be invoiced
+                // Only include assignments that haven't been invoiced yet (BillingStatus = Ready)
+                var query = _context.ServiceRequestAssignments
+                    .Include(a => a.ServiceRequest)
+                        .ThenInclude(sr => sr.Client)
+                    .Include(a => a.SmeUser)
+                    .Where(a => a.IsActive && 
+                        a.BillingStatus == BillingStatus.Ready.ToString() &&
+                        a.InvoiceId == null && // Not yet invoiced
+                        (a.IsBillable || 
+                         a.Status == AssignmentStatus.InProgress.ToString() || 
+                         a.Status == AssignmentStatus.Completed.ToString()));
+
+                if (smeUserId.HasValue)
+                    query = query.Where(a => a.SmeUserId == smeUserId.Value);
+
+                // Date filtering: Use StartedAt if available, otherwise use AssignedAt
+                // This ensures we capture all billable assignments in the date range
+                if (startDate.HasValue)
+                {
+                    query = query.Where(a => 
+                        (a.StartedAt.HasValue && a.StartedAt >= startDate.Value) ||
+                        (!a.StartedAt.HasValue && a.AssignedAt >= startDate.Value));
+                }
+
+                if (endDate.HasValue)
+                {
+                    // Include the full end date (set to end of day)
+                    var endDateTime = endDate.Value.Date.AddDays(1).AddTicks(-1);
+                    query = query.Where(a => 
+                        (a.StartedAt.HasValue && a.StartedAt <= endDateTime) ||
+                        (!a.StartedAt.HasValue && a.AssignedAt <= endDateTime));
+                }
+
+                var assignments = await query
+                    .OrderByDescending(a => a.StartedAt ?? a.AssignedAt)
+                    .ToListAsync();
+
+                _logger.LogInformation(
+                    "Billing query: Found {Count} billable assignments. Filters: SME={SmeUserId}, StartDate={StartDate}, EndDate={EndDate}",
+                    assignments.Count, smeUserId, startDate, endDate);
+
+                var result = assignments.Select(a => new BillableAssignmentDto
+                {
+                    AssignmentId = a.Id,
+                    ServiceRequestId = a.ServiceRequestId,
+                    ServiceRequestTitle = a.ServiceRequest.Title,
+                    ClientId = a.ServiceRequest.ClientId,
+                    ClientName = $"{a.ServiceRequest.Client.FirstName} {a.ServiceRequest.Client.LastName}",
+                    SmeUserId = a.SmeUserId,
+                    SmeUserName = $"{a.SmeUser.FirstName} {a.SmeUser.LastName}",
+                    SmeCompany = a.SmeUser.Specialization, // Using Specialization as company placeholder - can be updated if you have a Company field
+                    Status = a.Status,
+                    StartedAt = a.StartedAt,
+                    CompletedAt = a.CompletedAt,
+                    AssignedAt = a.AssignedAt,
+                    IsBillable = a.IsBillable,
+                    BillingStatus = a.BillingStatus ?? "NotBillable",
+                    InvoiceId = a.InvoiceId,
+                    BilledAt = a.BilledAt,
+                    PaidAt = a.PaidAt,
+                    DaysToComplete = a.CompletedAt.HasValue && a.StartedAt.HasValue
+                        ? (int?)(a.CompletedAt.Value - a.StartedAt.Value).TotalDays
+                        : null
+                }).ToList();
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting billable assignments");
+                return StatusCode(500, "An error occurred while retrieving billable assignments");
             }
         }
     }

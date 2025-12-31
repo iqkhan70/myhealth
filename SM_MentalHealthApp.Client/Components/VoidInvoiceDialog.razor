@@ -1,0 +1,120 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IInvoicingService InvoicingService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<div class="p-3">
+    <RadzenFieldset Text="Void Invoice">
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Warning:</strong> This action will void the invoice. Choose whether to reset assignments back to Ready status for re-invoicing.
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Invoice:</strong> @Invoice.InvoiceNumber
+            </label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>SME:</strong> @Invoice.SmeUserName
+            </label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Total Amount:</strong> @Invoice.TotalAmount.ToString("C")
+            </label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Line Items:</strong> @Invoice.LineItemCount assignment(s)
+            </label>
+        </div>
+
+        <div class="mb-3">
+            <RadzenFormField Text="Reason for Voiding" class="w-100">
+                <RadzenTextArea @bind-Value="@reason" 
+                               Placeholder="Explain why this invoice is being voided (required)..."
+                               Rows="4"
+                               Style="width: 100%"
+                               MaxLength="1000" />
+                <RadzenFormFieldValidator Component="reason" Text="Reason is required" />
+            </RadzenFormField>
+        </div>
+
+        <div class="mb-3">
+            <RadzenCheckBox @bind-Value="@resetAssignmentsToReady" Name="resetAssignments" />
+            <label for="resetAssignments" class="ms-2">
+                Reset assignments to Ready status (allows re-invoicing)
+            </label>
+            <br />
+            <small class="text-muted ms-4">
+                If unchecked, assignments will be marked as Voided and permanently excluded from billing.
+            </small>
+        </div>
+    </RadzenFieldset>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="Void Invoice" ButtonStyle="ButtonStyle.Danger" IsBusy="@isSubmitting" 
+            Disabled="@(isSubmitting || string.IsNullOrWhiteSpace(reason))" Click="@HandleVoidClick" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public SmeInvoiceDto Invoice { get; set; } = null!;
+
+    private string? reason;
+    private bool resetAssignmentsToReady = true;
+    private bool isSubmitting = false;
+
+    private async Task HandleVoidClick()
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please provide a reason for voiding");
+            return;
+        }
+
+        if (isSubmitting) return;
+
+        var action = resetAssignmentsToReady ? "reset to Ready" : "mark as Voided";
+        var confirm = await DialogService.Confirm(
+            $"Void invoice {Invoice.InvoiceNumber}? This will {action} all {Invoice.LineItemCount} assignment(s).",
+            "Confirm Void Invoice",
+            new ConfirmOptions { OkButtonText = "Yes, Void", CancelButtonText = "Cancel" });
+
+        if (confirm != true) return;
+
+        isSubmitting = true;
+        StateHasChanged();
+        
+        try
+        {
+            var success = await InvoicingService.VoidInvoiceAsync(Invoice.Id, reason, resetAssignmentsToReady);
+            
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                    $"Invoice {Invoice.InvoiceNumber} voided. Assignments {(resetAssignmentsToReady ? "reset to Ready" : "marked as Voided")}.");
+                await Task.Delay(100);
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to void invoice");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to void invoice: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+}
+

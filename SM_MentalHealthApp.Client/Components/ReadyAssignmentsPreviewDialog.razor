@@ -1,0 +1,68 @@
+@using SM_MentalHealthApp.Shared
+@using Radzen
+@using Radzen.Blazor
+
+<div class="p-3">
+    <RadzenFieldset Text="Ready to Bill Assignments">
+        <p class="mb-3">
+            <strong>@Assignments.Count</strong> assignment(s) ready to be included in the invoice.
+        </p>
+
+        <RadzenDataGrid Data="@Assignments" TItem="BillableAssignmentDto" 
+            AllowPaging="true" PageSize="10" AllowSorting="true">
+            <Columns>
+                <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="ServiceRequestId" Title="SR ID" Width="80px" />
+                <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="ServiceRequestTitle" Title="Service Request" Width="200px" />
+                <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="ClientName" Title="Client" Width="150px" />
+                <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="Status" Title="Status" Width="100px">
+                    <Template Context="assignment">
+                        <span class="badge @GetStatusClass(assignment.Status)">@assignment.Status</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="StartedAt" Title="Started" Width="120px">
+                    <Template Context="assignment">
+                        @(assignment.StartedAt?.ToString("MM/dd/yyyy") ?? "N/A")
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="CompletedAt" Title="Completed" Width="120px">
+                    <Template Context="assignment">
+                        @(assignment.CompletedAt?.ToString("MM/dd/yyyy") ?? "-")
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="DaysToComplete" Title="Days" Width="80px">
+                    <Template Context="assignment">
+                        @if (assignment.DaysToComplete.HasValue)
+                        {
+                            <span>@assignment.DaysToComplete.Value</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">-</span>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenFieldset>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close())" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<BillableAssignmentDto> Assignments { get; set; } = new();
+
+    [Inject] private DialogService DialogService { get; set; } = null!;
+
+    private string GetStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "inprogress" => "bg-warning",
+            "completed" => "bg-success",
+            _ => "bg-secondary"
+        };
+    }
+}
+

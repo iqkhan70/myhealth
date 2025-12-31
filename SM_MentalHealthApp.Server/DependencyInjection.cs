@@ -145,6 +145,8 @@ public static class DependencyInjection
         services.AddScoped<IContentAnalysisService, ContentAnalysisService>();
         services.AddScoped<IClinicalNotesService, ClinicalNotesService>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        services.AddScoped<IAssignmentLifecycleService, AssignmentLifecycleService>();
+        services.AddScoped<IInvoicingService, InvoicingService>();
         services.AddScoped<IMultimediaAnalysisService, MultimediaAnalysisService>();
         services.AddScoped<IChatHistoryService, ChatHistoryService>();
         services.AddScoped<IIntelligentContextService, IntelligentContextService>();

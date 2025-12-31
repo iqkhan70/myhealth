@@ -75,6 +75,9 @@ namespace SM_MentalHealthApp.Shared
         // Doctor-specific fields (nullable for non-doctors)
         public string? Specialization { get; set; }
         public string? LicenseNumber { get; set; }
+
+        // SME scoring (for doctors and attorneys)
+        public int SmeScore { get; set; } = 100; // Behavior-based score (0-150), default 100
         
         // Accident-related fields (captured from user requests)
         public int? Age { get; set; }
