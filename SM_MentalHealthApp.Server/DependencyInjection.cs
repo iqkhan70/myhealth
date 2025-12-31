@@ -405,14 +405,13 @@ public static class DependencyInjection
         userAssignmentSet.EntityType.HasKey(ua => new { ua.AssignerId, ua.AssigneeId });
         // Navigation properties are NOT ignored to allow expansion
 
-        // ServiceRequests - Register but don't expose as EntitySet (only used internally)
-        // This prevents OData from trying to discover it as an unknown type
-        var serviceRequestType = builder.EntityType<ServiceRequest>();
-        serviceRequestType.HasKey(sr => sr.Id);
-        serviceRequestType.Ignore(sr => sr.Client);
-        serviceRequestType.Ignore(sr => sr.CreatedByUser);
-        serviceRequestType.Ignore(sr => sr.Assignments);
-        // Don't create EntitySet - ServiceRequests are not exposed via OData
+        // ServiceRequests - Expose as EntitySet for server-side pagination
+        var serviceRequestSet = builder.EntitySet<ServiceRequest>("ServiceRequests");
+        serviceRequestSet.EntityType.HasKey(sr => sr.Id);
+        // Ignore navigation properties to avoid circular references (we'll load them via Include in controller)
+        serviceRequestSet.EntityType.Ignore(sr => sr.Client);
+        serviceRequestSet.EntityType.Ignore(sr => sr.CreatedByUser);
+        serviceRequestSet.EntityType.Ignore(sr => sr.Assignments);
 
         return builder.GetEdmModel();
     }

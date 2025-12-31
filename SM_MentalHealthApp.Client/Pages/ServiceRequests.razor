@@ -2,6 +2,7 @@
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Client.Components
+@using SM_MentalHealthApp.Client.Helpers
 @using Radzen
 @using Radzen.Blazor
 @inject IServiceRequestService ServiceRequestService
@@ -9,6 +10,7 @@
 @inject IAuthService AuthService
 @inject NotificationService NotificationService
 @inject DialogService DialogService
+@inject ODataService ODataService
 
 <PageTitle>Service Requests</PageTitle>
 
@@ -41,25 +43,12 @@
                 </div>
             }
 
-            @if (serviceRequests == null)
-            {
-                <div class="text-center p-4">
-                    <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-                    <p>Loading service requests...</p>
-                </div>
-            }
-            else if (!serviceRequests.Any())
-            {
-                <div class="alert alert-warning">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    No service requests found.
-                </div>
-            }
-            else
-            {
-                <RadzenDataGrid @ref="grid" Data="@serviceRequests" TItem="ServiceRequestDto" 
-                    AllowPaging="true" PageSize="10" AllowSorting="true" AllowFiltering="true"
-                    FilterMode="FilterMode.Advanced" ShowPagingSummary="true">
+            <RadzenDataGrid @ref="grid" TItem="ServiceRequestDto" 
+                Data="@serviceRequests"
+                Count="@totalCount"
+                LoadData="@LoadServiceRequestsData"
+                AllowPaging="true" PageSize="20" AllowSorting="true" AllowFiltering="true"
+                FilterMode="FilterMode.Advanced" ShowPagingSummary="true">
                     <Columns>
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Id" Title="ID" Width="80px" />
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="ClientName" Title="Client" Width="200px" />
@@ -160,22 +149,22 @@
                         </RadzenDataGridColumn>
                     </Columns>
                 </RadzenDataGrid>
-            }
         </div>
     </div>
 </div>
 
 @code {
     private RadzenDataGrid<ServiceRequestDto>? grid;
-    private List<ServiceRequestDto>? serviceRequests;
+    private List<ServiceRequestDto> serviceRequests = new();
+    private int totalCount = 0;
     private List<User>? clients;
     private List<User>? smes;
     private int? mySmeScore;
+    private List<int>? _filterSmeIds; // For filtering by AssignedSmeNames
 
     protected override async Task OnInitializedAsync()
     {
         await AuthService.InitializeAsync();
-        await LoadServiceRequests();
         if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4)
         {
             await LoadClients();
@@ -187,23 +176,307 @@
         }
     }
 
-    private async Task LoadServiceRequests()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Trigger initial load for server-side pagination
+        if (firstRender && grid != null)
+        {
+            await Task.Delay(100); // Small delay to ensure grid is fully rendered
+            if (grid != null)
+            {
+                await grid.Reload();
+            }
+        }
+    }
+
+    private async Task LoadServiceRequestsData(LoadDataArgs args)
     {
         try
         {
-            if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
+            // Decode URL-encoded filter from Radzen
+            var decodedFilter = args.Filter != null ? System.Net.WebUtility.UrlDecode(args.Filter) : null;
+            
+            // Handle ClientName and AssignedSmeNames filters (DTO-only properties, need special handling)
+            var hasClientName = !string.IsNullOrEmpty(decodedFilter) && decodedFilter.Contains("ClientName", StringComparison.OrdinalIgnoreCase);
+            var hasAssignedSmeNames = !string.IsNullOrEmpty(decodedFilter) && decodedFilter.Contains("AssignedSmeNames", StringComparison.OrdinalIgnoreCase);
+            string? odataFilter = null;
+            
+            if (hasClientName)
             {
-                serviceRequests = await ServiceRequestService.GetMyServiceRequestsAsync();
+                var clientNameFilter = ExtractNameFilter(decodedFilter!, "ClientName");
+                if (!string.IsNullOrEmpty(clientNameFilter))
+                {
+                    // Find matching client IDs (patients, RoleId = 1)
+                    var clientIds = await FindUserIdsByName(clientNameFilter, 1, CancellationToken.None);
+                    if (clientIds.Any())
+                    {
+                        var clientIdFilter = string.Join(" or ", clientIds.Select(id => $"ClientId eq {id}"));
+                        if (!string.IsNullOrEmpty(odataFilter))
+                            odataFilter = $"{odataFilter} and ({clientIdFilter})";
+                        else
+                            odataFilter = $"({clientIdFilter})";
+                    }
+                    else
+                    {
+                        // No matching clients, return empty result
+                        serviceRequests = new();
+                        totalCount = 0;
+                        await InvokeAsync(StateHasChanged);
+                        return;
+                    }
+                    // Remove ClientName filter from the rest
+                    decodedFilter = RemoveNameFilter(decodedFilter!, "ClientName");
+                }
+                else
+                {
+                    // Extraction failed, but filter contains ClientName - remove it
+                    decodedFilter = RemoveNameFilter(decodedFilter!, "ClientName");
+                }
             }
-            else
+            
+            if (hasAssignedSmeNames)
             {
-                serviceRequests = await ServiceRequestService.GetServiceRequestsAsync();
+                var smeNameFilter = ExtractNameFilter(decodedFilter!, "AssignedSmeNames");
+                if (!string.IsNullOrEmpty(smeNameFilter))
+                {
+                    // Find matching SME IDs (doctors RoleId = 2, attorneys RoleId = 5)
+                    var doctorIds = await FindUserIdsByName(smeNameFilter, 2, CancellationToken.None);
+                    var attorneyIds = await FindUserIdsByName(smeNameFilter, 5, CancellationToken.None);
+                    var smeIds = doctorIds.Concat(attorneyIds).Distinct().ToList();
+                    
+                    if (smeIds.Any())
+                    {
+                        // Filter by ServiceRequests that have assignments to these SMEs
+                        // We need to check if any assignment has these SME IDs
+                        // This is complex - we'll need to filter after loading or use a subquery
+                        // For now, we'll filter client-side after loading
+                        // Store the SME IDs for post-filtering
+                        _filterSmeIds = smeIds;
+                    }
+                    else
+                    {
+                        // No matching SMEs, return empty result
+                        serviceRequests = new();
+                        totalCount = 0;
+                        await InvokeAsync(StateHasChanged);
+                        return;
+                    }
+                    // Remove AssignedSmeNames filter from the rest
+                    decodedFilter = RemoveNameFilter(decodedFilter!, "AssignedSmeNames");
+                }
+                else
+                {
+                    // Extraction failed, but filter contains AssignedSmeNames - remove it
+                    decodedFilter = RemoveNameFilter(decodedFilter!, "AssignedSmeNames");
+                }
             }
+            
+            // Transform remaining filter from Radzen C# syntax to OData syntax
+            if (!string.IsNullOrEmpty(decodedFilter))
+            {
+                decodedFilter = CleanupFilterOperators(decodedFilter);
+                
+                if (!string.IsNullOrWhiteSpace(decodedFilter) && !IsOnlyOperators(decodedFilter))
+                {
+                    var transformedFilter = ODataFilterHelper.TransformToOData(decodedFilter);
+                    
+                    if (!string.IsNullOrEmpty(transformedFilter))
+                    {
+                        if (!string.IsNullOrEmpty(odataFilter))
+                            odataFilter = $"{odataFilter} and ({transformedFilter})";
+                        else
+                            odataFilter = transformedFilter;
+                    }
+                }
+            }
+
+            // Transform orderBy to use entity properties instead of DTO properties
+            string? transformedOrderBy = null;
+            if (!string.IsNullOrEmpty(args.OrderBy))
+            {
+                transformedOrderBy = TransformOrderBy(args.OrderBy);
+            }
+            
+            // Query OData endpoint
+            var result = await ODataService.QueryAsync<ServiceRequest>(
+                "ServiceRequests",
+                args.Skip ?? 0,
+                args.Top ?? 20,
+                transformedOrderBy,
+                odataFilter,
+                CancellationToken.None);
+
+            // Map ServiceRequest entities to ServiceRequestDto
+            // IMPORTANT: Create a new list reference so Radzen detects the change
+            var mappedItems = result.Items.Select(MapToDto).ToList();
+            
+            // Apply AssignedSmeNames filter if needed (client-side filtering)
+            if (_filterSmeIds != null && _filterSmeIds.Any())
+            {
+                mappedItems = mappedItems.Where(sr => 
+                    sr.Assignments != null && 
+                    sr.Assignments.Any(a => a.IsActive && _filterSmeIds.Contains(a.SmeUserId))
+                ).ToList();
+                // Note: totalCount might be inaccurate after client-side filtering, but it's acceptable for this use case
+            }
+            
+            // If we sorted by ClientName or AssignedSmeNames, we need to sort the results client-side
+            // because OData can't sort by computed DTO properties
+            if (!string.IsNullOrEmpty(args.OrderBy) && (args.OrderBy.Contains("ClientName", StringComparison.OrdinalIgnoreCase) || 
+                                                         args.OrderBy.Contains("AssignedSmeNames", StringComparison.OrdinalIgnoreCase)))
+            {
+                var sortedResult = SortResultsByComputedProperty(new PagedResult<ServiceRequestDto>
+                {
+                    Items = mappedItems,
+                    TotalCount = result.TotalCount,
+                    PageNumber = result.PageNumber,
+                    PageSize = result.PageSize
+                }, args.OrderBy);
+                mappedItems = sortedResult.Items.ToList();
+            }
+            
+            serviceRequests = mappedItems;
+            totalCount = result.TotalCount;
+            _filterSmeIds = null; // Reset after use
+
+            // Fetch users for assignments if needed
+            await LoadAssignmentUsers();
+
+            // Update the list reference again after loading users to trigger UI update
+            serviceRequests = new List<ServiceRequestDto>(serviceRequests);
+
+            // Force UI update
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
             NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load service requests: {ex.Message}");
+            serviceRequests = new();
+            totalCount = 0;
+            await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private async Task LoadAssignmentUsers()
+    {
+        // Get all unique user IDs (clients and SMEs) from service requests
+        var clientIds = serviceRequests
+            .Where(sr => sr.ClientId > 0)
+            .Select(sr => sr.ClientId)
+            .Distinct()
+            .ToList();
+
+        var smeUserIds = serviceRequests
+            .SelectMany(sr => sr.Assignments ?? Enumerable.Empty<ServiceRequestAssignmentDto>())
+            .Where(a => a.SmeUserId > 0)
+            .Select(a => a.SmeUserId)
+            .Distinct()
+            .ToList();
+
+        var allUserIds = clientIds.Concat(smeUserIds).Distinct().ToList();
+
+        if (!allUserIds.Any())
+            return;
+
+        try
+        {
+            // Build filter for multiple user IDs
+            var userIdFilters = allUserIds.Select(id => $"Id eq {id}");
+            var userFilter = string.Join(" or ", userIdFilters);
+
+            // Query users via OData
+            var userResult = await ODataService.QueryAsync<User>(
+                "Users",
+                0,
+                allUserIds.Count,
+                null,
+                userFilter,
+                CancellationToken.None);
+
+            var userCache = userResult.Items.ToDictionary(u => u.Id, u => u);
+
+            // Update client names and assignment user names
+            foreach (var sr in serviceRequests)
+            {
+                // Update client name
+                if (userCache.TryGetValue(sr.ClientId, out var client))
+                {
+                    sr.ClientName = $"{client.FirstName} {client.LastName}";
+                }
+
+                // Update assignment user names
+                if (sr.Assignments != null)
+                {
+                    foreach (var assignment in sr.Assignments)
+                    {
+                        if (userCache.TryGetValue(assignment.SmeUserId, out var smeUser))
+                        {
+                            assignment.SmeUserName = $"{smeUser.FirstName} {smeUser.LastName}";
+                            assignment.SmeScore = smeUser.SmeScore;
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail the whole operation
+            Console.WriteLine($"Failed to load assignment users: {ex.Message}");
+        }
+    }
+
+    private ServiceRequestDto MapToDto(ServiceRequest sr)
+    {
+        // Handle case where navigation properties might not be loaded (OData might not serialize them)
+        string clientName = "Unknown";
+        if (sr.Client != null)
+        {
+            clientName = $"{sr.Client.FirstName} {sr.Client.LastName}";
+        }
+        else if (sr.ClientId > 0)
+        {
+            // Navigation property not loaded, will be populated by LoadAssignmentUsers if needed
+            clientName = $"Client {sr.ClientId}";
+        }
+
+        var assignments = new List<ServiceRequestAssignmentDto>();
+        if (sr.Assignments != null && sr.Assignments.Any())
+        {
+            assignments = sr.Assignments
+                .Where(a => a.IsActive)
+                .Select(a => new ServiceRequestAssignmentDto
+                {
+                    Id = a.Id,
+                    ServiceRequestId = a.ServiceRequestId,
+                    SmeUserId = a.SmeUserId,
+                    SmeUserName = a.SmeUser != null ? $"{a.SmeUser.FirstName} {a.SmeUser.LastName}" : $"SME {a.SmeUserId}",
+                    SmeScore = a.SmeUser?.SmeScore,
+                    AssignedAt = a.AssignedAt,
+                    AcceptedAt = a.AcceptedAt,
+                    StartedAt = a.StartedAt,
+                    CompletedAt = a.CompletedAt,
+                    IsActive = a.IsActive,
+                    Status = a.Status ?? "Assigned",
+                    OutcomeReason = a.OutcomeReason,
+                    ResponsibilityParty = a.ResponsibilityParty,
+                    IsBillable = a.IsBillable
+                })
+                .ToList();
+        }
+
+        return new ServiceRequestDto
+        {
+            Id = sr.Id,
+            ClientId = sr.ClientId,
+            ClientName = clientName,
+            Title = sr.Title,
+            Type = sr.Type,
+            Status = sr.Status,
+            CreatedAt = sr.CreatedAt,
+            UpdatedAt = sr.UpdatedAt,
+            Description = sr.Description,
+            Assignments = assignments
+        };
     }
 
     private async Task LoadClients()
@@ -273,7 +546,6 @@
 
             if (result == true)
             {
-                await LoadServiceRequests();
                 if (grid != null)
                 {
                     await grid.Reload();
@@ -307,7 +579,6 @@
 
             if (result == true)
             {
-                await LoadServiceRequests();
                 if (grid != null)
                 {
                     await grid.Reload();
@@ -348,7 +619,6 @@
 
             if (result == true)
             {
-                await LoadServiceRequests();
                 if (grid != null)
                 {
                     await grid.Reload();
@@ -375,7 +645,10 @@
                 if (deleted)
                 {
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Service request deleted successfully");
-                    await LoadServiceRequests();
+                    if (grid != null)
+                    {
+                        await grid.Reload();
+                    }
                     StateHasChanged();
                 }
                 else
@@ -444,7 +717,10 @@
             if (success)
             {
                 NotificationService.Notify(NotificationSeverity.Success, "Success", "Assignment accepted successfully");
-                await LoadServiceRequests();
+                if (grid != null)
+                {
+                    await grid.Reload();
+                }
                 await LoadMySmeScore();
                 StateHasChanged();
             }
@@ -481,7 +757,10 @@
 
         if (result == true)
         {
-            await LoadServiceRequests();
+            if (grid != null)
+            {
+                await grid.Reload();
+            }
             await LoadMySmeScore();
             StateHasChanged();
         }
@@ -495,7 +774,10 @@
             if (success)
             {
                 NotificationService.Notify(NotificationSeverity.Success, "Success", "Assignment started. This assignment is now billable.");
-                await LoadServiceRequests();
+                if (grid != null)
+                {
+                    await grid.Reload();
+                }
                 StateHasChanged();
             }
             else
@@ -517,7 +799,10 @@
             if (success)
             {
                 NotificationService.Notify(NotificationSeverity.Success, "Success", "Assignment completed successfully");
-                await LoadServiceRequests();
+                if (grid != null)
+                {
+                    await grid.Reload();
+                }
                 await LoadMySmeScore();
                 StateHasChanged();
             }
@@ -547,7 +832,10 @@
 
             if (result == true)
             {
-                await LoadServiceRequests();
+                if (grid != null)
+                {
+                    await grid.Reload();
+                }
                 StateHasChanged();
             }
         }
@@ -567,5 +855,219 @@
     }
 
     [Inject] private HttpClient Http { get; set; } = null!;
+
+    // Helper methods for filtering DTO-only properties
+    private string? ExtractNameFilter(string filter, string propertyName)
+    {
+        // Extract search term from Radzen-generated filters
+        var patterns = new[]
+        {
+            // Radzen C#-style: (ClientName == null ? "" : ClientName).ToLower().Contains("value".ToLower())
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""([^""]+)""\.ToLower\(\)\)",
+            // Radzen C#-style with single quotes
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('([^']+)'\.ToLower\(\)\)",
+            // Radzen C#-style WITHOUT ToLower: (ClientName == null ? "" : ClientName).Contains("value")
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.Contains\(""([^""]+)""\)",
+            // Radzen C#-style WITHOUT ToLower with single quotes
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.Contains\('([^']+)'\)",
+            // OData-style: contains(ClientName, 'john')
+            $@"contains\({propertyName},\s*'([^']+)'\)",
+            // OData-style: ClientName contains 'john'
+            $@"{propertyName}\s+contains\s+'([^']+)'",
+            // OData-style with tolower
+            $@"contains\(tolower\({propertyName}\),\s*tolower\('([^']+)'\)\)",
+            $@"tolower\({propertyName}\)\s+contains\s+'([^']+)'"
+        };
+        
+        foreach (var pattern in patterns)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(filter, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && match.Groups.Count > 1)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+        
+        return null;
+    }
+    
+    private string RemoveNameFilter(string filter, string propertyName)
+    {
+        // Remove the filter clause for the given property name
+        var patterns = new[]
+        {
+            // Radzen C#-style with double quotes and ToLower
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)",
+            // Radzen C#-style with single quotes and ToLower
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)",
+            // Radzen C#-style WITHOUT ToLower: (ClientName == null ? "" : ClientName).Contains("value")
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.Contains\(""[^""]+""\)",
+            // Radzen C#-style WITHOUT ToLower with single quotes
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.Contains\('[^']+'\)",
+            // OData-style patterns
+            $@"contains\({propertyName},\s*'[^']+'\)",
+            $@"{propertyName}\s+contains\s+'[^']+'",
+            $@"contains\(tolower\({propertyName}\),\s*tolower\('[^']+'\)\)",
+            $@"tolower\({propertyName}\)\s+contains\s+'[^']+'",
+            // With "and" operators (with ToLower)
+            $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)",
+            $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)",
+            // With "and" operators (without ToLower)
+            $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.Contains\(""[^""]+""\)",
+            $@"and\s+\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.Contains\('[^']+'\)",
+            $@"and\s+contains\({propertyName},\s*'[^']+'\)",
+            $@"and\s+{propertyName}\s+contains\s+'[^']+'",
+            // With trailing "and" (with ToLower)
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\(""[^""]+""\.ToLower\(\)\)\s+and",
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.ToLower\(\)\.Contains\('[^']+'\.ToLower\(\)\)\s+and",
+            // With trailing "and" (without ToLower)
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.Contains\(""[^""]+""\)\s+and",
+            $@"\({propertyName}\s*==\s*null\s*\?\s*""""\s*:\s*{propertyName}\)\.Contains\('[^']+'\)\s+and",
+            $@"contains\({propertyName},\s*'[^']+'\)\s+and",
+            $@"{propertyName}\s+contains\s+'[^']+'\s+and"
+        };
+        
+        var result = filter;
+        foreach (var pattern in patterns)
+        {
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+        
+        // Clean up extra "and" or "or" operators
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+and\s+and\s+", " and ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+or\s+or\s+", " or ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"^\s*and\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+and\s+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"^\s*or\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+or\s+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = result.Trim();
+        
+        return result;
+    }
+    
+    private string CleanupFilterOperators(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return string.Empty;
+            
+        var result = filter;
+        
+        // Remove standalone operators at the start
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"^\s*(and|or)\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove standalone operators at the end
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove empty parentheses: () or ( ) or (and) or (or)
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\(\s*(and|or)?\s*\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove duplicate operators
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+(and|or)\s+", " $1 ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove operators before/after parentheses
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+(and|or)\s+\(", " (", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\)\s+(and|or)\s+", ") ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        result = result.Trim();
+        return result;
+    }
+    
+    private bool IsOnlyOperators(string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+            
+        // Remove all whitespace and check if only operators remain
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(filter, @"\s+", "");
+        var onlyOperators = System.Text.RegularExpressions.Regex.IsMatch(cleaned, @"^(and|or|\(|\)|\s)+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return onlyOperators;
+    }
+    
+    private async Task<List<int>> FindUserIdsByName(string searchTerm, int? roleId, CancellationToken ct)
+    {
+        try
+        {
+            // Query Users OData to find matching users by name
+            string nameFilter;
+            if (roleId.HasValue)
+            {
+                nameFilter = $"(RoleId eq {roleId.Value}) and (contains(FirstName, '{searchTerm}') or contains(LastName, '{searchTerm}'))";
+            }
+            else
+            {
+                // Search across all roles
+                nameFilter = $"(contains(FirstName, '{searchTerm}') or contains(LastName, '{searchTerm}'))";
+            }
+            var result = await ODataService.QueryAsync<Shared.User>("Users", 0, 1000, null, nameFilter, ct);
+            
+            return result.Items.Select(u => u.Id).ToList();
+        }
+        catch (Exception ex)
+        {
+            return new List<int>();
+        }
+    }
+    
+    private string? TransformOrderBy(string? orderBy)
+    {
+        if (string.IsNullOrEmpty(orderBy))
+            return orderBy;
+            
+        // Transform DTO property names to entity property names
+        // ClientName and AssignedSmeNames are DTO-only, so we can't sort by them in OData
+        // We'll sort client-side instead, but we need to remove them from the OData orderBy
+        var result = orderBy;
+        
+        // Remove ClientName and AssignedSmeNames from orderBy (we'll sort client-side)
+        // Pattern: "ClientName asc" or "AssignedSmeNames desc" or "ClientName, Title asc"
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"ClientName\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"AssignedSmeNames\s+(asc|desc),?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*ClientName\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*AssignedSmeNames\s+(asc|desc)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Remove @ prefix from reserved keywords like Type (e.g., "@Type asc" -> "Type asc")
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"@(\w+)\s+(asc|desc)", "$1 $2", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*@(\w+)\s+(asc|desc)", ", $1 $2", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        // Clean up extra commas
+        result = System.Text.RegularExpressions.Regex.Replace(result, @",\s*,", ",", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        result = result.Trim().TrimStart(',').TrimEnd(',');
+        
+        // If result is empty, return null (no OData sorting)
+        if (string.IsNullOrWhiteSpace(result))
+            return null;
+            
+        return result;
+    }
+    
+    private PagedResult<ServiceRequestDto> SortResultsByComputedProperty(PagedResult<ServiceRequestDto> result, string orderBy)
+    {
+        if (string.IsNullOrEmpty(orderBy) || result.Items == null || !result.Items.Any())
+            return result;
+            
+        var items = result.Items.ToList();
+        var isDescending = orderBy.Contains("desc", StringComparison.OrdinalIgnoreCase);
+        
+        if (orderBy.Contains("ClientName", StringComparison.OrdinalIgnoreCase))
+        {
+            items = isDescending 
+                ? items.OrderByDescending(x => x.ClientName).ToList()
+                : items.OrderBy(x => x.ClientName).ToList();
+        }
+        else if (orderBy.Contains("AssignedSmeNames", StringComparison.OrdinalIgnoreCase))
+        {
+            items = isDescending 
+                ? items.OrderByDescending(x => x.AssignedSmeNames).ToList()
+                : items.OrderBy(x => x.AssignedSmeNames).ToList();
+        }
+        
+        return new PagedResult<ServiceRequestDto>
+        {
+            Items = items,
+            TotalCount = result.TotalCount,
+            PageNumber = result.PageNumber,
+            PageSize = result.PageSize
+        };
+    }
 }
 
