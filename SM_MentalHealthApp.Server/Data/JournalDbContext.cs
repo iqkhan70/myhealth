@@ -132,12 +132,19 @@ namespace SM_MentalHealthApp.Server.Data
                         .HasForeignKey(e => e.RoleId)
                         .OnDelete(DeleteBehavior.Restrict);
 
+                        // Foreign key relationship to Company
+                        entity.HasOne(e => e.Company)
+                        .WithMany(c => c.Users)
+                        .HasForeignKey(e => e.CompanyId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
                         // Performance indexes for common queries
                         entity.HasIndex(e => e.RoleId); // Critical for filtering patients (RoleId = 1)
                         entity.HasIndex(e => e.IsActive); // Critical for filtering active users
                         entity.HasIndex(e => new { e.RoleId, e.IsActive }); // Composite index for common filter combination
                         entity.HasIndex(e => e.FirstName); // For name searches
                         entity.HasIndex(e => e.LastName); // For name searches
+                        entity.HasIndex(e => e.CompanyId); // For company-based queries
 
                         // Lead Intake fields
                         entity.Property(e => e.ResidenceStateCode).HasMaxLength(2);

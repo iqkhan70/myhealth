@@ -500,17 +500,18 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 // Get billable assignments that are Ready to be invoiced
-                // Only include assignments that haven't been invoiced yet (BillingStatus = Ready)
+                // Only include COMPLETED assignments that haven't been invoiced yet (BillingStatus = Ready)
+                // InProgress assignments are not ready to bill - work is still ongoing
                 var query = _context.ServiceRequestAssignments
                     .Include(a => a.ServiceRequest)
                         .ThenInclude(sr => sr.Client)
                     .Include(a => a.SmeUser)
+                        .ThenInclude(u => u.Company)
                     .Where(a => a.IsActive && 
                         a.BillingStatus == BillingStatus.Ready.ToString() &&
                         a.InvoiceId == null && // Not yet invoiced
-                        (a.IsBillable || 
-                         a.Status == AssignmentStatus.InProgress.ToString() || 
-                         a.Status == AssignmentStatus.Completed.ToString()));
+                        a.Status == AssignmentStatus.Completed.ToString() && // Only completed assignments are ready to bill
+                        a.IsBillable); // Must be marked as billable
 
                 if (smeUserId.HasValue)
                     query = query.Where(a => a.SmeUserId == smeUserId.Value);
@@ -550,7 +551,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     ClientName = $"{a.ServiceRequest.Client.FirstName} {a.ServiceRequest.Client.LastName}",
                     SmeUserId = a.SmeUserId,
                     SmeUserName = $"{a.SmeUser.FirstName} {a.SmeUser.LastName}",
-                    SmeCompany = a.SmeUser.Specialization, // Using Specialization as company placeholder - can be updated if you have a Company field
+                    SmeCompany = a.SmeUser.Company != null ? a.SmeUser.Company.Name : null, // Get company name from Company navigation property
                     Status = a.Status,
                     StartedAt = a.StartedAt,
                     CompletedAt = a.CompletedAt,

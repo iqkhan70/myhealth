@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Shared;
 using BillingStatus = SM_MentalHealthApp.Shared.BillingStatus;
+using ChargeStatus = SM_MentalHealthApp.Shared.ChargeStatus;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -19,98 +20,221 @@ namespace SM_MentalHealthApp.Server.Services
     {
         private readonly JournalDbContext _context;
         private readonly ILogger<InvoicingService> _logger;
+        private readonly IServiceRequestChargeService _chargeService;
 
-        public InvoicingService(JournalDbContext context, ILogger<InvoicingService> logger)
+        public InvoicingService(
+            JournalDbContext context,
+            ILogger<InvoicingService> logger,
+            IServiceRequestChargeService chargeService)
         {
             _context = context;
             _logger = logger;
+            _chargeService = chargeService;
         }
 
         /// <summary>
         /// Generate an invoice for an SME with all Ready assignments in the period
+        /// Uses ServiceRequestCharges to prevent double-billing (one charge per SR per company)
         /// </summary>
         public async Task<SmeInvoiceDto> GenerateInvoiceAsync(GenerateInvoiceRequest request, int? createdByUserId = null)
         {
             try
             {
-                // Get all Ready assignments for this SME in the period
-                var readyAssignments = await _context.ServiceRequestAssignments
+                // Get the SME user to determine billing account
+                var smeUser = await _context.Users
+                    .Include(u => u.Company)
+                    .FirstOrDefaultAsync(u => u.Id == request.SmeUserId);
+
+                if (smeUser == null)
+                {
+                    throw new InvalidOperationException($"SME user {request.SmeUserId} not found");
+                }
+
+                // Determine billing account (CompanyId if exists, else SmeUserId)
+                var billingAccountId = smeUser.CompanyId ?? request.SmeUserId;
+                var billingAccountType = smeUser.CompanyId.HasValue ? "Company" : "Individual";
+
+                // If company billing, get ALL Ready assignments for ALL SMEs in the company
+                // If individual billing, get assignments for this SME only
+                var readyAssignmentsQuery = _context.ServiceRequestAssignments
                     .Include(a => a.ServiceRequest)
                         .ThenInclude(sr => sr.Client)
                     .Include(a => a.SmeUser)
+                        .ThenInclude(u => u.Company)
                     .Where(a => a.IsActive &&
-                        a.SmeUserId == request.SmeUserId &&
                         a.BillingStatus == BillingStatus.Ready.ToString() &&
                         a.InvoiceId == null &&
-                        (request.AssignmentIds == null || request.AssignmentIds.Contains(a.Id)) &&
-                        // Date filter: use StartedAt if available, otherwise AssignedAt
+                        a.Status == AssignmentStatus.Completed.ToString() && // Only completed assignments are ready to bill
+                        a.IsBillable && // Must be marked as billable
+                                        // Date filter: use StartedAt if available, otherwise AssignedAt
                         ((a.StartedAt.HasValue && a.StartedAt >= request.PeriodStart && a.StartedAt <= request.PeriodEnd) ||
-                         (!a.StartedAt.HasValue && a.AssignedAt >= request.PeriodStart && a.AssignedAt <= request.PeriodEnd)))
-                    .ToListAsync();
+                         (!a.StartedAt.HasValue && a.AssignedAt >= request.PeriodStart && a.AssignedAt <= request.PeriodEnd)));
+
+                // Filter by billing account: if company, get all SMEs in company; if individual, get this SME only
+                if (billingAccountType == "Company")
+                {
+                    readyAssignmentsQuery = readyAssignmentsQuery.Where(a =>
+                        a.SmeUser.CompanyId == billingAccountId);
+                }
+                else
+                {
+                    readyAssignmentsQuery = readyAssignmentsQuery.Where(a =>
+                        a.SmeUserId == request.SmeUserId);
+                }
+
+                // Apply assignment filter if specified
+                if (request.AssignmentIds != null && request.AssignmentIds.Any())
+                {
+                    readyAssignmentsQuery = readyAssignmentsQuery.Where(a => request.AssignmentIds.Contains(a.Id));
+                }
+
+                var readyAssignments = await readyAssignmentsQuery.ToListAsync();
 
                 if (!readyAssignments.Any())
                 {
-                    throw new InvalidOperationException("No ready-to-bill assignments found for this SME in the specified period");
+                    throw new InvalidOperationException("No ready-to-bill assignments found for this billing account in the specified period");
                 }
 
-                // Generate invoice number
-                var invoiceNumber = await GenerateInvoiceNumberAsync(request.SmeUserId);
-
-                // Calculate totals (assuming flat rate per assignment - you can customize this)
-                var subTotal = readyAssignments.Count * 100.00m; // Example: $100 per assignment
-                var taxRate = request.TaxRate ?? 0.00m;
-                var taxAmount = subTotal * taxRate;
-                var totalAmount = subTotal + taxAmount;
-
-                // Create invoice
-                var invoice = new SmeInvoice
+                // Create charges for all ServiceRequests that have ready assignments
+                // This ensures we use the charge-based system to prevent double-billing
+                var serviceRequestIds = readyAssignments.Select(a => a.ServiceRequestId).Distinct().ToList();
+                foreach (var srId in serviceRequestIds)
                 {
-                    SmeUserId = request.SmeUserId,
-                    InvoiceNumber = invoiceNumber,
-                    PeriodStart = request.PeriodStart,
-                    PeriodEnd = request.PeriodEnd,
-                    Status = InvoiceStatus.Draft.ToString(),
-                    SubTotal = subTotal,
-                    TaxAmount = taxAmount,
-                    TotalAmount = totalAmount,
-                    CreatedByUserId = createdByUserId,
-                    Notes = request.Notes,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                _context.SmeInvoices.Add(invoice);
-                await _context.SaveChangesAsync(); // Save to get invoice ID
-
-                // Create invoice lines and update assignments
-                var invoiceLines = new List<SmeInvoiceLine>();
-                foreach (var assignment in readyAssignments)
-                {
-                    var line = new SmeInvoiceLine
+                    try
                     {
-                        InvoiceId = invoice.Id,
-                        AssignmentId = assignment.Id,
-                        ServiceRequestId = assignment.ServiceRequestId,
-                        Description = $"Service Request: {assignment.ServiceRequest.Title}",
-                        Amount = 100.00m, // Example: $100 per assignment
+                        await _chargeService.CreateChargesForServiceRequestAsync(srId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to create charges for ServiceRequest {ServiceRequestId}, continuing...", srId);
+                    }
+                }
+
+                // Get ALL Ready charges for this billing account in the period
+                var readyCharges = await _chargeService.GetReadyChargesForBillingAccountAsync(
+                    billingAccountId,
+                    billingAccountType,
+                    request.PeriodStart,
+                    request.PeriodEnd);
+
+                // Filter to only charges for ServiceRequests that have assignments in our readyAssignments list
+                var relevantCharges = readyCharges
+                    .Where(c => serviceRequestIds.Contains(c.ServiceRequestId) && c.InvoiceId == null)
+                    .ToList();
+
+                if (!relevantCharges.Any())
+                {
+                    throw new InvalidOperationException("No ready-to-bill charges found for this billing account in the specified period. Charges may have already been invoiced.");
+                }
+
+                // SIMPLIFIED: One invoice per Service Request
+                // Group assignments by ServiceRequestId
+                var assignmentsBySr = readyAssignments.GroupBy(a => a.ServiceRequestId).ToList();
+
+                if (!assignmentsBySr.Any())
+                {
+                    throw new InvalidOperationException("No assignments found to invoice");
+                }
+
+                // Generate invoices - one per SR
+                var generatedInvoices = new List<SmeInvoiceDto>();
+
+                foreach (var srGroup in assignmentsBySr)
+                {
+                    var srAssignments = srGroup.ToList();
+                    var serviceRequestId = srGroup.Key;
+                    var serviceRequest = srAssignments.First().ServiceRequest;
+
+                    // Get charge for this SR
+                    var charge = relevantCharges.FirstOrDefault(c =>
+                        c.ServiceRequestId == serviceRequestId &&
+                        ((billingAccountType == "Company" && c.BillingAccountId == billingAccountId) ||
+                         (billingAccountType == "Individual" && c.BillingAccountId == request.SmeUserId)));
+
+                    if (charge == null)
+                    {
+                        _logger.LogWarning("No charge found for ServiceRequest {ServiceRequestId}, skipping...", serviceRequestId);
+                        continue;
+                    }
+
+                    // Generate invoice number
+                    var invoiceNumber = await GenerateInvoiceNumberAsync(request.SmeUserId);
+
+                    // Calculate totals
+                    var subTotal = charge.Amount;
+                    var taxRate = request.TaxRate ?? 0.00m;
+                    var taxAmount = subTotal * taxRate;
+                    var totalAmount = subTotal + taxAmount;
+
+                    // Create ONE invoice for this SR
+                    var invoice = new SmeInvoice
+                    {
+                        SmeUserId = request.SmeUserId,
+                        BillingAccountId = billingAccountId,
+                        BillingAccountType = billingAccountType,
+                        InvoiceNumber = invoiceNumber,
+                        PeriodStart = request.PeriodStart,
+                        PeriodEnd = request.PeriodEnd,
+                        Status = InvoiceStatus.Draft.ToString(),
+                        SubTotal = subTotal,
+                        TaxAmount = taxAmount,
+                        TotalAmount = totalAmount,
+                        CreatedByUserId = createdByUserId,
+                        Notes = request.Notes,
                         CreatedAt = DateTime.UtcNow
                     };
 
-                    invoiceLines.Add(line);
+                    _context.SmeInvoices.Add(invoice);
+                    await _context.SaveChangesAsync(); // Save to get invoice ID
 
-                    // Update assignment to Invoiced
-                    assignment.BillingStatus = BillingStatus.Invoiced.ToString();
-                    assignment.InvoiceId = invoice.Id;
-                    assignment.BilledAt = DateTime.UtcNow;
+                    // Create invoice line for this SR
+                    var line = new SmeInvoiceLine
+                    {
+                        InvoiceId = invoice.Id,
+                        ChargeId = charge.Id,
+                        ServiceRequestId = serviceRequestId,
+                        AssignmentId = srAssignments.First().Id, // Use first assignment ID
+                        Description = $"Service Request: {serviceRequest.Title}",
+                        Amount = charge.Amount,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    _context.SmeInvoiceLines.Add(line);
+
+                    // Update charge to Invoiced
+                    charge.Status = ChargeStatus.Invoiced.ToString();
+                    charge.InvoiceId = invoice.Id;
+                    charge.InvoicedAt = DateTime.UtcNow;
+
+                    // Update all assignments for this SR to Invoiced
+                    foreach (var assignment in srAssignments)
+                    {
+                        assignment.BillingStatus = BillingStatus.Invoiced.ToString();
+                        assignment.InvoiceId = invoice.Id;
+                        assignment.BilledAt = DateTime.UtcNow;
+                    }
+
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation(
+                        "Generated invoice {InvoiceNumber} for ServiceRequest {ServiceRequestId} with {AssignmentCount} assignments. Total: {Total}",
+                        invoiceNumber, serviceRequestId, srAssignments.Count, totalAmount);
+
+                    // Get the generated invoice DTO
+                    var invoiceDto = await GetInvoiceByIdAsync(invoice.Id);
+                    if (invoiceDto != null)
+                    {
+                        generatedInvoices.Add(invoiceDto);
+                    }
                 }
 
-                _context.SmeInvoiceLines.AddRange(invoiceLines);
-                await _context.SaveChangesAsync();
+                if (!generatedInvoices.Any())
+                {
+                    throw new Exception("Failed to generate any invoices");
+                }
 
-                _logger.LogInformation(
-                    "Generated invoice {InvoiceNumber} for SME {SmeUserId} with {LineCount} line items. Total: {Total}",
-                    invoiceNumber, request.SmeUserId, invoiceLines.Count, totalAmount);
-
-                return await GetInvoiceByIdAsync(invoice.Id) ?? throw new Exception("Failed to retrieve generated invoice");
+                // Return the first invoice
+                return generatedInvoices.First();
             }
             catch (Exception ex)
             {
@@ -146,8 +270,8 @@ namespace SM_MentalHealthApp.Server.Services
                 invoice.PaidAt = paidDateTime;
                 if (!string.IsNullOrEmpty(paymentNotes))
                 {
-                    invoice.Notes = string.IsNullOrEmpty(invoice.Notes) 
-                        ? paymentNotes 
+                    invoice.Notes = string.IsNullOrEmpty(invoice.Notes)
+                        ? paymentNotes
                         : $"{invoice.Notes}\n\nPayment: {paymentNotes}";
                 }
 
@@ -195,8 +319,8 @@ namespace SM_MentalHealthApp.Server.Services
                 // Update invoice
                 invoice.Status = InvoiceStatus.Voided.ToString();
                 invoice.VoidedAt = DateTime.UtcNow;
-                invoice.Notes = string.IsNullOrEmpty(invoice.Notes) 
-                    ? $"VOIDED: {reason}" 
+                invoice.Notes = string.IsNullOrEmpty(invoice.Notes)
+                    ? $"VOIDED: {reason}"
                     : $"{invoice.Notes}\n\nVOIDED: {reason}";
 
                 // Update assignments
@@ -263,7 +387,7 @@ namespace SM_MentalHealthApp.Server.Services
                     // Normalize dates to start of day for comparison
                     var startDateNormalized = startDate.Value.Date;
                     var endDateNormalized = endDate.Value.Date;
-                    
+
                     // Invoice period overlaps with requested range if:
                     // Invoice starts before or on the end date AND invoice ends on or after the start date
                     query = query.Where(i => i.PeriodStart.Date <= endDateNormalized && i.PeriodEnd.Date >= startDateNormalized);
@@ -283,7 +407,12 @@ namespace SM_MentalHealthApp.Server.Services
                     .OrderByDescending(i => i.CreatedAt)
                     .ToListAsync();
 
-                return invoices.Select(MapToDto).ToList();
+                var result = new List<SmeInvoiceDto>();
+                foreach (var invoice in invoices)
+                {
+                    result.Add(await MapToDtoAsync(invoice));
+                }
+                return result;
             }
             catch (Exception ex)
             {
@@ -307,7 +436,7 @@ namespace SM_MentalHealthApp.Server.Services
                                 .ThenInclude(sr => sr.Client)
                     .FirstOrDefaultAsync(i => i.Id == invoiceId);
 
-                return invoice != null ? MapToDto(invoice) : null;
+                return invoice != null ? await MapToDtoAsync(invoice) : null;
             }
             catch (Exception ex)
             {
@@ -327,15 +456,18 @@ namespace SM_MentalHealthApp.Server.Services
                     .Include(a => a.ServiceRequest)
                         .ThenInclude(sr => sr.Client)
                     .Include(a => a.SmeUser)
+                        .ThenInclude(u => u.Company)
                     .Where(a => a.IsActive &&
                         a.SmeUserId == smeUserId &&
                         a.BillingStatus == BillingStatus.Ready.ToString() &&
-                        a.InvoiceId == null);
+                        a.InvoiceId == null &&
+                        a.Status == AssignmentStatus.Completed.ToString() && // Only completed assignments are ready to bill
+                        a.IsBillable); // Must be marked as billable
 
                 // Date filter
                 if (startDate.HasValue)
                 {
-                    query = query.Where(a => 
+                    query = query.Where(a =>
                         (a.StartedAt.HasValue && a.StartedAt >= startDate.Value) ||
                         (!a.StartedAt.HasValue && a.AssignedAt >= startDate.Value));
                 }
@@ -343,7 +475,7 @@ namespace SM_MentalHealthApp.Server.Services
                 if (endDate.HasValue)
                 {
                     var endDateTime = endDate.Value.Date.AddDays(1).AddTicks(-1);
-                    query = query.Where(a => 
+                    query = query.Where(a =>
                         (a.StartedAt.HasValue && a.StartedAt <= endDateTime) ||
                         (!a.StartedAt.HasValue && a.AssignedAt <= endDateTime));
                 }
@@ -361,7 +493,7 @@ namespace SM_MentalHealthApp.Server.Services
                     ClientName = $"{a.ServiceRequest.Client.FirstName} {a.ServiceRequest.Client.LastName}",
                     SmeUserId = a.SmeUserId,
                     SmeUserName = $"{a.SmeUser.FirstName} {a.SmeUser.LastName}",
-                    SmeCompany = a.SmeUser.Specialization,
+                    SmeCompany = a.SmeUser.Company != null ? a.SmeUser.Company.Name : null,
                     Status = a.Status,
                     StartedAt = a.StartedAt,
                     CompletedAt = a.CompletedAt,
@@ -388,22 +520,57 @@ namespace SM_MentalHealthApp.Server.Services
             var smeInitials = sme != null ? $"{sme.FirstName[0]}{sme.LastName[0]}" : "SME";
             var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
             var invoiceNumber = $"INV-{smeInitials}-{timestamp}";
-            
+
             // Ensure uniqueness
             var exists = await _context.SmeInvoices.AnyAsync(i => i.InvoiceNumber == invoiceNumber);
             if (exists)
             {
                 invoiceNumber = $"{invoiceNumber}-{Guid.NewGuid().ToString("N").Substring(0, 4)}";
             }
-            
+
             return invoiceNumber;
         }
 
         /// <summary>
         /// Map SmeInvoice to DTO
         /// </summary>
-        private SmeInvoiceDto MapToDto(SmeInvoice invoice)
+        private async Task<SmeInvoiceDto> MapToDtoAsync(SmeInvoice invoice)
         {
+            // Get all SME names for company invoices
+            var smeNames = new List<string>();
+            string? companyName = null;
+
+            if (invoice.BillingAccountType == "Company")
+            {
+                // Get company name
+                var company = await _context.Companies.FindAsync(invoice.BillingAccountId);
+                companyName = company?.Name;
+
+                // Get all SMEs in this company that have assignments in this invoice
+                var invoiceLineAssignmentIds = invoice.InvoiceLines
+                    .Where(l => l.AssignmentId > 0)
+                    .Select(l => l.AssignmentId)
+                    .ToList();
+
+                // Load assignments first, then format names in memory (EF Core can't translate string.Format)
+                var assignments = await _context.ServiceRequestAssignments
+                    .Include(a => a.SmeUser)
+                    .Where(a => invoiceLineAssignmentIds.Contains(a.Id) &&
+                               a.SmeUser.CompanyId == invoice.BillingAccountId)
+                    .ToListAsync();
+
+                smeNames = assignments
+                    .Select(a => $"{a.SmeUser.FirstName} {a.SmeUser.LastName}")
+                    .Distinct()
+                    .OrderBy(n => n)
+                    .ToList();
+            }
+            else
+            {
+                // Individual invoice - just the one SME
+                smeNames.Add($"{invoice.SmeUser.FirstName} {invoice.SmeUser.LastName}");
+            }
+
             return new SmeInvoiceDto
             {
                 Id = invoice.Id,
@@ -422,6 +589,10 @@ namespace SM_MentalHealthApp.Server.Services
                 VoidedAt = invoice.VoidedAt,
                 Notes = invoice.Notes,
                 LineItemCount = invoice.InvoiceLines.Count,
+                BillingAccountId = invoice.BillingAccountId,
+                BillingAccountType = invoice.BillingAccountType,
+                CompanyName = companyName,
+                SmeNames = smeNames,
                 InvoiceLines = invoice.InvoiceLines.Select(l => new SmeInvoiceLineDto
                 {
                     Id = l.Id,
@@ -429,8 +600,52 @@ namespace SM_MentalHealthApp.Server.Services
                     AssignmentId = l.AssignmentId,
                     ServiceRequestId = l.ServiceRequestId,
                     ServiceRequestTitle = l.ServiceRequest?.Title ?? "Unknown",
-                    ClientName = l.ServiceRequest?.Client != null 
-                        ? $"{l.ServiceRequest.Client.FirstName} {l.ServiceRequest.Client.LastName}" 
+                    ClientName = l.ServiceRequest?.Client != null
+                        ? $"{l.ServiceRequest.Client.FirstName} {l.ServiceRequest.Client.LastName}"
+                        : "Unknown",
+                    Description = l.Description,
+                    Amount = l.Amount,
+                    CreatedAt = l.CreatedAt
+                }).ToList()
+            };
+        }
+
+        /// <summary>
+        /// Map SmeInvoice to DTO (synchronous version for backward compatibility)
+        /// </summary>
+        private SmeInvoiceDto MapToDto(SmeInvoice invoice)
+        {
+            // For synchronous calls, we'll load SME names if needed
+            // This is a simplified version - async version is preferred
+            return new SmeInvoiceDto
+            {
+                Id = invoice.Id,
+                SmeUserId = invoice.SmeUserId,
+                SmeUserName = $"{invoice.SmeUser.FirstName} {invoice.SmeUser.LastName}",
+                InvoiceNumber = invoice.InvoiceNumber,
+                PeriodStart = invoice.PeriodStart,
+                PeriodEnd = invoice.PeriodEnd,
+                Status = invoice.Status,
+                SubTotal = invoice.SubTotal,
+                TaxAmount = invoice.TaxAmount,
+                TotalAmount = invoice.TotalAmount,
+                CreatedAt = invoice.CreatedAt,
+                SentAt = invoice.SentAt,
+                PaidAt = invoice.PaidAt,
+                VoidedAt = invoice.VoidedAt,
+                Notes = invoice.Notes,
+                LineItemCount = invoice.InvoiceLines.Count,
+                BillingAccountId = invoice.BillingAccountId,
+                BillingAccountType = invoice.BillingAccountType,
+                InvoiceLines = invoice.InvoiceLines.Select(l => new SmeInvoiceLineDto
+                {
+                    Id = l.Id,
+                    InvoiceId = l.InvoiceId,
+                    AssignmentId = l.AssignmentId,
+                    ServiceRequestId = l.ServiceRequestId,
+                    ServiceRequestTitle = l.ServiceRequest?.Title ?? "Unknown",
+                    ClientName = l.ServiceRequest?.Client != null
+                        ? $"{l.ServiceRequest.Client.FirstName} {l.ServiceRequest.Client.LastName}"
                         : "Unknown",
                     Description = l.Description,
                     Amount = l.Amount,

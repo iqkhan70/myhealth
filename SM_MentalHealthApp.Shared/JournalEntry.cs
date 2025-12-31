@@ -205,6 +205,8 @@ namespace SM_MentalHealthApp.Shared
         [JsonIgnore]
         public Role Role { get; set; } = null!;
         [JsonIgnore]
+        public Company? Company { get; set; }
+        [JsonIgnore]
         public List<JournalEntry> JournalEntries { get; set; } = new();
         [JsonIgnore]
         public List<ChatSession> ChatSessions { get; set; } = new();

@@ -109,7 +109,21 @@
                                 FilterMode="FilterMode.Advanced" ShowPagingSummary="true">
                                 <Columns>
                                     <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="InvoiceNumber" Title="Invoice #" Width="150px" />
-                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="SmeUserName" Title="SME" Width="150px" />
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="SmeUserName" Title="SME / Company" Width="200px">
+                                        <Template Context="inv">
+                                            @if (inv.BillingAccountType == "Company" && !string.IsNullOrEmpty(inv.CompanyName))
+                                            {
+                                                <div>
+                                                    <strong>@inv.CompanyName</strong><br />
+                                                    <small class="text-muted">@string.Join(", ", inv.SmeNames)</small>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                @inv.SmeUserName
+                                            }
+                                        </Template>
+                                    </RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="PeriodStart" Title="Period Start" Width="120px">
                                         <Template Context="inv">
                                             @inv.PeriodStart.ToString("MM/dd/yyyy")

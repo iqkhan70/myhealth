@@ -194,6 +194,12 @@ namespace SM_MentalHealthApp.Shared
         public string? Notes { get; set; }
         public int LineItemCount { get; set; }
         public List<SmeInvoiceLineDto> InvoiceLines { get; set; } = new();
+        
+        // Company billing fields
+        public int? BillingAccountId { get; set; }
+        public string? BillingAccountType { get; set; }
+        public string? CompanyName { get; set; }
+        public List<string> SmeNames { get; set; } = new(); // All SME names for company invoices
     }
 
     /// <summary>

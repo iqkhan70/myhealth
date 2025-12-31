@@ -7,7 +7,15 @@
         <div class="row mb-3">
             <div class="col-md-6">
                 <strong>Invoice Number:</strong> @Invoice.InvoiceNumber<br />
-                <strong>SME:</strong> @Invoice.SmeUserName<br />
+                @if (Invoice.BillingAccountType == "Company" && !string.IsNullOrEmpty(Invoice.CompanyName))
+                {
+                    <strong>Company:</strong> @Invoice.CompanyName<br />
+                    <strong>SMEs:</strong> @string.Join(", ", Invoice.SmeNames)<br />
+                }
+                else
+                {
+                    <strong>SME:</strong> @Invoice.SmeUserName<br />
+                }
                 <strong>Status:</strong> <span class="badge @GetStatusClass(Invoice.Status)">@Invoice.Status</span>
             </div>
             <div class="col-md-6">
