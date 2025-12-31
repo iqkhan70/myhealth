@@ -5,9 +5,19 @@
 <div class="p-3">
     <RadzenFieldset Text="Ready to Bill Assignments">
         @{
-            // SIMPLIFIED: One invoice per Service Request
-            var assignmentsBySr = Assignments.GroupBy(a => a.ServiceRequestId).ToList();
-            var invoiceCount = assignmentsBySr.Count;
+            // Group by: Service Request → Company (or Individual SME if no company)
+            // If multiple SMEs from the same company work on the same SR → ONE invoice
+            // Use normalized company name (trim, case-insensitive) for grouping
+            var assignmentsByGroup = Assignments
+                .GroupBy(a => new
+                {
+                    ServiceRequestId = a.ServiceRequestId,
+                    BillingKey = !string.IsNullOrWhiteSpace(a.SmeCompany) 
+                        ? a.SmeCompany.Trim().ToLowerInvariant() // Normalize company name
+                        : $"Individual_{a.SmeUserId}" // Use individual SME ID if no company
+                })
+                .ToList();
+            var invoiceCount = assignmentsByGroup.Count;
         }
         <div class="alert alert-info mb-3">
             <i class="fas fa-info-circle"></i>
@@ -16,22 +26,45 @@
             <small>
                 <strong>Billing Rules:</strong>
                 <ul class="mb-0 mt-1">
-                    <li>One invoice per Service Request</li>
-                    <li>All assignments for a Service Request will be included in one invoice</li>
+                    <li>One invoice per Service Request per Company</li>
+                    <li>If multiple SMEs from the same company work on the same SR → ONE invoice (grouped by company)</li>
+                    <li>If individual SMEs (no company) work on the same SR → Separate invoices (one per SME)</li>
+                    <li>If the same company/SME works on different SRs → Separate invoices (one per SR)</li>
                 </ul>
             </small>
         </div>
 
-        @foreach (var srGroup in assignmentsBySr)
+        @foreach (var group in assignmentsByGroup)
         {
-            var firstAssignment = srGroup.First();
+            var firstAssignment = group.First();
+            
+            // Determine if this is a company group or individual
+            var isCompanyGroup = !string.IsNullOrWhiteSpace(firstAssignment.SmeCompany);
+            var companyLabel = isCompanyGroup 
+                ? $"Company: {firstAssignment.SmeCompany}" 
+                : $"Individual: {firstAssignment.SmeUserName}";
+            
+            // Get all SME names for this group
+            var smeNames = group.Select(a => a.SmeUserName).Distinct().ToList();
+            var smeNamesText = smeNames.Count > 1 
+                ? $"{smeNames.Count} SMEs: {string.Join(", ", smeNames)}"
+                : firstAssignment.SmeUserName;
             
             <div class="mb-4">
                 <h6 class="mb-2">
-                    <i class="fas fa-file-invoice"></i> Invoice for SR #@srGroup.Key: @firstAssignment.ServiceRequestTitle
-                    <span class="badge bg-primary ms-2">@srGroup.Count() assignment(s)</span>
+                    <i class="fas fa-file-invoice"></i> Invoice for SR #@group.Key.ServiceRequestId: @firstAssignment.ServiceRequestTitle
+                    <span class="badge bg-primary ms-2">@group.Count() assignment(s)</span>
+                    <span class="badge bg-secondary ms-2">@companyLabel</span>
+                    @if (smeNames.Count > 1)
+                    {
+                        <span class="badge bg-info ms-2">@smeNamesText</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-info ms-2">SME: @smeNamesText</span>
+                    }
                 </h6>
-                <RadzenDataGrid Data="@srGroup.ToList()" TItem="BillableAssignmentDto" 
+                <RadzenDataGrid Data="@group.ToList()" TItem="BillableAssignmentDto" 
                     AllowPaging="false" AllowSorting="false" Style="margin-bottom: 20px;">
                     <Columns>
                         <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="ServiceRequestId" Title="SR ID" Width="80px" />

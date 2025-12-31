@@ -79,11 +79,19 @@
                 }
                 else
                 {
-                    var assignmentsBySr = readyAssignments.GroupBy(a => a.ServiceRequestId).ToList();
-                    var invoiceCount = assignmentsBySr.Count;
+                    var assignmentsByGroup = readyAssignments
+                        .GroupBy(a => new
+                        {
+                            ServiceRequestId = a.ServiceRequestId,
+                            BillingKey = !string.IsNullOrWhiteSpace(a.SmeCompany) 
+                                ? a.SmeCompany.Trim().ToLowerInvariant()
+                                : $"Individual_{a.SmeUserId}"
+                        })
+                        .ToList();
+                    var invoiceCount = assignmentsByGroup.Count;
                     <div class="mt-2">
                         <strong>@readyAssignments.Count</strong> assignment(s) will generate <strong>@invoiceCount</strong> invoice(s)
-                        (one invoice per Service Request)
+                        (one invoice per Service Request per Company)
                         <button class="btn btn-sm btn-link" @onclick="ShowReadyAssignments">
                             View Details
                         </button>
@@ -177,8 +185,16 @@
         if (isSubmitting) return;
 
         var assignmentCount = readyAssignments?.Count ?? 0;
-        var assignmentsBySr = readyAssignments?.GroupBy(a => a.ServiceRequestId).ToList() ?? new List<IGrouping<int, BillableAssignmentDto>>();
-        var invoiceCount = assignmentsBySr.Count;
+        var assignmentsByGroup = readyAssignments?
+            .GroupBy(a => new
+            {
+                ServiceRequestId = a.ServiceRequestId,
+                BillingKey = !string.IsNullOrWhiteSpace(a.SmeCompany) 
+                    ? a.SmeCompany.Trim().ToLowerInvariant()
+                    : $"Individual_{a.SmeUserId}"
+            })
+            .ToList();
+        var invoiceCount = assignmentsByGroup?.Count ?? 0;
         
         var confirmMessage = invoiceCount > 1
             ? $"Generate {invoiceCount} invoice(s) for {SMEs.FirstOrDefault(s => s.Id == selectedSmeUserId.Value)?.FullName ?? "SME"} " +
@@ -213,8 +229,16 @@
             var invoice = await InvoicingService.GenerateInvoiceAsync(request);
             
             // Check if multiple invoices were generated
-            var successAssignmentsBySr = readyAssignments?.GroupBy(a => a.ServiceRequestId).ToList() ?? new List<IGrouping<int, BillableAssignmentDto>>();
-            var successInvoiceCount = successAssignmentsBySr.Count;
+            var successAssignmentsByGroup = readyAssignments?
+                .GroupBy(a => new
+                {
+                    ServiceRequestId = a.ServiceRequestId,
+                    BillingKey = !string.IsNullOrWhiteSpace(a.SmeCompany) 
+                        ? a.SmeCompany.Trim().ToLowerInvariant()
+                        : $"Individual_{a.SmeUserId}"
+                })
+                .ToList();
+            var successInvoiceCount = successAssignmentsByGroup?.Count ?? 0;
             
             if (successInvoiceCount > 1)
             {

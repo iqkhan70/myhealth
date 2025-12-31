@@ -127,38 +127,52 @@ namespace SM_MentalHealthApp.Server.Services
                     throw new InvalidOperationException("No ready-to-bill charges found for this billing account in the specified period. Charges may have already been invoiced.");
                 }
 
-                // SIMPLIFIED: One invoice per Service Request
-                // Group assignments by ServiceRequestId
-                var assignmentsBySr = readyAssignments.GroupBy(a => a.ServiceRequestId).ToList();
+                // Group by: Service Request → Company (or Individual SME if no company)
+                // If multiple SMEs from the same company work on the same SR → ONE invoice
+                // If individual SME (no company) works on SR → Separate invoice per SME
+                var assignmentsByGroup = readyAssignments
+                    .GroupBy(a => new
+                    {
+                        ServiceRequestId = a.ServiceRequestId,
+                        BillingAccountId = a.SmeUser.CompanyId ?? a.SmeUserId, // Use CompanyId if exists, else SmeUserId for individual
+                        BillingAccountType = a.SmeUser.CompanyId.HasValue ? "Company" : "Individual"
+                    })
+                    .ToList();
 
-                if (!assignmentsBySr.Any())
+                if (!assignmentsByGroup.Any())
                 {
                     throw new InvalidOperationException("No assignments found to invoice");
                 }
 
-                // Generate invoices - one per SR
+                // Generate invoices - one per group (SR + SME + Company)
                 var generatedInvoices = new List<SmeInvoiceDto>();
 
-                foreach (var srGroup in assignmentsBySr)
+                foreach (var group in assignmentsByGroup)
                 {
-                    var srAssignments = srGroup.ToList();
-                    var serviceRequestId = srGroup.Key;
-                    var serviceRequest = srAssignments.First().ServiceRequest;
+                    var groupAssignments = group.ToList();
+                    var serviceRequestId = group.Key.ServiceRequestId;
+                    var groupBillingAccountId = group.Key.BillingAccountId;
+                    var groupBillingAccountType = group.Key.BillingAccountType;
+                    var serviceRequest = groupAssignments.First().ServiceRequest;
+                    
+                    // Get the first SME user for invoice generation (for invoice number)
+                    var firstSmeUser = groupAssignments.First().SmeUser;
+                    var smeUserId = firstSmeUser.Id;
 
-                    // Get charge for this SR
+                    // Get charge for this SR and billing account
                     var charge = relevantCharges.FirstOrDefault(c =>
                         c.ServiceRequestId == serviceRequestId &&
-                        ((billingAccountType == "Company" && c.BillingAccountId == billingAccountId) ||
-                         (billingAccountType == "Individual" && c.BillingAccountId == request.SmeUserId)));
+                        c.BillingAccountId == groupBillingAccountId);
 
                     if (charge == null)
                     {
-                        _logger.LogWarning("No charge found for ServiceRequest {ServiceRequestId}, skipping...", serviceRequestId);
+                        _logger.LogWarning("No charge found for ServiceRequest {ServiceRequestId}, BillingAccount {BillingAccountId} ({Type}), skipping...", 
+                            serviceRequestId, groupBillingAccountId, groupBillingAccountType);
                         continue;
                     }
 
                     // Generate invoice number
-                    var invoiceNumber = await GenerateInvoiceNumberAsync(request.SmeUserId);
+                    var invoiceNumber = await GenerateInvoiceNumberAsync(smeUserId);
 
                     // Calculate totals
                     var subTotal = charge.Amount;
@@ -166,12 +180,12 @@ namespace SM_MentalHealthApp.Server.Services
                     var taxAmount = subTotal * taxRate;
                     var totalAmount = subTotal + taxAmount;
 
-                    // Create ONE invoice for this SR
+                    // Create ONE invoice for this group (SR + SME + Company)
                     var invoice = new SmeInvoice
                     {
-                        SmeUserId = request.SmeUserId,
-                        BillingAccountId = billingAccountId,
-                        BillingAccountType = billingAccountType,
+                        SmeUserId = smeUserId,
+                        BillingAccountId = groupBillingAccountId,
+                        BillingAccountType = groupBillingAccountType,
                         InvoiceNumber = invoiceNumber,
                         PeriodStart = request.PeriodStart,
                         PeriodEnd = request.PeriodEnd,
@@ -187,13 +201,13 @@ namespace SM_MentalHealthApp.Server.Services
                     _context.SmeInvoices.Add(invoice);
                     await _context.SaveChangesAsync(); // Save to get invoice ID
 
-                    // Create invoice line for this SR
+                    // Create invoice line for this group
                     var line = new SmeInvoiceLine
                     {
                         InvoiceId = invoice.Id,
                         ChargeId = charge.Id,
                         ServiceRequestId = serviceRequestId,
-                        AssignmentId = srAssignments.First().Id, // Use first assignment ID
+                        AssignmentId = groupAssignments.First().Id, // Use first assignment ID
                         Description = $"Service Request: {serviceRequest.Title}",
                         Amount = charge.Amount,
                         CreatedAt = DateTime.UtcNow
@@ -206,8 +220,8 @@ namespace SM_MentalHealthApp.Server.Services
                     charge.InvoiceId = invoice.Id;
                     charge.InvoicedAt = DateTime.UtcNow;
 
-                    // Update all assignments for this SR to Invoiced
-                    foreach (var assignment in srAssignments)
+                    // Update all assignments for this group to Invoiced
+                    foreach (var assignment in groupAssignments)
                     {
                         assignment.BillingStatus = BillingStatus.Invoiced.ToString();
                         assignment.InvoiceId = invoice.Id;
@@ -217,8 +231,8 @@ namespace SM_MentalHealthApp.Server.Services
                     await _context.SaveChangesAsync();
 
                     _logger.LogInformation(
-                        "Generated invoice {InvoiceNumber} for ServiceRequest {ServiceRequestId} with {AssignmentCount} assignments. Total: {Total}",
-                        invoiceNumber, serviceRequestId, srAssignments.Count, totalAmount);
+                        "Generated invoice {InvoiceNumber} for ServiceRequest {ServiceRequestId}, BillingAccount {BillingAccountId} ({Type}) with {AssignmentCount} assignments. Total: {Total}",
+                        invoiceNumber, serviceRequestId, groupBillingAccountId, groupBillingAccountType, groupAssignments.Count, totalAmount);
 
                     // Get the generated invoice DTO
                     var invoiceDto = await GetInvoiceByIdAsync(invoice.Id);
@@ -447,22 +461,47 @@ namespace SM_MentalHealthApp.Server.Services
 
         /// <summary>
         /// Get assignments that are ready to be billed (for invoice generation preview)
+        /// If SME belongs to a company, returns all assignments for all SMEs in that company
+        /// If SME is individual, returns only that SME's assignments
         /// </summary>
         public async Task<List<BillableAssignmentDto>> GetReadyToBillAssignmentsAsync(int smeUserId, DateTime? startDate = null, DateTime? endDate = null)
         {
             try
             {
+                // Get the SME user to determine if they belong to a company
+                var smeUser = await _context.Users
+                    .Include(u => u.Company)
+                    .FirstOrDefaultAsync(u => u.Id == smeUserId);
+
+                if (smeUser == null)
+                {
+                    return new List<BillableAssignmentDto>();
+                }
+
+                // Determine billing account (CompanyId if exists, else SmeUserId)
+                var billingAccountId = smeUser.CompanyId ?? smeUserId;
+                var billingAccountType = smeUser.CompanyId.HasValue ? "Company" : "Individual";
+
                 var query = _context.ServiceRequestAssignments
                     .Include(a => a.ServiceRequest)
                         .ThenInclude(sr => sr.Client)
                     .Include(a => a.SmeUser)
                         .ThenInclude(u => u.Company)
                     .Where(a => a.IsActive &&
-                        a.SmeUserId == smeUserId &&
                         a.BillingStatus == BillingStatus.Ready.ToString() &&
                         a.InvoiceId == null &&
                         a.Status == AssignmentStatus.Completed.ToString() && // Only completed assignments are ready to bill
                         a.IsBillable); // Must be marked as billable
+
+                // Filter by billing account: if company, get all SMEs in company; if individual, get this SME only
+                if (billingAccountType == "Company")
+                {
+                    query = query.Where(a => a.SmeUser.CompanyId == billingAccountId);
+                }
+                else
+                {
+                    query = query.Where(a => a.SmeUserId == smeUserId);
+                }
 
                 // Date filter
                 if (startDate.HasValue)
