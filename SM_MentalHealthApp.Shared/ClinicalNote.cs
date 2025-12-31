@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace SM_MentalHealthApp.Shared
 {
     /// <summary>
-    /// Clinical notes created by doctors for patients
+    /// Service notes created by doctors for patients
     /// </summary>
     public class ClinicalNote
     {

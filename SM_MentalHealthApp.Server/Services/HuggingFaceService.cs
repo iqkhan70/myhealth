@@ -1147,7 +1147,7 @@ namespace SM_MentalHealthApp.Server.Services
                     var hasEmergencySectionsCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "EMERGENCY");
                     var hasSessionCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Session");
                     var hasSummaryCheck = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Summary");
-                    var hasClinicalNotesCheck2 = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Clinical Notes");
+                    var hasClinicalNotesCheck2 = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Service Notes");
                     var hasJournalEntriesCheck2 = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Journal Entries");
                     var hasChatHistoryCheck2 = await _sectionMarkerService.ContainsSectionMarkerAsync(text, "Chat History");
 
@@ -1540,7 +1540,7 @@ namespace SM_MentalHealthApp.Server.Services
                                 else
                                 {
                                     var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_clinical_notes", null);
-                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Clinical Notes:** Recent clinical documentation is available for review.");
+                                    response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Service Notes:** Recent clinical documentation is available for review.");
                                 }
                             }
 
@@ -2096,7 +2096,7 @@ namespace SM_MentalHealthApp.Server.Services
                             else
                             {
                                 var fallbackTemplate = await _templateService.FormatTemplateAsync("fallback_clinical_notes", null);
-                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Clinical Notes:** Recent clinical documentation is available for review.");
+                                response.AppendLine(!string.IsNullOrEmpty(fallbackTemplate) ? fallbackTemplate : "**Service Notes:** Recent clinical documentation is available for review.");
                             }
                         }
 
@@ -2815,7 +2815,7 @@ namespace SM_MentalHealthApp.Server.Services
                             }
 
                             // For "=== RECENT CLINICAL NOTES ===" section, exclude instruction text
-                            // Instruction text like "⚠️ IMPORTANT: Clinical notes are written by doctors..." contains emojis
+                            // Instruction text like "⚠️ IMPORTANT: Service notes are written by doctors..." contains emojis
                             // that match keyword categories, causing false positives
                             if (marker == "=== RECENT CLINICAL NOTES ===")
                             {

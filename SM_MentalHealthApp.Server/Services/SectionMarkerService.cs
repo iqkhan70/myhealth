@@ -79,7 +79,7 @@ namespace SM_MentalHealthApp.Server.Services
         {
             var markers = await GetSectionMarkersAsync();
             var marker = markers.FirstOrDefault(m => m.Contains(markerType, StringComparison.OrdinalIgnoreCase));
-            
+
             if (marker == null) return null;
 
             var index = text.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
@@ -89,7 +89,7 @@ namespace SM_MentalHealthApp.Server.Services
             // For clinical notes, we want to include all content until the next major section
             var nextIndex = text.Length;
             var searchStart = index + marker.Length;
-            
+
             foreach (var nextMarker in markers)
             {
                 if (nextMarker != marker && !nextMarker.Contains(markerType, StringComparison.OrdinalIgnoreCase))
@@ -110,9 +110,9 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             var extracted = text.Substring(index, nextIndex - index);
-            _logger.LogDebug("Extracted section '{MarkerType}': {Length} chars (from index {Start} to {End})", 
+            _logger.LogDebug("Extracted section '{MarkerType}': {Length} chars (from index {Start} to {End})",
                 markerType, extracted.Length, index, nextIndex);
-            
+
             return extracted;
         }
 
@@ -142,7 +142,7 @@ namespace SM_MentalHealthApp.Server.Services
                 "Fall",
                 "Session:",
                 "Summary:",
-                "Clinical Notes",
+                "Service Notes",
                 "Journal Entries",
                 "Chat History",
                 "MOOD PATTERNS (Last 30 days):",

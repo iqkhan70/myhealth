@@ -580,7 +580,7 @@ Please provide a concise clinical summary of this health conversation. Focus on:
 2. **Patient Concerns**: Specific worries, symptoms, or challenges mentioned
 3. **AI Recommendations**: Advice, coping strategies, or suggestions provided
 4. **Patient Response**: How the patient reacted to suggestions
-5. **Clinical Notes**: Any important observations for healthcare providers
+5. **Service Notes**: Any important observations for healthcare providers
 
 Conversation:
 {conversationContext}

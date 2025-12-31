@@ -387,7 +387,7 @@ If you need general medical information without patient context, please switch t
                 if (recentClinicalNotes.Any())
                 {
                     context.AppendLine("=== RECENT CLINICAL NOTES ===");
-                    context.AppendLine("⚠️ IMPORTANT: Clinical notes are written by doctors and contain critical medical observations and assessments.");
+                    context.AppendLine("⚠️ IMPORTANT: Service notes are written by doctors and contain critical medical observations and assessments.");
                     context.AppendLine("These notes should be given HIGH PRIORITY in your analysis, especially if they mention serious symptoms, concerns, or require monitoring.");
                     context.AppendLine();
                     foreach (var note in recentClinicalNotes)
@@ -1009,7 +1009,7 @@ If you need general medical information without patient context, please switch t
                 if (recentClinicalNotes.Any())
                 {
                     context.AppendLine("=== RECENT CLINICAL NOTES ===");
-                    context.AppendLine("⚠️ IMPORTANT: Clinical notes are written by doctors and contain critical medical observations and assessments.");
+                    context.AppendLine("⚠️ IMPORTANT: Service notes are written by doctors and contain critical medical observations and assessments.");
                     context.AppendLine();
                     foreach (var note in recentClinicalNotes)
                     {
