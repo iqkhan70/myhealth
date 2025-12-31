@@ -487,7 +487,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get billable assignments for billing reports
         /// </summary>
         [HttpGet("billing/assignments")]
-        [Authorize(Roles = "Admin,Coordinator")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<List<BillableAssignmentDto>>> GetBillableAssignments(
             [FromQuery] int? smeUserId = null,
             [FromQuery] DateTime? startDate = null,

@@ -22,11 +22,11 @@
                 </ActionButton>
             </SMPageHeader>
 
-            @if (AuthService.CurrentUser?.RoleId != 3 && AuthService.CurrentUser?.RoleId != 4)
+            @if (AuthService.CurrentUser?.RoleId != 3)
             {
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <strong>Access Denied:</strong> Only Administrators and Coordinators can manage invoices.
+                    <strong>Access Denied:</strong> Only Administrators can manage invoices.
                 </div>
             }
             else
@@ -186,7 +186,7 @@
     protected override async Task OnInitializedAsync()
     {
         await AuthService.InitializeAsync();
-        if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4)
+        if (AuthService.CurrentUser?.RoleId == 3) // Admin only
         {
             await LoadSMEs();
             await LoadInvoices();

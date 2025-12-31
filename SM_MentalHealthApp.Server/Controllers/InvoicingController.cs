@@ -27,7 +27,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Generate an invoice for an SME
         /// </summary>
         [HttpPost("generate")]
-        [Authorize(Roles = "Admin,Coordinator")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<SmeInvoiceDto>> GenerateInvoice([FromBody] GenerateInvoiceRequest request)
         {
             try
@@ -107,7 +107,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get invoices with optional filters
         /// </summary>
         [HttpGet]
-        [Authorize(Roles = "Admin,Coordinator")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<List<SmeInvoiceDto>>> GetInvoices(
             [FromQuery] int? smeUserId = null,
             [FromQuery] InvoiceStatus? status = null,
@@ -130,7 +130,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get invoice by ID
         /// </summary>
         [HttpGet("{invoiceId}")]
-        [Authorize(Roles = "Admin,Coordinator")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<SmeInvoiceDto>> GetInvoice(long invoiceId)
         {
             try
@@ -152,7 +152,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get assignments ready to be billed (for invoice generation preview)
         /// </summary>
         [HttpGet("ready-to-bill/{smeUserId}")]
-        [Authorize(Roles = "Admin,Coordinator")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<List<BillableAssignmentDto>>> GetReadyToBillAssignments(
             int smeUserId,
             [FromQuery] DateTime? startDate = null,
