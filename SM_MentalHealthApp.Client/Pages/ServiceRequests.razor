@@ -298,6 +298,8 @@
             }
             
             // Query OData endpoint
+            // Note: Assignments navigation property is not expandable in OData EDM model
+            // We'll load assignments separately after getting ServiceRequests
             var result = await ODataService.QueryAsync<ServiceRequest>(
                 "ServiceRequests",
                 args.Skip ?? 0,
@@ -339,6 +341,9 @@
             totalCount = result.TotalCount;
             _filterSmeIds = null; // Reset after use
 
+            // Load assignments separately since OData doesn't support $expand for Assignments
+            await LoadAssignmentsForServiceRequests();
+
             // Fetch users for assignments if needed
             await LoadAssignmentUsers();
 
@@ -354,6 +359,53 @@
             serviceRequests = new();
             totalCount = 0;
             await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadAssignmentsForServiceRequests()
+    {
+        if (!serviceRequests.Any())
+            return;
+
+        try
+        {
+            var serviceRequestIds = serviceRequests.Select(sr => sr.Id).ToList();
+            
+            // Load assignments for all service requests in parallel (batch)
+            var assignmentTasks = serviceRequestIds.Select(async srId =>
+            {
+                try
+                {
+                    // Get the full service request with assignments via the regular API
+                    var fullSr = await ServiceRequestService.GetServiceRequestByIdAsync(srId);
+                    return new { SrId = srId, Assignments = fullSr?.Assignments?.Where(a => a.IsActive).ToList() ?? new List<ServiceRequestAssignmentDto>() };
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to load assignments for SR {srId}: {ex.Message}");
+                    return new { SrId = srId, Assignments = new List<ServiceRequestAssignmentDto>() };
+                }
+            });
+            
+            var assignmentResults = await Task.WhenAll(assignmentTasks);
+            var assignmentsBySrId = assignmentResults.ToDictionary(r => r.SrId, r => r.Assignments);
+            
+            // Assign assignments to each service request
+            foreach (var sr in serviceRequests)
+            {
+                if (assignmentsBySrId.TryGetValue(sr.Id, out var assignments))
+                {
+                    sr.Assignments = assignments;
+                }
+                else
+                {
+                    sr.Assignments = new List<ServiceRequestAssignmentDto>();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load assignments: {ex.Message}");
         }
     }
 

@@ -14,6 +14,8 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<UserRequest> UserRequests { get; set; }
             public DbSet<ServiceRequest> ServiceRequests { get; set; }
             public DbSet<ServiceRequestAssignment> ServiceRequestAssignments { get; set; }
+            public DbSet<ServiceRequestCharge> ServiceRequestCharges { get; set; }
+            public DbSet<Company> Companies { get; set; }
             public DbSet<SmeInvoice> SmeInvoices { get; set; }
             public DbSet<SmeInvoiceLine> SmeInvoiceLines { get; set; }
             public DbSet<JournalEntry> JournalEntries { get; set; }

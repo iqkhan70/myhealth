@@ -146,6 +146,7 @@ public static class DependencyInjection
         services.AddScoped<IClinicalNotesService, ClinicalNotesService>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
         services.AddScoped<IAssignmentLifecycleService, AssignmentLifecycleService>();
+        services.AddScoped<IServiceRequestChargeService, ServiceRequestChargeService>();
         services.AddScoped<IInvoicingService, InvoicingService>();
         services.AddScoped<IMultimediaAnalysisService, MultimediaAnalysisService>();
         services.AddScoped<IChatHistoryService, ChatHistoryService>();
@@ -411,7 +412,8 @@ public static class DependencyInjection
         // Ignore navigation properties to avoid circular references (we'll load them via Include in controller)
         serviceRequestSet.EntityType.Ignore(sr => sr.Client);
         serviceRequestSet.EntityType.Ignore(sr => sr.CreatedByUser);
-        serviceRequestSet.EntityType.Ignore(sr => sr.Assignments);
+        // Note: Assignments is NOT ignored so it can be expanded via $expand
+        // The controller uses Include() to load them, and OData will serialize them
 
         return builder.GetEdmModel();
     }

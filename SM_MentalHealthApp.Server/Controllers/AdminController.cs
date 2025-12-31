@@ -964,6 +964,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     Gender = request.Gender,
                     MobilePhone = request.MobilePhone,
                     RoleId = 5, // Attorney role
+                    CompanyId = request.CompanyId,
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true,
                     MustChangePassword = true // Force password change on first login
@@ -1372,6 +1373,17 @@ namespace SM_MentalHealthApp.Server.Controllers
                     doctor.LicenseNumber = request.LicenseNumber;
                 }
 
+                // Update CompanyId if provided
+                if (request.CompanyId.HasValue && doctor.CompanyId != request.CompanyId.Value)
+                {
+                    doctor.CompanyId = request.CompanyId.Value;
+                }
+                else if (!request.CompanyId.HasValue && doctor.CompanyId.HasValue)
+                {
+                    // Allow clearing CompanyId by sending null
+                    doctor.CompanyId = null;
+                }
+
                 // Update password only if provided and not empty
                 // Don't change MustChangePassword for existing users - preserve existing value
                 if (!string.IsNullOrWhiteSpace(request.Password))
@@ -1686,6 +1698,17 @@ namespace SM_MentalHealthApp.Server.Controllers
                     UserEncryptionHelper.EncryptUserData(attorney, _encryptionService);
                 }
 
+                // Update CompanyId if provided
+                if (request.CompanyId.HasValue && attorney.CompanyId != request.CompanyId.Value)
+                {
+                    attorney.CompanyId = request.CompanyId.Value;
+                }
+                else if (!request.CompanyId.HasValue && attorney.CompanyId.HasValue)
+                {
+                    // Allow clearing CompanyId by sending null
+                    attorney.CompanyId = null;
+                }
+
                 // Update password only if provided
                 // Don't change MustChangePassword for existing users - preserve existing value
                 if (!string.IsNullOrWhiteSpace(request.Password))
@@ -1839,6 +1862,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? MobilePhone { get; set; }
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
+        public int? CompanyId { get; set; }
     }
 
     public class UpdateDoctorRequest
@@ -1852,6 +1876,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? Specialization { get; set; }
         public string? LicenseNumber { get; set; }
         public string? Password { get; set; }
+        public int? CompanyId { get; set; }
     }
 
     public class CreatePatientRequest
@@ -2008,6 +2033,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public DateTime DateOfBirth { get; set; }
         public string Gender { get; set; } = string.Empty;
         public string? MobilePhone { get; set; }
+        public int? CompanyId { get; set; }
     }
 
     public class UpdateAttorneyRequest
@@ -2019,5 +2045,6 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? Gender { get; set; }
         public string? MobilePhone { get; set; }
         public string? Password { get; set; }
+        public int? CompanyId { get; set; }
     }
 }

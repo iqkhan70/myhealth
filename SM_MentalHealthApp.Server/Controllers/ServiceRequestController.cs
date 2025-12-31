@@ -186,14 +186,18 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var assigned = await _serviceRequestService.AssignSmeToServiceRequestAsync(id, request.SmeUserId, currentUserId);
                 
                 if (!assigned)
+                {
+                    _logger.LogWarning("Failed to assign SME {SmeUserId} to ServiceRequest {ServiceRequestId}. SME may already be assigned or service request/SME may not exist.", 
+                        request.SmeUserId, id);
                     return BadRequest("Failed to assign SME. The SME may already be assigned or the service request/SME may not exist.");
+                }
 
                 return Ok(new { message = "SME assigned successfully" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error assigning SME to service request: {Id}", id);
-                return StatusCode(500, "An error occurred while assigning the SME");
+                _logger.LogError(ex, "Error assigning SME to service request: {Id}, SME: {SmeUserId}", id, request?.SmeUserId);
+                return StatusCode(500, $"An error occurred while assigning the SME: {ex.Message}");
             }
         }
 

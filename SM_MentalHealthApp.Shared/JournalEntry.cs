@@ -79,6 +79,9 @@ namespace SM_MentalHealthApp.Shared
         // SME scoring (for doctors and attorneys)
         public int SmeScore { get; set; } = 100; // Behavior-based score (0-150), default 100
         
+        // Company association for SMEs (if set, billing goes to company, else to individual SME)
+        public int? CompanyId { get; set; }
+        
         // Accident-related fields (captured from user requests)
         public int? Age { get; set; }
         

@@ -35,6 +35,19 @@ namespace SM_MentalHealthApp.Shared
         [Required]
         public int SmeUserId { get; set; }
         
+        /// <summary>
+        /// Billing Account ID: CompanyId if company, SmeUserId if individual
+        /// </summary>
+        [Required]
+        public int BillingAccountId { get; set; }
+        
+        /// <summary>
+        /// Type of billing account: "Company" or "Individual"
+        /// </summary>
+        [Required]
+        [MaxLength(20)]
+        public string BillingAccountType { get; set; } = "Individual";
+        
         [Required]
         [MaxLength(50)]
         public string InvoiceNumber { get; set; } = string.Empty;
@@ -88,6 +101,11 @@ namespace SM_MentalHealthApp.Shared
         [Required]
         public int AssignmentId { get; set; } // Unique constraint prevents duplicate billing
         
+        /// <summary>
+        /// Reference to ServiceRequestCharge (if billing by charge instead of assignment)
+        /// </summary>
+        public long? ChargeId { get; set; }
+        
         [Required]
         public int ServiceRequestId { get; set; }
         
@@ -102,6 +120,7 @@ namespace SM_MentalHealthApp.Shared
         // Navigation properties
         public SmeInvoice Invoice { get; set; } = null!;
         public ServiceRequestAssignment Assignment { get; set; } = null!;
+        public ServiceRequestCharge? Charge { get; set; }
         public ServiceRequest ServiceRequest { get; set; } = null!;
     }
 

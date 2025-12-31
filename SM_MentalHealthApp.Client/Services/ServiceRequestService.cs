@@ -56,14 +56,29 @@ public class ServiceRequestService : BaseService, IServiceRequestService
 
     public async Task<bool> AssignSmeToServiceRequestAsync(int serviceRequestId, int smeUserId)
     {
-        AddAuthorizationHeader();
-        var request = new AssignSmeToServiceRequestRequest
+        try
         {
-            ServiceRequestId = serviceRequestId,
-            SmeUserId = smeUserId
-        };
-        var response = await _http.PostAsJsonAsync($"api/ServiceRequest/{serviceRequestId}/assign", request);
-        return response.IsSuccessStatusCode;
+            AddAuthorizationHeader();
+            var request = new AssignSmeToServiceRequestRequest
+            {
+                ServiceRequestId = serviceRequestId,
+                SmeUserId = smeUserId
+            };
+            var response = await _http.PostAsJsonAsync($"api/ServiceRequest/{serviceRequestId}/assign", request);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Failed to assign SME: {response.StatusCode} - {errorContent}");
+            }
+            
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Exception assigning SME: {ex.Message}");
+            throw;
+        }
     }
 
     public async Task<bool> UnassignSmeFromServiceRequestAsync(int serviceRequestId, int smeUserId)

@@ -5,6 +5,7 @@
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
 @using System.Net.Http
+@using Radzen.Blazor
 
 <div class="doctors-page">
     <div class="doctors-header">
@@ -327,6 +328,22 @@
                         <!-- Empty div for layout balance -->
                     </div>
                 </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Company (Optional)</label>
+                        <RadzenDropDown Data="@companies" TextProperty="Name" ValueProperty="Id"
+                            @bind-Value="doctorForm.CompanyId" AllowFiltering="true"
+                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
+                            Placeholder="Select a company or leave blank if independent..."
+                            Style="width: 100%;" />
+                        <small class="text-muted">If this doctor belongs to a company, select it from the list. Leave blank if independent.</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <!-- Empty div for layout balance -->
+                    </div>
+                </div>
             </div>
             
             <div class="modal-footer">
@@ -420,6 +437,7 @@
 
 @code {
     private List<User> doctors = new();
+    private List<Company> companies = new();
     private User? selectedDoctor;
     private bool isLoading = true;
     private bool showDoctorForm = false;
@@ -451,7 +469,21 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadCompanies();
         await LoadDoctors();
+    }
+
+    private async Task LoadCompanies()
+    {
+        try
+        {
+            companies = await Http.GetFromJsonAsync<List<Company>>("api/company/active") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading companies: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Warning, "Warning", "Failed to load companies list.");
+        }
     }
 
     private async Task LoadDoctors()
@@ -513,14 +545,15 @@
         StateHasChanged();
     }
 
-    private void ShowAddDoctorForm()
+    private async Task ShowAddDoctorForm()
     {
         editingDoctor = null;
         doctorForm = new CreateDoctorRequest { DateOfBirth = DateTime.Now.AddYears(-30) };
+        await LoadCompanies(); // Refresh companies list
         showDoctorForm = true;
     }
 
-    private void EditDoctor(User doctor)
+    private async Task EditDoctor(User doctor)
     {
         if (doctor == null) return;
         
@@ -535,8 +568,10 @@
             Gender = doctor.Gender ?? string.Empty,
             MobilePhone = doctor.MobilePhone ?? string.Empty,
             Specialization = doctor.Specialization ?? string.Empty,
-            LicenseNumber = doctor.LicenseNumber ?? string.Empty
+            LicenseNumber = doctor.LicenseNumber ?? string.Empty,
+            CompanyId = doctor.CompanyId
         };
+        await LoadCompanies(); // Refresh companies list
         showDoctorForm = true;
     }
 
@@ -618,6 +653,10 @@
                     
                     if (!string.IsNullOrWhiteSpace(doctorForm.LicenseNumber) && doctorForm.LicenseNumber != (_originalDoctor.LicenseNumber ?? string.Empty))
                         updateRequest.LicenseNumber = doctorForm.LicenseNumber;
+                    
+                    // CompanyId comparison (nullable int)
+                    if (doctorForm.CompanyId != _originalDoctor.CompanyId)
+                        updateRequest.CompanyId = doctorForm.CompanyId;
                     
                     // Only include password if provided
                     if (!string.IsNullOrWhiteSpace(doctorForm.Password))
@@ -720,6 +759,7 @@
         public string? MobilePhone { get; set; }
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
+        public int? CompanyId { get; set; }
     }
 
     // Track original values for dirty field detection
@@ -736,6 +776,7 @@
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
         public string? Password { get; set; }
+        public int? CompanyId { get; set; }
     }
 }
 

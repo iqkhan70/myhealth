@@ -1565,6 +1565,155 @@ else
 fi
 
 # ============================================================================
+# Step 8.8: Run Service Request Charges and Company Billing Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.8: Running Service Request Charges Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestChargesAndCompanyBilling.sql" ]; then
+    echo "Copying Service Request Charges migration script..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestChargesAndCompanyBilling.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/service_request_charges_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Service Request Charges migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using password from .env file"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "❌ ERROR: Cannot connect to MySQL"
+                exit 1
+            fi
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Service Request Charges migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Service Request Charges migration failed"
+                        exit 1
+                    fi
+                }
+            else
+                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Service Request Charges migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Service Request Charges migration failed"
+                        exit 1
+                    fi
+                }
+            fi
+            
+            echo "✅ Service Request Charges migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Service Request Charges migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/service_request_charges_migration.sql"
+        fi
+ENDSSH
+    
+    echo -e "${GREEN}✅ Service Request Charges migration completed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Service Request Charges migration script not found${NC}"
+    echo "   Skipping Service Request Charges migration (may already be applied)"
+fi
+
+# ============================================================================
+# Step 8.9: Run Companies Table Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.9: Running Companies Table Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddCompaniesTable.sql" ]; then
+    echo "Copying Companies table migration script to server..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddCompaniesTable.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/companies_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Companies table migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using password from .env file"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "❌ ERROR: Cannot connect to MySQL"
+                exit 1
+            fi
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Companies table migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Companies table migration failed"
+                        exit 1
+                    fi
+                }
+            else
+                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Companies table migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Companies table migration failed"
+                        exit 1
+                    fi
+                }
+            fi
+            
+            echo "✅ Companies table migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Companies table migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/companies_migration.sql"
+        fi
+ENDSSH
+    
+    echo -e "${GREEN}✅ Companies table migration completed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Companies table migration script not found, skipping...${NC}"
+fi
+
+# ============================================================================
 # Step 9: Seed Database
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"

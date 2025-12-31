@@ -187,12 +187,14 @@
             }
             else
             {
-                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to assign SME");
+                NotificationService.Notify(NotificationSeverity.Error, "Error", 
+                    "Failed to assign SME. The SME may already be assigned, or the service request/SME may not exist. Please check the server logs for details.");
             }
         }
         catch (Exception ex)
         {
             NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to assign SME: {ex.Message}");
+            Console.WriteLine($"Exception in AssignSme: {ex}");
         }
         finally
         {

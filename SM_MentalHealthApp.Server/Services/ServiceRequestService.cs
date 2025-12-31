@@ -260,7 +260,8 @@ namespace SM_MentalHealthApp.Server.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error assigning SME to service request");
+                _logger.LogError(ex, "Error assigning SME {SmeUserId} to service request {ServiceRequestId}. Error: {ErrorMessage}", 
+                    smeUserId, serviceRequestId, ex.Message);
                 return false;
             }
         }

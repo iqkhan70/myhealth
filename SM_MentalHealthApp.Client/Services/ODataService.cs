@@ -29,7 +29,8 @@ public class ODataService
         int take = 20,
         string? orderBy = null,
         string? filter = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? expand = null)
     {
         try
         {
@@ -49,6 +50,11 @@ public class ODataService
                 // Filter is already transformed to OData syntax by the caller (e.g., Patients.razor)
                 // Only encode the filter value, not the $filter parameter name
                 queryParams.Add($"$filter={Uri.EscapeDataString(filter)}");
+            }
+            if (!string.IsNullOrEmpty(expand))
+            {
+                // Add $expand parameter for navigation properties
+                queryParams.Add($"$expand={Uri.EscapeDataString(expand)}");
             }
             // Note: We don't use $expand for Appointments because navigation properties are marked [JsonIgnore]
             // Instead, we fetch users separately if navigation properties are missing
