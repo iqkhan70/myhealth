@@ -352,7 +352,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     }
                 }
 
-                // Clinical notes with high priority contribute
+                // Service notes with high priority contribute
                 if (source.SourceType == "ClinicalNote")
                 {
                     if (source.Priority == "High" || source.Priority == "Critical")

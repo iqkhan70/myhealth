@@ -14,12 +14,12 @@
 @inject NotificationService NotificationService
 @inject HttpClient Http
 
-<PageTitle>Clinical Notes</PageTitle>
+<PageTitle>Service Notes</PageTitle>
 
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <SMPageHeader Title="Clinical Notes" 
+            <SMPageHeader Title="Service Notes" 
                          Icon="fas fa-stethoscope">
                 <ActionButton>
                     <RadzenButton Icon="add" Text="Add Note" ButtonStyle="ButtonStyle.Success"
@@ -52,7 +52,7 @@
                     <div class="p-3">
                         <div class="row">
                             <div class="col-12">
-                                <h6>Clinical Note Details</h6>
+                                <h6>Service Note Details</h6>
                                 <div class="note-meta mb-3">
                                     <div class="meta-row">
                                         <span class="meta-label"><strong>Client:</strong></span>
@@ -120,7 +120,7 @@
 @if (showNoteDialog)
 {
     <SMModal IsVisible="@showNoteDialog" 
-             Title="@(editingNote?.Id == 0 ? "Add Clinical Note" : "Edit Clinical Note")" 
+             Title="@(editingNote?.Id == 0 ? "Add Service Note" : "Edit Service Note")" 
              OnClose="CloseNoteDialog"
              Size="Large">
         <Body>
@@ -213,7 +213,7 @@
 @if (showViewDialog)
 {
     <SMModal IsVisible="@showViewDialog" 
-             Title="Clinical Note Details" 
+             Title="Service Note Details" 
              OnClose="CloseViewDialog"
              Size="Large">
         <Body>
@@ -961,7 +961,7 @@
                         }
                         else
                         {
-                            noteForm.Title = $"Clinical Note - {DateTime.Now:MMM dd, yyyy}";
+                            noteForm.Title = $"Service Note - {DateTime.Now:MMM dd, yyyy}";
                         }
                     }
 

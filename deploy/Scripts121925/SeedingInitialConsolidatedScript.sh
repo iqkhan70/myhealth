@@ -34,7 +34,7 @@ INSERT INTO AIInstructions (Id, CategoryId, Content, Title, DisplayOrder, IsActi
 (7, 2, 'SECOND: Review RECENT CLINICAL NOTES section above - these are written by doctors and contain critical medical observations', NULL, 2, 1, NOW()),
 (8, 2, 'If clinical notes mention serious symptoms, concerns, monitoring needs, or health risks, you MUST reflect this in your assessment', NULL, 3, 1, NOW()),
 (9, 2, 'Do NOT say the patient is ''stable'' if clinical notes indicate serious symptoms or require monitoring', NULL, 4, 1, NOW()),
-(10, 2, 'Clinical notes take precedence over other data when they indicate concerns', NULL, 5, 1, NOW()),
+(10, 2, 'Service notes take precedence over other data when they indicate concerns', NULL, 5, 1, NOW()),
 (11, 2, 'If critical values exist, state: ''🚨 CRITICAL STATUS: Patient has critical medical values requiring immediate attention''', NULL, 6, 1, NOW()),
 (12, 2, 'If no critical values but abnormal values exist, state: ''⚠️ CONCERNING STATUS: Patient has abnormal values requiring monitoring''', NULL, 7, 1, NOW()),
 (13, 2, 'Only state ''STABLE'' if ALL values are normal, no clinical notes indicate concerns, and no concerning patterns are detected', NULL, 8, 1, NOW()),
