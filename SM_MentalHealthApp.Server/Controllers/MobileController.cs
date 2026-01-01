@@ -36,7 +36,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get assigned patients for a doctor or coordinator (mobile app)
         /// </summary>
         [HttpGet("doctor/patients")]
-        [Authorize(Roles = "Doctor,Coordinator,Attorney")]
+        [Authorize(Roles = "Doctor,Coordinator,Attorney,SME")]
         public async Task<ActionResult<List<User>>> GetDoctorPatients()
         {
             try
@@ -136,7 +136,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     .Include(u => u.Role)
                     .Where(u => smeUserIds.Contains(u.Id) && 
                                u.IsActive && 
-                               (u.RoleId == 2 || u.RoleId == 4 || u.RoleId == 5)) // Active doctors, coordinators, and attorneys
+                               (u.RoleId == 2 || u.RoleId == 4 || u.RoleId == 5 || u.RoleId == 6)) // Active doctors, coordinators, attorneys, and SMEs
                     .OrderBy(d => d.LastName)
                     .ThenBy(d => d.FirstName)
                     .ToListAsync();

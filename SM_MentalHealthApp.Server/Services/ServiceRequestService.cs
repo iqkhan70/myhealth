@@ -212,7 +212,7 @@ namespace SM_MentalHealthApp.Server.Services
                 // Verify SME exists and is a doctor or attorney
                 var sme = await _context.Users
                     .FirstOrDefaultAsync(u => u.Id == smeUserId && 
-                        (u.RoleId == Shared.Constants.Roles.Doctor || u.RoleId == Shared.Constants.Roles.Attorney) && 
+                        (u.RoleId == Shared.Constants.Roles.Doctor || u.RoleId == Shared.Constants.Roles.Attorney || u.RoleId == Shared.Constants.Roles.Sme) && 
                         u.IsActive);
 
                 if (sme == null)

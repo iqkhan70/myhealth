@@ -77,7 +77,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("attorneys")]
-        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney")] // Admin, Coordinator, Doctor, and Attorney can view attorneys list (for assignment purposes)
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney,SME")] // Admin, Coordinator, Doctor, Attorney, and SME can view attorneys list (for assignment purposes)
         public async Task<ActionResult<List<User>>> GetAttorneys()
         {
             try
@@ -88,6 +88,21 @@ namespace SM_MentalHealthApp.Server.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, $"Error retrieving attorneys: {ex.Message}");
+            }
+        }
+
+        [HttpGet("smes")]
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney,SME")] // Admin, Coordinator, Doctor, Attorney, and SME can view SMEs list (for assignment purposes)
+        public async Task<ActionResult<List<User>>> GetSmes()
+        {
+            try
+            {
+                var smes = await _adminService.GetAllSmesAsync();
+                return Ok(smes);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error retrieving SMEs: {ex.Message}");
             }
         }
 
@@ -763,7 +778,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPost("assign")]
-        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney")] // Admin, Coordinator, Doctor, and Attorney can create assignments
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney,SME")] // Admin, Coordinator, Doctor, Attorney, and SME can create assignments
         public async Task<ActionResult> AssignPatientToDoctor([FromBody] AssignPatientRequest request)
         {
             try
@@ -784,6 +799,18 @@ namespace SM_MentalHealthApp.Server.Controllers
                         return BadRequest("Attorneys can only assign patients to other attorneys.");
                     }
                 }
+                // For SMEs: validate they can only assign to other SMEs or attorneys (same as attorneys)
+                if (currentRoleId == Shared.Constants.Roles.Sme)
+                {
+                    // Verify target is an SME or attorney
+                    var targetUser = await _context.Users
+                        .FirstOrDefaultAsync(u => u.Id == request.DoctorId && u.IsActive);
+
+                    if (targetUser == null || (targetUser.RoleId != Shared.Constants.Roles.Sme && targetUser.RoleId != Shared.Constants.Roles.Attorney))
+                    {
+                        return BadRequest("SMEs can only assign patients to other SMEs or attorneys.");
+                    }
+                }
                 // For doctors: they can assign to doctors or attorneys (no restriction needed)
                 // For coordinators and admins: they can assign to anyone (no restriction needed)
 
@@ -801,7 +828,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpDelete("unassign")]
-        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney")] // Admin, Coordinator, Doctor, and Attorney can remove assignments
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney,SME")] // Admin, Coordinator, Doctor, Attorney, and SME can remove assignments
         public async Task<ActionResult> UnassignPatientFromDoctor([FromBody] UnassignPatientRequest request)
         {
             try
@@ -834,7 +861,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("patient/{patientId}/doctors")]
-        [Authorize(Roles = "Admin,Doctor,Coordinator,Attorney")] // Admin, Doctor, Coordinator, and Attorney can view assigners for a patient
+        [Authorize(Roles = "Admin,Doctor,Coordinator,Attorney,SME")] // Admin, Doctor, Coordinator, Attorney, and SME can view assigners for a patient
         public async Task<ActionResult<List<User>>> GetDoctorsForPatient(int patientId)
         {
             try
@@ -935,6 +962,52 @@ namespace SM_MentalHealthApp.Server.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, $"Error creating patient: {ex.Message}");
+            }
+        }
+
+        [HttpPost("create-sme")]
+        [Authorize(Roles = "Admin")] // Only Admin can create SMEs
+        public async Task<ActionResult> CreateSme([FromBody] CreateSmeRequest request)
+        {
+            try
+            {
+                // Check if email already exists
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+                if (existingUser != null)
+                {
+                    return BadRequest("An SME with this email already exists.");
+                }
+
+                // Create new SME user
+                var sme = new User
+                {
+                    FirstName = request.FirstName,
+                    LastName = request.LastName,
+                    Email = request.Email,
+                    PasswordHash = HashPassword(request.Password),
+                    DateOfBirth = request.DateOfBirth,
+                    Gender = request.Gender,
+                    MobilePhone = request.MobilePhone,
+                    RoleId = 6, // SME role
+                    CompanyId = request.CompanyId,
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true,
+                    MustChangePassword = true // Force password change on first login
+                };
+
+                // Encrypt DateOfBirth before saving
+                UserEncryptionHelper.EncryptUserData(sme, _encryptionService);
+
+                _context.Users.Add(sme);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "SME created successfully", smeId = sme.Id });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error creating SME: {ex.Message}");
             }
         }
 
@@ -2037,6 +2110,30 @@ namespace SM_MentalHealthApp.Server.Controllers
     }
 
     public class UpdateAttorneyRequest
+    {
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? Gender { get; set; }
+        public string? MobilePhone { get; set; }
+        public string? Password { get; set; }
+        public int? CompanyId { get; set; }
+    }
+
+    public class CreateSmeRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
+        public int? CompanyId { get; set; }
+    }
+
+    public class UpdateSmeRequest
     {
         public string? FirstName { get; set; }
         public string? LastName { get; set; }

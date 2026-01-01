@@ -408,7 +408,7 @@ namespace SM_MentalHealthApp.Server.Services
                 // Get all active SMEs (doctors and attorneys)
                 var smeQuery = _context.Users
                     .Where(u => u.IsActive && 
-                        (u.RoleId == Shared.Constants.Roles.Doctor || u.RoleId == Shared.Constants.Roles.Attorney));
+                        (u.RoleId == Shared.Constants.Roles.Doctor || u.RoleId == Shared.Constants.Roles.Attorney || u.RoleId == Shared.Constants.Roles.Sme));
 
                 if (!string.IsNullOrEmpty(specialization))
                 {

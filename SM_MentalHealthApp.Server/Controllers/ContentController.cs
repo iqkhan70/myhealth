@@ -127,13 +127,14 @@ namespace SM_MentalHealthApp.Server.Controllers
                     .Where(c => c.IsActive)
                     .AsQueryable();
                 
-                // For doctors, coordinators, and attorneys: filter by assigned ServiceRequests
+                // For doctors, coordinators, attorneys, and SMEs: filter by assigned ServiceRequests
                 // Admins see all content
                 if (currentRoleId.HasValue && currentUserId.HasValue)
                 {
                     if (currentRoleId.Value == Shared.Constants.Roles.Doctor || 
                         currentRoleId.Value == Shared.Constants.Roles.Coordinator || 
-                        currentRoleId.Value == Shared.Constants.Roles.Attorney)
+                        currentRoleId.Value == Shared.Constants.Roles.Attorney ||
+                        currentRoleId.Value == Shared.Constants.Roles.Sme)
                     {
                         // Get assigned ServiceRequest IDs for this SME
                         var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value);
@@ -323,12 +324,13 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 // Get or set ServiceRequestId - use provided value, otherwise use default if not provided
                 int? serviceRequestId = request.ServiceRequestId;
+                _logger.LogInformation("ServiceRequestId from request: {ServiceRequestId}", serviceRequestId);
                 
                 // If ServiceRequestId not provided, try to get default for SMEs
                 if (!serviceRequestId.HasValue && request.AddedByUserId.HasValue)
                 {
                     var user = await _contentService.GetUserByIdAsync(request.AddedByUserId.Value);
-                    if (user != null && (user.RoleId == Shared.Constants.Roles.Doctor || user.RoleId == Shared.Constants.Roles.Attorney))
+                    if (user != null && (user.RoleId == Shared.Constants.Roles.Doctor || user.RoleId == Shared.Constants.Roles.Attorney || user.RoleId == Shared.Constants.Roles.Sme))
                     {
                         // Get default ServiceRequest for this patient
                         var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(request.PatientId);
@@ -345,17 +347,38 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
                 
                 // If ServiceRequestId is provided, verify access for SMEs
+                // SME role can create content for SRs they're assigned to (this is the key difference from Attorney)
                 if (serviceRequestId.HasValue && request.AddedByUserId.HasValue)
                 {
                     var user = await _contentService.GetUserByIdAsync(request.AddedByUserId.Value);
-                    if (user != null && (user.RoleId == Shared.Constants.Roles.Doctor || user.RoleId == Shared.Constants.Roles.Attorney || user.RoleId == Shared.Constants.Roles.Coordinator))
+                    if (user != null)
                     {
-                        var isAssigned = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(serviceRequestId.Value, request.AddedByUserId.Value);
-                        if (!isAssigned)
+                        _logger.LogInformation("Checking access for user {UserId}, RoleId={RoleId}, ServiceRequestId={ServiceRequestId}", 
+                            request.AddedByUserId.Value, user.RoleId, serviceRequestId.Value);
+                        
+                        // Coordinators and Admins have full access, skip assignment check
+                        if (user.RoleId == Shared.Constants.Roles.Coordinator || user.RoleId == Shared.Constants.Roles.Admin)
                         {
-                            return Forbid("You don't have permission to add content to this ServiceRequest");
+                            _logger.LogInformation("User is Coordinator or Admin, skipping assignment check");
+                        }
+                        else if (user.RoleId == Shared.Constants.Roles.Doctor || user.RoleId == Shared.Constants.Roles.Attorney || user.RoleId == Shared.Constants.Roles.Sme)
+                        {
+                            var isAssigned = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(serviceRequestId.Value, request.AddedByUserId.Value);
+                            _logger.LogInformation("Assignment check result: isAssigned={IsAssigned}", isAssigned);
+                            if (!isAssigned)
+                            {
+                                _logger.LogWarning("Access denied: User {UserId} is not assigned to ServiceRequest {ServiceRequestId}", 
+                                    request.AddedByUserId.Value, serviceRequestId.Value);
+                                return Forbid("You don't have permission to add content to this ServiceRequest. You must be assigned to this Service Request.");
+                            }
                         }
                     }
+                }
+                else if (!serviceRequestId.HasValue)
+                {
+                    _logger.LogWarning("ServiceRequestId is required but was not provided. PatientId={PatientId}, AddedByUserId={AddedByUserId}", 
+                        request.PatientId, request.AddedByUserId);
+                    return BadRequest("ServiceRequestId is required. Please select a Service Request.");
                 }
 
                 var content = new ContentItem
@@ -405,7 +428,14 @@ namespace SM_MentalHealthApp.Server.Controllers
                 _logger.LogError(ex, "=== UPLOAD REQUEST ERROR ===");
                 _logger.LogError("Error uploading content: {ErrorMessage}", ex.Message);
                 _logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
-                return StatusCode(500, "Internal server error");
+                
+                // Return more detailed error message for debugging
+                var errorMessage = $"Error uploading content: {ex.Message}";
+                if (ex.InnerException != null)
+                {
+                    errorMessage += $" Inner: {ex.InnerException.Message}";
+                }
+                return StatusCode(500, errorMessage);
             }
         }
 
@@ -415,11 +445,11 @@ namespace SM_MentalHealthApp.Server.Controllers
         {
             try
             {
-                // Attorneys cannot edit content (read-only access)
+                // Attorneys and SMEs cannot edit content (read-only access)
                 var currentRoleId = GetCurrentRoleId();
-                if (currentRoleId == Shared.Constants.Roles.Attorney)
+                if (currentRoleId == Shared.Constants.Roles.Attorney || currentRoleId == Shared.Constants.Roles.Sme)
                 {
-                    return Forbid("Attorneys have read-only access to patient content and cannot edit it.");
+                    return Forbid("Attorneys and SMEs have read-only access to patient content and cannot edit it.");
                 }
 
                 _logger.LogInformation("Starting update for content {ContentId}", id);

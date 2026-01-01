@@ -1640,10 +1640,46 @@ else
 fi
 
 # ============================================================================
-# Step 8.9: Run Companies Table Migration (if needed)
+# Step 8.9: Run SME Role Migration (if needed)
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}Step 8.9: Running Companies Table Migration${NC}"
+echo -e "${GREEN}Step 8.9: Running SME Role Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddSmeRole.sql" ]; then
+    echo "Copying SME role migration script to server..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddSmeRole.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/sme_role_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying SME role migration SQL..."
+            mysql -u root -p"$DB_ROOT_PASSWORD" "$DB_NAME" < /tmp/sme_role_migration.sql
+            echo "✅ SME role migration completed"
+        else
+            echo "⚠️  Skipping SME role migration (not using local-db mode)"
+        fi
+        
+        rm -f /tmp/sme_role_migration.sql
+ENDSSH
+else
+    echo "⚠️  AddSmeRole.sql not found, skipping SME role migration..."
+fi
+
+# Step 8.10: Run Companies Table Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.10: Running Companies Table Migration${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 

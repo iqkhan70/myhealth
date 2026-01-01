@@ -417,7 +417,7 @@ namespace SM_MentalHealthApp.Server.Services
                         query = query.Where(s => s.PatientId == patientId.Value);
                     }
                 }
-                else if (user.RoleId == Shared.Constants.Roles.Attorney)
+                else if (user.RoleId == Shared.Constants.Roles.Attorney || user.RoleId == Shared.Constants.Roles.Sme)
                 {
                     // Attorneys see sessions only for patients assigned to them
                     var assignedPatientIds = await _context.UserAssignments

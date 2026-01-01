@@ -10,12 +10,14 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly JournalDbContext _context;
         private readonly S3Service _s3Service;
         private readonly S3Config _s3Config;
+        private readonly IServiceRequestService _serviceRequestService;
 
-        public ContentService(JournalDbContext context, S3Service s3Service, IOptions<S3Config> s3Config)
+        public ContentService(JournalDbContext context, S3Service s3Service, IOptions<S3Config> s3Config, IServiceRequestService serviceRequestService)
         {
             _context = context;
             _s3Service = s3Service;
             _s3Config = s3Config.Value;
+            _serviceRequestService = serviceRequestService;
         }
 
         public async Task<List<ContentItem>> GetContentsForPatientAsync(int patientId)
@@ -199,7 +201,7 @@ namespace SM_MentalHealthApp.Server.Services
                 return true;
 
             // Doctor, Coordinator, or Attorney can access content for their assigned patients
-            if (userRoleId == 2 || userRoleId == 4 || userRoleId == 5)
+            if (userRoleId == 2 || userRoleId == 4 || userRoleId == 5 || userRoleId == 6)
             {
                 var assignment = await _context.UserAssignments
                     .FirstOrDefaultAsync(a => a.AssignerId == userId && a.AssigneeId == content.PatientId && a.IsActive);
@@ -222,19 +224,40 @@ namespace SM_MentalHealthApp.Server.Services
         public async Task<bool> CanUserAddContentForPatientAsync(int userId, int userRoleId, int patientId)
         {
             // Admin can add content for any patient
-            if (userRoleId == 3)
+            if (userRoleId == Shared.Constants.Roles.Admin)
                 return true;
 
             // Patient can only add content for themselves
-            if (userRoleId == 1)
+            if (userRoleId == Shared.Constants.Roles.Patient)
                 return userId == patientId;
 
-            // Doctor can only add content for assigned patients
-            if (userRoleId == 2)
+            // Coordinator has full access (can add content for any patient)
+            if (userRoleId == Shared.Constants.Roles.Coordinator)
+                return true;
+
+            // Doctor can add content for assigned patients (via UserAssignments)
+            if (userRoleId == Shared.Constants.Roles.Doctor)
             {
                 var assignment = await _context.UserAssignments
-                    .FirstOrDefaultAsync(a => a.AssignerId == userId && a.AssigneeId == patientId);
+                    .FirstOrDefaultAsync(a => a.AssignerId == userId && a.AssigneeId == patientId && a.IsActive);
                 return assignment != null;
+            }
+
+            // Attorney and SME can add content for patients they're assigned to via ServiceRequests
+            if (userRoleId == Shared.Constants.Roles.Attorney || userRoleId == Shared.Constants.Roles.Sme)
+            {
+                // Check if user is assigned to any ServiceRequest for this patient
+                var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(userId);
+                if (!serviceRequestIds.Any())
+                    return false;
+
+                // Check if any of the assigned ServiceRequests belong to this patient
+                var hasAccess = await _context.ServiceRequests
+                    .AnyAsync(sr => sr.ClientId == patientId && 
+                        serviceRequestIds.Contains(sr.Id) && 
+                        sr.IsActive);
+
+                return hasAccess;
             }
 
             return false;

@@ -59,7 +59,7 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                         // Patients see only their own service requests
                         query = query.Where(sr => sr.ClientId == currentUserId.Value);
                     }
-                    else if (currentRoleId.Value == 2 || currentRoleId.Value == 5) // Doctor or Attorney
+                    else if (currentRoleId.Value == 2 || currentRoleId.Value == 5 || currentRoleId.Value == 6) // Doctor, Attorney, or SME
                     {
                         // Get ServiceRequest IDs assigned to this SME
                         var serviceRequestIds = _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value).Result;
@@ -97,7 +97,7 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                 {
                     query = query.Where(sr => sr.ClientId == currentUserId.Value);
                 }
-                else if (currentRoleId.Value == 2 || currentRoleId.Value == 5) // Doctor or Attorney
+                else if (currentRoleId.Value == 2 || currentRoleId.Value == 5 || currentRoleId.Value == 6) // Doctor, Attorney, or SME
                 {
                     // Get ServiceRequest IDs assigned to this SME
                     var serviceRequestIds = _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value).Result;

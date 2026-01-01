@@ -52,7 +52,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // For doctors and attorneys, only show service requests they're assigned to
-                if ((currentRoleId == Roles.Doctor || currentRoleId == Roles.Attorney) && currentUserId.HasValue)
+                if ((currentRoleId == Roles.Doctor || currentRoleId == Roles.Attorney || currentRoleId == Roles.Sme) && currentUserId.HasValue)
                 {
                     var serviceRequests = await _serviceRequestService.GetServiceRequestsAsync(clientId, currentUserId.Value);
                     return Ok(serviceRequests);
@@ -85,7 +85,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return NotFound();
 
                 // For doctors and attorneys, verify they're assigned to this SR
-                if ((currentRoleId == Roles.Doctor || currentRoleId == Roles.Attorney) && currentUserId.HasValue)
+                if ((currentRoleId == Roles.Doctor || currentRoleId == Roles.Attorney || currentRoleId == Roles.Sme) && currentUserId.HasValue)
                 {
                     var isAssigned = await _serviceRequestService.IsSmeAssignedToServiceRequestAsync(id, currentUserId.Value);
                     if (!isAssigned)
@@ -231,7 +231,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get service requests for the current SME (convenience endpoint)
         /// </summary>
         [HttpGet("my-assignments")]
-        [Authorize(Roles = "Doctor,Attorney")]
+        [Authorize(Roles = "Doctor,Attorney,SME")]
         public async Task<ActionResult<List<ServiceRequestDto>>> GetMyServiceRequests()
         {
             try
@@ -294,7 +294,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// SME accepts an assignment
         /// </summary>
         [HttpPost("assignments/{assignmentId}/accept")]
-        [Authorize(Roles = "Doctor,Attorney")]
+        [Authorize(Roles = "Doctor,Attorney,SME")]
         public async Task<ActionResult> AcceptAssignment(int assignmentId)
         {
             try
@@ -320,7 +320,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// SME rejects an assignment
         /// </summary>
         [HttpPost("assignments/{assignmentId}/reject")]
-        [Authorize(Roles = "Doctor,Attorney")]
+        [Authorize(Roles = "Doctor,Attorney,SME")]
         public async Task<ActionResult> RejectAssignment(int assignmentId, [FromBody] RejectAssignmentRequest request)
         {
             try
@@ -349,7 +349,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// SME starts working on an assignment
         /// </summary>
         [HttpPost("assignments/{assignmentId}/start")]
-        [Authorize(Roles = "Doctor,Attorney")]
+        [Authorize(Roles = "Doctor,Attorney,SME")]
         public async Task<ActionResult> StartAssignment(int assignmentId)
         {
             try
@@ -375,7 +375,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// SME completes an assignment
         /// </summary>
         [HttpPost("assignments/{assignmentId}/complete")]
-        [Authorize(Roles = "Doctor,Attorney")]
+        [Authorize(Roles = "Doctor,Attorney,SME")]
         public async Task<ActionResult> CompleteAssignment(int assignmentId)
         {
             try
@@ -468,7 +468,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get current SME score
         /// </summary>
         [HttpGet("sme-score")]
-        [Authorize(Roles = "Doctor,Attorney")]
+        [Authorize(Roles = "Doctor,Attorney,SME")]
         public async Task<ActionResult<int>> GetMySmeScore()
         {
             try

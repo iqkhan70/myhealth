@@ -85,7 +85,7 @@ namespace SM_MentalHealthApp.Server.Services
 
             // Check if target doctor or attorney exists and is active
             var targetDoctor = await _context.Users
-                .FirstOrDefaultAsync(u => u.Id == toDoctorId && (u.RoleId == 2 || u.RoleId == 5) && u.IsActive);
+                .FirstOrDefaultAsync(u => u.Id == toDoctorId && (u.RoleId == 2 || u.RoleId == 5 || u.RoleId == 6) && u.IsActive);
 
             if (targetDoctor == null)
             {

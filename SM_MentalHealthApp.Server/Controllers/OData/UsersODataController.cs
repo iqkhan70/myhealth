@@ -62,7 +62,8 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                 {
                     if (currentRoleId.Value == 2 ||   // Doctor
                         currentRoleId.Value == 4 ||   // Coordinator
-                        currentRoleId.Value == 5)     // Attorney
+                        currentRoleId.Value == 5 ||     // Attorney
+                        currentRoleId.Value == 6)     // SME
                     {
                         // Get clients from ServiceRequests assigned to this SME
                         var serviceRequestIds = _context.ServiceRequestAssignments

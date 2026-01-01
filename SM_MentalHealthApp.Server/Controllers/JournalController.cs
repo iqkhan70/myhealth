@@ -68,7 +68,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var currentRoleId = GetCurrentRoleId();
 
                 // For doctors and attorneys viewing patient journals, filter by ServiceRequestId
-                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && 
+                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney || currentRoleId == Shared.Constants.Roles.Sme) && 
                     currentUserId.HasValue && userId != currentUserId.Value)
                 {
                     // Get assigned ServiceRequest IDs for this SME

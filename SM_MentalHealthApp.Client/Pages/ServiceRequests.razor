@@ -28,7 +28,7 @@
                 }
             </SMPageHeader>
 
-            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5) // Doctor or Attorney
+            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) // Doctor, Attorney, or SME
             {
                 <div class="alert alert-info">
                     <i class="fas fa-info-circle"></i>
@@ -120,7 +120,7 @@
                                             }
                                         }
                                     }
-                                    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5)
+                                    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6)
                                     {
                                         @* Show assignment actions for SMEs *@
                                         @foreach (var assignment in sr.Assignments?.Where(a => a.IsActive && a.SmeUserId == AuthService.CurrentUser?.Id) ?? Enumerable.Empty<ServiceRequestAssignmentDto>())
@@ -170,7 +170,7 @@
             await LoadClients();
             await LoadSMEs();
         }
-        else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5)
+        else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6)
         {
             await LoadMySmeScore();
         }
@@ -239,10 +239,11 @@
                 var smeNameFilter = ExtractNameFilter(decodedFilter!, "AssignedSmeNames");
                 if (!string.IsNullOrEmpty(smeNameFilter))
                 {
-                    // Find matching SME IDs (doctors RoleId = 2, attorneys RoleId = 5)
+                    // Find matching SME IDs (doctors RoleId = 2, attorneys RoleId = 5, SMEs RoleId = 6)
                     var doctorIds = await FindUserIdsByName(smeNameFilter, 2, CancellationToken.None);
                     var attorneyIds = await FindUserIdsByName(smeNameFilter, 5, CancellationToken.None);
-                    var smeIds = doctorIds.Concat(attorneyIds).Distinct().ToList();
+                    var smeRoleIds = await FindUserIdsByName(smeNameFilter, 6, CancellationToken.None);
+                    var smeIds = doctorIds.Concat(attorneyIds).Concat(smeRoleIds).Distinct().ToList();
                     
                     if (smeIds.Any())
                     {
