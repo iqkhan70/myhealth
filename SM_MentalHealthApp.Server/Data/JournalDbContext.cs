@@ -16,6 +16,9 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<ServiceRequestAssignment> ServiceRequestAssignments { get; set; }
             public DbSet<ServiceRequestCharge> ServiceRequestCharges { get; set; }
             public DbSet<Company> Companies { get; set; }
+            public DbSet<Expertise> Expertises { get; set; }
+            public DbSet<SmeExpertise> SmeExpertises { get; set; }
+            public DbSet<ServiceRequestExpertise> ServiceRequestExpertises { get; set; }
             public DbSet<SmeInvoice> SmeInvoices { get; set; }
             public DbSet<SmeInvoiceLine> SmeInvoiceLines { get; set; }
             public DbSet<JournalEntry> JournalEntries { get; set; }
@@ -1074,6 +1077,58 @@ namespace SM_MentalHealthApp.Server.Data
                         .OnDelete(DeleteBehavior.SetNull);
 
                         entity.HasIndex(e => e.ServiceRequestId);
+                  });
+
+                  // Configure Expertise entity
+                  modelBuilder.Entity<Expertise>(entity =>
+                  {
+                        entity.ToTable("Expertise"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.HasIndex(e => e.Name);
+                        entity.HasIndex(e => e.IsActive);
+                  });
+
+                  // Configure SmeExpertise entity
+                  modelBuilder.Entity<SmeExpertise>(entity =>
+                  {
+                        entity.ToTable("SmeExpertise"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.HasIndex(e => e.SmeUserId);
+                        entity.HasIndex(e => e.ExpertiseId);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => new { e.SmeUserId, e.ExpertiseId }).IsUnique();
+
+                        entity.HasOne(e => e.SmeUser)
+                              .WithMany(u => u.SmeExpertises)
+                              .HasForeignKey(e => e.SmeUserId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.Expertise)
+                              .WithMany(ex => ex.SmeExpertises)
+                              .HasForeignKey(e => e.ExpertiseId)
+                              .OnDelete(DeleteBehavior.Cascade);
+                  });
+
+                  // Configure ServiceRequestExpertise entity
+                  modelBuilder.Entity<ServiceRequestExpertise>(entity =>
+                  {
+                        entity.ToTable("ServiceRequestExpertise"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.HasIndex(e => e.ServiceRequestId);
+                        entity.HasIndex(e => e.ExpertiseId);
+                        entity.HasIndex(e => new { e.ServiceRequestId, e.ExpertiseId }).IsUnique();
+
+                        entity.HasOne(e => e.ServiceRequest)
+                              .WithMany(sr => sr.Expertises)
+                              .HasForeignKey(e => e.ServiceRequestId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.Expertise)
+                              .WithMany(ex => ex.ServiceRequestExpertises)
+                              .HasForeignKey(e => e.ExpertiseId)
+                              .OnDelete(DeleteBehavior.Cascade);
                   });
             }
       }

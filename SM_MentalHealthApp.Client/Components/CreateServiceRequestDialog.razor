@@ -1,12 +1,13 @@
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
 @inject IServiceRequestService ServiceRequestService
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 @inject IAuthService AuthService
 
-<RadzenForm Data="@request" Submit="@OnSubmit">
-    <RadzenFieldset Text="Service Request Details">
+<div class="create-service-request-dialog">
+    <RadzenForm Data="@request" Submit="@OnSubmit" class="dialog-form">
         @if (AuthService.CurrentUser?.RoleId != 1) // Not a Patient
         {
             <div class="row">
@@ -79,18 +80,88 @@
                 </RadzenFormField>
             </div>
         </div>
-    </RadzenFieldset>
 
-    <div class="row mt-3">
-        <div class="col-12">
-            <div class="d-flex justify-content-end gap-2">
-                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-                <RadzenButton Text="Create" ButtonStyle="ButtonStyle.Success" IsBusy="@isSubmitting" 
-                    Disabled="@isSubmitting" Click="@HandleCreateClick" />
+        @if (AuthService.CurrentUser?.RoleId != 1) // Only coordinators/admins can set expertise
+        {
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <ExpertiseMultiSelect Label="Expertise Categories"
+                                         Placeholder="Type to search and select expertise..."
+                                         HelpText="Select one or more expertise categories for this service request"
+                                         @bind-SelectedExpertiseIds="selectedExpertiseIds" />
+                </div>
+            </div>
+        }
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-end gap-2">
+                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                    <RadzenButton Text="Create" ButtonStyle="ButtonStyle.Success" IsBusy="@isSubmitting" 
+                        Disabled="@isSubmitting" Click="@HandleCreateClick" />
+                </div>
             </div>
         </div>
-    </div>
-</RadzenForm>
+    </RadzenForm>
+</div>
+
+<style>
+    .create-service-request-dialog {
+        padding: 0;
+        overflow-x: hidden;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 100%;
+    }
+    
+    .create-service-request-dialog .dialog-form {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 100%;
+    }
+    
+    .create-service-request-dialog .dialog-form > .row:not(:last-child) {
+        flex: 0 0 auto;
+        padding: 0 20px;
+        margin-bottom: 0;
+    }
+    
+    .create-service-request-dialog .dialog-form > .row:last-child {
+        margin-top: auto;
+        margin-bottom: 0;
+        padding: 20px;
+        border-top: 1px solid #dee2e6;
+        background-color: #f8f9fa;
+        flex-shrink: 0;
+        align-self: flex-end;
+        width: 100%;
+    }
+    
+    /* Ensure dialog body is scrollable */
+    :global(.rz-dialog-body) {
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        padding: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        height: 100% !important;
+    }
+    
+    /* Prevent horizontal scroll on form elements */
+    .create-service-request-dialog .row,
+    .create-service-request-dialog .col-12,
+    .create-service-request-dialog .col-md-6 {
+        overflow-x: hidden;
+    }
+    
+    /* Ensure expertise dropdown can expand */
+    .create-service-request-dialog .expertise-multi-select {
+        position: relative;
+        z-index: 1;
+    }
+</style>
 
 @code {
     [Parameter] public List<User> Clients { get; set; } = new();
@@ -99,6 +170,7 @@
     private CreateServiceRequestRequest request = new();
     private int? initialSmeUserId;
     private bool isSubmitting = false;
+    private List<int> selectedExpertiseIds = new();
 
     private List<string> typeOptions = new()
     {
@@ -166,6 +238,12 @@
             {
                 // Patients cannot assign SMEs
                 request.SmeUserId = null;
+            }
+
+            // Set expertise IDs if selected
+            if (AuthService.CurrentUser?.RoleId != 1 && selectedExpertiseIds.Any())
+            {
+                request.ExpertiseIds = selectedExpertiseIds;
             }
 
             var created = await ServiceRequestService.CreateServiceRequestAsync(request);

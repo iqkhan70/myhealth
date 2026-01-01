@@ -2,10 +2,12 @@
 @inject HttpClient Http
 @inject NotificationService NotificationService
 @inject IAuthService AuthService
+@inject IExpertiseService ExpertiseService
 @inject IJSRuntime JSRuntime
 @inject DialogService DialogService
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
 @using System.Net.Http
 @using Radzen
 @using Radzen.Blazor
@@ -199,6 +201,15 @@
                                 <!-- Empty div for layout balance -->
                             </div>
                         </div>
+
+                        <div class="form-row">
+                            <div class="form-group" style="width: 100%;">
+                                <ExpertiseMultiSelect Label="Expertise Categories"
+                                                     Placeholder="Type to search and select expertise..."
+                                                     HelpText="Select one or more expertise categories for this SME"
+                                                     @bind-SelectedExpertiseIds="selectedSmeExpertiseIds" />
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="modal-footer">
@@ -217,6 +228,7 @@
     private RadzenDataGrid<User>? _grid;
     private List<User> smes = new();
     private List<Company> companies = new();
+    private List<int> selectedSmeExpertiseIds = new();
     private bool isLoading = true;
     private bool showSmeForm = false;
     private bool isSaving = false;
@@ -280,6 +292,7 @@
     {
         editingSme = null;
         smeForm = new CreateSmeRequest { DateOfBirth = DateTime.Now.AddYears(-30) };
+        selectedSmeExpertiseIds = new List<int>();
         await LoadCompanies();
         showSmeForm = true;
     }
@@ -300,6 +313,18 @@
             CompanyId = sme.CompanyId,
             Password = string.Empty // Don't populate password
         };
+        
+        // Load current expertise IDs for this SME
+        try
+        {
+            selectedSmeExpertiseIds = await ExpertiseService.GetSmeExpertisesAsync(sme.Id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading SME expertises: {ex.Message}");
+            selectedSmeExpertiseIds = new List<int>();
+        }
+        
         await LoadCompanies();
         showSmeForm = true;
     }
@@ -309,6 +334,7 @@
         showSmeForm = false;
         editingSme = null;
         smeForm = new CreateSmeRequest();
+        selectedSmeExpertiseIds = new List<int>();
     }
 
     private async Task SaveSme()
@@ -370,6 +396,13 @@
                 var result = await Http.PutAsJsonAsync($"api/admin/update-sme/{editingSme.Id}", updateRequest);
                 if (result.IsSuccessStatusCode)
                 {
+                    // Update expertise
+                    var expertiseResult = await ExpertiseService.SetSmeExpertisesAsync(editingSme.Id, selectedSmeExpertiseIds);
+                    if (!expertiseResult)
+                    {
+                        NotificationService.Notify(NotificationSeverity.Warning, "Warning", "SME updated but failed to update expertise. You can try again later.");
+                    }
+                    
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "SME updated successfully!");
                     CloseSmeForm();
                     await LoadSmes();

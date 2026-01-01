@@ -38,6 +38,7 @@ namespace SM_MentalHealthApp.Shared
         public User Client { get; set; } = null!;
         public User? CreatedByUser { get; set; }
         public List<ServiceRequestAssignment> Assignments { get; set; } = new();
+        public List<ServiceRequestExpertise> Expertises { get; set; } = new();
     }
 
     /// <summary>
@@ -118,6 +119,7 @@ namespace SM_MentalHealthApp.Shared
         public string? Description { get; set; }
 
         public int? SmeUserId { get; set; } // Optional: assign SME immediately on creation
+        public List<int>? ExpertiseIds { get; set; } // Optional: expertise categories for this SR
     }
 
     /// <summary>
@@ -136,6 +138,7 @@ namespace SM_MentalHealthApp.Shared
 
         [MaxLength(1000)]
         public string? Description { get; set; }
+        public List<int>? ExpertiseIds { get; set; } // Optional: expertise categories for this SR
     }
 
     /// <summary>
@@ -177,6 +180,8 @@ namespace SM_MentalHealthApp.Shared
         public DateTime? UpdatedAt { get; set; }
         public string? Description { get; set; }
         public List<ServiceRequestAssignmentDto> Assignments { get; set; } = new();
+        public List<int> ExpertiseIds { get; set; } = new();
+        public List<string> ExpertiseNames { get; set; } = new();
         
         /// <summary>
         /// Computed property for filtering by SME names (comma-separated)

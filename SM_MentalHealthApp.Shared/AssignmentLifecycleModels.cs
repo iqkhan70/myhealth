@@ -124,6 +124,8 @@ namespace SM_MentalHealthApp.Shared
         public int ActiveAssignmentsCount { get; set; }
         public int RecentRejectionsCount { get; set; }
         public double CompletionRate { get; set; }
+        public int ExpertiseMatchCount { get; set; } // How many SR expertise tags the SME matches
+        public int TotalExpertiseRequired { get; set; } // Total expertise tags on the SR
         public string RecommendationReason { get; set; } = string.Empty;
     }
 }

@@ -439,13 +439,19 @@ namespace SM_MentalHealthApp.Server.Services
             try
             {
                 var serviceRequest = await _context.ServiceRequests
+                    .Include(sr => sr.Expertises)
                     .FirstOrDefaultAsync(sr => sr.Id == serviceRequestId && sr.IsActive);
 
                 if (serviceRequest == null)
                     return new List<SmeRecommendationDto>();
 
-                // Get all active SMEs (doctors and attorneys)
+                // Get SR's expertise IDs
+                var srExpertiseIds = serviceRequest.Expertises?.Select(e => e.ExpertiseId).ToHashSet() ?? new HashSet<int>();
+
+                // Get all active SMEs (doctors, attorneys, and SMEs) with their expertise
                 var smeQuery = _context.Users
+                    .Include(u => u.SmeExpertises)
+                        .ThenInclude(se => se.Expertise)
                     .Where(u => u.IsActive && 
                         (u.RoleId == Shared.Constants.Roles.Doctor || u.RoleId == Shared.Constants.Roles.Attorney || u.RoleId == Shared.Constants.Roles.Sme));
 
@@ -460,6 +466,20 @@ namespace SM_MentalHealthApp.Server.Services
 
                 foreach (var sme in smes)
                 {
+                    // Calculate expertise match count
+                    var smeExpertiseIds = sme.SmeExpertises?
+                        .Where(se => se.IsActive)
+                        .Select(se => se.ExpertiseId)
+                        .ToHashSet() ?? new HashSet<int>();
+
+                    var matchCount = srExpertiseIds.Count > 0 
+                        ? smeExpertiseIds.Count(smeExpId => srExpertiseIds.Contains(smeExpId))
+                        : 0;
+
+                    // Only include SMEs that match at least one expertise (if SR has expertise)
+                    if (srExpertiseIds.Count > 0 && matchCount == 0)
+                        continue;
+
                     // Get active assignments count
                     var activeAssignments = await _context.ServiceRequestAssignments
                         .CountAsync(a => a.SmeUserId == sme.Id && 
@@ -494,15 +514,18 @@ namespace SM_MentalHealthApp.Server.Services
                         ActiveAssignmentsCount = activeAssignments,
                         RecentRejectionsCount = recentRejections,
                         CompletionRate = completionRate,
-                        RecommendationReason = BuildRecommendationReason(sme.SmeScore, activeAssignments, recentRejections, completionRate)
+                        ExpertiseMatchCount = matchCount,
+                        TotalExpertiseRequired = srExpertiseIds.Count,
+                        RecommendationReason = BuildRecommendationReason(sme.SmeScore, activeAssignments, recentRejections, completionRate, matchCount, srExpertiseIds.Count)
                     };
 
                     recommendations.Add(recommendation);
                 }
 
-                // Sort by: 1) Highest score, 2) Lowest rejections, 3) Lowest workload
+                // Sort by: 1) Match count (desc), 2) Highest score, 3) Lowest rejections, 4) Lowest workload
                 return recommendations
-                    .OrderByDescending(r => r.SmeScore)
+                    .OrderByDescending(r => r.ExpertiseMatchCount)
+                    .ThenByDescending(r => r.SmeScore)
                     .ThenBy(r => r.RecentRejectionsCount)
                     .ThenBy(r => r.ActiveAssignmentsCount)
                     .ToList();
@@ -563,9 +586,20 @@ namespace SM_MentalHealthApp.Server.Services
             }
         }
 
-        private string BuildRecommendationReason(int score, int activeAssignments, int recentRejections, double completionRate)
+        private string BuildRecommendationReason(int score, int activeAssignments, int recentRejections, double completionRate, int matchCount = 0, int totalRequired = 0)
         {
             var reasons = new List<string>();
+
+            // Add expertise match info
+            if (totalRequired > 0)
+            {
+                if (matchCount == totalRequired)
+                    reasons.Add($"Perfect match ({matchCount}/{totalRequired} expertise)");
+                else if (matchCount > 0)
+                    reasons.Add($"Partial match ({matchCount}/{totalRequired} expertise)");
+                else
+                    reasons.Add("No expertise match");
+            }
 
             if (score >= 120)
                 reasons.Add("Excellent score");

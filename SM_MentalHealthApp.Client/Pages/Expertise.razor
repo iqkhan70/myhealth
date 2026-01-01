@@ -1,0 +1,325 @@
+@page "/expertise"
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
+@using Radzen
+@using Radzen.Blazor
+@inject IExpertiseService ExpertiseService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject IAuthService AuthService
+
+<PageTitle>Expertise Management</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <SMPageHeader Title="Expertise Management" Icon="fas fa-tags">
+            </SMPageHeader>
+
+            @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+            {
+                <div class="row mb-3">
+                    <div class="col-12 d-flex justify-content-end">
+                        <button class="btn btn-success" @onclick="ShowAddExpertiseForm">
+                            <i class="fas fa-plus"></i> Add Expertise
+                        </button>
+                    </div>
+                </div>
+
+                @if (isLoading)
+                {
+                    <div class="text-center p-4">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <RadzenDataGrid @ref="grid" TItem="SM_MentalHealthApp.Shared.Expertise" 
+                        Data="@expertises" 
+                        AllowPaging="true" 
+                        PageSize="20" 
+                        AllowSorting="true" 
+                        AllowFiltering="true"
+                        FilterMode="FilterMode.Advanced"
+                        ShowPagingSummary="true">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="SM_MentalHealthApp.Shared.Expertise" Property="Name" Title="Name" Width="200px" />
+                            <RadzenDataGridColumn TItem="SM_MentalHealthApp.Shared.Expertise" Property="Description" Title="Description" Width="300px" />
+                            <RadzenDataGridColumn TItem="SM_MentalHealthApp.Shared.Expertise" Property="IsActive" Title="Status" Width="100px">
+                                <Template Context="exp">
+                                    <span class="badge @(exp.IsActive ? "bg-success" : "bg-secondary")">
+                                        @(exp.IsActive ? "Active" : "Inactive")
+                                    </span>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="SM_MentalHealthApp.Shared.Expertise" Property="CreatedAt" Title="Created" Width="150px">
+                                <Template Context="exp">
+                                    @exp.CreatedAt.ToString("MMM dd, yyyy")
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="SM_MentalHealthApp.Shared.Expertise" Title="Actions" Width="150px" Sortable="false" Filterable="false">
+                                <Template Context="exp">
+                                    <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Info" 
+                                                 Variant="Variant.Flat" 
+                                                 Size="ButtonSize.Small"
+                                                 Title="Edit"
+                                                 Click="@(() => EditExpertise(exp))" />
+                                    <RadzenButton Icon="@(exp.IsActive ? "block" : "check")" 
+                                                 ButtonStyle="@(exp.IsActive ? ButtonStyle.Warning : ButtonStyle.Success)" 
+                                                 Variant="Variant.Flat" 
+                                                 Size="ButtonSize.Small"
+                                                 Title="@(exp.IsActive ? "Deactivate" : "Activate")"
+                                                 Click="@(() => ToggleExpertiseStatus(exp))" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+            }
+            else
+            {
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Access Denied:</strong> You don't have permission to view this page.
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Expertise Modal -->
+@if (showExpertiseForm)
+{
+    <RadzenDialog @bind-Visible="showExpertiseForm" Title="@(editingExpertise == null ? "Add Expertise" : "Edit Expertise")" 
+                  Width="500px" CloseDialogOnEsc="true" CloseDialogOnOverlayClick="true">
+        <RadzenForm Data="@expertiseForm" Submit="@OnSubmit">
+            <RadzenFieldset Text="Expertise Details">
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <RadzenFormField Text="Name" class="w-100">
+                            <RadzenTextBox @bind-Value="@expertiseForm.Name" Placeholder="Enter expertise name..." Style="width: 100%" MaxLength="100" />
+                            <RadzenFormFieldValidator Component="Name" Text="Name is required" />
+                        </RadzenFormField>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <RadzenFormField Text="Description (Optional)" class="w-100">
+                            <RadzenTextArea @bind-Value="@expertiseForm.Description" 
+                                           Placeholder="Enter description..." 
+                                           Style="width: 100%; min-height: 80px;"
+                                           MaxLength="500" />
+                        </RadzenFormField>
+                    </div>
+                </div>
+                @if (editingExpertise != null)
+                {
+                    <div class="row">
+                        <div class="col-12 mb-3">
+                            <RadzenFormField Text="Status" class="w-100">
+                                <RadzenCheckBox @bind-Value="@expertiseForm.IsActive" Name="IsActive" />
+                                <label>Active</label>
+                            </RadzenFormField>
+                        </div>
+                    </div>
+                }
+            </RadzenFieldset>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="d-flex justify-content-end gap-2">
+                        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@CloseExpertiseForm" />
+                        <RadzenButton Text="@(editingExpertise == null ? "Create" : "Update")" 
+                                     ButtonStyle="ButtonStyle.Success" 
+                                     IsBusy="@isSaving"
+                                     Disabled="@isSaving" 
+                                     Click="@HandleSaveClick" />
+                    </div>
+                </div>
+            </div>
+        </RadzenForm>
+    </RadzenDialog>
+}
+
+@code {
+    private RadzenDataGrid<SM_MentalHealthApp.Shared.Expertise>? grid;
+    private List<SM_MentalHealthApp.Shared.Expertise> expertises = new();
+    private bool isLoading = true;
+    private bool showExpertiseForm = false;
+    private bool isSaving = false;
+    private SM_MentalHealthApp.Shared.Expertise? editingExpertise;
+    private ExpertiseForm expertiseForm = new();
+
+    private class ExpertiseForm
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthService.CurrentUser?.RoleId == 3) // Admin
+        {
+            await LoadExpertises();
+        }
+    }
+
+    private async Task LoadExpertises()
+    {
+        try
+        {
+            isLoading = true;
+            StateHasChanged();
+            expertises = await ExpertiseService.GetAllExpertisesAsync(activeOnly: false);
+            Console.WriteLine($"Loaded {expertises.Count} expertises");
+            if (expertises.Count == 0)
+            {
+                NotificationService.Notify(NotificationSeverity.Info, "Info", "No expertise categories found. Click 'Add Expertise' to create one.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading expertises: {ex}");
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load expertises: {ex.Message}");
+            expertises = new List<SM_MentalHealthApp.Shared.Expertise>();
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowAddExpertiseForm()
+    {
+        editingExpertise = null;
+        expertiseForm = new ExpertiseForm { IsActive = true };
+        showExpertiseForm = true;
+    }
+
+    private void EditExpertise(SM_MentalHealthApp.Shared.Expertise expertise)
+    {
+        editingExpertise = expertise;
+        expertiseForm = new ExpertiseForm
+        {
+            Name = expertise.Name,
+            Description = expertise.Description,
+            IsActive = expertise.IsActive
+        };
+        showExpertiseForm = true;
+    }
+
+    private void CloseExpertiseForm()
+    {
+        showExpertiseForm = false;
+        editingExpertise = null;
+        expertiseForm = new ExpertiseForm();
+    }
+
+    private async Task HandleSaveClick()
+    {
+        await SaveExpertise();
+    }
+
+    private async Task OnSubmit(ExpertiseForm model)
+    {
+        await SaveExpertise();
+    }
+
+    private async Task SaveExpertise()
+    {
+        if (string.IsNullOrWhiteSpace(expertiseForm.Name))
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please enter a name");
+            return;
+        }
+
+        if (isSaving) return;
+
+        isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            if (editingExpertise == null)
+            {
+                var created = await ExpertiseService.CreateExpertiseAsync(expertiseForm.Name, expertiseForm.Description);
+                NotificationService.Notify(NotificationSeverity.Success, "Success", $"Expertise '{created.Name}' created successfully");
+            }
+            else
+            {
+                var updated = await ExpertiseService.UpdateExpertiseAsync(
+                    editingExpertise.Id, 
+                    expertiseForm.Name, 
+                    expertiseForm.Description, 
+                    expertiseForm.IsActive);
+                
+                if (updated != null)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", $"Expertise '{updated.Name}' updated successfully");
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update expertise");
+                }
+            }
+
+            await Task.Delay(100);
+            CloseExpertiseForm();
+            await LoadExpertises();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to save expertise: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleExpertiseStatus(SM_MentalHealthApp.Shared.Expertise expertise)
+    {
+        var action = expertise.IsActive ? "deactivate" : "activate";
+        var confirm = await DialogService.Confirm(
+            $"Are you sure you want to {action} '{expertise.Name}'?",
+            $"{(expertise.IsActive ? "Deactivate" : "Activate")} Expertise",
+            new ConfirmOptions { OkButtonText = "Yes", CancelButtonText = "No" });
+
+        if (confirm == true)
+        {
+            try
+            {
+                var updated = await ExpertiseService.UpdateExpertiseAsync(
+                    expertise.Id, 
+                    expertise.Name, 
+                    expertise.Description, 
+                    !expertise.IsActive);
+                
+                if (updated != null)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                        $"Expertise '{updated.Name}' {(updated.IsActive ? "activated" : "deactivated")} successfully");
+                    await LoadExpertises();
+                    if (grid != null)
+                    {
+                        await grid.Reload();
+                    }
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update expertise");
+                }
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to update expertise: {ex.Message}");
+            }
+        }
+    }
+}
+

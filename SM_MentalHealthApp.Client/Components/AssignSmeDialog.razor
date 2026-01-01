@@ -17,15 +17,29 @@
             </label>
         </div>
 
+        @if (ServiceRequest.ExpertiseNames != null && ServiceRequest.ExpertiseNames.Any())
+        {
+            <div class="mb-3">
+                <label class="form-label"><strong>Required Expertise:</strong></label>
+                <div>
+                    @foreach (var expertiseName in ServiceRequest.ExpertiseNames)
+                    {
+                        <span class="badge bg-info me-1 mb-1">@expertiseName</span>
+                    }
+                </div>
+            </div>
+        }
+
         @if (recommendations != null && recommendations.Any())
         {
             <div class="mb-3">
-                <label class="form-label"><strong>Recommended SMEs (sorted by score):</strong></label>
+                <label class="form-label"><strong>Recommended SMEs (sorted by expertise match & score):</strong></label>
                 <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                     <table class="table table-sm table-hover">
                         <thead>
                             <tr>
                                 <th>SME</th>
+                                <th>Match</th>
                                 <th>Score</th>
                                 <th>Active</th>
                                 <th>Rejections</th>
@@ -34,7 +48,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var rec in recommendations.Take(5))
+                            @foreach (var rec in recommendations.Take(10))
                             {
                                 <tr style="cursor: pointer;" @onclick="@(() => SelectRecommendedSme(rec.SmeUserId))">
                                     <td>
@@ -42,6 +56,18 @@
                                         @if (!string.IsNullOrEmpty(rec.Specialization))
                                         {
                                             <br /><small class="text-muted">@rec.Specialization</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (rec.TotalExpertiseRequired > 0)
+                                        {
+                                            <span class="badge @GetMatchClass(rec.ExpertiseMatchCount, rec.TotalExpertiseRequired)">
+                                                @rec.ExpertiseMatchCount/@rec.TotalExpertiseRequired
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
                                         }
                                     </td>
                                     <td>
@@ -59,7 +85,7 @@
                         </tbody>
                     </table>
                 </div>
-                <small class="text-muted">Click on a row or use the button to select</small>
+                <small class="text-muted">Click on a row or use the button to select. SMEs are sorted by expertise match count, then score.</small>
             </div>
         }
         
@@ -147,6 +173,13 @@
         if (score >= 100) return "bg-primary";
         if (score >= 80) return "bg-warning";
         return "bg-danger";
+    }
+
+    private string GetMatchClass(int matchCount, int totalRequired)
+    {
+        if (matchCount == totalRequired) return "bg-success"; // Perfect match
+        if (matchCount > 0) return "bg-warning"; // Partial match
+        return "bg-secondary"; // No match
     }
 
     private async Task HandleAssignClick()

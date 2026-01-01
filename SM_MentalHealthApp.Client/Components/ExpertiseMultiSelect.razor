@@ -1,0 +1,414 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IExpertiseService ExpertiseService
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<div class="expertise-multi-select">
+    <label class="form-label">
+        @Label
+        @if (Required)
+        {
+            <span class="text-danger">*</span>
+        }
+    </label>
+    
+    <!-- Selected Expertise Tags -->
+    @if (SelectedExpertiseIds.Any())
+    {
+        <div class="selected-expertise-tags mb-2">
+            @foreach (var expertiseId in SelectedExpertiseIds.ToList())
+            {
+                var expertise = AllExpertises.FirstOrDefault(e => e.Id == expertiseId);
+                if (expertise != null)
+                {
+                    <span class="badge bg-primary me-1 mb-1" style="font-size: 0.9em; padding: 4px 8px;">
+                        @expertise.Name
+                        <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.7em;" 
+                                @onclick="@(() => RemoveExpertise(expertiseId))"
+                                aria-label="Remove @expertise.Name"></button>
+                    </span>
+                }
+            }
+        </div>
+    }
+
+    <!-- Search Input and Dropdown -->
+    <div class="position-relative" @ref="inputContainer">
+        <input type="text" 
+               class="form-control expertise-input" 
+               @ref="inputElement"
+               placeholder="@Placeholder"
+               value="@searchText"
+               @oninput="OnSearchInput"
+               @onfocus="ShowDropdown"
+               @onblur="HideDropdownDelayed"
+               @onkeydown="HandleKeyDown" />
+        
+        @if (showDropdown)
+        {
+            @if (filteredExpertises.Any())
+            {
+                <div class="expertise-dropdown" @ref="dropdownElement" style="@GetDropdownStyle()">
+                    <div class="dropdown-header">
+                        <small class="text-muted">Click to select (use arrow keys, Enter to select)</small>
+                    </div>
+                    <div class="dropdown-list">
+                        @{
+                            var displayList = filteredExpertises.Take(20).ToList();
+                        }
+                        @for (int i = 0; i < displayList.Count; i++)
+                        {
+                            var expertise = displayList[i];
+                            var isSelected = SelectedExpertiseIds.Contains(expertise.Id);
+                            var index = i;
+                            <div class="dropdown-item @(isSelected ? "selected" : "") @(hoveredIndex == index ? "hover" : "")"
+                                 @onclick="@(() => ToggleExpertise(expertise.Id))"
+                                 @onmousedown:preventDefault="true"
+                                 @onmouseenter="@(() => hoveredIndex = index)">
+                                @if (isSelected)
+                                {
+                                    <i class="fas fa-check text-success me-2"></i>
+                                }
+                                <span>@expertise.Name</span>
+                                @if (!string.IsNullOrEmpty(expertise.Description))
+                                {
+                                    <small class="text-muted d-block ms-4">@expertise.Description</small>
+                                }
+                            </div>
+                        }
+                        @if (filteredExpertises.Count > 20)
+                        {
+                            <div class="dropdown-footer text-muted">
+                                Showing 20 of @filteredExpertises.Count results. Type to filter more.
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                <div class="expertise-dropdown">
+                    <div class="dropdown-item text-muted">
+                        No expertise found matching "@searchText"
+                    </div>
+                </div>
+            }
+        }
+    </div>
+    
+    @if (!string.IsNullOrEmpty(HelpText))
+    {
+        <small class="text-muted">@HelpText</small>
+    }
+</div>
+
+<style>
+    .expertise-multi-select {
+        position: relative;
+        z-index: 1;
+    }
+    
+    .expertise-multi-select .position-relative {
+        position: relative;
+        z-index: 1;
+    }
+
+    .selected-expertise-tags {
+        min-height: 30px;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background-color: #f8f9fa;
+    }
+
+    .expertise-dropdown {
+        position: fixed;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 10001 !important;
+        max-height: 300px;
+        overflow-y: auto;
+        margin-top: 2px;
+    }
+    
+    .expertise-dropdown.dropdown-above {
+        top: auto;
+        bottom: 100%;
+        margin-top: 0;
+        margin-bottom: 2px;
+    }
+    
+    /* Ensure parent containers don't clip the dropdown */
+    :global(.rz-dialog-content),
+    :global(.rz-dialog-body),
+    :global(.rz-fieldset-content),
+    :global(.rz-fieldset) {
+        overflow: visible !important;
+    }
+    
+    /* Ensure the form field doesn't clip */
+    :global(.rz-form-field) {
+        overflow: visible !important;
+    }
+    
+    /* Ensure row and col don't clip */
+    :global(.row),
+    :global(.col-12),
+    :global(.col-md-6) {
+        overflow: visible !important;
+    }
+
+    .dropdown-header {
+        padding: 8px 12px;
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #ddd;
+        font-size: 0.85em;
+    }
+
+    .dropdown-list {
+        max-height: 250px;
+        overflow-y: auto;
+    }
+
+    .dropdown-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .dropdown-item:hover,
+    .dropdown-item.hover {
+        background-color: #e9ecef;
+    }
+
+    .dropdown-item.selected {
+        background-color: #d1ecf1;
+    }
+
+    .dropdown-item i {
+        width: 16px;
+        text-align: center;
+    }
+
+    .dropdown-footer {
+        padding: 8px 12px;
+        background-color: #f8f9fa;
+        border-top: 1px solid #ddd;
+        font-size: 0.85em;
+        text-align: center;
+    }
+</style>
+
+@code {
+    [Parameter] public string Label { get; set; } = "Expertise Categories";
+    [Parameter] public string Placeholder { get; set; } = "Type to search and select expertise...";
+    [Parameter] public string? HelpText { get; set; } = "Select one or more expertise categories";
+    [Parameter] public bool Required { get; set; } = false;
+    [Parameter] public List<int> SelectedExpertiseIds { get; set; } = new();
+    [Parameter] public EventCallback<List<int>> SelectedExpertiseIdsChanged { get; set; }
+
+    private List<Expertise> AllExpertises = new();
+    private List<Expertise> filteredExpertises = new();
+    private string searchText = string.Empty;
+    private bool showDropdown = false;
+    private int hoveredIndex = -1;
+    private System.Threading.Timer? hideTimer;
+    private Microsoft.AspNetCore.Components.ElementReference inputContainer;
+    private Microsoft.AspNetCore.Components.ElementReference inputElement;
+    private Microsoft.AspNetCore.Components.ElementReference dropdownElement;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadExpertises();
+    }
+
+    private async Task LoadExpertises()
+    {
+        try
+        {
+            AllExpertises = await ExpertiseService.GetAllExpertisesAsync(activeOnly: true);
+            FilterExpertises();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading expertises: {ex.Message}");
+        }
+    }
+
+    private void FilterExpertises()
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            // Show all unselected expertises when search is empty
+            filteredExpertises = AllExpertises
+                .Where(e => !SelectedExpertiseIds.Contains(e.Id))
+                .OrderBy(e => e.Name)
+                .ToList();
+        }
+        else
+        {
+            // Filter by search text - show all matching items (including selected ones)
+            var searchLower = searchText.ToLower();
+            filteredExpertises = AllExpertises
+                .Where(e => e.Name.ToLower().Contains(searchLower) ||
+                           (e.Description != null && e.Description.ToLower().Contains(searchLower)))
+                .OrderBy(e => SelectedExpertiseIds.Contains(e.Id) ? 0 : 1) // Selected items first
+                .ThenBy(e => e.Name)
+                .ToList();
+        }
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchText = e.Value?.ToString() ?? string.Empty;
+        FilterExpertises();
+        if (!showDropdown)
+        {
+            showDropdown = true;
+        }
+        hoveredIndex = -1;
+        StateHasChanged();
+    }
+
+    private void ShowDropdown()
+    {
+        if (!showDropdown)
+        {
+            showDropdown = true;
+            FilterExpertises();
+            StateHasChanged();
+        }
+        CancelHideTimer();
+    }
+
+    private void HideDropdownDelayed()
+    {
+        // Delay hiding to allow clicks on dropdown items
+        hideTimer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                showDropdown = false;
+                StateHasChanged();
+            });
+        }, null, 200, Timeout.Infinite);
+    }
+
+    private void CancelHideTimer()
+    {
+        hideTimer?.Dispose();
+        hideTimer = null;
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        CancelHideTimer();
+        
+        var displayCount = Math.Min(filteredExpertises.Count, 20);
+        
+        if (e.Key == "ArrowDown")
+        {
+            if (hoveredIndex < displayCount - 1)
+            {
+                hoveredIndex++;
+            }
+            StateHasChanged();
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            if (hoveredIndex > 0)
+            {
+                hoveredIndex--;
+            }
+            StateHasChanged();
+        }
+        else if (e.Key == "Enter" && hoveredIndex >= 0 && hoveredIndex < displayCount)
+        {
+            var expertise = filteredExpertises[hoveredIndex];
+            ToggleExpertise(expertise.Id);
+        }
+        else if (e.Key == "Escape")
+        {
+            showDropdown = false;
+            searchText = string.Empty;
+            FilterExpertises();
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleExpertise(int expertiseId)
+    {
+        CancelHideTimer();
+        
+        if (SelectedExpertiseIds.Contains(expertiseId))
+        {
+            SelectedExpertiseIds.Remove(expertiseId);
+        }
+        else
+        {
+            SelectedExpertiseIds.Add(expertiseId);
+        }
+
+        // Keep search text but refresh filter to show updated selection state
+        FilterExpertises();
+        hoveredIndex = -1;
+        
+        SelectedExpertiseIdsChanged.InvokeAsync(SelectedExpertiseIds);
+        StateHasChanged();
+    }
+
+    private void RemoveExpertise(int expertiseId)
+    {
+        SelectedExpertiseIds.Remove(expertiseId);
+        FilterExpertises();
+        SelectedExpertiseIdsChanged.InvokeAsync(SelectedExpertiseIds);
+        StateHasChanged();
+    }
+
+    private string GetDropdownStyle()
+    {
+        // Use fixed positioning to escape scrollable containers
+        return "position: fixed; z-index: 10001;";
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (showDropdown)
+        {
+            await UpdateDropdownPosition();
+        }
+    }
+    
+    private async Task UpdateDropdownPosition()
+    {
+        try
+        {
+            // Find the actual input element inside the container
+            var input = inputContainer;
+            if (inputElement.Context != null)
+            {
+                input = inputElement;
+            }
+            
+            await JSRuntime.InvokeVoidAsync("updateExpertiseDropdownPosition", 
+                input, 
+                dropdownElement);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating dropdown position: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        hideTimer?.Dispose();
+    }
+}
+

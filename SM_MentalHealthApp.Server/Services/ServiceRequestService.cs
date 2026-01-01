@@ -23,11 +23,13 @@ namespace SM_MentalHealthApp.Server.Services
     {
         private readonly JournalDbContext _context;
         private readonly ILogger<ServiceRequestService> _logger;
+        private readonly IExpertiseService _expertiseService;
 
-        public ServiceRequestService(JournalDbContext context, ILogger<ServiceRequestService> logger)
+        public ServiceRequestService(JournalDbContext context, ILogger<ServiceRequestService> logger, IExpertiseService expertiseService)
         {
             _context = context;
             _logger = logger;
+            _expertiseService = expertiseService;
         }
 
         /// <summary>
@@ -76,6 +78,8 @@ namespace SM_MentalHealthApp.Server.Services
                     .Include(sr => sr.Client)
                     .Include(sr => sr.Assignments)
                         .ThenInclude(a => a.SmeUser)
+                    .Include(sr => sr.Expertises)
+                        .ThenInclude(e => e.Expertise)
                     .FirstOrDefaultAsync(sr => sr.Id == id && sr.IsActive);
 
                 return serviceRequest != null ? MapToDto(serviceRequest) : null;
@@ -115,6 +119,12 @@ namespace SM_MentalHealthApp.Server.Services
 
                 _context.ServiceRequests.Add(serviceRequest);
                 await _context.SaveChangesAsync();
+
+                // Set expertise if provided
+                if (request.ExpertiseIds != null && request.ExpertiseIds.Any())
+                {
+                    await _expertiseService.SetServiceRequestExpertisesAsync(serviceRequest.Id, request.ExpertiseIds);
+                }
 
                 // If SME is provided, assign them immediately
                 if (request.SmeUserId.HasValue)
@@ -156,6 +166,12 @@ namespace SM_MentalHealthApp.Server.Services
 
                 if (request.Description != null)
                     serviceRequest.Description = request.Description;
+
+                // Update expertise if provided
+                if (request.ExpertiseIds != null)
+                {
+                    await _expertiseService.SetServiceRequestExpertisesAsync(id, request.ExpertiseIds);
+                }
 
                 serviceRequest.UpdatedAt = DateTime.UtcNow;
 
@@ -373,6 +389,8 @@ namespace SM_MentalHealthApp.Server.Services
                 CreatedAt = sr.CreatedAt,
                 UpdatedAt = sr.UpdatedAt,
                 Description = sr.Description,
+                ExpertiseIds = sr.Expertises?.Select(e => e.ExpertiseId).ToList() ?? new List<int>(),
+                ExpertiseNames = sr.Expertises?.Select(e => e.Expertise.Name).ToList() ?? new List<string>(),
                 Assignments = sr.Assignments
                     .Where(a => a.IsActive)
                     .Select(a => new ServiceRequestAssignmentDto

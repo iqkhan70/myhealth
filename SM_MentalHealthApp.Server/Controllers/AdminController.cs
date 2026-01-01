@@ -1698,6 +1698,101 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        [HttpPut("update-sme/{id}")]
+        [Authorize(Roles = "Admin")] // Only Admin can update SMEs
+        public async Task<ActionResult> UpdateSme(int id, [FromBody] UpdateSmeRequest request)
+        {
+            try
+            {
+                var sme = await _context.Users.FindAsync(id);
+                if (sme == null)
+                {
+                    return NotFound("SME not found.");
+                }
+
+                // Verify this is an SME (RoleId 6) or Doctor (2) or Attorney (5)
+                if (sme.RoleId != 6 && sme.RoleId != 2 && sme.RoleId != 5)
+                {
+                    return BadRequest("User is not an SME, Doctor, or Attorney.");
+                }
+
+                // Check if email already exists (excluding current SME)
+                if (!string.IsNullOrWhiteSpace(request.Email))
+                {
+                    var existingUser = await _context.Users
+                        .FirstOrDefaultAsync(u => u.Email == request.Email && u.Id != id);
+
+                    if (existingUser != null)
+                    {
+                        return BadRequest("A user with this email already exists.");
+                    }
+                }
+
+                // Update fields only if provided
+                if (!string.IsNullOrWhiteSpace(request.FirstName))
+                {
+                    sme.FirstName = request.FirstName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.LastName))
+                {
+                    sme.LastName = request.LastName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Email))
+                {
+                    sme.Email = request.Email;
+                }
+
+                if (request.DateOfBirth.HasValue)
+                {
+                    sme.DateOfBirth = request.DateOfBirth.Value;
+                    UserEncryptionHelper.EncryptUserData(sme, _encryptionService);
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Gender))
+                {
+                    sme.Gender = request.Gender;
+                }
+
+                // MobilePhone can be null, so check if it's provided
+                if (request.MobilePhone != null)
+                {
+                    UserEncryptionHelper.DecryptUserData(sme, _encryptionService);
+                    sme.MobilePhone = request.MobilePhone;
+                    UserEncryptionHelper.EncryptUserData(sme, _encryptionService);
+                }
+                else if (!request.DateOfBirth.HasValue)
+                {
+                    // Ensure encryption is still applied if nothing was updated
+                    UserEncryptionHelper.EncryptUserData(sme, _encryptionService);
+                }
+
+                if (request.CompanyId.HasValue)
+                {
+                    sme.CompanyId = request.CompanyId.Value;
+                }
+
+                // Update password only if provided
+                if (!string.IsNullOrWhiteSpace(request.Password))
+                {
+                    sme.PasswordHash = HashPassword(request.Password);
+                }
+
+                await _context.SaveChangesAsync();
+
+                // Decrypt for response
+                UserEncryptionHelper.DecryptUserData(sme, _encryptionService);
+
+                return Ok(sme);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating SME {Id}", id);
+                return StatusCode(500, $"Error updating SME: {ex.Message}");
+            }
+        }
+
         [HttpPut("update-attorney/{id}")]
         [Authorize(Roles = "Admin")] // Only Admin can update attorneys
         public async Task<ActionResult> UpdateAttorney(int id, [FromBody] UpdateAttorneyRequest request)
