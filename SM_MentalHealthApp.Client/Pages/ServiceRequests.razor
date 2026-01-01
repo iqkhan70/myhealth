@@ -18,14 +18,6 @@
     <div class="row">
         <div class="col-12">
             <SMPageHeader Title="Service Requests" Icon="fas fa-tasks">
-                @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator
-                {
-                    <ActionButton>
-                        <button class="btn btn-success" @onclick="ShowCreateDialog">
-                            <i class="fas fa-plus"></i> Create Service Request
-                        </button>
-                    </ActionButton>
-                }
             </SMPageHeader>
 
             @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) // Doctor, Attorney, or SME
@@ -43,6 +35,29 @@
                 </div>
             }
 
+            <!-- Filter and Create Button Row -->
+            <div class="row mb-3" style="margin-bottom: 1rem; align-items: end;">
+                <div class="col-md-3">
+                    <label class="form-label"><strong>Filter by Status:</strong></label>
+                    <RadzenDropDown Data="@statusFilterOptions" 
+                                   TextProperty="Text" 
+                                   ValueProperty="Value" 
+                                   @bind-Value="selectedStatusFilter"
+                                   @bind-Value:after="OnStatusFilterChanged"
+                                   Placeholder="All Statuses"
+                                   AllowClear="true"
+                                   Style="width: 100%" />
+                </div>
+                <div class="col-md-9" style="display: flex; justify-content: flex-end; align-items: end;">
+                    @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator
+                    {
+                        <button class="btn btn-success" @onclick="ShowCreateDialog" style="height: 38px;">
+                            <i class="fas fa-plus"></i> Create Service Request
+                        </button>
+                    }
+                </div>
+            </div>
+
             <RadzenDataGrid @ref="grid" TItem="ServiceRequestDto" 
                 Data="@serviceRequests"
                 Count="@totalCount"
@@ -54,7 +69,7 @@
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="ClientName" Title="Client" Width="200px" />
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Title" Title="Title" Width="250px" />
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Type" Title="Type" Width="120px" />
-                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Status" Title="Status" Width="120px">
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Status" Title="Status" Width="120px" Filterable="false">
                             <Template Context="sr">
                                 <span class="badge @GetStatusClass(sr.Status)">@sr.Status</span>
                             </Template>
@@ -161,6 +176,33 @@
     private List<User>? smes;
     private int? mySmeScore;
     private List<int>? _filterSmeIds; // For filtering by AssignedSmeNames
+    
+    // Status filter - default to "Active"
+    private string? selectedStatusFilter = "Active";
+    
+    // Status filter options for dropdown
+    private List<StatusOption> statusFilterOptions = new()
+    {
+        new StatusOption { Value = "Active", Text = "Active" },
+        new StatusOption { Value = "Completed", Text = "Completed" },
+        new StatusOption { Value = "Cancelled", Text = "Cancelled" },
+        new StatusOption { Value = "OnHold", Text = "On Hold" }
+    };
+    
+    private class StatusOption
+    {
+        public string Value { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+    }
+    
+    private async Task OnStatusFilterChanged()
+    {
+        // Reload data when status filter changes
+        if (grid != null)
+        {
+            await grid.Reload();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -270,6 +312,16 @@
                     // Extraction failed, but filter contains AssignedSmeNames - remove it
                     decodedFilter = RemoveNameFilter(decodedFilter!, "AssignedSmeNames");
                 }
+            }
+            
+            // Add status filter if selected
+            if (!string.IsNullOrEmpty(selectedStatusFilter))
+            {
+                var statusFilter = $"Status eq '{selectedStatusFilter}'";
+                if (!string.IsNullOrEmpty(odataFilter))
+                    odataFilter = $"{odataFilter} and ({statusFilter})";
+                else
+                    odataFilter = statusFilter;
             }
             
             // Transform remaining filter from Radzen C# syntax to OData syntax
