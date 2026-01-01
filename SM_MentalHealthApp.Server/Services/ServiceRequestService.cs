@@ -16,6 +16,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<List<int>> GetServiceRequestIdsForSmeAsync(int smeUserId);
         Task<bool> IsSmeAssignedToServiceRequestAsync(int serviceRequestId, int smeUserId);
         Task<ServiceRequestDto?> GetDefaultServiceRequestForClientAsync(int clientId);
+        Task<Shared.AutoCompleteServiceRequestsResult> AutoCompleteServiceRequestsAsync();
     }
 
     public class ServiceRequestService : IServiceRequestService
@@ -395,6 +396,100 @@ namespace SM_MentalHealthApp.Server.Services
                     })
                     .ToList()
             };
+        }
+
+        /// <summary>
+        /// Auto-complete Service Requests where all assigned SMEs have completed their work
+        /// </summary>
+        public async Task<Shared.AutoCompleteServiceRequestsResult> AutoCompleteServiceRequestsAsync()
+        {
+            var result = new Shared.AutoCompleteServiceRequestsResult
+            {
+                StartedAt = DateTime.UtcNow
+            };
+
+            try
+            {
+                // Get all active Service Requests that are not already completed
+                var serviceRequests = await _context.ServiceRequests
+                    .Include(sr => sr.Assignments.Where(a => a.IsActive))
+                    .Where(sr => sr.IsActive && 
+                        sr.Status != "Completed" && 
+                        sr.Status != "Cancelled") // Don't process already completed or cancelled SRs
+                    .ToListAsync();
+
+                result.TotalServiceRequestsChecked = serviceRequests.Count;
+
+                foreach (var sr in serviceRequests)
+                {
+                    // Get all active assignments for this SR
+                    var activeAssignments = sr.Assignments
+                        .Where(a => a.IsActive)
+                        .ToList();
+
+                    // Skip SRs with no active assignments
+                    if (!activeAssignments.Any())
+                    {
+                        result.SkippedNoAssignments++;
+                        continue;
+                    }
+
+                    // Check if ALL active assignments are completed
+                    var allCompleted = activeAssignments.All(a => 
+                        a.Status == AssignmentStatus.Completed.ToString());
+
+                    if (allCompleted)
+                    {
+                        // Mark SR as completed
+                        sr.Status = "Completed";
+                        sr.UpdatedAt = DateTime.UtcNow;
+                        result.CompletedServiceRequests++;
+                        result.CompletedServiceRequestIds.Add(sr.Id);
+                        
+                        _logger.LogInformation(
+                            "Auto-completed ServiceRequest {ServiceRequestId} ({Title}) - all {AssignmentCount} assignments are completed",
+                            sr.Id, sr.Title, activeAssignments.Count);
+                    }
+                    else
+                    {
+                        // Count how many are completed vs total
+                        var completedCount = activeAssignments.Count(a => 
+                            a.Status == AssignmentStatus.Completed.ToString());
+                        result.PendingServiceRequests++;
+                        
+                        _logger.LogDebug(
+                            "ServiceRequest {ServiceRequestId} ({Title}) not completed - {CompletedCount}/{TotalCount} assignments completed",
+                            sr.Id, sr.Title, completedCount, activeAssignments.Count);
+                    }
+                }
+
+                // Save all changes
+                if (result.CompletedServiceRequests > 0)
+                {
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation(
+                        "Auto-complete job completed: {CompletedCount} Service Requests marked as completed, {PendingCount} still pending, {SkippedCount} skipped (no assignments)",
+                        result.CompletedServiceRequests, result.PendingServiceRequests, result.SkippedNoAssignments);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "Auto-complete job completed: No Service Requests were ready to be completed. {PendingCount} still pending, {SkippedCount} skipped (no assignments)",
+                        result.PendingServiceRequests, result.SkippedNoAssignments);
+                }
+
+                result.CompletedAt = DateTime.UtcNow;
+                result.Success = true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in AutoCompleteServiceRequestsAsync");
+                result.Success = false;
+                result.ErrorMessage = ex.Message;
+                result.CompletedAt = DateTime.UtcNow;
+            }
+
+            return result;
         }
     }
 }

@@ -23,14 +23,16 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly ILogger<AdminController> _logger;
         private readonly IPiiEncryptionService _encryptionService;
         private readonly IContentCleanupService _contentCleanupService;
+        private readonly IServiceRequestService _serviceRequestService;
 
-        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger, IPiiEncryptionService encryptionService, IContentCleanupService contentCleanupService)
+        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger, IPiiEncryptionService encryptionService, IContentCleanupService contentCleanupService, IServiceRequestService serviceRequestService)
         {
             _adminService = adminService;
             _context = context;
             _logger = logger;
             _encryptionService = encryptionService;
             _contentCleanupService = contentCleanupService;
+            _serviceRequestService = serviceRequestService;
         }
 
         [HttpGet("doctors")]
@@ -1908,6 +1910,26 @@ namespace SM_MentalHealthApp.Server.Controllers
             {
                 _logger.LogError(ex, "Error running content cleanup job");
                 return StatusCode(500, new { message = "An error occurred while running the content cleanup job.", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Auto-complete Service Requests where all assigned SMEs have completed their work
+        /// </summary>
+        [HttpPost("auto-complete-service-requests")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<Shared.AutoCompleteServiceRequestsResult>> AutoCompleteServiceRequests()
+        {
+            try
+            {
+                _logger.LogInformation("Admin user triggered auto-complete Service Requests job");
+                var result = await _serviceRequestService.AutoCompleteServiceRequestsAsync();
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error running auto-complete Service Requests job");
+                return StatusCode(500, new { message = "An error occurred while running the auto-complete Service Requests job.", error = ex.Message });
             }
         }
     }

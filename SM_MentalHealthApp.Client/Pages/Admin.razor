@@ -390,6 +390,75 @@
                     </div>
                 }
             </div>
+
+            <!-- Auto-Complete Service Requests Section -->
+            <div class="assignment-section" style="margin-top: 2rem; padding: 1.5rem; border: 1px solid #dee2e6; border-radius: 0.375rem; background-color: #fff;">
+                <h2>Auto-Complete Service Requests</h2>
+                <p class="text-muted mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    Automatically mark Service Requests as "Completed" when all assigned SMEs have completed their work. This job checks all active Service Requests and marks them as completed if all active assignments have status "Completed".
+                </p>
+                
+                <div style="margin-bottom: 1rem;">
+                    <button @onclick="RunAutoCompleteServiceRequests" 
+                            disabled="@isRunningAutoComplete" 
+                            class="btn btn-primary" 
+                            style="padding: 0.5rem 1rem; background-color: #007bff; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                        @if (isRunningAutoComplete)
+                        {
+                            <span>Running Auto-Complete...</span>
+                        }
+                        else
+                        {
+                            <span>✅ Run Auto-Complete Service Requests</span>
+                        }
+                    </button>
+                </div>
+
+                @if (autoCompleteResult != null)
+                {
+                    <div style="margin-top: 1rem; padding: 1rem; background-color: #f8f9fa; border-radius: 0.25rem;">
+                        <h3>Auto-Complete Results</h3>
+                        <p><strong>Status:</strong> 
+                            @if (autoCompleteResult.Success)
+                            {
+                                <span style="color: #28a745;">✅ Success</span>
+                            }
+                            else
+                            {
+                                <span style="color: #dc3545;">❌ Failed</span>
+                            }
+                        </p>
+                        <p><strong>Started At:</strong> @autoCompleteResult.StartedAt.ToString("yyyy-MM-dd HH:mm:ss UTC")</p>
+                        <p><strong>Completed At:</strong> @autoCompleteResult.CompletedAt.ToString("yyyy-MM-dd HH:mm:ss UTC")</p>
+                        <p><strong>Total Service Requests Checked:</strong> @autoCompleteResult.TotalServiceRequestsChecked</p>
+                        <p><strong>Service Requests Completed:</strong> <span style="color: #28a745;">@autoCompleteResult.CompletedServiceRequests</span></p>
+                        <p><strong>Service Requests Still Pending:</strong> <span style="color: #ffc107;">@autoCompleteResult.PendingServiceRequests</span></p>
+                        <p><strong>Skipped (No Assignments):</strong> <span style="color: #6c757d;">@autoCompleteResult.SkippedNoAssignments</span></p>
+                        
+                        @if (autoCompleteResult.CompletedServiceRequestIds != null && autoCompleteResult.CompletedServiceRequestIds.Any())
+                        {
+                            <div style="margin-top: 1rem;">
+                                <strong>Completed Service Request IDs:</strong>
+                                <ul style="margin-top: 0.5rem;">
+                                    @foreach (var id in autoCompleteResult.CompletedServiceRequestIds)
+                                    {
+                                        <li>SR #@id</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        
+                        @if (!string.IsNullOrEmpty(autoCompleteResult.ErrorMessage))
+                        {
+                            <div style="margin-top: 1rem;">
+                                <strong style="color: #dc3545;">Error:</strong>
+                                <p style="color: #dc3545;">@autoCompleteResult.ErrorMessage</p>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
         </div>
     }
 </div>
@@ -417,6 +486,10 @@
     // Content cleanup
     private bool isRunningCleanup = false;
     private ContentCleanupResult? cleanupResult = null;
+
+    // Auto-complete Service Requests
+    private bool isRunningAutoComplete = false;
+    private AutoCompleteServiceRequestsResult? autoCompleteResult = null;
 
     private async Task RunContentCleanup()
     {
@@ -458,6 +531,58 @@
         finally
         {
             isRunningCleanup = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RunAutoCompleteServiceRequests()
+    {
+        try
+        {
+            isRunningAutoComplete = true;
+            autoCompleteResult = null;
+            StateHasChanged();
+
+            var token = AuthService.Token;
+            if (string.IsNullOrEmpty(token))
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "You must be logged in to run this job.");
+                return;
+            }
+
+            var request = new HttpRequestMessage(HttpMethod.Post, "api/admin/auto-complete-service-requests");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            var response = await Http.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                autoCompleteResult = await response.Content.ReadFromJsonAsync<AutoCompleteServiceRequestsResult>();
+                if (autoCompleteResult != null && autoCompleteResult.Success)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                        $"Auto-complete job completed. {autoCompleteResult.CompletedServiceRequests} Service Request(s) marked as completed.");
+                }
+                else if (autoCompleteResult != null)
+                {
+                    NotificationService.Notify(NotificationSeverity.Warning, "Warning", 
+                        $"Auto-complete job completed with errors: {autoCompleteResult.ErrorMessage ?? "Unknown error"}");
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", 
+                    $"Failed to run auto-complete job: {response.StatusCode}. {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Error running auto-complete job: {ex.Message}");
+        }
+        finally
+        {
+            isRunningAutoComplete = false;
             StateHasChanged();
         }
     }
