@@ -105,12 +105,33 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Create a new service request
         /// </summary>
         [HttpPost]
-        [Authorize(Roles = "Admin,Coordinator")]
+        [Authorize(Roles = "Admin,Coordinator,Patient")]
         public async Task<ActionResult<ServiceRequestDto>> CreateServiceRequest([FromBody] CreateServiceRequestRequest request)
         {
             try
             {
                 var currentUserId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+                
+                // If patient is creating, ensure they can only create for themselves
+                if (currentRoleId == Roles.Patient && request.ClientId != currentUserId)
+                {
+                    _logger.LogWarning("Patient {UserId} attempted to create SR for different client {ClientId}", currentUserId, request.ClientId);
+                    return BadRequest("Patients can only create service requests for themselves.");
+                }
+                
+                // Auto-set ClientId for patients
+                if (currentRoleId == Roles.Patient)
+                {
+                    request.ClientId = currentUserId.Value;
+                }
+                
+                // Patients cannot assign SMEs - coordinators/admins will do that
+                if (currentRoleId == Roles.Patient)
+                {
+                    request.SmeUserId = null;
+                }
+                
                 var serviceRequest = await _serviceRequestService.CreateServiceRequestAsync(request, currentUserId);
                 return CreatedAtAction(nameof(GetServiceRequest), new { id = serviceRequest.Id }, serviceRequest);
             }

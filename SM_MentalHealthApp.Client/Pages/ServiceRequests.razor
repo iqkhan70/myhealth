@@ -49,7 +49,7 @@
                                    Style="width: 100%" />
                 </div>
                 <div class="col-md-9" style="display: flex; justify-content: flex-end; align-items: end;">
-                    @if (AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Admin or Coordinator
+                    @if (AuthService.CurrentUser?.RoleId == 1 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4) // Patient, Admin, or Coordinator
                     {
                         <button class="btn btn-success" @onclick="ShowCreateDialog" style="height: 38px;">
                             <i class="fas fa-plus"></i> Create Service Request
@@ -617,20 +617,26 @@
         // First, test if the method is being called
         try
         {
-            // Ensure clients and SMEs are loaded before opening dialog
-            if (clients == null || !clients.Any())
+            var isPatient = AuthService.CurrentUser?.RoleId == 1;
+            
+            // Only load clients and SMEs for non-patients
+            if (!isPatient)
             {
-                await LoadClients();
-            }
-            if (smes == null || !smes.Any())
-            {
-                await LoadSMEs();
-            }
+                // Ensure clients and SMEs are loaded before opening dialog
+                if (clients == null || !clients.Any())
+                {
+                    await LoadClients();
+                }
+                if (smes == null || !smes.Any())
+                {
+                    await LoadSMEs();
+                }
 
-            if (clients == null || !clients.Any())
-            {
-                NotificationService.Notify(NotificationSeverity.Warning, "Warning", "No clients available. Please ensure clients exist in the system.");
-                return;
+                if (clients == null || !clients.Any())
+                {
+                    NotificationService.Notify(NotificationSeverity.Warning, "Warning", "No clients available. Please ensure clients exist in the system.");
+                    return;
+                }
             }
 
             // Try opening the dialog with full namespace

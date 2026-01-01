@@ -3,29 +3,33 @@
 @inject IServiceRequestService ServiceRequestService
 @inject NotificationService NotificationService
 @inject DialogService DialogService
+@inject IAuthService AuthService
 
 <RadzenForm Data="@request" Submit="@OnSubmit">
     <RadzenFieldset Text="Service Request Details">
-        <div class="row">
-            <div class="col-12 mb-3">
-                <RadzenFormField Text="Client" class="w-100">
-                    <RadzenDropDown @bind-Value="@request.ClientId" 
-                                   Data="@Clients" 
-                                   ValueProperty="Id" 
-                                   TextProperty="FullName"
-                                   Placeholder="Select a client..."
-                                   AllowFiltering="true"
-                                   FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                                   Style="width: 100%"
-                                   TValue="int">
-                        <EmptyMessageTemplate>
-                            No clients found
-                        </EmptyMessageTemplate>
-                    </RadzenDropDown>
-                    <RadzenFormFieldValidator Component="ClientId" Text="Client is required" />
-                </RadzenFormField>
+        @if (AuthService.CurrentUser?.RoleId != 1) // Not a Patient
+        {
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <RadzenFormField Text="Client" class="w-100">
+                        <RadzenDropDown @bind-Value="@request.ClientId" 
+                                       Data="@Clients" 
+                                       ValueProperty="Id" 
+                                       TextProperty="FullName"
+                                       Placeholder="Select a client..."
+                                       AllowFiltering="true"
+                                       FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                       Style="width: 100%"
+                                       TValue="int">
+                            <EmptyMessageTemplate>
+                                No clients found
+                            </EmptyMessageTemplate>
+                        </RadzenDropDown>
+                        <RadzenFormFieldValidator Component="ClientId" Text="Client is required" />
+                    </RadzenFormField>
+                </div>
             </div>
-        </div>
+        }
 
         <div class="row">
             <div class="col-12 mb-3">
@@ -37,7 +41,7 @@
         </div>
 
         <div class="row">
-            <div class="col-md-6 mb-3">
+            <div class="@(AuthService.CurrentUser?.RoleId == 1 ? "col-12" : "col-md-6") mb-3">
                 <RadzenFormField Text="Type" class="w-100">
                     <RadzenDropDown @bind-Value="@request.Type" 
                                    Data="@typeOptions" 
@@ -46,20 +50,23 @@
                                    TValue="string" />
                 </RadzenFormField>
             </div>
-            <div class="col-md-6 mb-3">
-                <RadzenFormField Text="Initial SME (Optional)" class="w-100">
-                    <RadzenDropDown @bind-Value="@initialSmeUserId" 
-                                   Data="@SMEs" 
-                                   ValueProperty="Id" 
-                                   TextProperty="FullName"
-                                   Placeholder="Select an SME to assign..."
-                                   AllowFiltering="true"
-                                   FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                                   AllowClear="true"
-                                   Style="width: 100%"
-                                   TValue="int?" />
-                </RadzenFormField>
-            </div>
+            @if (AuthService.CurrentUser?.RoleId != 1) // Not a Patient - only coordinators/admins can assign SMEs
+            {
+                <div class="col-md-6 mb-3">
+                    <RadzenFormField Text="Initial SME (Optional)" class="w-100">
+                        <RadzenDropDown @bind-Value="@initialSmeUserId" 
+                                       Data="@SMEs" 
+                                       ValueProperty="Id" 
+                                       TextProperty="FullName"
+                                       Placeholder="Select an SME to assign..."
+                                       AllowFiltering="true"
+                                       FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                       AllowClear="true"
+                                       Style="width: 100%"
+                                       TValue="int?" />
+                    </RadzenFormField>
+                </div>
+            }
         </div>
 
         <div class="row">
@@ -114,6 +121,15 @@
         await CreateServiceRequest();
     }
 
+    protected override void OnInitialized()
+    {
+        // Auto-set ClientId for patients
+        if (AuthService.CurrentUser?.RoleId == 1 && AuthService.CurrentUser?.Id > 0)
+        {
+            request.ClientId = AuthService.CurrentUser.Id;
+        }
+    }
+
     private async Task CreateServiceRequest()
     {
         Console.WriteLine("CreateServiceRequest called!");
@@ -141,10 +157,15 @@
         {
             Console.WriteLine($"Creating service request: ClientId={request.ClientId}, Title={request.Title}");
             
-            // Set the SmeUserId if an initial SME was selected
-            if (initialSmeUserId.HasValue)
+            // Set the SmeUserId if an initial SME was selected (only for non-patients)
+            if (AuthService.CurrentUser?.RoleId != 1 && initialSmeUserId.HasValue)
             {
                 request.SmeUserId = initialSmeUserId.Value;
+            }
+            else
+            {
+                // Patients cannot assign SMEs
+                request.SmeUserId = null;
             }
 
             var created = await ServiceRequestService.CreateServiceRequestAsync(request);

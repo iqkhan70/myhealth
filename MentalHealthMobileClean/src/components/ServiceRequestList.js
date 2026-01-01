@@ -13,7 +13,8 @@ import ServiceRequestService from '../services/ServiceRequestService';
 
 const ServiceRequestList = ({ 
   onServiceRequestSelect,
-  user = null 
+  user = null,
+  onCreateRequest = null
 }) => {
   const [serviceRequests, setServiceRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -122,22 +123,60 @@ const ServiceRequestList = ({
     );
   }
 
+  const isPatient = user?.roleId === 1;
+
   return (
-    <FlatList
-      data={serviceRequests}
-      renderItem={renderServiceRequest}
-      keyExtractor={(item) => (item.id || item.Id || Math.random()).toString()}
-      contentContainerStyle={styles.listContainer}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    />
+    <View style={styles.container}>
+      {isPatient && (
+        <View style={styles.createButtonContainer}>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => {
+              if (onCreateRequest) {
+                onCreateRequest();
+              }
+            }}
+          >
+            <Text style={styles.createButtonText}>+ Create Service Request</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      <FlatList
+        data={serviceRequests}
+        renderItem={renderServiceRequest}
+        keyExtractor={(item) => (item.id || item.Id || Math.random()).toString()}
+        contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   listContainer: {
     padding: 16,
+  },
+  createButtonContainer: {
+    padding: 16,
+    paddingBottom: 8,
+  },
+  createButton: {
+    backgroundColor: '#28a745',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   serviceRequestCard: {
     backgroundColor: '#fff',

@@ -105,6 +105,42 @@ class ServiceRequestService {
       throw error;
     }
   }
+
+  // Create a new service request
+  async createServiceRequest(serviceRequestData) {
+    try {
+      const headers = await this.getHeaders();
+      // Match the pattern used by other services (baseUrl already includes /api)
+      // Controller route is [Route("api/[controller]")], so use /ServiceRequest
+      const url = `${this.baseUrl}/ServiceRequest`;
+      console.log('Creating service request at:', url);
+      console.log('Request data:', JSON.stringify(serviceRequestData, null, 2));
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(serviceRequestData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Create SR failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: url,
+          error: errorText
+        });
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('Service request created successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Error creating service request:', error);
+      throw error;
+    }
+  }
 }
 
 export default new ServiceRequestService();
