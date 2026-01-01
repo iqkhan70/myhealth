@@ -1346,15 +1346,20 @@ cd "$REPO_ROOT"
 
 # ============================================================================
 # Step 8.5: Run ServiceRequest Migration (if needed)
-# Step 8.6: Run Assignment Lifecycle Migration (if needed)
+# Step 8.6: Run Expertise System Migration (if needed)
+# Step 8.7: Run Assignment Lifecycle Migration (if needed)
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}Step 8.5: Running ServiceRequest Migration${NC}"
+echo -e "${GREEN}Step 8.5: Running ServiceRequest Migration (includes Expertise System)${NC}"
 echo -e "${GREEN}========================================${NC}"
+echo ""
+echo "This migration includes:"
+echo "  - ServiceRequest tables and data migration"
+echo "  - Expertise system (Expertise, SmeExpertise, ServiceRequestExpertise tables)"
 echo ""
 
 if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestMigration_Consolidated.sql" ]; then
-    echo "Copying ServiceRequest migration script..."
+    echo "Copying ServiceRequest migration script (includes Expertise System)..."
     scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestMigration_Consolidated.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/service_request_migration.sql"
     
     ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
@@ -1419,10 +1424,84 @@ else
 fi
 
 # ============================================================================
-# Step 8.6: Run Assignment Lifecycle Migration (if needed)
+# Step 8.6: Run Expertise System Migration (if needed)
+# Note: This is also included in the consolidated migration, but kept as separate step for clarity
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}Step 8.6: Running Assignment Lifecycle Migration${NC}"
+echo -e "${GREEN}Step 8.6: Running Expertise System Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddExpertiseSystem.sql" ]; then
+    echo "Copying Expertise System migration script..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddExpertiseSystem.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/expertise_system_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Expertise System migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using .env password"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "Using fallback password"
+                MYSQL_PWD_TO_USE="UthmanBasima70"
+            fi
+            
+            # Apply migration SQL
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 | grep -v "Warning" || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Expertise System migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Expertise System migration failed"
+                        exit 1
+                    fi
+                }
+            else
+                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 | grep -v "Warning" || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Expertise System migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Expertise System migration failed"
+                        exit 1
+                    fi
+                }
+            fi
+            
+            echo "✅ Expertise System migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Expertise System migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/expertise_system_migration.sql"
+        fi
+ENDSSH
+else
+    echo -e "${YELLOW}⚠️  Expertise System migration script not found${NC}"
+    echo "   Skipping Expertise System migration (may already be applied or included in consolidated migration)"
+fi
+
+# ============================================================================
+# Step 8.7: Run Assignment Lifecycle Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.7: Running Assignment Lifecycle Migration${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
@@ -1492,10 +1571,10 @@ else
 fi
 
 # ============================================================================
-# Step 8.7: Run Billing Status and Invoicing Migration (if needed)
+# Step 8.8: Run Billing Status and Invoicing Migration (if needed)
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}Step 8.7: Running Billing Status Migration${NC}"
+echo -e "${GREEN}Step 8.8: Running Billing Status Migration${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
@@ -1565,10 +1644,10 @@ else
 fi
 
 # ============================================================================
-# Step 8.8: Run Service Request Charges and Company Billing Migration (if needed)
+# Step 8.9: Run Service Request Charges and Company Billing Migration (if needed)
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}Step 8.8: Running Service Request Charges Migration${NC}"
+echo -e "${GREEN}Step 8.9: Running Service Request Charges Migration${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
@@ -1640,10 +1719,10 @@ else
 fi
 
 # ============================================================================
-# Step 8.9: Run SME Role Migration (if needed)
+# Step 8.10: Run SME Role Migration (if needed)
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}Step 8.9: Running SME Role Migration${NC}"
+echo -e "${GREEN}Step 8.10: Running SME Role Migration${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
@@ -1676,10 +1755,11 @@ else
     echo "⚠️  AddSmeRole.sql not found, skipping SME role migration..."
 fi
 
-# Step 8.10: Run Companies Table Migration (if needed)
+# ============================================================================
+# Step 8.11: Run Companies Table Migration (if needed)
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}Step 8.10: Running Companies Table Migration${NC}"
+echo -e "${GREEN}Step 8.11: Running Companies Table Migration${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
