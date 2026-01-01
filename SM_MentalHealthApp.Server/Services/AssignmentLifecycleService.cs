@@ -64,6 +64,9 @@ namespace SM_MentalHealthApp.Server.Services
                 assignment.AcceptedAt = DateTime.UtcNow;
                 assignment.OutcomeReason = null;
                 assignment.ResponsibilityParty = null;
+                // Set as billable when accepted (user requested billing on acceptance)
+                assignment.IsBillable = true;
+                assignment.BillingStatus = BillingStatus.Ready.ToString(); // Ready to be invoiced
 
                 await _context.SaveChangesAsync();
 
@@ -277,21 +280,56 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Set timestamps based on status
                 if (status == AssignmentStatus.Accepted && assignment.AcceptedAt == null)
+                {
                     assignment.AcceptedAt = DateTime.UtcNow;
+                    assignment.IsBillable = true; // Billable when accepted
+                    // Only set BillingStatus to Ready if not already Invoiced or Paid
+                    if (assignment.BillingStatus != BillingStatus.Invoiced.ToString() && 
+                        assignment.BillingStatus != BillingStatus.Paid.ToString())
+                    {
+                        assignment.BillingStatus = BillingStatus.Ready.ToString();
+                    }
+                }
                 else if (status == AssignmentStatus.InProgress && assignment.StartedAt == null)
                 {
                     assignment.StartedAt = DateTime.UtcNow;
                     assignment.IsBillable = true;
+                    // Only set BillingStatus to Ready if not already Invoiced or Paid
+                    if (assignment.BillingStatus != BillingStatus.Invoiced.ToString() && 
+                        assignment.BillingStatus != BillingStatus.Paid.ToString())
+                    {
+                        assignment.BillingStatus = BillingStatus.Ready.ToString();
+                    }
                 }
                 else if (status == AssignmentStatus.Completed && assignment.CompletedAt == null)
+                {
                     assignment.CompletedAt = DateTime.UtcNow;
-
-                // Update billable flag based on status
-                // IsBillable = true ONLY when status is InProgress or Completed
-                if (status == AssignmentStatus.InProgress || status == AssignmentStatus.Completed)
                     assignment.IsBillable = true;
+                    // Only set BillingStatus to Ready if not already Invoiced or Paid
+                    if (assignment.BillingStatus != BillingStatus.Invoiced.ToString() && 
+                        assignment.BillingStatus != BillingStatus.Paid.ToString())
+                    {
+                        assignment.BillingStatus = BillingStatus.Ready.ToString();
+                    }
+                }
+
+                // Update billable flag and billing status based on status
+                // IsBillable = true when status is Accepted, InProgress, or Completed
+                if (status == AssignmentStatus.Accepted || status == AssignmentStatus.InProgress || status == AssignmentStatus.Completed)
+                {
+                    assignment.IsBillable = true;
+                    // Only set BillingStatus to Ready if not already Invoiced or Paid
+                    if (assignment.BillingStatus != BillingStatus.Invoiced.ToString() && 
+                        assignment.BillingStatus != BillingStatus.Paid.ToString())
+                    {
+                        assignment.BillingStatus = BillingStatus.Ready.ToString();
+                    }
+                }
                 else
+                {
                     assignment.IsBillable = false;
+                    assignment.BillingStatus = BillingStatus.NotBillable.ToString();
+                }
 
                 await _context.SaveChangesAsync();
 
@@ -356,7 +394,8 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Update billable flag and billing status based on new status
                 // Preserve Invoiced/Paid status - don't change if already invoiced or paid
-                if (status == AssignmentStatus.InProgress || status == AssignmentStatus.Completed)
+                // IsBillable = true when status is Accepted, InProgress, or Completed
+                if (status == AssignmentStatus.Accepted || status == AssignmentStatus.InProgress || status == AssignmentStatus.Completed)
                 {
                     assignment.IsBillable = true;
                     // Only set BillingStatus to Ready if not already Invoiced or Paid

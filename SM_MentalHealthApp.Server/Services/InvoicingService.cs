@@ -64,7 +64,9 @@ namespace SM_MentalHealthApp.Server.Services
                     .Where(a => a.IsActive &&
                         a.BillingStatus == BillingStatus.Ready.ToString() &&
                         a.InvoiceId == null &&
-                        a.Status == AssignmentStatus.Completed.ToString() && // Only completed assignments are ready to bill
+                        (a.Status == AssignmentStatus.Accepted.ToString() || 
+                         a.Status == AssignmentStatus.InProgress.ToString() || 
+                         a.Status == AssignmentStatus.Completed.ToString()) && // Accepted, InProgress, or Completed assignments are ready to bill
                         a.IsBillable && // Must be marked as billable
                                         // Date filter: use StartedAt if available, otherwise AssignedAt
                         ((a.StartedAt.HasValue && a.StartedAt >= request.PeriodStart && a.StartedAt <= request.PeriodEnd) ||
@@ -490,7 +492,9 @@ namespace SM_MentalHealthApp.Server.Services
                     .Where(a => a.IsActive &&
                         a.BillingStatus == BillingStatus.Ready.ToString() &&
                         a.InvoiceId == null &&
-                        a.Status == AssignmentStatus.Completed.ToString() && // Only completed assignments are ready to bill
+                        (a.Status == AssignmentStatus.Accepted.ToString() || 
+                         a.Status == AssignmentStatus.InProgress.ToString() || 
+                         a.Status == AssignmentStatus.Completed.ToString()) && // Accepted, InProgress, or Completed assignments are ready to bill
                         a.IsBillable); // Must be marked as billable
 
                 // Filter by billing account: if company, get all SMEs in company; if individual, get this SME only

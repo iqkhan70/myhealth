@@ -60,7 +60,8 @@ namespace SM_MentalHealthApp.Server.Services
                     .Where(a => a.ServiceRequestId == serviceRequestId &&
                                 a.IsActive &&
                                 a.IsBillable &&
-                                (a.Status == "InProgress" ||
+                                (a.Status == "Accepted" ||
+                                 a.Status == "InProgress" ||
                                  a.Status == "Completed"))
                     .ToListAsync();
 

@@ -500,8 +500,8 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 // Get billable assignments that are Ready to be invoiced
-                // Only include COMPLETED assignments that haven't been invoiced yet (BillingStatus = Ready)
-                // InProgress assignments are not ready to bill - work is still ongoing
+                // Include ACCEPTED, INPROGRESS, and COMPLETED assignments that haven't been invoiced yet (BillingStatus = Ready)
+                // Billing starts when assignment is accepted (per user request)
                 var query = _context.ServiceRequestAssignments
                     .Include(a => a.ServiceRequest)
                         .ThenInclude(sr => sr.Client)
@@ -510,7 +510,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                     .Where(a => a.IsActive && 
                         a.BillingStatus == BillingStatus.Ready.ToString() &&
                         a.InvoiceId == null && // Not yet invoiced
-                        a.Status == AssignmentStatus.Completed.ToString() && // Only completed assignments are ready to bill
+                        (a.Status == AssignmentStatus.Accepted.ToString() || 
+                         a.Status == AssignmentStatus.InProgress.ToString() || 
+                         a.Status == AssignmentStatus.Completed.ToString()) && // Accepted, InProgress, or Completed assignments are ready to bill
                         a.IsBillable); // Must be marked as billable
 
                 if (smeUserId.HasValue)
