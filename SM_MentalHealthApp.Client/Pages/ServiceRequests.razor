@@ -390,14 +390,26 @@
             }
             var mappedItems = result.Items.Select(MapToDto).ToList();
             
+            // Load assignments separately since OData doesn't support $expand for Assignments
+            // We need to load assignments BEFORE applying the AssignedSmeNames filter
+            // Temporarily set serviceRequests so LoadAssignmentsForServiceRequests can work
+            serviceRequests = mappedItems;
+            await LoadAssignmentsForServiceRequests();
+            
             // Apply AssignedSmeNames filter if needed (client-side filtering)
+            // This must be done AFTER assignments are loaded
             if (_filterSmeIds != null && _filterSmeIds.Any())
             {
                 mappedItems = mappedItems.Where(sr => 
                     sr.Assignments != null && 
                     sr.Assignments.Any(a => a.IsActive && _filterSmeIds.Contains(a.SmeUserId))
                 ).ToList();
-                // Note: totalCount might be inaccurate after client-side filtering, but it's acceptable for this use case
+                // Update totalCount to reflect filtered results
+                totalCount = mappedItems.Count;
+            }
+            else
+            {
+                totalCount = result.TotalCount;
             }
             
             // If we sorted by ClientName or AssignedSmeNames, we need to sort the results client-side
@@ -408,7 +420,7 @@
                 var sortedResult = SortResultsByComputedProperty(new PagedResult<ServiceRequestDto>
                 {
                     Items = mappedItems,
-                    TotalCount = result.TotalCount,
+                    TotalCount = totalCount,
                     PageNumber = result.PageNumber,
                     PageSize = result.PageSize
                 }, args.OrderBy);
@@ -416,7 +428,6 @@
             }
             
             serviceRequests = mappedItems;
-            totalCount = result.TotalCount;
             _filterSmeIds = null; // Reset after use
 
             // Debug: Log first few items to verify ServiceZipCode is present
@@ -424,9 +435,6 @@
             {
                 Console.WriteLine($"Client: ServiceRequest {sr.Id}: ServiceZipCode = '{sr.ServiceZipCode}', MaxDistanceMiles = {sr.MaxDistanceMiles}");
             }
-
-            // Load assignments separately since OData doesn't support $expand for Assignments
-            await LoadAssignmentsForServiceRequests();
 
             // Fetch users for assignments if needed
             await LoadAssignmentUsers();
