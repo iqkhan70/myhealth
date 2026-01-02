@@ -61,6 +61,28 @@
             </div>
         }
 
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <RadzenFormField Text="Service Location ZIP Code" class="w-100">
+                    <RadzenTextBox @bind-Value="@updateRequest.ServiceZipCode" 
+                                   Placeholder="Enter ZIP code..." 
+                                   Style="width: 100%" 
+                                   MaxLength="10" />
+                    <RadzenFormFieldHint Text="ZIP code for service location" />
+                </RadzenFormField>
+            </div>
+            <div class="col-md-6 mb-3">
+                <RadzenFormField Text="Max Search Distance (miles)" class="w-100">
+                    <RadzenDropDown @bind-Value="@maxDistanceMiles" 
+                                   Data="@distanceOptions" 
+                                   Placeholder="Select max distance..."
+                                   Style="width: 100%"
+                                   TValue="int" />
+                    <RadzenFormFieldHint Text="Maximum distance to search for SMEs" />
+                </RadzenFormField>
+            </div>
+        </div>
+
         <div class="row mt-4">
             <div class="col-12">
                 <div class="d-flex justify-content-end gap-2">
@@ -137,6 +159,7 @@
     private UpdateServiceRequestRequest updateRequest = new();
     private bool isSubmitting = false;
     private List<int> selectedExpertiseIds = new();
+    private int maxDistanceMiles = 50;
 
     private List<string> typeOptions = new()
     {
@@ -159,6 +182,14 @@
         "Cancelled"
     };
 
+    private List<int> distanceOptions = new()
+    {
+        25,
+        50,
+        100,
+        200
+    };
+
     protected override void OnInitialized()
     {
         // Initialize with current values
@@ -166,6 +197,11 @@
         updateRequest.Type = ServiceRequest.Type;
         updateRequest.Status = ServiceRequest.Status;
         updateRequest.Description = ServiceRequest.Description;
+        updateRequest.ServiceZipCode = ServiceRequest.ServiceZipCode;
+        maxDistanceMiles = ServiceRequest.MaxDistanceMiles;
+        
+        // Debug: Log what we received
+        Console.WriteLine($"EditServiceRequestDialog: ServiceZipCode = '{ServiceRequest.ServiceZipCode}', MaxDistanceMiles = {ServiceRequest.MaxDistanceMiles}");
 
         // Load current expertise IDs
         if (ServiceRequest.ExpertiseIds != null)
@@ -209,6 +245,10 @@
                 // Clear expertise if none selected
                 updateRequest.ExpertiseIds = new List<int>();
             }
+
+            // Set location fields
+            updateRequest.MaxDistanceMiles = maxDistanceMiles;
+            // ServiceZipCode is already bound to updateRequest.ServiceZipCode
 
             var updated = await ServiceRequestService.UpdateServiceRequestAsync(ServiceRequest.Id, updateRequest);
             

@@ -114,7 +114,30 @@
                                 }
                             </Template>
                         </RadzenDataGridColumn>
-
+                        <RadzenDataGridColumn TItem="User" Property="ZipCode" Title="ZIP Code" Width="120px" Filterable="true">
+                            <Template Context="doctor">
+                                @if (doctor != null && !string.IsNullOrWhiteSpace(doctor.ZipCode))
+                                {
+                                    <span class="badge bg-info">@doctor.ZipCode</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="MaxTravelMiles" Title="Max Travel (mi)" Width="130px" Filterable="true">
+                            <Template Context="doctor">
+                                @if (doctor != null && doctor.MaxTravelMiles.HasValue)
+                                {
+                                    <span class="badge bg-secondary">@doctor.MaxTravelMiles mi</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="120px" Filterable="true">
                             <Template Context="doctor">
                                 @if (doctor != null)
@@ -296,6 +319,20 @@
                     <div class="form-group">
                         <label>Mobile Phone</label>
                         <input @bind="doctorForm.MobilePhone" type="tel" class="form-input" placeholder="+1 (555) 123-4567" />
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>ZIP Code</label>
+                        <input @bind="doctorForm.ZipCode" type="text" class="form-input" placeholder="e.g., 66221" maxlength="10" />
+                        <small class="text-muted">ZIP code for location-based matching</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Max Travel Distance (miles)</label>
+                        <input @bind="doctorForm.MaxTravelMiles" type="number" class="form-input" placeholder="50" min="0" />
+                        <small class="text-muted">Maximum distance this doctor is willing to travel (optional)</small>
                     </div>
                 </div>
                 
@@ -533,7 +570,9 @@
             MobilePhone = doctor.MobilePhone ?? string.Empty,
             Specialization = doctor.Specialization ?? string.Empty,
             LicenseNumber = doctor.LicenseNumber ?? string.Empty,
-            CompanyId = doctor.CompanyId
+            CompanyId = doctor.CompanyId,
+            ZipCode = doctor.ZipCode,
+            MaxTravelMiles = doctor.MaxTravelMiles
         };
         
         // Load current expertise IDs for this doctor
@@ -642,6 +681,13 @@
                     // CompanyId comparison (nullable int)
                     if (doctorForm.CompanyId != _originalDoctor.CompanyId)
                         updateRequest.CompanyId = doctorForm.CompanyId;
+                    
+                    // Location fields
+                    if (doctorForm.ZipCode != (_originalDoctor.ZipCode ?? string.Empty))
+                        updateRequest.ZipCode = doctorForm.ZipCode;
+                    
+                    if (doctorForm.MaxTravelMiles != _originalDoctor.MaxTravelMiles)
+                        updateRequest.MaxTravelMiles = doctorForm.MaxTravelMiles;
                     
                     // Only include password if provided
                     if (!string.IsNullOrWhiteSpace(doctorForm.Password))
@@ -755,6 +801,8 @@
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
         public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     // Track original values for dirty field detection
@@ -772,6 +820,8 @@
         public string LicenseNumber { get; set; } = string.Empty;
         public string? Password { get; set; }
         public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 }
 

@@ -43,6 +43,8 @@ namespace SM_MentalHealthApp.Server.Services
                     .Include(sr => sr.Client)
                     .Include(sr => sr.Assignments)
                         .ThenInclude(a => a.SmeUser)
+                    .Include(sr => sr.Expertises)
+                        .ThenInclude(e => e.Expertise)
                     .Where(sr => sr.IsActive);
 
                 if (clientId.HasValue)
@@ -57,6 +59,13 @@ namespace SM_MentalHealthApp.Server.Services
                 var serviceRequests = await query
                     .OrderByDescending(sr => sr.CreatedAt)
                     .ToListAsync();
+
+                // Log first few entities to verify values are loaded
+                foreach (var sr in serviceRequests.Take(3))
+                {
+                    _logger.LogInformation("GetServiceRequestsAsync: ServiceRequest {Id}: ServiceZipCode = '{ServiceZipCode}', MaxDistanceMiles = {MaxDistanceMiles}", 
+                        sr.Id, sr.ServiceZipCode ?? "NULL", sr.MaxDistanceMiles);
+                }
 
                 return serviceRequests.Select(MapToDto).ToList();
             }
@@ -82,6 +91,13 @@ namespace SM_MentalHealthApp.Server.Services
                         .ThenInclude(e => e.Expertise)
                     .FirstOrDefaultAsync(sr => sr.Id == id && sr.IsActive);
 
+                if (serviceRequest != null)
+                {
+                    // Log the raw entity value before mapping
+                    _logger.LogInformation("GetServiceRequestByIdAsync: Found ServiceRequest {Id}: ServiceZipCode = '{ServiceZipCode}', MaxDistanceMiles = {MaxDistanceMiles}", 
+                        serviceRequest.Id, serviceRequest.ServiceZipCode ?? "NULL", serviceRequest.MaxDistanceMiles);
+                }
+
                 return serviceRequest != null ? MapToDto(serviceRequest) : null;
             }
             catch (Exception ex)
@@ -105,6 +121,11 @@ namespace SM_MentalHealthApp.Server.Services
                 if (client == null)
                     throw new ArgumentException($"Client with ID {request.ClientId} not found or inactive");
 
+                // Get client to default ServiceZipCode if not provided
+                var clientZipCode = client.ZipCode;
+                var serviceZipCode = request.ServiceZipCode ?? clientZipCode;
+                var maxDistanceMiles = request.MaxDistanceMiles ?? 50;
+
                 var serviceRequest = new ServiceRequest
                 {
                     ClientId = request.ClientId,
@@ -112,6 +133,8 @@ namespace SM_MentalHealthApp.Server.Services
                     Type = request.Type,
                     Status = request.Status,
                     Description = request.Description,
+                    ServiceZipCode = serviceZipCode,
+                    MaxDistanceMiles = maxDistanceMiles,
                     CreatedByUserId = createdByUserId,
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true
@@ -166,6 +189,13 @@ namespace SM_MentalHealthApp.Server.Services
 
                 if (request.Description != null)
                     serviceRequest.Description = request.Description;
+
+                // Update location fields if provided
+                if (request.ServiceZipCode != null)
+                    serviceRequest.ServiceZipCode = request.ServiceZipCode;
+                
+                if (request.MaxDistanceMiles.HasValue)
+                    serviceRequest.MaxDistanceMiles = request.MaxDistanceMiles.Value;
 
                 // Update expertise if provided
                 if (request.ExpertiseIds != null)
@@ -378,7 +408,11 @@ namespace SM_MentalHealthApp.Server.Services
         /// </summary>
         private ServiceRequestDto MapToDto(ServiceRequest sr)
         {
-            return new ServiceRequestDto
+            // Log ServiceZipCode value at Information level so we can see it
+            _logger.LogInformation("MapToDto: ServiceRequest {Id}: ServiceZipCode = '{ServiceZipCode}', MaxDistanceMiles = {MaxDistanceMiles}, Entity Type = {Type}", 
+                sr.Id, sr.ServiceZipCode ?? "NULL", sr.MaxDistanceMiles, sr.GetType().Name);
+            
+            var dto = new ServiceRequestDto
             {
                 Id = sr.Id,
                 ClientId = sr.ClientId,
@@ -389,6 +423,8 @@ namespace SM_MentalHealthApp.Server.Services
                 CreatedAt = sr.CreatedAt,
                 UpdatedAt = sr.UpdatedAt,
                 Description = sr.Description,
+                ServiceZipCode = sr.ServiceZipCode,
+                MaxDistanceMiles = sr.MaxDistanceMiles,
                 ExpertiseIds = sr.Expertises?.Select(e => e.ExpertiseId).ToList() ?? new List<int>(),
                 ExpertiseNames = sr.Expertises?.Select(e => e.Expertise.Name).ToList() ?? new List<string>(),
                 Assignments = sr.Assignments
@@ -414,6 +450,12 @@ namespace SM_MentalHealthApp.Server.Services
                     })
                     .ToList()
             };
+            
+            // Log the DTO value to verify it was set correctly
+            _logger.LogInformation("MapToDto: DTO created for ServiceRequest {Id}: ServiceZipCode = '{ServiceZipCode}', MaxDistanceMiles = {MaxDistanceMiles}", 
+                dto.Id, dto.ServiceZipCode ?? "NULL", dto.MaxDistanceMiles);
+            
+            return dto;
         }
 
         /// <summary>

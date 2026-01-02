@@ -79,6 +79,26 @@
                                 @sr.CreatedAt.ToString("MMM dd, yyyy")
                             </Template>
                         </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="ServiceZipCode" Title="Service ZIP" Width="120px" Filterable="true">
+                            <Template Context="sr">
+                                @{
+                                    var zipCode = sr?.ServiceZipCode;
+                                    // Debug output
+                                    @if (sr != null)
+                                    {
+                                        <text><!-- Debug: ServiceZipCode = '@zipCode', IsNull = @(zipCode == null), IsEmpty = @(string.IsNullOrEmpty(zipCode)) --></text>
+                                    }
+                                }
+                                @if (sr != null && !string.IsNullOrWhiteSpace(zipCode))
+                                {
+                                    <span class="badge bg-info">@zipCode</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted" title="No ZIP code set (Value: '@zipCode')">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="AssignedSmeNames" Title="Assigned SMEs" Width="300px" Filterable="true">
                             <Template Context="sr">
                                 @if (sr.Assignments != null && sr.Assignments.Any(a => a.IsActive))
@@ -363,6 +383,11 @@
 
             // Map ServiceRequest entities to ServiceRequestDto
             // IMPORTANT: Create a new list reference so Radzen detects the change
+            // Debug: Log raw entity values before mapping
+            foreach (var entity in result.Items.Take(3))
+            {
+                Console.WriteLine($"OData Entity: ServiceRequest {entity.Id}: ServiceZipCode = '{entity.ServiceZipCode}', MaxDistanceMiles = {entity.MaxDistanceMiles}");
+            }
             var mappedItems = result.Items.Select(MapToDto).ToList();
             
             // Apply AssignedSmeNames filter if needed (client-side filtering)
@@ -393,6 +418,12 @@
             serviceRequests = mappedItems;
             totalCount = result.TotalCount;
             _filterSmeIds = null; // Reset after use
+
+            // Debug: Log first few items to verify ServiceZipCode is present
+            foreach (var sr in mappedItems.Take(3))
+            {
+                Console.WriteLine($"Client: ServiceRequest {sr.Id}: ServiceZipCode = '{sr.ServiceZipCode}', MaxDistanceMiles = {sr.MaxDistanceMiles}");
+            }
 
             // Load assignments separately since OData doesn't support $expand for Assignments
             await LoadAssignmentsForServiceRequests();
@@ -569,7 +600,10 @@
                 .ToList();
         }
 
-        return new ServiceRequestDto
+        // Debug: Log mapping
+        Console.WriteLine($"MapToDto: Mapping ServiceRequest {sr.Id}: ServiceZipCode = '{sr.ServiceZipCode}', MaxDistanceMiles = {sr.MaxDistanceMiles}");
+
+        var dto = new ServiceRequestDto
         {
             Id = sr.Id,
             ClientId = sr.ClientId,
@@ -580,8 +614,15 @@
             CreatedAt = sr.CreatedAt,
             UpdatedAt = sr.UpdatedAt,
             Description = sr.Description,
+            ServiceZipCode = sr.ServiceZipCode, // Include location fields
+            MaxDistanceMiles = sr.MaxDistanceMiles,
             Assignments = assignments
         };
+        
+        // Debug: Log DTO after mapping
+        Console.WriteLine($"MapToDto: DTO created for ServiceRequest {dto.Id}: ServiceZipCode = '{dto.ServiceZipCode}', MaxDistanceMiles = {dto.MaxDistanceMiles}");
+        
+        return dto;
     }
 
     private async Task LoadClients()
@@ -722,7 +763,7 @@
                 },
                 new DialogOptions 
                 { 
-                    Width = "500px", 
+                    Width = "1000px", 
                     Height = "auto", 
                     Resizable = true, 
                     Draggable = true 

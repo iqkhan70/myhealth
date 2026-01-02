@@ -115,6 +115,13 @@ namespace SM_MentalHealthApp.Shared
         
         [MaxLength(2000)]
         public string? AdditionalNotes { get; set; }
+        
+        // Location fields for location-based matching
+        [MaxLength(10)]
+        public string? ZipCode { get; set; }
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
+        public int? MaxTravelMiles { get; set; } // For SMEs: how far they're willing to travel
 
         // New Accident fields from Script121525.sql
         // 1) Detailed Injury Assessment

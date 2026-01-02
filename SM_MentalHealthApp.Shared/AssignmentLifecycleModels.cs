@@ -126,6 +126,7 @@ namespace SM_MentalHealthApp.Shared
         public double CompletionRate { get; set; }
         public int ExpertiseMatchCount { get; set; } // How many SR expertise tags the SME matches
         public int TotalExpertiseRequired { get; set; } // Total expertise tags on the SR
+        public double? DistanceMiles { get; set; } // Distance in miles from service location (null if location unavailable)
         public string RecommendationReason { get; set; } = string.Empty;
     }
 }

@@ -1350,16 +1350,17 @@ cd "$REPO_ROOT"
 # Step 8.7: Run Assignment Lifecycle Migration (if needed)
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}Step 8.5: Running ServiceRequest Migration (includes Expertise System)${NC}"
+echo -e "${GREEN}Step 8.5: Running ServiceRequest Migration (includes Expertise & Location Systems)${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo "This migration includes:"
 echo "  - ServiceRequest tables and data migration"
 echo "  - Expertise system (Expertise, SmeExpertise, ServiceRequestExpertise tables)"
+echo "  - Location matching system (ZIP code-based proximity matching for SMEs)"
 echo ""
 
 if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestMigration_Consolidated.sql" ]; then
-    echo "Copying ServiceRequest migration script (includes Expertise System)..."
+    echo "Copying ServiceRequest migration script (includes Expertise & Location Systems)..."
     scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestMigration_Consolidated.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/service_request_migration.sql"
     
     ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
@@ -1426,6 +1427,7 @@ fi
 # ============================================================================
 # Step 8.6: Run Expertise System Migration (if needed)
 # Note: This is also included in the consolidated migration, but kept as separate step for clarity
+# The consolidated migration (Step 8.5) also includes the Location Matching System (Phase 4)
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
 echo -e "${GREEN}Step 8.6: Running Expertise System Migration${NC}"

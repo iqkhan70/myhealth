@@ -73,6 +73,30 @@
                                 @(sme?.MobilePhone ?? "N/A")
                             </Template>
                         </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="ZipCode" Title="ZIP Code" Width="120px" Filterable="true">
+                            <Template Context="sme">
+                                @if (sme != null && !string.IsNullOrWhiteSpace(sme.ZipCode))
+                                {
+                                    <span class="badge bg-info">@sme.ZipCode</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="MaxTravelMiles" Title="Max Travel (mi)" Width="130px" Filterable="true">
+                            <Template Context="sme">
+                                @if (sme != null && sme.MaxTravelMiles.HasValue)
+                                {
+                                    <span class="badge bg-secondary">@sme.MaxTravelMiles mi</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="150px" Filterable="true">
                             <Template Context="sme">
                                 @(sme?.DateOfBirth.ToString("MM/dd/yyyy") ?? "N/A")
@@ -182,11 +206,19 @@
                             </div>
                             
                             <div class="form-group">
-                                <!-- Empty div for layout balance -->
+                                <label>ZIP Code</label>
+                                <input @bind="smeForm.ZipCode" type="text" class="form-input" placeholder="e.g., 66221" maxlength="10" />
+                                <small class="text-muted">ZIP code for location-based matching</small>
                             </div>
                         </div>
                         
                         <div class="form-row">
+                            <div class="form-group">
+                                <label>Max Travel Distance (miles)</label>
+                                <input @bind="smeForm.MaxTravelMiles" type="number" class="form-input" placeholder="50" min="0" />
+                                <small class="text-muted">Maximum distance this SME is willing to travel (optional)</small>
+                            </div>
+                            
                             <div class="form-group">
                                 <label>Company (Optional)</label>
                                 <RadzenDropDown Data="@companies" TextProperty="Name" ValueProperty="Id"
@@ -195,10 +227,6 @@
                                     Placeholder="Select a company or leave blank if independent..."
                                     Style="width: 100%;" />
                                 <small class="text-muted">If this SME belongs to a company, select it from the list. Leave blank if independent.</small>
-                            </div>
-                            
-                            <div class="form-group">
-                                <!-- Empty div for layout balance -->
                             </div>
                         </div>
 
@@ -311,6 +339,8 @@
             Gender = sme.Gender ?? string.Empty,
             MobilePhone = sme.MobilePhone ?? string.Empty,
             CompanyId = sme.CompanyId,
+            ZipCode = sme.ZipCode,
+            MaxTravelMiles = sme.MaxTravelMiles,
             Password = string.Empty // Don't populate password
         };
         
@@ -390,6 +420,8 @@
                     Gender = smeForm.Gender,
                     MobilePhone = smeForm.MobilePhone,
                     CompanyId = smeForm.CompanyId,
+                    ZipCode = smeForm.ZipCode,
+                    MaxTravelMiles = smeForm.MaxTravelMiles,
                     Password = string.IsNullOrWhiteSpace(smeForm.Password) ? null : smeForm.Password
                 };
                 
@@ -499,6 +531,8 @@
         public string Gender { get; set; } = string.Empty;
         public string? MobilePhone { get; set; }
         public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     public class UpdateSmeRequest
@@ -511,6 +545,8 @@
         public string? MobilePhone { get; set; }
         public string? Password { get; set; }
         public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 }
 

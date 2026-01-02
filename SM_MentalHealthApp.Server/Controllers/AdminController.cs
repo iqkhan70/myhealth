@@ -24,8 +24,9 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly IPiiEncryptionService _encryptionService;
         private readonly IContentCleanupService _contentCleanupService;
         private readonly IServiceRequestService _serviceRequestService;
+        private readonly ILocationService _locationService;
 
-        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger, IPiiEncryptionService encryptionService, IContentCleanupService contentCleanupService, IServiceRequestService serviceRequestService)
+        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger, IPiiEncryptionService encryptionService, IContentCleanupService contentCleanupService, IServiceRequestService serviceRequestService, ILocationService locationService)
         {
             _adminService = adminService;
             _context = context;
@@ -33,6 +34,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             _encryptionService = encryptionService;
             _contentCleanupService = contentCleanupService;
             _serviceRequestService = serviceRequestService;
+            _locationService = locationService;
         }
 
         [HttpGet("doctors")]
@@ -904,6 +906,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                     RoleId = 2, // Doctor role
                     Specialization = request.Specialization,
                     LicenseNumber = request.LicenseNumber,
+                    ZipCode = request.ZipCode,
+                    MaxTravelMiles = request.MaxTravelMiles,
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true,
                     MustChangePassword = true // Force password change on first login
@@ -914,6 +918,12 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _context.Users.Add(doctor);
                 await _context.SaveChangesAsync();
+
+                // Update location after user is saved (so we have the ID)
+                if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                {
+                    await _locationService.UpdateUserLocationFromZipCodeAsync(doctor.Id, request.ZipCode);
+                }
 
                 return Ok(new { message = "Doctor created successfully", doctorId = doctor.Id });
             }
@@ -994,6 +1004,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                     MobilePhone = request.MobilePhone,
                     RoleId = 6, // SME role
                     CompanyId = request.CompanyId,
+                    ZipCode = request.ZipCode,
+                    MaxTravelMiles = request.MaxTravelMiles,
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true,
                     MustChangePassword = true // Force password change on first login
@@ -1004,6 +1016,12 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _context.Users.Add(sme);
                 await _context.SaveChangesAsync();
+
+                // Update location after user is saved (so we have the ID)
+                if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                {
+                    await _locationService.UpdateUserLocationFromZipCodeAsync(sme.Id, request.ZipCode);
+                }
 
                 return Ok(new { message = "SME created successfully", smeId = sme.Id });
             }
@@ -1040,6 +1058,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                     MobilePhone = request.MobilePhone,
                     RoleId = 5, // Attorney role
                     CompanyId = request.CompanyId,
+                    ZipCode = request.ZipCode,
+                    MaxTravelMiles = request.MaxTravelMiles,
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true,
                     MustChangePassword = true // Force password change on first login
@@ -1050,6 +1070,12 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _context.Users.Add(attorney);
                 await _context.SaveChangesAsync();
+
+                // Update location after user is saved (so we have the ID)
+                if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                {
+                    await _locationService.UpdateUserLocationFromZipCodeAsync(attorney.Id, request.ZipCode);
+                }
 
                 return Ok(new { message = "Attorney created successfully", attorneyId = attorney.Id });
             }
@@ -1459,6 +1485,34 @@ namespace SM_MentalHealthApp.Server.Controllers
                     doctor.CompanyId = null;
                 }
 
+                // Update location fields if provided
+                if (request.ZipCode != null)
+                {
+                    // Lookup lat/lon from ZIP code and update
+                    if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                    {
+                        var locationUpdated = await _locationService.UpdateUserLocationFromZipCodeAsync(doctor.Id, request.ZipCode);
+                        if (!locationUpdated)
+                        {
+                            _logger.LogWarning("Failed to update location for Doctor {Id} with ZIP {ZipCode}", doctor.Id, request.ZipCode);
+                        }
+                        // Reload the entity to get the updated coordinates
+                        await _context.Entry(doctor).ReloadAsync();
+                    }
+                    else
+                    {
+                        // Clear location if ZIP is cleared
+                        doctor.ZipCode = null;
+                        doctor.Latitude = null;
+                        doctor.Longitude = null;
+                    }
+                }
+
+                if (request.MaxTravelMiles.HasValue)
+                {
+                    doctor.MaxTravelMiles = request.MaxTravelMiles.Value;
+                }
+
                 // Update password only if provided and not empty
                 // Don't change MustChangePassword for existing users - preserve existing value
                 if (!string.IsNullOrWhiteSpace(request.Password))
@@ -1773,6 +1827,34 @@ namespace SM_MentalHealthApp.Server.Controllers
                     sme.CompanyId = request.CompanyId.Value;
                 }
 
+                // Update location fields if provided
+                if (request.ZipCode != null)
+                {
+                    // Lookup lat/lon from ZIP code and update
+                    if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                    {
+                        var locationUpdated = await _locationService.UpdateUserLocationFromZipCodeAsync(sme.Id, request.ZipCode);
+                        if (!locationUpdated)
+                        {
+                            _logger.LogWarning("Failed to update location for SME {Id} with ZIP {ZipCode}", sme.Id, request.ZipCode);
+                        }
+                        // Reload the entity to get the updated coordinates
+                        await _context.Entry(sme).ReloadAsync();
+                    }
+                    else
+                    {
+                        // Clear location if ZIP is cleared
+                        sme.ZipCode = null;
+                        sme.Latitude = null;
+                        sme.Longitude = null;
+                    }
+                }
+
+                if (request.MaxTravelMiles.HasValue)
+                {
+                    sme.MaxTravelMiles = request.MaxTravelMiles.Value;
+                }
+
                 // Update password only if provided
                 if (!string.IsNullOrWhiteSpace(request.Password))
                 {
@@ -1875,8 +1957,35 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
                 else if (!request.CompanyId.HasValue && attorney.CompanyId.HasValue)
                 {
-                    // Allow clearing CompanyId by sending null
                     attorney.CompanyId = null;
+                }
+
+                // Update location fields if provided
+                if (request.ZipCode != null)
+                {
+                    // Lookup lat/lon from ZIP code and update
+                    if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                    {
+                        var locationUpdated = await _locationService.UpdateUserLocationFromZipCodeAsync(attorney.Id, request.ZipCode);
+                        if (!locationUpdated)
+                        {
+                            _logger.LogWarning("Failed to update location for Attorney {Id} with ZIP {ZipCode}", attorney.Id, request.ZipCode);
+                        }
+                        // Reload the entity to get the updated coordinates
+                        await _context.Entry(attorney).ReloadAsync();
+                    }
+                    else
+                    {
+                        // Clear location if ZIP is cleared
+                        attorney.ZipCode = null;
+                        attorney.Latitude = null;
+                        attorney.Longitude = null;
+                    }
+                }
+
+                if (request.MaxTravelMiles.HasValue)
+                {
+                    attorney.MaxTravelMiles = request.MaxTravelMiles.Value;
                 }
 
                 // Update password only if provided
@@ -2053,6 +2162,8 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
         public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     public class UpdateDoctorRequest
@@ -2067,6 +2178,8 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? LicenseNumber { get; set; }
         public string? Password { get; set; }
         public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     public class CreatePatientRequest
@@ -2224,6 +2337,8 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string Gender { get; set; } = string.Empty;
         public string? MobilePhone { get; set; }
         public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     public class UpdateAttorneyRequest
@@ -2236,6 +2351,8 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? MobilePhone { get; set; }
         public string? Password { get; set; }
         public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     public class CreateSmeRequest
@@ -2248,6 +2365,8 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string Gender { get; set; } = string.Empty;
         public string? MobilePhone { get; set; }
         public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     public class UpdateSmeRequest
@@ -2260,5 +2379,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? MobilePhone { get; set; }
         public string? Password { get; set; }
         public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 }

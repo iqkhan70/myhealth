@@ -19,6 +19,7 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<Expertise> Expertises { get; set; }
             public DbSet<SmeExpertise> SmeExpertises { get; set; }
             public DbSet<ServiceRequestExpertise> ServiceRequestExpertises { get; set; }
+            public DbSet<ZipCodeLookup> ZipCodeLookups { get; set; }
             public DbSet<SmeInvoice> SmeInvoices { get; set; }
             public DbSet<SmeInvoiceLine> SmeInvoiceLines { get; set; }
             public DbSet<JournalEntry> JournalEntries { get; set; }
@@ -959,6 +960,8 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Type).HasMaxLength(100);
                         entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Active");
                         entity.Property(e => e.Description).HasMaxLength(1000);
+                        entity.Property(e => e.ServiceZipCode).HasMaxLength(10);
+                        entity.Property(e => e.MaxDistanceMiles).HasDefaultValue(50);
                         entity.Property(e => e.IsActive).HasDefaultValue(true);
                         entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
 
@@ -1129,6 +1132,19 @@ namespace SM_MentalHealthApp.Server.Data
                               .WithMany(ex => ex.ServiceRequestExpertises)
                               .HasForeignKey(e => e.ExpertiseId)
                               .OnDelete(DeleteBehavior.Cascade);
+                  });
+
+                  // Configure ZipCodeLookup entity
+                  modelBuilder.Entity<ZipCodeLookup>(entity =>
+                  {
+                        entity.ToTable("ZipCodeLookup"); // Explicit table name (matches SQL script)
+                        entity.HasKey(e => e.ZipCode);
+                        entity.Property(e => e.ZipCode).IsRequired().HasMaxLength(10);
+                        entity.Property(e => e.Latitude).IsRequired().HasColumnType("DECIMAL(10, 8)");
+                        entity.Property(e => e.Longitude).IsRequired().HasColumnType("DECIMAL(11, 8)");
+                        entity.Property(e => e.City).HasMaxLength(100);
+                        entity.Property(e => e.State).HasMaxLength(2);
+                        entity.HasIndex(e => e.State);
                   });
             }
       }

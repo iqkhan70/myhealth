@@ -14,6 +14,7 @@
                 <div class="col-12 mb-3">
                     <RadzenFormField Text="Client" class="w-100">
                         <RadzenDropDown @bind-Value="@request.ClientId" 
+                                       @bind-Value:after="OnClientSelected"
                                        Data="@Clients" 
                                        ValueProperty="Id" 
                                        TextProperty="FullName"
@@ -93,6 +94,28 @@
             </div>
         }
 
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <RadzenFormField Text="Service Location ZIP Code" class="w-100">
+                    <RadzenTextBox @bind-Value="@request.ServiceZipCode" 
+                                   Placeholder="Enter ZIP code (defaults to client ZIP)..." 
+                                   Style="width: 100%" 
+                                   MaxLength="10" />
+                    <RadzenFormFieldHint Text="Leave empty to use client's ZIP code" />
+                </RadzenFormField>
+            </div>
+            <div class="col-md-6 mb-3">
+                <RadzenFormField Text="Max Search Distance (miles)" class="w-100">
+                    <RadzenDropDown @bind-Value="@maxDistanceMiles" 
+                                   Data="@distanceOptions" 
+                                   Placeholder="Select max distance..."
+                                   Style="width: 100%"
+                                   TValue="int" />
+                    <RadzenFormFieldHint Text="Maximum distance to search for SMEs" />
+                </RadzenFormField>
+            </div>
+        </div>
+
         <div class="row mt-4">
             <div class="col-12">
                 <div class="d-flex justify-content-end gap-2">
@@ -171,6 +194,7 @@
     private int? initialSmeUserId;
     private bool isSubmitting = false;
     private List<int> selectedExpertiseIds = new();
+    private int maxDistanceMiles = 50;
 
     private List<string> typeOptions = new()
     {
@@ -181,6 +205,14 @@
         "Consultation",
         "Follow-up",
         "Emergency"
+    };
+
+    private List<int> distanceOptions = new()
+    {
+        25,
+        50,
+        100,
+        200
     };
 
     private async Task HandleCreateClick()
@@ -199,6 +231,21 @@
         if (AuthService.CurrentUser?.RoleId == 1 && AuthService.CurrentUser?.Id > 0)
         {
             request.ClientId = AuthService.CurrentUser.Id;
+            // Note: ServiceZipCode will default to client's ZIP code on the backend if not provided
+        }
+    }
+
+    private void OnClientSelected()
+    {
+        // When client is selected, default ServiceZipCode to client's ZIP
+        if (request.ClientId > 0)
+        {
+            var selectedClient = Clients.FirstOrDefault(c => c.Id == request.ClientId);
+            if (selectedClient != null && !string.IsNullOrEmpty(selectedClient.ZipCode))
+            {
+                request.ServiceZipCode = selectedClient.ZipCode;
+                StateHasChanged();
+            }
         }
     }
 
@@ -245,6 +292,10 @@
             {
                 request.ExpertiseIds = selectedExpertiseIds;
             }
+
+            // Set location fields
+            request.MaxDistanceMiles = maxDistanceMiles;
+            // ServiceZipCode is already bound to request.ServiceZipCode
 
             var created = await ServiceRequestService.CreateServiceRequestAsync(request);
             Console.WriteLine($"Service request created successfully: {created.Id}");

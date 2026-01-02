@@ -440,6 +440,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 var serviceRequest = await _context.ServiceRequests
                     .Include(sr => sr.Expertises)
+                    .Include(sr => sr.Client)
                     .FirstOrDefaultAsync(sr => sr.Id == serviceRequestId && sr.IsActive);
 
                 if (serviceRequest == null)
@@ -447,6 +448,23 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Get SR's expertise IDs
                 var srExpertiseIds = serviceRequest.Expertises?.Select(e => e.ExpertiseId).ToHashSet() ?? new HashSet<int>();
+
+                // Get service location (use ServiceZipCode if set, otherwise use client's ZipCode)
+                var serviceZipCode = serviceRequest.ServiceZipCode ?? serviceRequest.Client?.ZipCode;
+                var maxDistanceMiles = serviceRequest.MaxDistanceMiles;
+                
+                // Lookup lat/lon for service location
+                (decimal? serviceLat, decimal? serviceLon) = (null, null);
+                if (!string.IsNullOrEmpty(serviceZipCode))
+                {
+                    var zipLookup = await _context.ZipCodeLookups
+                        .FirstOrDefaultAsync(z => z.ZipCode == serviceZipCode);
+                    if (zipLookup != null)
+                    {
+                        serviceLat = zipLookup.Latitude;
+                        serviceLon = zipLookup.Longitude;
+                    }
+                }
 
                 // Get all active SMEs (doctors, attorneys, and SMEs) with their expertise
                 var smeQuery = _context.Users
@@ -479,6 +497,29 @@ namespace SM_MentalHealthApp.Server.Services
                     // Only include SMEs that match at least one expertise (if SR has expertise)
                     if (srExpertiseIds.Count > 0 && matchCount == 0)
                         continue;
+
+                    // Calculate distance if both locations are available
+                    double? distanceMiles = null;
+                    if (serviceLat.HasValue && serviceLon.HasValue && sme.Latitude.HasValue && sme.Longitude.HasValue)
+                    {
+                        distanceMiles = CalculateDistanceMiles(
+                            (double)serviceLat.Value, (double)serviceLon.Value,
+                            (double)sme.Latitude.Value, (double)sme.Longitude.Value);
+                        
+                        // Filter by max distance if set
+                        if (maxDistanceMiles > 0 && distanceMiles > maxDistanceMiles)
+                        {
+                            // Also check SME's MaxTravelMiles if set
+                            if (sme.MaxTravelMiles.HasValue && distanceMiles > sme.MaxTravelMiles.Value)
+                            {
+                                continue; // Skip this SME - too far
+                            }
+                            else if (!sme.MaxTravelMiles.HasValue)
+                            {
+                                continue; // Skip this SME - exceeds SR max distance
+                            }
+                        }
+                    }
 
                     // Get active assignments count
                     var activeAssignments = await _context.ServiceRequestAssignments
@@ -516,15 +557,17 @@ namespace SM_MentalHealthApp.Server.Services
                         CompletionRate = completionRate,
                         ExpertiseMatchCount = matchCount,
                         TotalExpertiseRequired = srExpertiseIds.Count,
-                        RecommendationReason = BuildRecommendationReason(sme.SmeScore, activeAssignments, recentRejections, completionRate, matchCount, srExpertiseIds.Count)
+                        DistanceMiles = distanceMiles,
+                        RecommendationReason = BuildRecommendationReason(sme.SmeScore, activeAssignments, recentRejections, completionRate, matchCount, srExpertiseIds.Count, distanceMiles)
                     };
 
                     recommendations.Add(recommendation);
                 }
 
-                // Sort by: 1) Match count (desc), 2) Highest score, 3) Lowest rejections, 4) Lowest workload
+                // Sort by: 1) Match count (desc), 2) Distance (asc - closest first), 3) Highest score, 4) Lowest rejections, 5) Lowest workload
                 return recommendations
                     .OrderByDescending(r => r.ExpertiseMatchCount)
+                    .ThenBy(r => r.DistanceMiles ?? double.MaxValue) // Closest first (nulls go to end)
                     .ThenByDescending(r => r.SmeScore)
                     .ThenBy(r => r.RecentRejectionsCount)
                     .ThenBy(r => r.ActiveAssignmentsCount)
@@ -535,6 +578,40 @@ namespace SM_MentalHealthApp.Server.Services
                 _logger.LogError(ex, "Error getting SME recommendations for service request {ServiceRequestId}", serviceRequestId);
                 return new List<SmeRecommendationDto>();
             }
+        }
+
+        /// <summary>
+        /// Calculate distance between two lat/lon points using Haversine formula
+        /// Returns distance in miles
+        /// Formula: d = 2r * arcsin(sqrt(sin²(Δφ/2) + cos(φ1) * cos(φ2) * sin²(Δλ/2)))
+        /// Where: φ = latitude, λ = longitude, r = Earth's radius
+        /// </summary>
+        private double CalculateDistanceMiles(double lat1, double lon1, double lat2, double lon2)
+        {
+            const double EarthRadiusMiles = 3958.8; // Earth's radius in miles
+
+            // Convert degrees to radians
+            var dLat = ToRadians(lat2 - lat1);
+            var dLon = ToRadians(lon2 - lon1);
+
+            // Haversine formula
+            var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                    Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) *
+                    Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+
+            var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+            var distance = EarthRadiusMiles * c;
+
+            // Log calculation for debugging (can be removed in production)
+            _logger.LogDebug("Distance calculation: ({Lat1}, {Lon1}) to ({Lat2}, {Lon2}) = {Distance} miles",
+                lat1, lon1, lat2, lon2, Math.Round(distance, 1));
+
+            return Math.Round(distance, 1); // Round to 1 decimal place
+        }
+
+        private double ToRadians(double degrees)
+        {
+            return degrees * Math.PI / 180.0;
         }
 
         /// <summary>
@@ -586,7 +663,7 @@ namespace SM_MentalHealthApp.Server.Services
             }
         }
 
-        private string BuildRecommendationReason(int score, int activeAssignments, int recentRejections, double completionRate, int matchCount = 0, int totalRequired = 0)
+        private string BuildRecommendationReason(int score, int activeAssignments, int recentRejections, double completionRate, int matchCount = 0, int totalRequired = 0, double? distanceMiles = null)
         {
             var reasons = new List<string>();
 
@@ -599,6 +676,19 @@ namespace SM_MentalHealthApp.Server.Services
                     reasons.Add($"Partial match ({matchCount}/{totalRequired} expertise)");
                 else
                     reasons.Add("No expertise match");
+            }
+
+            // Add distance info
+            if (distanceMiles.HasValue)
+            {
+                if (distanceMiles <= 25)
+                    reasons.Add($"Very close ({distanceMiles:F1} mi)");
+                else if (distanceMiles <= 50)
+                    reasons.Add($"Close ({distanceMiles:F1} mi)");
+                else if (distanceMiles <= 100)
+                    reasons.Add($"Moderate distance ({distanceMiles:F1} mi)");
+                else
+                    reasons.Add($"Far ({distanceMiles:F1} mi)");
             }
 
             if (score >= 120)

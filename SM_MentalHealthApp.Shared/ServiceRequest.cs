@@ -33,6 +33,11 @@ namespace SM_MentalHealthApp.Shared
 
         [MaxLength(1000)]
         public string? Description { get; set; } // Optional description of the service request
+        
+        // Location fields for location-based matching
+        [MaxLength(10)]
+        public string? ServiceZipCode { get; set; } // Service location ZIP (defaults to client ZIP)
+        public int MaxDistanceMiles { get; set; } = 50; // Maximum distance to search for SMEs
 
         // Navigation properties
         public User Client { get; set; } = null!;
@@ -120,6 +125,9 @@ namespace SM_MentalHealthApp.Shared
 
         public int? SmeUserId { get; set; } // Optional: assign SME immediately on creation
         public List<int>? ExpertiseIds { get; set; } // Optional: expertise categories for this SR
+        [MaxLength(10)]
+        public string? ServiceZipCode { get; set; } // Optional: service location ZIP (defaults to client ZIP)
+        public int? MaxDistanceMiles { get; set; } // Optional: max distance in miles (defaults to 50)
     }
 
     /// <summary>
@@ -139,6 +147,9 @@ namespace SM_MentalHealthApp.Shared
         [MaxLength(1000)]
         public string? Description { get; set; }
         public List<int>? ExpertiseIds { get; set; } // Optional: expertise categories for this SR
+        [MaxLength(10)]
+        public string? ServiceZipCode { get; set; } // Optional: service location ZIP
+        public int? MaxDistanceMiles { get; set; } // Optional: max distance in miles
     }
 
     /// <summary>
@@ -179,6 +190,8 @@ namespace SM_MentalHealthApp.Shared
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public string? Description { get; set; }
+        public string? ServiceZipCode { get; set; } // Service location ZIP (defaults to client ZIP)
+        public int MaxDistanceMiles { get; set; } = 50; // Maximum distance to search for SMEs
         public List<ServiceRequestAssignmentDto> Assignments { get; set; } = new();
         public List<int> ExpertiseIds { get; set; } = new();
         public List<string> ExpertiseNames { get; set; } = new();
