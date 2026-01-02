@@ -44,7 +44,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // For doctors and attorneys, filter by assigned ServiceRequests
-                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && userId.HasValue)
+                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney || currentRoleId == Shared.Constants.Roles.Sme) && userId.HasValue)
                 {
                     // Get assigned ServiceRequest IDs for this SME
                     var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(userId.Value);
@@ -127,7 +127,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                         return StatusCode(403, "Access denied to this session");
                     }
                 }
-                else if (userRole == Shared.Constants.Roles.Doctor || userRole == Shared.Constants.Roles.Attorney)
+                else if (userRole == Shared.Constants.Roles.Doctor || userRole == Shared.Constants.Roles.Attorney || userRole == Shared.Constants.Roles.Sme)
                 {
                     // Doctors and attorneys can see sessions they created OR sessions in their assigned ServiceRequests
                     bool hasAccess = session.UserId == userId.Value;

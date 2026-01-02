@@ -1,0 +1,356 @@
+@page "/companies"
+@inject HttpClient Http
+@inject NotificationService NotificationService
+@inject IAuthService AuthService
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components.Grid
+@using SM_MentalHealthApp.Client.Components.Common
+@using Radzen
+@using Radzen.Blazor
+
+<PageTitle>Companies</PageTitle>
+
+<div class="companies-page">
+    <div class="companies-header">
+        @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+        {
+            <h2>Companies</h2>
+            <p>Manage companies for SME billing grouping.</p>
+            <RadzenButton Icon="add" Text="Add New Company" Click="@ShowAddCompanyForm" ButtonStyle="ButtonStyle.Primary" />
+        }
+        else
+        {
+            <h2>Companies</h2>
+            <p>View available companies.</p>
+        }
+    </div>
+
+    <div class="companies-content">
+        @if (_columns.Any())
+        {
+            <SMDataGrid TItem="Company" 
+                       Columns="_columns" 
+                       Actions="_actions" 
+                       ActionsWidth="200px"
+                       LoadItems="LoadCompaniesAsync" 
+                       @ref="_grid" 
+                       PageSize="20"
+                       AllowPaging="true"
+                       AllowFiltering="true"
+                       FilterMode="FilterMode.Advanced"
+                       ShowPagingSummary="true" />
+        }
+    </div>
+</div>
+
+<!-- Add/Edit Company Modal -->
+@if (showCompanyForm)
+{
+    <SMModal IsVisible="@showCompanyForm" 
+             Title="@(editingCompany == null ? "Add New Company" : "Edit Company")" 
+             OnClose="CloseCompanyForm"
+             Size="Medium">
+        <Body>
+            <RadzenForm>
+                <RadzenFieldset Text="Company Information">
+                    <RadzenStack Gap="1rem">
+                        <RadzenFormField Text="Company Name" class="rz-col-12">
+                            <RadzenTextBox @bind-Value="@companyForm.Name" Placeholder="Enter company name" />
+                        </RadzenFormField>
+                        
+                        <RadzenFormField Text="Description" class="rz-col-12">
+                            <RadzenTextArea @bind-Value="@companyForm.Description" Placeholder="Enter company description (optional)" Rows="3" />
+                        </RadzenFormField>
+                    </RadzenStack>
+                </RadzenFieldset>
+            </RadzenForm>
+        </Body>
+        <Footer>
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" JustifyContent="JustifyContent.End">
+                <RadzenButton Text="Cancel" Click="@CloseCompanyForm" ButtonStyle="ButtonStyle.Secondary" />
+                <RadzenButton Text="@(isSaving ? "Saving..." : (editingCompany == null ? "Add Company" : "Update Company"))" 
+                             Click="@SaveCompany" ButtonStyle="ButtonStyle.Primary" IsBusy="@isSaving" />
+            </RadzenStack>
+        </Footer>
+    </SMModal>
+}
+
+@code {
+    private SMDataGrid<Company>? _grid;
+    private List<SMDataGridColumn<Company>> _columns = new();
+    private List<SMDataGridActionButton<Company>> _actions = new();
+    private bool isSaving = false;
+    private Company? editingCompany = null;
+    private CreateCompanyRequest companyForm = new();
+    private bool showCompanyForm = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthService.CurrentUser?.RoleId == 3) // Admin
+        {
+            InitializeColumns();
+            InitializeActions();
+        }
+    }
+
+    private void InitializeColumns()
+    {
+        _columns = new List<SMDataGridColumn<Company>>
+        {
+            new SMDataGridColumn<Company>
+            {
+                Property = nameof(Company.Name),
+                Title = "Company Name",
+                Width = "250px"
+            },
+            new SMDataGridColumn<Company>
+            {
+                Property = nameof(Company.Description),
+                Title = "Description",
+                Width = "400px"
+            },
+            new SMDataGridBadgeColumn<Company>
+            {
+                Property = nameof(Company.IsActive),
+                Title = "Active",
+                Width = "100px",
+                TextAlign = TextAlign.Center,
+                GetBadgeData = (company) => company.IsActive
+                    ? ("Active", NotificationSeverity.Success, true)
+                    : ("Inactive", NotificationSeverity.Warning, true)
+            },
+            new SMDataGridTemplateColumn<Company>
+            {
+                Property = nameof(Company.CreatedAt),
+                Title = "Created",
+                Width = "150px",
+                Template = company => builder =>
+                {
+                    builder.AddContent(0, company.CreatedAt.ToString("MMM dd, yyyy"));
+                }
+            }
+        };
+    }
+
+    private void InitializeActions()
+    {
+        if (AuthService.CurrentUser?.RoleId == 3) // Admin only
+        {
+            _actions.Add(new SMDataGridActionButton<Company>
+            {
+                Icon = "edit",
+                ButtonStyle = ButtonStyle.Info,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                Tooltip = "Edit company",
+                OnClick = async (row, ct) => await EditCompanyAsync(row, ct)
+            });
+
+            _actions.Add(new SMDataGridActionButton<Company>
+            {
+                IconFunc = (company) => company.IsActive ? "block" : "check",
+                ButtonStyleFunc = (company) => company.IsActive ? ButtonStyle.Danger : ButtonStyle.Success,
+                Variant = Variant.Flat,
+                Size = ButtonSize.Small,
+                TooltipFunc = (company) => company.IsActive ? "Deactivate company" : "Reactivate company",
+                OnClick = async (row, ct) => 
+                {
+                    if (row.IsActive)
+                    {
+                        await DeactivateCompanyAsync(row, ct);
+                    }
+                    else
+                    {
+                        await ReactivateCompanyAsync(row, ct);
+                    }
+                }
+            });
+        }
+    }
+
+    private async Task<IEnumerable<Company>> LoadCompaniesAsync(CancellationToken ct)
+    {
+        try
+        {
+            var companies = await Http.GetFromJsonAsync<List<Company>>("api/company", ct) ?? new();
+            return companies;
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load companies: " + ex.Message);
+            return new List<Company>();
+        }
+    }
+
+    private void ShowAddCompanyForm()
+    {
+        editingCompany = null;
+        companyForm = new CreateCompanyRequest();
+        showCompanyForm = true;
+    }
+
+    private async Task EditCompanyAsync(Company company, CancellationToken ct)
+    {
+        if (company == null) return;
+        
+        editingCompany = company;
+        companyForm = new CreateCompanyRequest
+        {
+            Name = company.Name,
+            Description = company.Description
+        };
+        showCompanyForm = true;
+    }
+
+    private void CloseCompanyForm()
+    {
+        showCompanyForm = false;
+        editingCompany = null;
+        companyForm = new CreateCompanyRequest();
+    }
+
+    private async Task SaveCompany()
+    {
+        if (string.IsNullOrWhiteSpace(companyForm.Name))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Company name is required.");
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            
+            if (editingCompany == null)
+            {
+                // Create new company
+                var result = await Http.PostAsJsonAsync("api/company", companyForm);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Company added successfully!");
+                    if (_grid != null)
+                    {
+                        await _grid.RefreshAsync();
+                    }
+                    CloseCompanyForm();
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to add company: " + error);
+                }
+            }
+            else
+            {
+                // Update existing company
+                var updateRequest = new UpdateCompanyRequest
+                {
+                    Name = companyForm.Name,
+                    Description = companyForm.Description
+                };
+                
+                var result = await Http.PutAsJsonAsync($"api/company/{editingCompany.Id}", updateRequest);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "Company updated successfully!");
+                    if (_grid != null)
+                    {
+                        await _grid.RefreshAsync();
+                    }
+                    CloseCompanyForm();
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update company: " + error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task DeactivateCompanyAsync(Company company, CancellationToken ct)
+    {
+        if (company == null) return;
+        
+        try
+        {
+            var result = await Http.DeleteAsync($"api/company/{company.Id}", ct);
+            if (result.IsSuccessStatusCode)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Company deactivated successfully!");
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
+            }
+            else
+            {
+                var error = await result.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to deactivate company: " + error);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+    }
+
+    private async Task ReactivateCompanyAsync(Company company, CancellationToken ct)
+    {
+        if (company == null) return;
+        
+        try
+        {
+            var updateRequest = new UpdateCompanyRequest
+            {
+                IsActive = true
+            };
+            
+            var result = await Http.PutAsJsonAsync($"api/company/{company.Id}", updateRequest, ct);
+            if (result.IsSuccessStatusCode)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Company reactivated successfully!");
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
+            }
+            else
+            {
+                var error = await result.Content.ReadAsStringAsync();
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reactivate company: " + error);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+    }
+}
+
+<style>
+    .companies-page {
+        padding: 1.5rem;
+    }
+
+    .companies-header {
+        margin-bottom: 2rem;
+    }
+
+    .companies-header h2 {
+        margin-bottom: 0.5rem;
+    }
+
+    .companies-content {
+        margin-top: 1rem;
+    }
+</style>

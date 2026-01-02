@@ -33,11 +33,17 @@ namespace SM_MentalHealthApp.Shared
 
         [MaxLength(1000)]
         public string? Description { get; set; } // Optional description of the service request
+        
+        // Location fields for location-based matching
+        [MaxLength(10)]
+        public string? ServiceZipCode { get; set; } // Service location ZIP (defaults to client ZIP)
+        public int MaxDistanceMiles { get; set; } = 50; // Maximum distance to search for SMEs
 
         // Navigation properties
         public User Client { get; set; } = null!;
         public User? CreatedByUser { get; set; }
         public List<ServiceRequestAssignment> Assignments { get; set; } = new();
+        public List<ServiceRequestExpertise> Expertises { get; set; } = new();
     }
 
     /// <summary>
@@ -61,6 +67,34 @@ namespace SM_MentalHealthApp.Shared
         public bool IsActive { get; set; } = true;
 
         public int? AssignedByUserId { get; set; } // Who made this assignment
+
+        // Assignment lifecycle fields
+        [MaxLength(30)]
+        public string Status { get; set; } = "Assigned"; // Assigned, Accepted, Rejected, InProgress, Completed, Abandoned
+
+        [MaxLength(50)]
+        public string? OutcomeReason { get; set; } // Reason for outcome (SME_NoResponse, Client_Cancelled, etc.)
+
+        [MaxLength(30)]
+        public string? ResponsibilityParty { get; set; } // SME, Client, System, Coordinator, Unknown
+
+        public DateTime? AcceptedAt { get; set; } // When SME accepted
+
+        public DateTime? StartedAt { get; set; } // When SME started working
+
+        public DateTime? CompletedAt { get; set; } // When assignment completed
+
+        public bool IsBillable { get; set; } = false; // Whether this assignment is billable
+
+        // Billing status tracking (prevents re-billing)
+        [MaxLength(20)]
+        public string BillingStatus { get; set; } = "NotBillable"; // NotBillable, Ready, Invoiced, Paid, Voided
+
+        public long? InvoiceId { get; set; } // Reference to SmeInvoice if invoiced
+
+        public DateTime? BilledAt { get; set; } // When this assignment was included in an invoice
+
+        public DateTime? PaidAt { get; set; } // When payment was received for this assignment
 
         // Navigation properties
         public ServiceRequest ServiceRequest { get; set; } = null!;
@@ -90,6 +124,10 @@ namespace SM_MentalHealthApp.Shared
         public string? Description { get; set; }
 
         public int? SmeUserId { get; set; } // Optional: assign SME immediately on creation
+        public List<int>? ExpertiseIds { get; set; } // Optional: expertise categories for this SR
+        [MaxLength(10)]
+        public string? ServiceZipCode { get; set; } // Optional: service location ZIP (defaults to client ZIP)
+        public int? MaxDistanceMiles { get; set; } // Optional: max distance in miles (defaults to 50)
     }
 
     /// <summary>
@@ -108,6 +146,10 @@ namespace SM_MentalHealthApp.Shared
 
         [MaxLength(1000)]
         public string? Description { get; set; }
+        public List<int>? ExpertiseIds { get; set; } // Optional: expertise categories for this SR
+        [MaxLength(10)]
+        public string? ServiceZipCode { get; set; } // Optional: service location ZIP
+        public int? MaxDistanceMiles { get; set; } // Optional: max distance in miles
     }
 
     /// <summary>
@@ -148,7 +190,11 @@ namespace SM_MentalHealthApp.Shared
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public string? Description { get; set; }
+        public string? ServiceZipCode { get; set; } // Service location ZIP (defaults to client ZIP)
+        public int MaxDistanceMiles { get; set; } = 50; // Maximum distance to search for SMEs
         public List<ServiceRequestAssignmentDto> Assignments { get; set; } = new();
+        public List<int> ExpertiseIds { get; set; } = new();
+        public List<string> ExpertiseNames { get; set; } = new();
         
         /// <summary>
         /// Computed property for filtering by SME names (comma-separated)
@@ -157,19 +203,6 @@ namespace SM_MentalHealthApp.Shared
             Assignments != null && Assignments.Any(a => a.IsActive)
                 ? string.Join(", ", Assignments.Where(a => a.IsActive).Select(a => a.SmeUserName))
                 : string.Empty;
-    }
-
-    /// <summary>
-    /// DTO for service request assignment responses
-    /// </summary>
-    public class ServiceRequestAssignmentDto
-    {
-        public int Id { get; set; }
-        public int ServiceRequestId { get; set; }
-        public int SmeUserId { get; set; }
-        public string SmeUserName { get; set; } = string.Empty;
-        public DateTime AssignedAt { get; set; }
-        public bool IsActive { get; set; }
     }
 }
 

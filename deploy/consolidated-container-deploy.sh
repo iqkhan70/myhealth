@@ -1346,14 +1346,21 @@ cd "$REPO_ROOT"
 
 # ============================================================================
 # Step 8.5: Run ServiceRequest Migration (if needed)
+# Step 8.6: Run Expertise System Migration (if needed)
+# Step 8.7: Run Assignment Lifecycle Migration (if needed)
 # ============================================================================
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}Step 8.5: Running ServiceRequest Migration${NC}"
+echo -e "${GREEN}Step 8.5: Running ServiceRequest Migration (includes Expertise & Location Systems)${NC}"
 echo -e "${GREEN}========================================${NC}"
+echo ""
+echo "This migration includes:"
+echo "  - ServiceRequest tables and data migration"
+echo "  - Expertise system (Expertise, SmeExpertise, ServiceRequestExpertise tables)"
+echo "  - Location matching system (ZIP code-based proximity matching for SMEs)"
 echo ""
 
 if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestMigration_Consolidated.sql" ]; then
-    echo "Copying ServiceRequest migration script..."
+    echo "Copying ServiceRequest migration script (includes Expertise & Location Systems)..."
     scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestMigration_Consolidated.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/service_request_migration.sql"
     
     ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
@@ -1415,6 +1422,413 @@ ENDSSH
 else
     echo -e "${YELLOW}⚠️  ServiceRequest migration script not found${NC}"
     echo "   Skipping ServiceRequest migration (may already be applied)"
+fi
+
+# ============================================================================
+# Step 8.6: Run Expertise System Migration (if needed)
+# Note: This is also included in the consolidated migration, but kept as separate step for clarity
+# The consolidated migration (Step 8.5) also includes the Location Matching System (Phase 4)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.6: Running Expertise System Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddExpertiseSystem.sql" ]; then
+    echo "Copying Expertise System migration script..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddExpertiseSystem.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/expertise_system_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Expertise System migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using .env password"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "Using fallback password"
+                MYSQL_PWD_TO_USE="UthmanBasima70"
+            fi
+            
+            # Apply migration SQL
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 | grep -v "Warning" || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Expertise System migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Expertise System migration failed"
+                        exit 1
+                    fi
+                }
+            else
+                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 | grep -v "Warning" || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Expertise System migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Expertise System migration failed"
+                        exit 1
+                    fi
+                }
+            fi
+            
+            echo "✅ Expertise System migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Expertise System migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/expertise_system_migration.sql"
+        fi
+ENDSSH
+else
+    echo -e "${YELLOW}⚠️  Expertise System migration script not found${NC}"
+    echo "   Skipping Expertise System migration (may already be applied or included in consolidated migration)"
+fi
+
+# ============================================================================
+# Step 8.7: Run Assignment Lifecycle Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.7: Running Assignment Lifecycle Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddAssignmentLifecycleAndSmeScoring.sql" ]; then
+    echo "Copying Assignment Lifecycle migration script..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddAssignmentLifecycleAndSmeScoring.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/assignment_lifecycle_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Assignment Lifecycle migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using password from .env file"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "❌ ERROR: Cannot connect to MySQL"
+                exit 1
+            fi
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/assignment_lifecycle_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/assignment_lifecycle_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Assignment Lifecycle migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Assignment Lifecycle migration failed"
+                        exit 1
+                    fi
+                }
+            else
+                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/assignment_lifecycle_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/assignment_lifecycle_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Assignment Lifecycle migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Assignment Lifecycle migration failed"
+                        exit 1
+                    fi
+                }
+            fi
+            
+            echo "✅ Assignment Lifecycle migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Assignment Lifecycle migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/assignment_lifecycle_migration.sql"
+        fi
+ENDSSH
+else
+    echo -e "${YELLOW}⚠️  Assignment Lifecycle migration script not found${NC}"
+    echo "   Skipping Assignment Lifecycle migration (may already be applied)"
+fi
+
+# ============================================================================
+# Step 8.8: Run Billing Status and Invoicing Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.8: Running Billing Status Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddBillingStatusAndInvoicing.sql" ]; then
+    echo "Copying Billing Status migration script..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddBillingStatusAndInvoicing.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/billing_status_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Billing Status migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using password from .env file"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "❌ ERROR: Cannot connect to MySQL"
+                exit 1
+            fi
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_status_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_status_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Billing Status migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Billing Status migration failed"
+                        exit 1
+                    fi
+                }
+            else
+                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_status_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_status_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Billing Status migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Billing Status migration failed"
+                        exit 1
+                    fi
+                }
+            fi
+            
+            echo "✅ Billing Status migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Billing Status migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/billing_status_migration.sql"
+        fi
+ENDSSH
+else
+    echo -e "${YELLOW}⚠️  Billing Status migration script not found${NC}"
+    echo "   Skipping Billing Status migration (may already be applied)"
+fi
+
+# ============================================================================
+# Step 8.9: Run Service Request Charges and Company Billing Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.9: Running Service Request Charges Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestChargesAndCompanyBilling.sql" ]; then
+    echo "Copying Service Request Charges migration script..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestChargesAndCompanyBilling.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/service_request_charges_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Service Request Charges migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using password from .env file"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "❌ ERROR: Cannot connect to MySQL"
+                exit 1
+            fi
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Service Request Charges migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Service Request Charges migration failed"
+                        exit 1
+                    fi
+                }
+            else
+                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Service Request Charges migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Service Request Charges migration failed"
+                        exit 1
+                    fi
+                }
+            fi
+            
+            echo "✅ Service Request Charges migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Service Request Charges migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/service_request_charges_migration.sql"
+        fi
+ENDSSH
+    
+    echo -e "${GREEN}✅ Service Request Charges migration completed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Service Request Charges migration script not found${NC}"
+    echo "   Skipping Service Request Charges migration (may already be applied)"
+fi
+
+# ============================================================================
+# Step 8.10: Run SME Role Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.10: Running SME Role Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddSmeRole.sql" ]; then
+    echo "Copying SME role migration script to server..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddSmeRole.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/sme_role_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying SME role migration SQL..."
+            mysql -u root -p"$DB_ROOT_PASSWORD" "$DB_NAME" < /tmp/sme_role_migration.sql
+            echo "✅ SME role migration completed"
+        else
+            echo "⚠️  Skipping SME role migration (not using local-db mode)"
+        fi
+        
+        rm -f /tmp/sme_role_migration.sql
+ENDSSH
+else
+    echo "⚠️  AddSmeRole.sql not found, skipping SME role migration..."
+fi
+
+# ============================================================================
+# Step 8.11: Run Companies Table Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.11: Running Companies Table Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddCompaniesTable.sql" ]; then
+    echo "Copying Companies table migration script to server..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddCompaniesTable.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/companies_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Companies table migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using password from .env file"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "❌ ERROR: Cannot connect to MySQL"
+                exit 1
+            fi
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Companies table migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Companies table migration failed"
+                        exit 1
+                    fi
+                }
+            else
+                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Companies table migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Companies table migration failed"
+                        exit 1
+                    fi
+                }
+            fi
+            
+            echo "✅ Companies table migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Companies table migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/companies_migration.sql"
+        fi
+ENDSSH
+    
+    echo -e "${GREEN}✅ Companies table migration completed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Companies table migration script not found, skipping...${NC}"
 fi
 
 # ============================================================================

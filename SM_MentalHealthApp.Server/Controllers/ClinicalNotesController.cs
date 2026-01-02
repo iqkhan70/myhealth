@@ -12,7 +12,7 @@ namespace SM_MentalHealthApp.Server.Controllers
     [ApiController]
     [ApiVersion("1.0")]
     [Route("api/[controller]")]
-    [Authorize(Roles = "Doctor,Admin,Attorney")]
+    [Authorize(Roles = "Doctor,Admin,Attorney,SME")]
     public class ClinicalNotesController : BaseController
     {
         private readonly IClinicalNotesService _clinicalNotesService;
@@ -45,7 +45,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var currentRoleId = GetCurrentRoleId();
 
                 // For doctors and attorneys, filter by assigned ServiceRequests
-                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && currentUserId.HasValue)
+                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney || currentRoleId == Shared.Constants.Roles.Sme) && currentUserId.HasValue)
                 {
                     // Get assigned ServiceRequest IDs for this SME
                     var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value);
@@ -150,7 +150,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var currentRoleId = GetCurrentRoleId();
 
                 // For doctors and attorneys, filter by assigned ServiceRequests
-                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && currentUserId.HasValue)
+                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney || currentRoleId == Shared.Constants.Roles.Sme) && currentUserId.HasValue)
                 {
                     // Get assigned ServiceRequest IDs for this SME
                     var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value);
@@ -281,7 +281,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var currentRoleId = GetCurrentRoleId();
 
                 // For doctors and attorneys, verify access via ServiceRequest
-                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && currentUserId.HasValue)
+                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney || currentRoleId == Shared.Constants.Roles.Sme) && currentUserId.HasValue)
                 {
                     // Get the actual note from DB to check ServiceRequestId
                     var noteEntity = await _context.ClinicalNotes
@@ -334,7 +334,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 // Get or set ServiceRequestId - use default if not provided
                 int? serviceRequestId = null;
-                if (currentRoleId == Roles.Doctor || currentRoleId == Roles.Attorney)
+                if (currentRoleId == Roles.Doctor || currentRoleId == Roles.Attorney || currentRoleId == Roles.Sme)
                 {
                     // Get default ServiceRequest for this patient
                     var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(request.PatientId);
@@ -477,7 +477,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var currentRoleId = GetCurrentRoleId();
 
                 // For doctors and attorneys, filter by assigned ServiceRequests
-                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney) && currentUserId.HasValue)
+                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney || currentRoleId == Shared.Constants.Roles.Sme) && currentUserId.HasValue)
                 {
                     // Get assigned ServiceRequest IDs for this SME
                     var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(currentUserId.Value);

@@ -11,6 +11,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<List<User>> GetAllPatientsAsync();
         Task<List<User>> GetAllCoordinatorsAsync();
         Task<List<User>> GetAllAttorneysAsync();
+        Task<List<User>> GetAllSmesAsync();
         Task<List<UserAssignment>> GetUserAssignmentsAsync();
         Task<bool> AssignPatientToDoctorAsync(int patientId, int doctorId);
         Task<bool> UnassignPatientFromDoctorAsync(int patientId, int doctorId);
@@ -72,13 +73,26 @@ namespace SM_MentalHealthApp.Server.Services
         {
             var attorneys = await _context.Users
                 .Include(u => u.Role)
-                .Where(u => u.RoleId == 5 && u.IsActive) // Role 5 = Attorney
+                .Where(u => (u.RoleId == 5 || u.RoleId == 6) && u.IsActive) // Role 5 = Attorney, Role 6 = SME
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .ToListAsync();
             
             UserEncryptionHelper.DecryptUserData(attorneys, _encryptionService);
             return attorneys;
+        }
+
+        public async Task<List<User>> GetAllSmesAsync()
+        {
+            var smes = await _context.Users
+                .Include(u => u.Role)
+                .Where(u => u.RoleId == 6 && u.IsActive) // Role 6 = SME
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
+                .ToListAsync();
+            
+            UserEncryptionHelper.DecryptUserData(smes, _encryptionService);
+            return smes;
         }
 
         public async Task<List<UserAssignment>> GetUserAssignmentsAsync()
@@ -109,9 +123,9 @@ namespace SM_MentalHealthApp.Server.Services
                 return false; // Invalid patient
             }
 
-            // Check if assigner is a doctor (RoleId == 2) or attorney (RoleId == 5) and is active
+            // Check if assigner is a doctor (RoleId == 2), attorney (RoleId == 5), or SME (RoleId == 6) and is active
             var assigner = await _context.Users
-                .FirstOrDefaultAsync(u => u.Id == doctorId && (u.RoleId == 2 || u.RoleId == 5) && u.IsActive);
+                .FirstOrDefaultAsync(u => u.Id == doctorId && (u.RoleId == 2 || u.RoleId == 5 || u.RoleId == 6) && u.IsActive);
 
             if (assigner == null)
             {
@@ -193,7 +207,7 @@ namespace SM_MentalHealthApp.Server.Services
                 .Include(u => u.Role)
                 .Where(u => smeUserIds.Contains(u.Id) && 
                            u.IsActive && 
-                           (u.RoleId == 2 || u.RoleId == 4 || u.RoleId == 5)) // Active doctors, coordinators, and attorneys
+                           (u.RoleId == 2 || u.RoleId == 4 || u.RoleId == 5 || u.RoleId == 6)) // Active doctors, coordinators, attorneys, and SMEs
                 .OrderBy(d => d.LastName)
                 .ThenBy(d => d.FirstName)
                 .ToListAsync();

@@ -219,8 +219,8 @@ namespace SM_MentalHealthApp.Server.Services
                         MustChangePassword = user.MustChangePassword
                     };
                 }
-                // Check if user is a doctor, admin, coordinator, or attorney
-                else if (roleId == Shared.Constants.Roles.Doctor || roleId == Shared.Constants.Roles.Admin || roleId == Shared.Constants.Roles.Coordinator || roleId == Shared.Constants.Roles.Attorney)
+                // Check if user is a doctor, admin, coordinator, attorney, or SME
+                else if (roleId == Shared.Constants.Roles.Doctor || roleId == Shared.Constants.Roles.Admin || roleId == Shared.Constants.Roles.Coordinator || roleId == Shared.Constants.Roles.Attorney || roleId == Shared.Constants.Roles.Sme)
                 {
                     var user = await _context.Users
                         .Include(u => u.Role)

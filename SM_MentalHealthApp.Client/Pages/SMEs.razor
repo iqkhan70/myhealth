@@ -1,0 +1,723 @@
+@page "/smes"
+@inject HttpClient Http
+@inject NotificationService NotificationService
+@inject IAuthService AuthService
+@inject IExpertiseService ExpertiseService
+@inject IJSRuntime JSRuntime
+@inject DialogService DialogService
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
+@using System.Net.Http
+@using Radzen
+@using Radzen.Blazor
+
+<div class="coordinators-page">
+    <div class="coordinators-header">
+        @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+        {
+            <h2>SMEs</h2>
+            <p>Manage SME accounts and their information.</p>
+            <button @onclick="ShowAddSmeForm" class="add-coordinator-btn">
+                ➕ Add New SME
+            </button>
+        }
+        else
+        {
+            <h2>Access Denied</h2>
+            <p>You don't have permission to view this page.</p>
+        }
+    </div>
+
+    @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+    {
+        <!-- SMEs Grid -->
+        <div class="coordinators-content">
+            @if (isLoading)
+            {
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>Loading SMEs...</p>
+                </div>
+            }
+            else
+            {
+                <RadzenDataGrid @ref="_grid" Data="@GetFilteredSmes()" 
+                               TItem="User" 
+                               AllowPaging="true" 
+                               PageSize="15"
+                               AllowSorting="true" 
+                               FilterMode="FilterMode.Advanced" 
+                               ShowPagingSummary="true"
+                               EmptyText="No SMEs found"
+                               AllowFiltering="true"
+                               FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                               ShowFilterRow="true"
+                               ShowFilterRowButtons="true">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="User" Property="FirstName" Title="Name" Width="200px" Filterable="true">
+                            <Template Context="sme">
+                                @if (sme != null)
+                                {
+                                    <div>
+                                        <strong>@(sme.FirstName ?? "") @(sme.LastName ?? "")</strong>
+                                        <br />
+                                        <small class="text-muted">@(sme.Email ?? "")</small>
+                                    </div>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="Email" Title="Email" Width="250px" Filterable="true" />
+                        <RadzenDataGridColumn TItem="User" Property="MobilePhone" Title="Phone" Width="150px" Filterable="true">
+                            <Template Context="sme">
+                                @(sme?.MobilePhone ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="ZipCode" Title="ZIP Code" Width="120px" Filterable="true">
+                            <Template Context="sme">
+                                @if (sme != null && !string.IsNullOrWhiteSpace(sme.ZipCode))
+                                {
+                                    <span class="badge bg-info">@sme.ZipCode</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="MaxTravelMiles" Title="Max Travel (mi)" Width="130px" Filterable="true">
+                            <Template Context="sme">
+                                @if (sme != null && sme.MaxTravelMiles.HasValue)
+                                {
+                                    <span class="badge bg-secondary">@sme.MaxTravelMiles mi</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="150px" Filterable="true">
+                            <Template Context="sme">
+                                @(sme?.DateOfBirth.ToString("MM/dd/yyyy") ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="Gender" Title="Gender" Width="100px" Filterable="true">
+                            <Template Context="sme">
+                                @(sme?.Gender ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="IsActive" Title="Status" Width="100px" Filterable="true">
+                            <Template Context="sme">
+                                @if (sme != null)
+                                {
+                                    <span class="badge @(sme.IsActive ? "badge-success" : "badge-danger")">
+                                        @(sme.IsActive ? "Active" : "Inactive")
+                                    </span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="CreatedAt" Title="Created" Width="150px" Filterable="true">
+                            <Template Context="sme">
+                                @(sme?.CreatedAt.ToString("MM/dd/yyyy") ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Title="Actions" Width="150px" Sortable="false" Filterable="false">
+                            <Template Context="sme">
+                                @if (sme != null)
+                                {
+                                    <div class="action-buttons">
+                                        <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Info" 
+                                                     Variant="Variant.Flat" 
+                                                     Size="ButtonSize.Small"
+                                                     Title="Edit SME"
+                                                     Click="@(() => EditSme(sme))" />
+                                        <RadzenButton Icon="@(sme.IsActive ? "block" : "check")" 
+                                                     ButtonStyle="@(sme.IsActive ? ButtonStyle.Warning : ButtonStyle.Success)" 
+                                                     Variant="Variant.Flat" 
+                                                     Size="ButtonSize.Small"
+                                                     Title="@(sme.IsActive ? "Deactivate" : "Activate")"
+                                                     Click="@(() => ToggleSmeStatus(sme))" />
+                                    </div>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </div>
+
+        <!-- Add/Edit SME Form Modal -->
+        @if (showSmeForm)
+        {
+            <div class="modal-overlay">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>@(editingSme == null ? "Add New SME" : "Edit SME")</h3>
+                        <button @onclick="CloseSmeForm" class="close-btn">✕</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>First Name *</label>
+                                <input @bind="smeForm.FirstName" class="form-input" />
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Last Name *</label>
+                                <input @bind="smeForm.LastName" class="form-input" />
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Email *</label>
+                                <input @bind="smeForm.Email" type="email" class="form-input" />
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Password @(editingSme == null ? "*" : "(leave blank to keep current)")</label>
+                                <input @bind="smeForm.Password" type="password" class="form-input" />
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Date of Birth *</label>
+                                <input @bind="smeForm.DateOfBirth" type="date" class="form-input" />
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Gender</label>
+                                <select @bind="smeForm.Gender" class="form-input">
+                                    <option value="">Select Gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                    <option value="Prefer not to say">Prefer not to say</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Mobile Phone</label>
+                                <input @bind="smeForm.MobilePhone" type="tel" class="form-input" placeholder="+1 (555) 123-4567" />
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>ZIP Code</label>
+                                <input @bind="smeForm.ZipCode" type="text" class="form-input" placeholder="e.g., 66221" maxlength="10" />
+                                <small class="text-muted">ZIP code for location-based matching</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Max Travel Distance (miles)</label>
+                                <input @bind="smeForm.MaxTravelMiles" type="number" class="form-input" placeholder="50" min="0" />
+                                <small class="text-muted">Maximum distance this SME is willing to travel (optional)</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Company (Optional)</label>
+                                <RadzenDropDown Data="@companies" TextProperty="Name" ValueProperty="Id"
+                                    @bind-Value="smeForm.CompanyId" AllowFiltering="true"
+                                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
+                                    Placeholder="Select a company or leave blank if independent..."
+                                    Style="width: 100%;" />
+                                <small class="text-muted">If this SME belongs to a company, select it from the list. Leave blank if independent.</small>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group" style="width: 100%;">
+                                <ExpertiseMultiSelect Label="Expertise Categories"
+                                                     Placeholder="Type to search and select expertise..."
+                                                     HelpText="Select one or more expertise categories for this SME"
+                                                     @bind-SelectedExpertiseIds="selectedSmeExpertiseIds" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <button @onclick="CloseSmeForm" class="btn btn-secondary">Cancel</button>
+                        <button @onclick="SaveSme" disabled="@isSaving" class="btn btn-primary">
+                            @(isSaving ? "Saving..." : (editingSme == null ? "Add SME" : "Update SME"))
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private RadzenDataGrid<User>? _grid;
+    private List<User> smes = new();
+    private List<Company> companies = new();
+    private List<int> selectedSmeExpertiseIds = new();
+    private bool isLoading = true;
+    private bool showSmeForm = false;
+    private bool isSaving = false;
+    private User? editingSme;
+    private CreateSmeRequest smeForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCompanies();
+        await LoadSmes();
+    }
+
+    private async Task LoadCompanies()
+    {
+        try
+        {
+            companies = await Http.GetFromJsonAsync<List<Company>>("api/company/active") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading companies: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Warning, "Warning", "Failed to load companies list.");
+        }
+    }
+
+    private async Task LoadSmes()
+    {
+        try
+        {
+            isLoading = true;
+            
+            if (AuthService.CurrentUser?.RoleId == 3) // Admin
+            {
+                // Ensure authorization header is set
+                var token = AuthService.Token;
+                if (!string.IsNullOrEmpty(token))
+                {
+                    Http.DefaultRequestHeaders.Authorization = 
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+                
+                smes = await Http.GetFromJsonAsync<List<User>>("api/admin/smes") ?? new();
+            }
+            else
+            {
+                smes = new(); // No access
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to load SMEs: " + ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ShowAddSmeForm()
+    {
+        editingSme = null;
+        smeForm = new CreateSmeRequest { DateOfBirth = DateTime.Now.AddYears(-30) };
+        selectedSmeExpertiseIds = new List<int>();
+        await LoadCompanies();
+        showSmeForm = true;
+    }
+
+    private async Task EditSme(User sme)
+    {
+        if (sme == null) return;
+        
+        editingSme = sme;
+        smeForm = new CreateSmeRequest
+        {
+            FirstName = sme.FirstName ?? string.Empty,
+            LastName = sme.LastName ?? string.Empty,
+            Email = sme.Email ?? string.Empty,
+            DateOfBirth = sme.DateOfBirth,
+            Gender = sme.Gender ?? string.Empty,
+            MobilePhone = sme.MobilePhone ?? string.Empty,
+            CompanyId = sme.CompanyId,
+            ZipCode = sme.ZipCode,
+            MaxTravelMiles = sme.MaxTravelMiles,
+            Password = string.Empty // Don't populate password
+        };
+        
+        // Load current expertise IDs for this SME
+        try
+        {
+            selectedSmeExpertiseIds = await ExpertiseService.GetSmeExpertisesAsync(sme.Id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading SME expertises: {ex.Message}");
+            selectedSmeExpertiseIds = new List<int>();
+        }
+        
+        await LoadCompanies();
+        showSmeForm = true;
+    }
+
+    private void CloseSmeForm()
+    {
+        showSmeForm = false;
+        editingSme = null;
+        smeForm = new CreateSmeRequest();
+        selectedSmeExpertiseIds = new List<int>();
+    }
+
+    private async Task SaveSme()
+    {
+        if (string.IsNullOrWhiteSpace(smeForm.FirstName) || 
+            string.IsNullOrWhiteSpace(smeForm.LastName) || 
+            string.IsNullOrWhiteSpace(smeForm.Email))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Please fill in all required fields.");
+            return;
+        }
+
+        if (editingSme == null && string.IsNullOrWhiteSpace(smeForm.Password))
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Password is required for new SMEs.");
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            
+            if (editingSme == null)
+            {
+                // Create new SME
+                var result = await Http.PostAsJsonAsync("api/admin/create-sme", smeForm);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "SME added successfully!");
+                    CloseSmeForm();
+                    await LoadSmes();
+                    if (_grid != null)
+                    {
+                        await _grid.Reload();
+                    }
+                    StateHasChanged();
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to add SME: " + error);
+                }
+            }
+            else
+            {
+                // Update existing SME
+                var updateRequest = new UpdateSmeRequest
+                {
+                    FirstName = smeForm.FirstName,
+                    LastName = smeForm.LastName,
+                    Email = smeForm.Email,
+                    DateOfBirth = smeForm.DateOfBirth,
+                    Gender = smeForm.Gender,
+                    MobilePhone = smeForm.MobilePhone,
+                    CompanyId = smeForm.CompanyId,
+                    ZipCode = smeForm.ZipCode,
+                    MaxTravelMiles = smeForm.MaxTravelMiles,
+                    Password = string.IsNullOrWhiteSpace(smeForm.Password) ? null : smeForm.Password
+                };
+                
+                var result = await Http.PutAsJsonAsync($"api/admin/update-sme/{editingSme.Id}", updateRequest);
+                if (result.IsSuccessStatusCode)
+                {
+                    // Update expertise
+                    var expertiseResult = await ExpertiseService.SetSmeExpertisesAsync(editingSme.Id, selectedSmeExpertiseIds);
+                    if (!expertiseResult)
+                    {
+                        NotificationService.Notify(NotificationSeverity.Warning, "Warning", "SME updated but failed to update expertise. You can try again later.");
+                    }
+                    
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "SME updated successfully!");
+                    CloseSmeForm();
+                    await LoadSmes();
+                    if (_grid != null)
+                    {
+                        await _grid.Reload();
+                    }
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update SME: " + error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private List<User> GetFilteredSmes()
+    {
+        var filtered = smes.Where(a => a != null && a.RoleId == 6).AsEnumerable(); // Only SMEs (RoleId = 6)
+        
+        return filtered.ToList();
+    }
+
+    private async Task ToggleSmeStatus(User sme)
+    {
+        if (sme == null) return;
+
+        try
+        {
+            var action = sme.IsActive ? "deactivate" : "reactivate";
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to {action} this SME?");
+            
+            if (!confirmed) return;
+
+            if (sme.IsActive)
+            {
+                var result = await Http.DeleteAsync($"api/admin/smes/{sme.Id}/deactivate");
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "SME deactivated successfully!");
+                    await LoadSmes();
+                    if (_grid != null)
+                    {
+                        await _grid.Reload();
+                    }
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to deactivate SME: " + error);
+                }
+            }
+            else
+            {
+                var result = await Http.PostAsync($"api/admin/smes/{sme.Id}/reactivate", null);
+                if (result.IsSuccessStatusCode)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", "SME reactivated successfully!");
+                    await LoadSmes();
+                    if (_grid != null)
+                    {
+                        await _grid.Reload();
+                    }
+                }
+                else
+                {
+                    var error = await result.Content.ReadAsStringAsync();
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to reactivate SME: " + error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"An error occurred: {ex.Message}");
+        }
+    }
+
+    public class CreateSmeRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
+    }
+
+    public class UpdateSmeRequest
+    {
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? Gender { get; set; }
+        public string? MobilePhone { get; set; }
+        public string? Password { get; set; }
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
+    }
+}
+
+<style>
+    .coordinators-page {
+        padding: 20px;
+    }
+
+    .coordinators-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .coordinators-header h2 {
+        margin: 0;
+    }
+
+    .add-coordinator-btn {
+        background-color: #28a745;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 500;
+    }
+
+    .add-coordinator-btn:hover {
+        background-color: #218838;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        padding: 0;
+        max-width: 600px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6c757d;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    .form-group {
+        flex: 1;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 20px;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .badge-success {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .badge-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 40px;
+    }
+
+    .loading-spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+

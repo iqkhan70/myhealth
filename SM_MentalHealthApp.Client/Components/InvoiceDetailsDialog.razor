@@ -1,0 +1,105 @@
+@using SM_MentalHealthApp.Shared
+@using Radzen
+@using Radzen.Blazor
+
+<div class="p-3">
+    <RadzenFieldset Text="Invoice Details">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <strong>Invoice Number:</strong> @Invoice.InvoiceNumber<br />
+                @if (Invoice.BillingAccountType == "Company" && !string.IsNullOrEmpty(Invoice.CompanyName))
+                {
+                    <strong>Company:</strong> @Invoice.CompanyName<br />
+                    <strong>SMEs:</strong> @string.Join(", ", Invoice.SmeNames)<br />
+                }
+                else
+                {
+                    <strong>SME:</strong> @Invoice.SmeUserName<br />
+                }
+                <strong>Status:</strong> <span class="badge @GetStatusClass(Invoice.Status)">@Invoice.Status</span>
+            </div>
+            <div class="col-md-6">
+                <strong>Period:</strong> @Invoice.PeriodStart.ToString("MM/dd/yyyy") - @Invoice.PeriodEnd.ToString("MM/dd/yyyy")<br />
+                <strong>Created:</strong> @Invoice.CreatedAt.ToString("MM/dd/yyyy")<br />
+                @if (Invoice.PaidAt.HasValue)
+                {
+                    <strong>Paid:</strong> @Invoice.PaidAt.Value.ToString("MM/dd/yyyy")<br />
+                }
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Invoice.Notes))
+        {
+            <div class="mb-3">
+                <strong>Notes:</strong>
+                <p>@Invoice.Notes</p>
+            </div>
+        }
+
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>SR ID</th>
+                        <th>Service Request</th>
+                        <th>Client</th>
+                        <th>Description</th>
+                        <th class="text-end">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var line in Invoice.InvoiceLines)
+                    {
+                        <tr>
+                            <td>@line.ServiceRequestId</td>
+                            <td>@line.ServiceRequestTitle</td>
+                            <td>@line.ClientName</td>
+                            <td>@(line.Description ?? "Service Request")</td>
+                            <td class="text-end">@line.Amount.ToString("C")</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="4" class="text-end"><strong>Subtotal:</strong></td>
+                        <td class="text-end"><strong>@Invoice.SubTotal.ToString("C")</strong></td>
+                    </tr>
+                    @if (Invoice.TaxAmount > 0)
+                    {
+                        <tr>
+                            <td colspan="4" class="text-end"><strong>Tax:</strong></td>
+                            <td class="text-end"><strong>@Invoice.TaxAmount.ToString("C")</strong></td>
+                        </tr>
+                    }
+                    <tr>
+                        <td colspan="4" class="text-end"><strong>Total:</strong></td>
+                        <td class="text-end"><strong>@Invoice.TotalAmount.ToString("C")</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </RadzenFieldset>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close())" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public SmeInvoiceDto Invoice { get; set; } = null!;
+
+    [Inject] private DialogService DialogService { get; set; } = null!;
+
+    private string GetStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "draft" => "bg-secondary",
+            "sent" => "bg-info",
+            "paid" => "bg-success",
+            "voided" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+}
+

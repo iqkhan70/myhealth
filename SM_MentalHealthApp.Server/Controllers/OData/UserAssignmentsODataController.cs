@@ -61,7 +61,7 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                     {
                         query = query.Where(ua => ua.AssigneeId == currentUserId.Value);
                     }
-                    else if (currentRoleId.Value == 5) // Attorney
+                    else if (currentRoleId.Value == 5 || currentRoleId.Value == 6) // Attorney or SME
                     {
                         // Attorneys see assignments for their assigned patients
                         var assignedPatientIds = _context.UserAssignments

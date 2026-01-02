@@ -28,7 +28,9 @@ namespace SM_MentalHealthApp.Client.Helpers
                 // Appointment properties (Note: DoctorName and PatientName are DTO-only, handled separately)
                 "Reason", "Notes", "CreatedBy",
                 // Content properties
-                "Title", "Description", "OriginalFileName", "MimeType"
+                "Title", "Description", "OriginalFileName", "MimeType",
+                // ServiceRequest properties
+                "Title", "Type", "Status", "Description"
             };
 
             // === STRING FILTER TRANSFORMS (your existing code) ===
@@ -37,35 +39,60 @@ namespace SM_MentalHealthApp.Client.Helpers
             {
                 // contains(...)
                 // Pattern 1: ((Property == null ? "" : Property).ToLower()).Contains("value".ToLower())
+                // Also handle @Property for reserved keywords like Type
                 result = Regex.Replace(result,
-                    $@"\(\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\(\)\)\.Contains\((""([^""]*)""|'([^']*)')\.ToLower\(\)\)",
+                    $@"\(\((@?{prop})\s*==\s*null\s*\?\s*""""\s*:\s*(@?{prop})\)\.ToLower\(\)\)\.Contains\((""([^""]*)""|'([^']*)')\.ToLower\(\)\)",
                     match =>
                     {
-                        var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+                        var value = match.Groups[4].Success ? match.Groups[4].Value : match.Groups[5].Value;
                         value = value.Replace("'", "''");
-                        return $"contains({prop}, '{value}')";
+                        // Remove @ prefix if present (for reserved keywords like Type)
+                        var cleanProp = prop;
+                        return $"contains({cleanProp}, '{value}')";
                     },
                     RegexOptions.IgnoreCase);
 
                 // Pattern 2: (Property == null ? "" : Property).ToLower().Contains("value".ToLower())
+                // Also handle @Property for reserved keywords like Type
                 result = Regex.Replace(result,
-                    $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\(\)\.Contains\((""([^""]*)""|'([^']*)')\.ToLower\(\)\)",
+                    $@"\((@?{prop})\s*==\s*null\s*\?\s*""""\s*:\s*(@?{prop})\)\.ToLower\(\)\.Contains\((""([^""]*)""|'([^']*)')\.ToLower\(\)\)",
                     match =>
                     {
-                        var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+                        var value = match.Groups[4].Success ? match.Groups[4].Value : match.Groups[5].Value;
                         value = value.Replace("'", "''");
-                        return $"contains({prop}, '{value}')";
+                        // Remove @ prefix if present (for reserved keywords like Type)
+                        var cleanProp = prop;
+                        return $"contains({cleanProp}, '{value}')";
                     },
                     RegexOptions.IgnoreCase);
 
                 // Pattern 3: (Property == null ? "" : Property).ToLower.Contains("value".ToLower) - WITHOUT parentheses around ToLower/Contains
+                // Also handle @Property for reserved keywords like Type
                 result = Regex.Replace(result,
-                    $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\.Contains\((""([^""]*)""|'([^']*)')\.ToLower\)",
+                    $@"\((@?{prop})\s*==\s*null\s*\?\s*""""\s*:\s*(@?{prop})\)\.ToLower\.Contains\((""([^""]*)""|'([^']*)')\.ToLower\)",
                     match =>
                     {
-                        var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+                        var value = match.Groups[4].Success ? match.Groups[4].Value : match.Groups[5].Value;
                         value = value.Replace("'", "''");
-                        return $"contains({prop}, '{value}')";
+                        // Remove @ prefix if present (for reserved keywords like Type)
+                        var cleanProp = prop;
+                        return $"contains({cleanProp}, '{value}')";
+                    },
+                    RegexOptions.IgnoreCase);
+
+                // Pattern 4: (Property == null ? "" : Property).Contains("value") - WITHOUT ToLower
+                // Also handle @Property for reserved keywords like Type
+                result = Regex.Replace(result,
+                    $@"\((@?{prop})\s*==\s*null\s*\?\s*""""\s*:\s*(@?{prop})\)\.Contains\((""([^""]*)""|'([^']*)')\)",
+                    match =>
+                    {
+                        var value = match.Groups[4].Success ? match.Groups[4].Value : match.Groups[5].Value;
+                        value = value.Replace("'", "''");
+                        // Remove @ prefix if present (for reserved keywords like Type)
+                        var cleanProp = prop;
+                        // For nullable properties, OData contains() handles null correctly (returns false)
+                        // But we need to ensure the property is not null for contains to work
+                        return $"{cleanProp} ne null and contains({cleanProp}, '{value}')";
                     },
                     RegexOptions.IgnoreCase);
 
@@ -98,6 +125,16 @@ namespace SM_MentalHealthApp.Client.Helpers
                     },
                     RegexOptions.IgnoreCase);
 
+                // Pattern without ToLower: (Property == null ? "" : Property).StartsWith("value")
+                result = Regex.Replace(result,
+                    $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.StartsWith\((""([^""]*)""|'([^']*)')\)",
+                    match =>
+                    {
+                        var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+                        return $"startswith(tolower({prop}), '{value}')";
+                    },
+                    RegexOptions.IgnoreCase);
+
                 // endswith(...)
                 result = Regex.Replace(result,
                     $@"\(\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\(\)\)\.EndsWith\((""([^""]*)""|'([^']*)')\.ToLower\(\)\)",
@@ -120,6 +157,16 @@ namespace SM_MentalHealthApp.Client.Helpers
                 // Pattern without parentheses: (Property == null ? "" : Property).ToLower.EndsWith("value".ToLower)
                 result = Regex.Replace(result,
                     $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.ToLower\.EndsWith\((""([^""]*)""|'([^']*)')\.ToLower\)",
+                    match =>
+                    {
+                        var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+                        return $"endswith(tolower({prop}), '{value}')";
+                    },
+                    RegexOptions.IgnoreCase);
+
+                // Pattern without ToLower: (Property == null ? "" : Property).EndsWith("value")
+                result = Regex.Replace(result,
+                    $@"\({prop}\s*==\s*null\s*\?\s*""""\s*:\s*{prop}\)\.EndsWith\((""([^""]*)""|'([^']*)')\)",
                     match =>
                     {
                         var value = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;

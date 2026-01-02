@@ -14,6 +14,14 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<UserRequest> UserRequests { get; set; }
             public DbSet<ServiceRequest> ServiceRequests { get; set; }
             public DbSet<ServiceRequestAssignment> ServiceRequestAssignments { get; set; }
+            public DbSet<ServiceRequestCharge> ServiceRequestCharges { get; set; }
+            public DbSet<Company> Companies { get; set; }
+            public DbSet<Expertise> Expertises { get; set; }
+            public DbSet<SmeExpertise> SmeExpertises { get; set; }
+            public DbSet<ServiceRequestExpertise> ServiceRequestExpertises { get; set; }
+            public DbSet<ZipCodeLookup> ZipCodeLookups { get; set; }
+            public DbSet<SmeInvoice> SmeInvoices { get; set; }
+            public DbSet<SmeInvoiceLine> SmeInvoiceLines { get; set; }
             public DbSet<JournalEntry> JournalEntries { get; set; }
             public DbSet<ChatSession> ChatSessions { get; set; }
             public DbSet<ChatMessage> ChatMessages { get; set; }
@@ -128,12 +136,19 @@ namespace SM_MentalHealthApp.Server.Data
                         .HasForeignKey(e => e.RoleId)
                         .OnDelete(DeleteBehavior.Restrict);
 
+                        // Foreign key relationship to Company
+                        entity.HasOne(e => e.Company)
+                        .WithMany(c => c.Users)
+                        .HasForeignKey(e => e.CompanyId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
                         // Performance indexes for common queries
                         entity.HasIndex(e => e.RoleId); // Critical for filtering patients (RoleId = 1)
                         entity.HasIndex(e => e.IsActive); // Critical for filtering active users
                         entity.HasIndex(e => new { e.RoleId, e.IsActive }); // Composite index for common filter combination
                         entity.HasIndex(e => e.FirstName); // For name searches
                         entity.HasIndex(e => e.LastName); // For name searches
+                        entity.HasIndex(e => e.CompanyId); // For company-based queries
 
                         // Lead Intake fields
                         entity.Property(e => e.ResidenceStateCode).HasMaxLength(2);
@@ -945,6 +960,8 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.Type).HasMaxLength(100);
                         entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Active");
                         entity.Property(e => e.Description).HasMaxLength(1000);
+                        entity.Property(e => e.ServiceZipCode).HasMaxLength(10);
+                        entity.Property(e => e.MaxDistanceMiles).HasDefaultValue(50);
                         entity.Property(e => e.IsActive).HasDefaultValue(true);
                         entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
 
@@ -1063,6 +1080,71 @@ namespace SM_MentalHealthApp.Server.Data
                         .OnDelete(DeleteBehavior.SetNull);
 
                         entity.HasIndex(e => e.ServiceRequestId);
+                  });
+
+                  // Configure Expertise entity
+                  modelBuilder.Entity<Expertise>(entity =>
+                  {
+                        entity.ToTable("Expertise"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.Description).HasMaxLength(500);
+                        entity.HasIndex(e => e.Name);
+                        entity.HasIndex(e => e.IsActive);
+                  });
+
+                  // Configure SmeExpertise entity
+                  modelBuilder.Entity<SmeExpertise>(entity =>
+                  {
+                        entity.ToTable("SmeExpertise"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.HasIndex(e => e.SmeUserId);
+                        entity.HasIndex(e => e.ExpertiseId);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => new { e.SmeUserId, e.ExpertiseId }).IsUnique();
+
+                        entity.HasOne(e => e.SmeUser)
+                              .WithMany(u => u.SmeExpertises)
+                              .HasForeignKey(e => e.SmeUserId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.Expertise)
+                              .WithMany(ex => ex.SmeExpertises)
+                              .HasForeignKey(e => e.ExpertiseId)
+                              .OnDelete(DeleteBehavior.Cascade);
+                  });
+
+                  // Configure ServiceRequestExpertise entity
+                  modelBuilder.Entity<ServiceRequestExpertise>(entity =>
+                  {
+                        entity.ToTable("ServiceRequestExpertise"); // Explicit table name (singular, matches SQL script)
+                        entity.HasKey(e => e.Id);
+                        entity.HasIndex(e => e.ServiceRequestId);
+                        entity.HasIndex(e => e.ExpertiseId);
+                        entity.HasIndex(e => new { e.ServiceRequestId, e.ExpertiseId }).IsUnique();
+
+                        entity.HasOne(e => e.ServiceRequest)
+                              .WithMany(sr => sr.Expertises)
+                              .HasForeignKey(e => e.ServiceRequestId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.Expertise)
+                              .WithMany(ex => ex.ServiceRequestExpertises)
+                              .HasForeignKey(e => e.ExpertiseId)
+                              .OnDelete(DeleteBehavior.Cascade);
+                  });
+
+                  // Configure ZipCodeLookup entity
+                  modelBuilder.Entity<ZipCodeLookup>(entity =>
+                  {
+                        entity.ToTable("ZipCodeLookup"); // Explicit table name (matches SQL script)
+                        entity.HasKey(e => e.ZipCode);
+                        entity.Property(e => e.ZipCode).IsRequired().HasMaxLength(10);
+                        entity.Property(e => e.Latitude).IsRequired().HasColumnType("DECIMAL(10, 8)");
+                        entity.Property(e => e.Longitude).IsRequired().HasColumnType("DECIMAL(11, 8)");
+                        entity.Property(e => e.City).HasMaxLength(100);
+                        entity.Property(e => e.State).HasMaxLength(2);
+                        entity.HasIndex(e => e.State);
                   });
             }
       }

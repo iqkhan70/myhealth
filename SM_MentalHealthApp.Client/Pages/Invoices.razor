@@ -1,0 +1,358 @@
+@page "/invoices"
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
+@using Radzen
+@using Radzen.Blazor
+@inject IInvoicingService InvoicingService
+@inject IAuthService AuthService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject HttpClient Http
+
+<PageTitle>Invoices</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <SMPageHeader Title="SME Invoices" Icon="fas fa-file-invoice-dollar">
+                <ActionButton>
+                    <RadzenButton Icon="add" Text="Generate Invoice" ButtonStyle="ButtonStyle.Success"
+                        Click="@ShowGenerateInvoiceDialog" />
+                </ActionButton>
+            </SMPageHeader>
+
+            @if (AuthService.CurrentUser?.RoleId != 3)
+            {
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Access Denied:</strong> Only Administrators can manage invoices.
+                </div>
+            }
+            else
+            {
+                <!-- Filters -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5><i class="fas fa-filter"></i> Filters</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <RadzenFormField Text="SME">
+                                    <RadzenDropDown @bind-Value="@selectedSmeUserId" 
+                                                   Data="@smes" 
+                                                   ValueProperty="Id" 
+                                                   TextProperty="FullName"
+                                                   Placeholder="All SMEs"
+                                                   AllowClear="true"
+                                                   AllowFiltering="true"
+                                                   Style="width: 100%"
+                                                   TValue="int?" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-3">
+                                <RadzenFormField Text="Status">
+                                    <RadzenDropDown @bind-Value="@selectedStatus" 
+                                                   Data="@StatusOptions" 
+                                                   ValueProperty="Key" 
+                                                   TextProperty="Value"
+                                                   Placeholder="All Statuses"
+                                                   AllowClear="true"
+                                                   Style="width: 100%"
+                                                   TValue="InvoiceStatus?" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-3">
+                                <RadzenFormField Text="Start Date">
+                                    <RadzenDatePicker @bind-Value="@startDate" 
+                                                     DateFormat="MM/dd/yyyy"
+                                                     Style="width: 100%" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-3">
+                                <RadzenFormField Text="End Date">
+                                    <RadzenDatePicker @bind-Value="@endDate" 
+                                                     DateFormat="MM/dd/yyyy"
+                                                     Style="width: 100%" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end">
+                                <RadzenButton Text="Apply Filters" Icon="search" ButtonStyle="ButtonStyle.Primary"
+                                    Click="@LoadInvoices" Style="width: 100%;" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Invoices Grid -->
+                @if (invoices == null)
+                {
+                    <div class="text-center p-4">
+                        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+                        <p>Loading invoices...</p>
+                    </div>
+                }
+                else if (!invoices.Any())
+                {
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        No invoices found for the selected filters.
+                    </div>
+                }
+                else
+                {
+                    <div class="card">
+                        <div class="card-body">
+                            <RadzenDataGrid @ref="grid" Data="@invoices" TItem="SmeInvoiceDto" 
+                                AllowPaging="true" PageSize="20" AllowSorting="true" AllowFiltering="true"
+                                FilterMode="FilterMode.Advanced" ShowPagingSummary="true">
+                                <Columns>
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="InvoiceNumber" Title="Invoice #" Width="150px" />
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="SmeUserName" Title="SME / Company" Width="200px">
+                                        <Template Context="inv">
+                                            @if (inv.BillingAccountType == "Company" && !string.IsNullOrEmpty(inv.CompanyName))
+                                            {
+                                                <div>
+                                                    <strong>@inv.CompanyName</strong><br />
+                                                    <small class="text-muted">@string.Join(", ", inv.SmeNames)</small>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                @inv.SmeUserName
+                                            }
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="PeriodStart" Title="Period Start" Width="120px">
+                                        <Template Context="inv">
+                                            @inv.PeriodStart.ToString("MM/dd/yyyy")
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="PeriodEnd" Title="Period End" Width="120px">
+                                        <Template Context="inv">
+                                            @inv.PeriodEnd.ToString("MM/dd/yyyy")
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="Status" Title="Status" Width="120px">
+                                        <Template Context="inv">
+                                            <span class="badge @GetInvoiceStatusClass(inv.Status)">@inv.Status</span>
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="LineItemCount" Title="Items" Width="80px" />
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="TotalAmount" Title="Total" Width="120px">
+                                        <Template Context="inv">
+                                            @inv.TotalAmount.ToString("C")
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="CreatedAt" Title="Created" Width="120px">
+                                        <Template Context="inv">
+                                            @inv.CreatedAt.ToString("MM/dd/yyyy")
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Property="PaidAt" Title="Paid" Width="120px">
+                                        <Template Context="inv">
+                                            @(inv.PaidAt?.ToString("MM/dd/yyyy") ?? "-")
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="SmeInvoiceDto" Title="Actions" Width="200px" Sortable="false" Filterable="false">
+                                        <Template Context="inv">
+                                            <div style="display: flex; gap: 4px;">
+                                                <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.ExtraSmall"
+                                                    Click="@(() => ShowInvoiceDetails(inv))" Title="View Details" />
+                                                @if (inv.Status == "Draft" || inv.Status == "Sent")
+                                                {
+                                                    <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.ExtraSmall"
+                                                        Click="@(() => ShowMarkPaidDialog(inv))" Title="Mark Paid" />
+                                                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.ExtraSmall"
+                                                        Click="@(() => ShowVoidDialog(inv))" Title="Void" />
+                                                }
+                                            </div>
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                </Columns>
+                            </RadzenDataGrid>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private RadzenDataGrid<SmeInvoiceDto>? grid;
+    private List<SmeInvoiceDto>? invoices;
+    private List<User>? smes;
+    private int? selectedSmeUserId;
+    private InvoiceStatus? selectedStatus;
+    private DateTime? startDate;
+    private DateTime? endDate;
+
+    private Dictionary<InvoiceStatus, string> StatusOptions = new()
+    {
+        { InvoiceStatus.Draft, "Draft" },
+        { InvoiceStatus.Sent, "Sent" },
+        { InvoiceStatus.Paid, "Paid" },
+        { InvoiceStatus.Voided, "Voided" }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthService.InitializeAsync();
+        if (AuthService.CurrentUser?.RoleId == 3) // Admin only
+        {
+            await LoadSMEs();
+            await LoadInvoices();
+        }
+    }
+
+    private async Task LoadSMEs()
+    {
+        try
+        {
+            // Use the same HttpClient pattern as Billing page
+            AddAuthorizationHeader();
+            var doctors = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors") ?? new List<User>();
+            var attorneys = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys") ?? new List<User>();
+            smes = doctors.Concat(attorneys).ToList();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load SMEs: {ex.Message}");
+            Console.WriteLine($"Error loading SMEs: {ex}");
+        }
+    }
+
+    private async Task LoadInvoices()
+    {
+        try
+        {
+            invoices = await InvoicingService.GetInvoicesAsync(selectedSmeUserId, selectedStatus, startDate, endDate);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load invoices: {ex.Message}");
+        }
+    }
+
+    private async Task ShowGenerateInvoiceDialog()
+    {
+        try
+        {
+            var result = await DialogService.OpenAsync<GenerateInvoiceDialog>(
+                "Generate Invoice",
+                new Dictionary<string, object>
+                {
+                    { "SMEs", smes ?? new List<User>() }
+                },
+                new DialogOptions { Width = "700px", Height = "auto", Resizable = true, Draggable = true });
+
+            if (result == true)
+            {
+                await LoadInvoices();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to open generate invoice dialog: {ex.Message}");
+        }
+    }
+
+    private async Task ShowInvoiceDetails(SmeInvoiceDto invoice)
+    {
+        try
+        {
+            var fullInvoice = await InvoicingService.GetInvoiceByIdAsync(invoice.Id);
+            if (fullInvoice == null)
+            {
+                NotificationService.Notify(NotificationSeverity.Warning, "Warning", "Invoice not found");
+                return;
+            }
+
+            await DialogService.OpenAsync<InvoiceDetailsDialog>(
+                $"Invoice Details - {fullInvoice.InvoiceNumber}",
+                new Dictionary<string, object>
+                {
+                    { "Invoice", fullInvoice }
+                },
+                new DialogOptions { Width = "800px", Height = "auto", Resizable = true, Draggable = true });
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load invoice details: {ex.Message}");
+        }
+    }
+
+    private async Task ShowMarkPaidDialog(SmeInvoiceDto invoice)
+    {
+        try
+        {
+            var result = await DialogService.OpenAsync<MarkInvoicePaidDialog>(
+                "Mark Invoice as Paid",
+                new Dictionary<string, object>
+                {
+                    { "Invoice", invoice }
+                },
+                new DialogOptions { Width = "500px", Height = "auto", Resizable = true, Draggable = true });
+
+            if (result == true)
+            {
+                await LoadInvoices();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to mark invoice as paid: {ex.Message}");
+        }
+    }
+
+    private async Task ShowVoidDialog(SmeInvoiceDto invoice)
+    {
+        try
+        {
+            var result = await DialogService.OpenAsync<VoidInvoiceDialog>(
+                "Void Invoice",
+                new Dictionary<string, object>
+                {
+                    { "Invoice", invoice }
+                },
+                new DialogOptions { Width = "500px", Height = "auto", Resizable = true, Draggable = true });
+
+            if (result == true)
+            {
+                await LoadInvoices();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to void invoice: {ex.Message}");
+        }
+    }
+
+    private string GetInvoiceStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "draft" => "bg-secondary",
+            "sent" => "bg-info",
+            "paid" => "bg-success",
+            "voided" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private void AddAuthorizationHeader()
+    {
+        var token = AuthService.Token;
+        if (!string.IsNullOrEmpty(token))
+        {
+            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+    }
+}
+

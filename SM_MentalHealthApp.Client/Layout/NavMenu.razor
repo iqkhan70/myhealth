@@ -104,6 +104,14 @@
                 <i class="nav-icon">📋</i>
                 <span>Service Requests</span>
             </a>
+            <a href="/billing" class="nav-item @(GetActiveClass("/billing"))">
+                <i class="nav-icon">💰</i>
+                <span>SME Billing</span>
+            </a>
+            <a href="/invoices" class="nav-item @(GetActiveClass("/invoices"))">
+                <i class="nav-icon">📄</i>
+                <span>Invoices</span>
+            </a>
             <a href="/appointments" class="nav-item @(GetActiveClass("/appointments"))">
                 <i class="nav-icon">📅</i>
                 <span>Appointments</span>
@@ -123,6 +131,18 @@
             <a href="/attorneys" class="nav-item @(GetActiveClass("/attorneys"))">
                 <i class="nav-icon">⚖️</i>
                 <span>Attorneys</span>
+            </a>
+            <a href="/smes" class="nav-item @(GetActiveClass("/smes"))">
+                <i class="nav-icon">👨‍💼</i>
+                <span>SMEs</span>
+            </a>
+            <a href="/companies" class="nav-item @(GetActiveClass("/companies"))">
+                <i class="nav-icon">🏢</i>
+                <span>Companies</span>
+            </a>
+            <a href="/expertise" class="nav-item @(GetActiveClass("/expertise"))">
+                <i class="nav-icon">🏷️</i>
+                <span>Expertise</span>
             </a>
             <a href="/user-requests" class="nav-item @(GetActiveClass("/user-requests"))">
                 <i class="nav-icon">📋</i>
@@ -202,6 +222,36 @@
                 <span>Client Content</span>
             </a>
         }
+
+        @* SME-specific pages (same as Attorney, but can create content) *@
+        @if (AuthService.CurrentUser?.RoleId == 6) // SME
+        {
+            <a href="/users" class="nav-item @(GetActiveClass("/users"))">
+                <i class="nav-icon">👥</i>
+                <span>My Clients</span>
+            </a>
+            <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
+                <i class="nav-icon">💬</i>
+                <span>Client Chat</span>
+                <div class="nav-badge">Live</div>
+            </a>
+            <a href="/chat-history" class="nav-item @(GetActiveClass("/chat-history"))">
+                <i class="nav-icon">📜</i>
+                <span>AI Chat History</span>
+            </a>
+            <a href="/clinical-notes" class="nav-item @(GetActiveClass("/clinical-notes"))">
+                <i class="nav-icon">📋</i>
+                <span>Service Notes</span>
+            </a>
+            <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
+                <i class="nav-icon">📋</i>
+                <span>Service Requests</span>
+            </a>
+            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                <i class="nav-icon">📁</i>
+                <span>Client Content</span>
+            </a>
+        }
     </nav>
 
     <div class="nav-menu-footer">
@@ -229,7 +279,7 @@
     {
         DialogService.Open("About", ds =>
         @<div>
-            <h4>Customer Health App</h4>
+            <h4>Customer Support App</h4>
             <p>A compassionate AI-powered journaling app for health tracking and support.</p>
             <p>Built with Blazor WebAssembly and powered by Hugging Face AI models.</p>
         </div>,

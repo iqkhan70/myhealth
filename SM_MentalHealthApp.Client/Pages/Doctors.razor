@@ -2,9 +2,12 @@
 @inject HttpClient Http
 @inject NotificationService NotificationService
 @inject IAuthService AuthService
+@inject IExpertiseService ExpertiseService
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
 @using System.Net.Http
+@using Radzen.Blazor
 
 <div class="doctors-page">
     <div class="doctors-header">
@@ -38,15 +41,6 @@
                                    Style="width: 100%" />
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Filter by Specialization:</label>
-                    <RadzenDropDown Data="@specializationOptions"
-                                   ValueProperty="Value"
-                                   TextProperty="Text"
-                                   @bind-Value="selectedSpecializationFilter"
-                                   Placeholder="All Specializations"
-                                   Style="width: 100%" />
-                </div>
-                <div class="col-md-3">
                     <label class="form-label">&nbsp;</label>
                     <div>
                         <RadzenButton Text="Clear Filters" 
@@ -62,7 +56,7 @@
         <div class="grid-info">
             <small class="text-muted">
                 <i class="fas fa-info-circle"></i>
-                Use the filter row below each column header for basic filtering, or use the custom filters above for status and specialization.
+                Use the filter row below each column header for basic filtering, or use the custom filters above for status.
             </small>
         </div>
 
@@ -107,18 +101,6 @@
                             </Template>
                         </RadzenDataGridColumn>
 
-                        <RadzenDataGridColumn TItem="User" Property="Specialization" Title="Specialization" Width="150px" Filterable="true">
-                            <Template Context="doctor">
-                                @if (doctor != null && !string.IsNullOrEmpty(doctor.Specialization))
-                                {
-                                    <span class="badge badge-info">@doctor.Specialization</span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">Not specified</span>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
 
                         <RadzenDataGridColumn TItem="User" Property="LicenseNumber" Title="License Number" Width="150px" Filterable="true">
                             <Template Context="doctor">
@@ -132,7 +114,30 @@
                                 }
                             </Template>
                         </RadzenDataGridColumn>
-
+                        <RadzenDataGridColumn TItem="User" Property="ZipCode" Title="ZIP Code" Width="120px" Filterable="true">
+                            <Template Context="doctor">
+                                @if (doctor != null && !string.IsNullOrWhiteSpace(doctor.ZipCode))
+                                {
+                                    <span class="badge bg-info">@doctor.ZipCode</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="MaxTravelMiles" Title="Max Travel (mi)" Width="130px" Filterable="true">
+                            <Template Context="doctor">
+                                @if (doctor != null && doctor.MaxTravelMiles.HasValue)
+                                {
+                                    <span class="badge bg-secondary">@doctor.MaxTravelMiles mi</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="120px" Filterable="true">
                             <Template Context="doctor">
                                 @if (doctor != null)
@@ -307,20 +312,48 @@
                 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Specialization *</label>
-                        <input @bind="doctorForm.Specialization" class="form-input" placeholder="e.g., Psychiatry, Psychology" />
+                        <label>License Number *</label>
+                        <input @bind="doctorForm.LicenseNumber" class="form-input" placeholder="Enter license number" />
                     </div>
                     
                     <div class="form-group">
-                        <label>License Number *</label>
-                        <input @bind="doctorForm.LicenseNumber" class="form-input" placeholder="Enter license number" />
+                        <label>Mobile Phone</label>
+                        <input @bind="doctorForm.MobilePhone" type="tel" class="form-input" placeholder="+1 (555) 123-4567" />
                     </div>
                 </div>
                 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Mobile Phone</label>
-                        <input @bind="doctorForm.MobilePhone" type="tel" class="form-input" placeholder="+1 (555) 123-4567" />
+                        <label>ZIP Code</label>
+                        <input @bind="doctorForm.ZipCode" type="text" class="form-input" placeholder="e.g., 66221" maxlength="10" />
+                        <small class="text-muted">ZIP code for location-based matching</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Max Travel Distance (miles)</label>
+                        <input @bind="doctorForm.MaxTravelMiles" type="number" class="form-input" placeholder="50" min="0" />
+                        <small class="text-muted">Maximum distance this doctor is willing to travel (optional)</small>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group" style="width: 100%;">
+                        <ExpertiseMultiSelect Label="Expertise Categories"
+                                             Placeholder="Type to search and select expertise..."
+                                             HelpText="Select one or more expertise categories for this doctor"
+                                             @bind-SelectedExpertiseIds="selectedDoctorExpertiseIds" />
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Company (Optional)</label>
+                        <RadzenDropDown Data="@companies" TextProperty="Name" ValueProperty="Id"
+                            @bind-Value="doctorForm.CompanyId" AllowFiltering="true"
+                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
+                            Placeholder="Select a company or leave blank if independent..."
+                            Style="width: 100%;" />
+                        <small class="text-muted">If this doctor belongs to a company, select it from the list. Leave blank if independent.</small>
                     </div>
                     
                     <div class="form-group">
@@ -420,6 +453,7 @@
 
 @code {
     private List<User> doctors = new();
+    private List<Company> companies = new();
     private User? selectedDoctor;
     private bool isLoading = true;
     private bool showDoctorForm = false;
@@ -427,10 +461,10 @@
     private bool isSaving = false;
     private User? editingDoctor;
     private CreateDoctorRequest doctorForm = new();
+    private List<int> selectedDoctorExpertiseIds = new();
     
     // Custom filter variables
     private bool? selectedStatusFilter = null;
-    private string? selectedSpecializationFilter = null;
     
     private readonly List<object> statusOptions = new()
     {
@@ -438,20 +472,24 @@
         new { Value = (bool?)true, Text = "Active" },
         new { Value = (bool?)false, Text = "Inactive" }
     };
-    
-    private readonly List<object> specializationOptions = new()
-    {
-        new { Value = (string?)null, Text = "All Specializations" },
-        new { Value = "Psychiatry", Text = "Psychiatry" },
-        new { Value = "Psychology", Text = "Psychology" },
-        new { Value = "Counseling", Text = "Counseling" },
-        new { Value = "Therapy", Text = "Therapy" },
-        new { Value = "Other", Text = "Other" }
-    };
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadCompanies();
         await LoadDoctors();
+    }
+
+    private async Task LoadCompanies()
+    {
+        try
+        {
+            companies = await Http.GetFromJsonAsync<List<Company>>("api/company/active") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading companies: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Warning, "Warning", "Failed to load companies list.");
+        }
     }
 
     private async Task LoadDoctors()
@@ -497,11 +535,6 @@
             filtered = filtered.Where(d => d != null && d.IsActive == selectedStatusFilter.Value);
         }
 
-        // Apply specialization filter
-        if (!string.IsNullOrEmpty(selectedSpecializationFilter))
-        {
-            filtered = filtered.Where(d => d != null && d.Specialization == selectedSpecializationFilter);
-        }
 
         return filtered.ToList();
     }
@@ -509,18 +542,19 @@
     private void ClearFilters()
     {
         selectedStatusFilter = null;
-        selectedSpecializationFilter = null;
         StateHasChanged();
     }
 
-    private void ShowAddDoctorForm()
+    private async Task ShowAddDoctorForm()
     {
         editingDoctor = null;
         doctorForm = new CreateDoctorRequest { DateOfBirth = DateTime.Now.AddYears(-30) };
+        selectedDoctorExpertiseIds = new List<int>();
+        await LoadCompanies(); // Refresh companies list
         showDoctorForm = true;
     }
 
-    private void EditDoctor(User doctor)
+    private async Task EditDoctor(User doctor)
     {
         if (doctor == null) return;
         
@@ -535,8 +569,24 @@
             Gender = doctor.Gender ?? string.Empty,
             MobilePhone = doctor.MobilePhone ?? string.Empty,
             Specialization = doctor.Specialization ?? string.Empty,
-            LicenseNumber = doctor.LicenseNumber ?? string.Empty
+            LicenseNumber = doctor.LicenseNumber ?? string.Empty,
+            CompanyId = doctor.CompanyId,
+            ZipCode = doctor.ZipCode,
+            MaxTravelMiles = doctor.MaxTravelMiles
         };
+        
+        // Load current expertise IDs for this doctor
+        try
+        {
+            selectedDoctorExpertiseIds = await ExpertiseService.GetSmeExpertisesAsync(doctor.Id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading doctor expertises: {ex.Message}");
+            selectedDoctorExpertiseIds = new List<int>();
+        }
+        
+        await LoadCompanies(); // Refresh companies list
         showDoctorForm = true;
     }
 
@@ -545,6 +595,7 @@
         showDoctorForm = false;
         editingDoctor = null;
         doctorForm = new CreateDoctorRequest();
+        selectedDoctorExpertiseIds = new List<int>();
     }
 
     private async Task SaveDoctor()
@@ -552,7 +603,6 @@
         if (string.IsNullOrWhiteSpace(doctorForm.FirstName) || 
             string.IsNullOrWhiteSpace(doctorForm.LastName) || 
             string.IsNullOrWhiteSpace(doctorForm.Email) ||
-            string.IsNullOrWhiteSpace(doctorForm.Specialization) ||
             string.IsNullOrWhiteSpace(doctorForm.LicenseNumber))
         {
             NotificationService.Notify(NotificationSeverity.Warning, "Validation", "Please fill in all required fields.");
@@ -575,6 +625,15 @@
                 var result = await Http.PostAsJsonAsync("api/admin/create-doctor", doctorForm);
                 if (result.IsSuccessStatusCode)
                 {
+                    // Get the created doctor ID from response
+                    var response = await result.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+                    if (response != null && response.ContainsKey("doctorId") && selectedDoctorExpertiseIds.Any())
+                    {
+                        var doctorId = Convert.ToInt32(response["doctorId"]);
+                        // Update expertise
+                        await ExpertiseService.SetSmeExpertisesAsync(doctorId, selectedDoctorExpertiseIds);
+                    }
+                    
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Doctor added successfully!");
                     await LoadDoctors(); // Reload the list
                     CloseDoctorForm(); // Only close on success
@@ -619,6 +678,17 @@
                     if (!string.IsNullOrWhiteSpace(doctorForm.LicenseNumber) && doctorForm.LicenseNumber != (_originalDoctor.LicenseNumber ?? string.Empty))
                         updateRequest.LicenseNumber = doctorForm.LicenseNumber;
                     
+                    // CompanyId comparison (nullable int)
+                    if (doctorForm.CompanyId != _originalDoctor.CompanyId)
+                        updateRequest.CompanyId = doctorForm.CompanyId;
+                    
+                    // Location fields
+                    if (doctorForm.ZipCode != (_originalDoctor.ZipCode ?? string.Empty))
+                        updateRequest.ZipCode = doctorForm.ZipCode;
+                    
+                    if (doctorForm.MaxTravelMiles != _originalDoctor.MaxTravelMiles)
+                        updateRequest.MaxTravelMiles = doctorForm.MaxTravelMiles;
+                    
                     // Only include password if provided
                     if (!string.IsNullOrWhiteSpace(doctorForm.Password))
                         updateRequest.Password = doctorForm.Password;
@@ -627,6 +697,16 @@
                 var result = await Http.PutAsJsonAsync($"api/admin/doctors/{editingDoctor.Id}", updateRequest);
                 if (result.IsSuccessStatusCode)
                 {
+                    // Update expertise
+                    if (selectedDoctorExpertiseIds.Any() || editingDoctor != null)
+                    {
+                        var expertiseResult = await ExpertiseService.SetSmeExpertisesAsync(editingDoctor.Id, selectedDoctorExpertiseIds);
+                        if (!expertiseResult)
+                        {
+                            NotificationService.Notify(NotificationSeverity.Warning, "Warning", "Doctor updated but failed to update expertise. You can try again later.");
+                        }
+                    }
+                    
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Doctor updated successfully!");
                     await LoadDoctors(); // Reload the list
                     CloseDoctorForm(); // Only close on success
@@ -720,6 +800,9 @@
         public string? MobilePhone { get; set; }
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     // Track original values for dirty field detection
@@ -736,6 +819,9 @@
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
         public string? Password { get; set; }
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 }
 

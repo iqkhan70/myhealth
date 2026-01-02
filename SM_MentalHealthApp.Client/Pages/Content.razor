@@ -39,7 +39,7 @@
             <h2>Client Content</h2>
             <p>View client content and documents.</p>
         }
-        else if (AuthService.CurrentUser?.RoleId == 5) // Attorney
+        else if (AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) // Attorney or SME
         {
             <h2>Client Content</h2>
             <p>View client content and documents.</p>
@@ -52,10 +52,10 @@
     </div>
 
     @if (AuthService.CurrentUser?.RoleId == 1 || AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId
-        == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5)
+        == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6)
     {
         <!-- Service Request Selector (for SMEs) -->
-        @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 4)
+        @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 6)
         {
             <ServiceRequestSelector ClientId="@selectedPatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
         }
@@ -89,8 +89,9 @@
              Size="Medium">
     <Body>
         <form @onsubmit="@SaveContent" @onsubmit:preventDefault="true">
-            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3)
+            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 6)
             {
+                <!-- Doctor, Admin, or SME - show client dropdown and SR selector -->
                 <div class="form-group">
                     <label class="form-label @GetPatientLabelClass()">Select Client: <span class="required-asterisk">*</span></label>
                     <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
@@ -105,7 +106,14 @@
                 @if (contentForm.PatientId > 0)
                 {
                     <div class="form-group">
-                        <ServiceRequestSelector ClientId="@contentForm.PatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
+                        <label class="form-label @GetServiceRequestLabelClass()">
+                            Service Request: <span class="required-asterisk">*</span>
+                        </label>
+                        <ServiceRequestSelector ClientId="@contentForm.PatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" RequireSelection="true" />
+                        @if (showServiceRequestError)
+                        {
+                            <div class="validation-message">Please select a Service Request for this content.</div>
+                        }
                     </div>
                 }
             }
@@ -121,7 +129,42 @@
                 @if (contentForm.PatientId > 0)
                 {
                     <div class="form-group">
-                        <ServiceRequestSelector ClientId="@contentForm.PatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
+                        <label class="form-label @GetServiceRequestLabelClass()">
+                            Service Request: <span class="required-asterisk">*</span>
+                        </label>
+                        <ServiceRequestSelector ClientId="@contentForm.PatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" RequireSelection="true" />
+                        @if (showServiceRequestError)
+                        {
+                            <div class="validation-message">Please select a Service Request for this content.</div>
+                        }
+                    </div>
+                }
+            }
+            else if (AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5)
+            {
+                <!-- Coordinator or Attorney - show client dropdown and SR selector -->
+                <div class="form-group">
+                    <label class="form-label @GetPatientLabelClass()">Select Client: <span class="required-asterisk">*</span></label>
+                    <RadzenDropDown Data="@patients" TextProperty="FullName" ValueProperty="Id"
+                        @bind-Value="contentForm.PatientId" 
+                        @bind-Value:after="OnPatientSelectedInForm"
+                        AllowFiltering="true"
+                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose a client..."
+                        Style="width: 100%" 
+                        @onchange="@(() => { showPatientError = false; StateHasChanged(); })" />
+                </div>
+                
+                @if (contentForm.PatientId > 0)
+                {
+                    <div class="form-group">
+                        <label class="form-label @GetServiceRequestLabelClass()">
+                            Service Request: <span class="required-asterisk">*</span>
+                        </label>
+                        <ServiceRequestSelector ClientId="@contentForm.PatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" RequireSelection="true" />
+                        @if (showServiceRequestError)
+                        {
+                            <div class="validation-message">Please select a Service Request for this content.</div>
+                        }
                     </div>
                 }
             }
@@ -199,6 +242,7 @@
     private bool showPatientError = false;
     private bool showTitleError = false;
     private bool showFileError = false;
+    private bool showServiceRequestError = false;
 
     private List<SMDataGridColumn<ContentItemDto>> _columns = new();
     private readonly List<SMDataGridActionButton<ContentItemDto>> _actions = [];
@@ -216,6 +260,8 @@
     private async Task OnServiceRequestChanged(int? serviceRequestId)
     {
         selectedServiceRequestId = serviceRequestId;
+        showServiceRequestError = false; // Clear error when SR is selected
+        StateHasChanged();
         if (_grid != null)
         {
             await _grid.RefreshAsync();
@@ -239,7 +285,7 @@
                 Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients");
                 patients = patientsResponse ?? new();
             }
-            else if (AuthService.CurrentUser?.RoleId == 5) // Attorney - only assigned patients
+            else if (AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) // Attorney or SME - only assigned patients
             {
                 var patientsResponse = await
                 Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{AuthService.CurrentUser.Id}/patients");
@@ -934,6 +980,8 @@
     {
         editingContent = null;
         contentForm = new ContentForm();
+        selectedServiceRequestId = null; // Reset SR selection
+        showServiceRequestError = false;
         if (AuthService.CurrentUser?.RoleId == 1) // Patient
         {
             contentForm.PatientId = AuthService.CurrentUser.Id;
@@ -946,6 +994,7 @@
         
         // Clear validation errors (in same order as validation)
         showPatientError = false;
+        showServiceRequestError = false;
         showTitleError = false;
         showFileError = false;
         
@@ -959,6 +1008,7 @@
         selectedPatientId = contentForm.PatientId > 0 ? contentForm.PatientId : null;
         // Reset ServiceRequestId when patient changes
         selectedServiceRequestId = null;
+        showServiceRequestError = false;
     }
 
     private async Task EditContent(ContentItemDto content)
@@ -989,13 +1039,14 @@
             {
                 // Clear previous validation errors (in same order as validation)
                 showPatientError = false;
+                showServiceRequestError = false;
                 showTitleError = false;
                 showFileError = false;
                 StateHasChanged();
 
                 // Add new content - validate from top to bottom
-                // 1. Patient selection (for doctors and admins only)
-                if ((AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3) && contentForm.PatientId == 0)
+                // 1. Patient selection (for doctors, admins, coordinators, attorneys, and SMEs)
+                if ((AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) && contentForm.PatientId == 0)
                 {
                     showPatientError = true;
                     NotificationService.Notify(NotificationSeverity.Warning, "Patient Required", "Please select a patient for this content.");
@@ -1003,7 +1054,16 @@
                     return;
                 }
 
-                // 2. Title (required for all users)
+                // 2. Service Request selection (required for all users to prevent NULL SR)
+                if (!selectedServiceRequestId.HasValue)
+                {
+                    showServiceRequestError = true;
+                    NotificationService.Notify(NotificationSeverity.Warning, "Service Request Required", "Please select a Service Request for this content. Content must be tied to a Service Request.");
+                    StateHasChanged();
+                    return;
+                }
+
+                // 3. Title (required for all users)
                 if (string.IsNullOrWhiteSpace(contentForm.Title))
                 {
                     showTitleError = true;
@@ -1012,7 +1072,7 @@
                     return;
                 }
 
-                // 3. File selection (required for all users)
+                // 4. File selection (required for all users)
                 if (selectedFile == null)
                 {
                     showFileError = true;
@@ -1032,10 +1092,18 @@
                     formData.Add(new StringContent(AuthService.CurrentUser.Id.ToString()), "AddedByUserId");
                 }
                 
-                // Add ServiceRequestId if selected
+                // Add ServiceRequestId (required - validation ensures it has a value, but add safety check)
                 if (selectedServiceRequestId.HasValue)
                 {
                     formData.Add(new StringContent(selectedServiceRequestId.Value.ToString()), "ServiceRequestId");
+                }
+                else
+                {
+                    // This should never happen due to validation, but handle gracefully
+                    NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Service Request is required. Please select a Service Request and try again.");
+                    isSaving = false;
+                    StateHasChanged();
+                    return;
                 }
                 
                 formData.Add(new StringContent(contentForm.Title), "Title");
@@ -1052,8 +1120,10 @@
                 }
                 else
                 {
-                    var error = await response.Content.ReadAsStringAsync();
-                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to upload content: " + error);
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    var errorMessage = !string.IsNullOrEmpty(errorContent) ? errorContent : $"Server returned status: {response.StatusCode}";
+                    NotificationService.Notify(NotificationSeverity.Error, "Upload Failed", $"Failed to upload content: {errorMessage}");
+                    Console.WriteLine($"Upload error: Status={response.StatusCode}, Content={errorContent}");
                 }
             }
             else
@@ -1249,6 +1319,11 @@
         return showFileError ? "form-label validation-error" : "form-label";
     }
 
+    private string GetServiceRequestLabelClass()
+    {
+        return showServiceRequestError ? "form-label validation-error" : "form-label";
+    }
+
     private async Task CloseContentForm()
     {
         showContentForm = false;
@@ -1257,6 +1332,7 @@
         selectedFile = null;
         // Clear validation errors
         showPatientError = false;
+        showServiceRequestError = false;
         showTitleError = false;
         showFileError = false;
         await InvokeAsync(StateHasChanged);
@@ -1438,6 +1514,13 @@
         padding: 2px 6px;
         border-radius: 3px;
         border: 1px solid #f5c6cb;
+    }
+
+    .validation-message {
+        color: #dc3545;
+        font-size: 12px;
+        margin-top: 4px;
+        display: block;
         font-weight: 500;
     }
 

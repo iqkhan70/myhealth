@@ -38,6 +38,7 @@ try {
 
 import DocumentUpload from './src/components/DocumentUpload';
 import ServiceRequestList from './src/components/ServiceRequestList';
+import CreateServiceRequestForm from './src/components/CreateServiceRequestForm';
 import SmsComponent from './src/components/SmsComponent';
 import EmergencyComponent from './src/components/EmergencyComponent';
 import GuestRegistrationForm from './src/components/GuestRegistrationForm';
@@ -162,7 +163,7 @@ export default function App() {
   const incomingCallTimeoutRef = useRef(null);
 
   // 📄 Document upload state
-  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password', 'service-requests', 'service-request-detail'
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password', 'service-requests', 'service-request-detail', 'create-service-request'
   const [availablePatients, setAvailablePatients] = useState([]);
   const [selectedContactDetail, setSelectedContactDetail] = useState(null);
   const [selectedServiceRequest, setSelectedServiceRequest] = useState(null);
@@ -2158,7 +2159,42 @@ export default function App() {
             setCurrentView('service-request-detail');
             currentViewRef.current = 'service-request-detail';
           }}
+          onCreateRequest={() => {
+            setCurrentView('create-service-request');
+            currentViewRef.current = 'create-service-request';
+          }}
           user={user}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (currentView === 'create-service-request') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="auto" />
+        <View style={styles.chatHeader}>
+          <TouchableOpacity onPress={() => {
+            setCurrentView('service-requests');
+            currentViewRef.current = 'service-requests';
+          }} style={styles.backButton}>
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.chatTitle}>Create Service Request</Text>
+          <View style={styles.chatActions}>
+            {/* Empty actions to maintain layout */}
+          </View>
+        </View>
+        <CreateServiceRequestForm
+          user={user}
+          onSuccess={() => {
+            setCurrentView('service-requests');
+            currentViewRef.current = 'service-requests';
+          }}
+          onCancel={() => {
+            setCurrentView('service-requests');
+            currentViewRef.current = 'service-requests';
+          }}
         />
       </SafeAreaView>
     );

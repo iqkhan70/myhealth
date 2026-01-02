@@ -145,6 +145,11 @@ public static class DependencyInjection
         services.AddScoped<IContentAnalysisService, ContentAnalysisService>();
         services.AddScoped<IClinicalNotesService, ClinicalNotesService>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        services.AddScoped<IAssignmentLifecycleService, AssignmentLifecycleService>();
+        services.AddScoped<IExpertiseService, ExpertiseService>();
+        services.AddScoped<ILocationService, LocationService>();
+        services.AddScoped<IServiceRequestChargeService, ServiceRequestChargeService>();
+        services.AddScoped<IInvoicingService, InvoicingService>();
         services.AddScoped<IMultimediaAnalysisService, MultimediaAnalysisService>();
         services.AddScoped<IChatHistoryService, ChatHistoryService>();
         services.AddScoped<IIntelligentContextService, IntelligentContextService>();
@@ -403,14 +408,14 @@ public static class DependencyInjection
         userAssignmentSet.EntityType.HasKey(ua => new { ua.AssignerId, ua.AssigneeId });
         // Navigation properties are NOT ignored to allow expansion
 
-        // ServiceRequests - Register but don't expose as EntitySet (only used internally)
-        // This prevents OData from trying to discover it as an unknown type
-        var serviceRequestType = builder.EntityType<ServiceRequest>();
-        serviceRequestType.HasKey(sr => sr.Id);
-        serviceRequestType.Ignore(sr => sr.Client);
-        serviceRequestType.Ignore(sr => sr.CreatedByUser);
-        serviceRequestType.Ignore(sr => sr.Assignments);
-        // Don't create EntitySet - ServiceRequests are not exposed via OData
+        // ServiceRequests - Expose as EntitySet for server-side pagination
+        var serviceRequestSet = builder.EntitySet<ServiceRequest>("ServiceRequests");
+        serviceRequestSet.EntityType.HasKey(sr => sr.Id);
+        // Ignore navigation properties to avoid circular references (we'll load them via Include in controller)
+        serviceRequestSet.EntityType.Ignore(sr => sr.Client);
+        serviceRequestSet.EntityType.Ignore(sr => sr.CreatedByUser);
+        // Note: Assignments is NOT ignored so it can be expanded via $expand
+        // The controller uses Include() to load them, and OData will serialize them
 
         return builder.GetEdmModel();
     }

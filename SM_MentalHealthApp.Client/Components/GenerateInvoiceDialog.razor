@@ -1,0 +1,269 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IInvoicingService InvoicingService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<div class="p-3">
+    <RadzenFieldset Text="Generate Invoice">
+        <div class="mb-3">
+            <RadzenFormField Text="SME" class="w-100">
+                <RadzenDropDown @bind-Value="@selectedSmeUserId" 
+                               Data="@SMEs" 
+                               ValueProperty="Id" 
+                               TextProperty="FullName"
+                               Placeholder="Select an SME..."
+                               AllowFiltering="true"
+                               FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                               Style="width: 100%"
+                               TValue="int?"
+                               Change="@OnSmeSelected">
+                </RadzenDropDown>
+                <RadzenFormFieldValidator Component="selectedSmeUserId" Text="SME is required" />
+            </RadzenFormField>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <RadzenFormField Text="Period Start" class="w-100">
+                    <RadzenDatePicker @bind-Value="@periodStart" 
+                                     DateFormat="MM/dd/yyyy"
+                                     Style="width: 100%" />
+                    <RadzenFormFieldValidator Component="periodStart" Text="Period start is required" />
+                </RadzenFormField>
+            </div>
+            <div class="col-md-6">
+                <RadzenFormField Text="Period End" class="w-100">
+                    <RadzenDatePicker @bind-Value="@periodEnd" 
+                                     DateFormat="MM/dd/yyyy"
+                                     Style="width: 100%" />
+                    <RadzenFormFieldValidator Component="periodEnd" Text="Period end is required" />
+                </RadzenFormField>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <RadzenFormField Text="Tax Rate (Optional)" class="w-100">
+                <RadzenNumeric @bind-Value="@taxRate" 
+                              Format="P2" 
+                              Min="0" 
+                              Max="1" 
+                              Step="0.01"
+                              Style="width: 100%" />
+                <small class="text-muted">Enter as decimal (e.g., 0.08 for 8%)</small>
+            </RadzenFormField>
+        </div>
+
+        <div class="mb-3">
+            <RadzenFormField Text="Notes (Optional)" class="w-100">
+                <RadzenTextArea @bind-Value="@notes" 
+                               Placeholder="Add any notes for this invoice..."
+                               Rows="3"
+                               Style="width: 100%"
+                               MaxLength="1000" />
+            </RadzenFormField>
+        </div>
+
+        @if (selectedSmeUserId.HasValue && periodStart.HasValue && periodEnd.HasValue)
+        {
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i>
+                <strong>Ready to Bill Assignments:</strong>
+                @if (readyAssignments == null)
+                {
+                    <span>Loading...</span>
+                }
+                else if (!readyAssignments.Any())
+                {
+                    <span class="text-warning">No ready-to-bill assignments found for this SME in the selected period.</span>
+                }
+                else
+                {
+                    var assignmentsByGroup = readyAssignments
+                        .GroupBy(a => new
+                        {
+                            ServiceRequestId = a.ServiceRequestId,
+                            BillingKey = !string.IsNullOrWhiteSpace(a.SmeCompany) 
+                                ? a.SmeCompany.Trim().ToLowerInvariant()
+                                : $"Individual_{a.SmeUserId}"
+                        })
+                        .ToList();
+                    var invoiceCount = assignmentsByGroup.Count;
+                    <div class="mt-2">
+                        <strong>@readyAssignments.Count</strong> assignment(s) will generate <strong>@invoiceCount</strong> invoice(s)
+                        (one invoice per Service Request per Company)
+                        <button class="btn btn-sm btn-link" @onclick="ShowReadyAssignments">
+                            View Details
+                        </button>
+                    </div>
+                }
+            </div>
+        }
+    </RadzenFieldset>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="Generate Invoice" ButtonStyle="ButtonStyle.Success" IsBusy="@isSubmitting" 
+            Disabled="@(isSubmitting || !selectedSmeUserId.HasValue || !periodStart.HasValue || !periodEnd.HasValue || (readyAssignments != null && !readyAssignments.Any()))" 
+            Click="@HandleGenerateClick" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<User> SMEs { get; set; } = new();
+
+    private int? selectedSmeUserId;
+    private DateTime? periodStart;
+    private DateTime? periodEnd;
+    private decimal? taxRate;
+    private string? notes;
+    private bool isSubmitting = false;
+    private List<BillableAssignmentDto>? readyAssignments;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Default to current month
+        periodStart = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+        periodEnd = DateTime.Now.Date.AddDays(1).AddTicks(-1);
+    }
+
+    private async Task OnSmeSelected()
+    {
+        if (selectedSmeUserId.HasValue && periodStart.HasValue && periodEnd.HasValue)
+        {
+            await LoadReadyAssignments();
+        }
+    }
+
+    private async Task LoadReadyAssignments()
+    {
+        if (!selectedSmeUserId.HasValue || !periodStart.HasValue || !periodEnd.HasValue)
+            return;
+
+        try
+        {
+            readyAssignments = await InvoicingService.GetReadyToBillAssignmentsAsync(
+                selectedSmeUserId.Value, 
+                periodStart.Value, 
+                periodEnd.Value);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Warning", $"Could not load ready assignments: {ex.Message}");
+        }
+    }
+
+    private async Task ShowReadyAssignments()
+    {
+        if (readyAssignments == null || !readyAssignments.Any())
+            return;
+
+        await DialogService.OpenAsync<ReadyAssignmentsPreviewDialog>(
+            "Ready to Bill Assignments",
+            new Dictionary<string, object>
+            {
+                { "Assignments", readyAssignments }
+            },
+            new DialogOptions { Width = "800px", Height = "600px", Resizable = true, Draggable = true });
+    }
+
+    private async Task HandleGenerateClick()
+    {
+        if (!selectedSmeUserId.HasValue || !periodStart.HasValue || !periodEnd.HasValue)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please fill in all required fields");
+            return;
+        }
+
+        if (readyAssignments != null && !readyAssignments.Any())
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "Warning", "No ready-to-bill assignments found for this period");
+            return;
+        }
+
+        if (isSubmitting) return;
+
+        var assignmentCount = readyAssignments?.Count ?? 0;
+        var assignmentsByGroup = readyAssignments?
+            .GroupBy(a => new
+            {
+                ServiceRequestId = a.ServiceRequestId,
+                BillingKey = !string.IsNullOrWhiteSpace(a.SmeCompany) 
+                    ? a.SmeCompany.Trim().ToLowerInvariant()
+                    : $"Individual_{a.SmeUserId}"
+            })
+            .ToList();
+        var invoiceCount = assignmentsByGroup?.Count ?? 0;
+        
+        var confirmMessage = invoiceCount > 1
+            ? $"Generate {invoiceCount} invoice(s) for {SMEs.FirstOrDefault(s => s.Id == selectedSmeUserId.Value)?.FullName ?? "SME"} " +
+              $"for period {periodStart.Value:MM/dd/yyyy} to {periodEnd.Value:MM/dd/yyyy}? " +
+              $"This will include {assignmentCount} assignment(s) across {invoiceCount} Service Request(s) " +
+              $"(one invoice per Service Request)."
+            : $"Generate invoice for {SMEs.FirstOrDefault(s => s.Id == selectedSmeUserId.Value)?.FullName ?? "SME"} " +
+              $"for period {periodStart.Value:MM/dd/yyyy} to {periodEnd.Value:MM/dd/yyyy}? " +
+              $"This will include {assignmentCount} assignment(s).";
+        
+        var confirm = await DialogService.Confirm(
+            confirmMessage,
+            "Confirm Invoice Generation",
+            new ConfirmOptions { OkButtonText = "Yes, Generate", CancelButtonText = "Cancel" });
+
+        if (confirm != true) return;
+
+        isSubmitting = true;
+        StateHasChanged();
+        
+        try
+        {
+            var request = new GenerateInvoiceRequest
+            {
+                SmeUserId = selectedSmeUserId.Value,
+                PeriodStart = periodStart.Value,
+                PeriodEnd = periodEnd.Value,
+                TaxRate = taxRate,
+                Notes = notes
+            };
+
+            var invoice = await InvoicingService.GenerateInvoiceAsync(request);
+            
+            // Check if multiple invoices were generated
+            var successAssignmentsByGroup = readyAssignments?
+                .GroupBy(a => new
+                {
+                    ServiceRequestId = a.ServiceRequestId,
+                    BillingKey = !string.IsNullOrWhiteSpace(a.SmeCompany) 
+                        ? a.SmeCompany.Trim().ToLowerInvariant()
+                        : $"Individual_{a.SmeUserId}"
+                })
+                .ToList();
+            var successInvoiceCount = successAssignmentsByGroup?.Count ?? 0;
+            
+            if (successInvoiceCount > 1)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                    $"{successInvoiceCount} invoice(s) generated successfully. First invoice: {invoice.InvoiceNumber} with {invoice.LineItemCount} line item(s). Total: {invoice.TotalAmount:C}. " +
+                    $"Please check the Invoices page to see all generated invoices.");
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                    $"Invoice {invoice.InvoiceNumber} generated successfully with {invoice.LineItemCount} line item(s). Total: {invoice.TotalAmount:C}");
+            }
+            
+            await Task.Delay(100);
+            DialogService.Close(true);
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to generate invoice: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+}
+

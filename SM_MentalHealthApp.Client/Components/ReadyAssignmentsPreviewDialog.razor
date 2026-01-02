@@ -1,0 +1,127 @@
+@using SM_MentalHealthApp.Shared
+@using Radzen
+@using Radzen.Blazor
+
+<div class="p-3">
+    <RadzenFieldset Text="Ready to Bill Assignments">
+        @{
+            // Group by: Service Request → Company (or Individual SME if no company)
+            // If multiple SMEs from the same company work on the same SR → ONE invoice
+            // Use normalized company name (trim, case-insensitive) for grouping
+            var assignmentsByGroup = Assignments
+                .GroupBy(a => new
+                {
+                    ServiceRequestId = a.ServiceRequestId,
+                    BillingKey = !string.IsNullOrWhiteSpace(a.SmeCompany) 
+                        ? a.SmeCompany.Trim().ToLowerInvariant() // Normalize company name
+                        : $"Individual_{a.SmeUserId}" // Use individual SME ID if no company
+                })
+                .ToList();
+            var invoiceCount = assignmentsByGroup.Count;
+        }
+        <div class="alert alert-info mb-3">
+            <i class="fas fa-info-circle"></i>
+            <strong>@Assignments.Count</strong> assignment(s) will generate <strong>@invoiceCount</strong> invoice(s).
+            <br />
+            <small>
+                <strong>Billing Rules:</strong>
+                <ul class="mb-0 mt-1">
+                    <li>One invoice per Service Request per Company</li>
+                    <li>If multiple SMEs from the same company work on the same SR → ONE invoice (grouped by company)</li>
+                    <li>If individual SMEs (no company) work on the same SR → Separate invoices (one per SME)</li>
+                    <li>If the same company/SME works on different SRs → Separate invoices (one per SR)</li>
+                </ul>
+            </small>
+        </div>
+
+        @foreach (var group in assignmentsByGroup)
+        {
+            var firstAssignment = group.First();
+            
+            // Determine if this is a company group or individual
+            var isCompanyGroup = !string.IsNullOrWhiteSpace(firstAssignment.SmeCompany);
+            var companyLabel = isCompanyGroup 
+                ? $"Company: {firstAssignment.SmeCompany}" 
+                : $"Individual: {firstAssignment.SmeUserName}";
+            
+            // Get all SME names for this group
+            var smeNames = group.Select(a => a.SmeUserName).Distinct().ToList();
+            var smeNamesText = smeNames.Count > 1 
+                ? $"{smeNames.Count} SMEs: {string.Join(", ", smeNames)}"
+                : firstAssignment.SmeUserName;
+            
+            <div class="mb-4">
+                <h6 class="mb-2">
+                    <i class="fas fa-file-invoice"></i> Invoice for SR #@group.Key.ServiceRequestId: @firstAssignment.ServiceRequestTitle
+                    <span class="badge bg-primary ms-2">@group.Count() assignment(s)</span>
+                    <span class="badge bg-secondary ms-2">@companyLabel</span>
+                    @if (smeNames.Count > 1)
+                    {
+                        <span class="badge bg-info ms-2">@smeNamesText</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-info ms-2">SME: @smeNamesText</span>
+                    }
+                </h6>
+                <RadzenDataGrid Data="@group.ToList()" TItem="BillableAssignmentDto" 
+                    AllowPaging="false" AllowSorting="false" Style="margin-bottom: 20px;">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="ServiceRequestId" Title="SR ID" Width="80px" />
+                        <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="ServiceRequestTitle" Title="Service Request" Width="200px" />
+                        <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="SmeUserName" Title="SME" Width="150px" />
+                        <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="ClientName" Title="Client" Width="150px" />
+                        <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="Status" Title="Status" Width="100px">
+                            <Template Context="assignment">
+                                <span class="badge @GetStatusClass(assignment.Status)">@assignment.Status</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="StartedAt" Title="Started" Width="120px">
+                            <Template Context="assignment">
+                                @(assignment.StartedAt?.ToString("MM/dd/yyyy") ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="CompletedAt" Title="Completed" Width="120px">
+                            <Template Context="assignment">
+                                @(assignment.CompletedAt?.ToString("MM/dd/yyyy") ?? "-")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="BillableAssignmentDto" Property="DaysToComplete" Title="Days" Width="80px">
+                            <Template Context="assignment">
+                                @if (assignment.DaysToComplete.HasValue)
+                                {
+                                    <span>@assignment.DaysToComplete.Value</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            </div>
+        }
+    </RadzenFieldset>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close())" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<BillableAssignmentDto> Assignments { get; set; } = new();
+
+    [Inject] private DialogService DialogService { get; set; } = null!;
+
+    private string GetStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "inprogress" => "bg-warning",
+            "completed" => "bg-success",
+            _ => "bg-secondary"
+        };
+    }
+}
+

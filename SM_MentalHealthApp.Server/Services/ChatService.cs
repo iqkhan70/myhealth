@@ -46,7 +46,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 // Determine ServiceRequestId for patient mode chats
                 int? serviceRequestId = null;
-                if (!isGenericMode && patientId > 0 && (userRoleId == Shared.Constants.Roles.Doctor || userRoleId == Shared.Constants.Roles.Attorney))
+                if (!isGenericMode && patientId > 0 && (userRoleId == Shared.Constants.Roles.Doctor || userRoleId == Shared.Constants.Roles.Attorney || userRoleId == Shared.Constants.Roles.Sme))
                 {
                     // Get default ServiceRequest for this patient
                     var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(patientId);

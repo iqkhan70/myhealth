@@ -1,0 +1,110 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IInvoicingService InvoicingService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<div class="p-3">
+    <RadzenFieldset Text="Mark Invoice as Paid">
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Invoice:</strong> @Invoice.InvoiceNumber
+            </label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>SME:</strong> @Invoice.SmeUserName
+            </label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Total Amount:</strong> @Invoice.TotalAmount.ToString("C")
+            </label>
+        </div>
+
+        <div class="mb-3">
+            <RadzenFormField Text="Paid Date" class="w-100">
+                <RadzenDatePicker @bind-Value="@paidDate" 
+                                 DateFormat="MM/dd/yyyy"
+                                 Style="width: 100%" />
+            </RadzenFormField>
+        </div>
+
+        <div class="mb-3">
+            <RadzenFormField Text="Payment Notes (Optional)" class="w-100">
+                <RadzenTextArea @bind-Value="@paymentNotes" 
+                               Placeholder="Add payment details (check number, transaction ID, etc.)..."
+                               Rows="3"
+                               Style="width: 100%"
+                               MaxLength="500" />
+            </RadzenFormField>
+        </div>
+
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i>
+            This will mark the invoice as paid and update all @Invoice.LineItemCount assignment(s) to Paid status.
+            They will no longer appear in billing reports.
+        </div>
+    </RadzenFieldset>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="Mark as Paid" ButtonStyle="ButtonStyle.Success" IsBusy="@isSubmitting" 
+            Disabled="@isSubmitting" Click="@HandleMarkPaidClick" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public SmeInvoiceDto Invoice { get; set; } = null!;
+
+    private DateTime? paidDate;
+    private string? paymentNotes;
+    private bool isSubmitting = false;
+
+    protected override void OnInitialized()
+    {
+        paidDate = DateTime.Now; // Default to today
+    }
+
+    private async Task HandleMarkPaidClick()
+    {
+        if (isSubmitting) return;
+
+        var confirm = await DialogService.Confirm(
+            $"Mark invoice {Invoice.InvoiceNumber} (Total: {Invoice.TotalAmount:C}) as paid?",
+            "Confirm Payment",
+            new ConfirmOptions { OkButtonText = "Yes, Mark Paid", CancelButtonText = "Cancel" });
+
+        if (confirm != true) return;
+
+        isSubmitting = true;
+        StateHasChanged();
+        
+        try
+        {
+            var success = await InvoicingService.MarkInvoicePaidAsync(Invoice.Id, paidDate, paymentNotes);
+            
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                    $"Invoice {Invoice.InvoiceNumber} marked as paid. All assignments updated to Paid status.");
+                await Task.Delay(100);
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to mark invoice as paid");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to mark invoice as paid: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+}
+

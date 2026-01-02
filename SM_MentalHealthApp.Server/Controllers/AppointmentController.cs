@@ -74,7 +74,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // 1. Doctor can only create appointments for themselves
                 // 2. Patient must be assigned to them
                 int? serviceRequestId = null;
-                if (roleId == Roles.Doctor || roleId == Roles.Attorney)
+                if (roleId == Roles.Doctor || roleId == Roles.Attorney || roleId == Roles.Sme)
                 {
                     if (request.DoctorId != userId.Value)
                     {
@@ -243,7 +243,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return Unauthorized("Invalid role");
 
                 // For doctors and attorneys, filter by assigned ServiceRequests
-                if (roleId == Roles.Doctor || roleId == Roles.Attorney)
+                if (roleId == Roles.Doctor || roleId == Roles.Attorney || roleId == Roles.Sme)
                 {
                     doctorId = userId.Value; // Show only their appointments
                     

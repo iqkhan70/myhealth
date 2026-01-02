@@ -2,10 +2,12 @@
 @inject HttpClient Http
 @inject NotificationService NotificationService
 @inject IAuthService AuthService
+@inject IExpertiseService ExpertiseService
 @inject IJSRuntime JSRuntime
 @inject DialogService DialogService
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
 @using System.Net.Http
 @using Radzen
 @using Radzen.Blazor
@@ -69,6 +71,30 @@
                         <RadzenDataGridColumn TItem="User" Property="MobilePhone" Title="Phone" Width="150px" Filterable="true">
                             <Template Context="attorney">
                                 @(attorney?.MobilePhone ?? "N/A")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="ZipCode" Title="ZIP Code" Width="120px" Filterable="true">
+                            <Template Context="attorney">
+                                @if (attorney != null && !string.IsNullOrWhiteSpace(attorney.ZipCode))
+                                {
+                                    <span class="badge bg-info">@attorney.ZipCode</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="User" Property="MaxTravelMiles" Title="Max Travel (mi)" Width="130px" Filterable="true">
+                            <Template Context="attorney">
+                                @if (attorney != null && attorney.MaxTravelMiles.HasValue)
+                                {
+                                    <span class="badge bg-secondary">@attorney.MaxTravelMiles mi</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="User" Property="DateOfBirth" Title="Date of Birth" Width="150px" Filterable="true">
@@ -180,7 +206,36 @@
                             </div>
                             
                             <div class="form-group">
-                                <!-- Empty div for layout balance -->
+                                <label>ZIP Code</label>
+                                <input @bind="attorneyForm.ZipCode" type="text" class="form-input" placeholder="e.g., 66221" maxlength="10" />
+                                <small class="text-muted">ZIP code for location-based matching</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Max Travel Distance (miles)</label>
+                                <input @bind="attorneyForm.MaxTravelMiles" type="number" class="form-input" placeholder="50" min="0" />
+                                <small class="text-muted">Maximum distance this attorney is willing to travel (optional)</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Company (Optional)</label>
+                                <RadzenDropDown Data="@companies" TextProperty="Name" ValueProperty="Id"
+                                    @bind-Value="attorneyForm.CompanyId" AllowFiltering="true"
+                                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
+                                    Placeholder="Select a company or leave blank if independent..."
+                                    Style="width: 100%;" />
+                                <small class="text-muted">If this attorney belongs to a company, select it from the list. Leave blank if independent.</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group" style="width: 100%;">
+                                <ExpertiseMultiSelect Label="Expertise Categories"
+                                                     Placeholder="Type to search and select expertise..."
+                                                     HelpText="Select one or more expertise categories for this attorney"
+                                                     @bind-SelectedExpertiseIds="selectedAttorneyExpertiseIds" />
                             </div>
                         </div>
                     </div>
@@ -200,15 +255,31 @@
 @code {
     private RadzenDataGrid<User>? _grid;
     private List<User> attorneys = new();
+    private List<Company> companies = new();
     private bool isLoading = true;
     private bool showAttorneyForm = false;
     private bool isSaving = false;
     private User? editingAttorney;
     private CreateAttorneyRequest attorneyForm = new();
+    private List<int> selectedAttorneyExpertiseIds = new();
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadCompanies();
         await LoadAttorneys();
+    }
+
+    private async Task LoadCompanies()
+    {
+        try
+        {
+            companies = await Http.GetFromJsonAsync<List<Company>>("api/company/active") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading companies: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Warning, "Warning", "Failed to load companies list.");
+        }
     }
 
     private async Task LoadAttorneys()
@@ -252,14 +323,16 @@
         }
     }
 
-    private void ShowAddAttorneyForm()
+    private async Task ShowAddAttorneyForm()
     {
         editingAttorney = null;
         attorneyForm = new CreateAttorneyRequest { DateOfBirth = DateTime.Now.AddYears(-30) };
+        selectedAttorneyExpertiseIds = new List<int>();
+        await LoadCompanies(); // Refresh companies list
         showAttorneyForm = true;
     }
 
-    private void EditAttorney(User attorney)
+    private async Task EditAttorney(User attorney)
     {
         if (attorney == null) return;
         
@@ -272,8 +345,24 @@
             DateOfBirth = attorney.DateOfBirth,
             Gender = attorney.Gender ?? string.Empty,
             MobilePhone = attorney.MobilePhone ?? string.Empty,
+            CompanyId = attorney.CompanyId,
+            ZipCode = attorney.ZipCode,
+            MaxTravelMiles = attorney.MaxTravelMiles,
             Password = string.Empty // Don't populate password
         };
+        
+        // Load current expertise IDs for this attorney
+        try
+        {
+            selectedAttorneyExpertiseIds = await ExpertiseService.GetSmeExpertisesAsync(attorney.Id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading attorney expertises: {ex.Message}");
+            selectedAttorneyExpertiseIds = new List<int>();
+        }
+        
+        await LoadCompanies(); // Refresh companies list
         showAttorneyForm = true;
     }
 
@@ -282,6 +371,7 @@
         showAttorneyForm = false;
         editingAttorney = null;
         attorneyForm = new CreateAttorneyRequest();
+        selectedAttorneyExpertiseIds = new List<int>();
     }
 
     private async Task SaveAttorney()
@@ -310,6 +400,15 @@
                 var result = await Http.PostAsJsonAsync("api/admin/create-attorney", attorneyForm);
                 if (result.IsSuccessStatusCode)
                 {
+                    // Get the created attorney ID from response
+                    var response = await result.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+                    if (response != null && response.ContainsKey("attorneyId") && selectedAttorneyExpertiseIds.Any())
+                    {
+                        var attorneyId = Convert.ToInt32(response["attorneyId"]);
+                        // Update expertise
+                        await ExpertiseService.SetSmeExpertisesAsync(attorneyId, selectedAttorneyExpertiseIds);
+                    }
+                    
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Attorney added successfully!");
                     CloseAttorneyForm();
                     await LoadAttorneys(); // Reload the list after closing form
@@ -336,12 +435,22 @@
                     DateOfBirth = attorneyForm.DateOfBirth,
                     Gender = attorneyForm.Gender,
                     MobilePhone = attorneyForm.MobilePhone,
+                    CompanyId = attorneyForm.CompanyId,
+                    ZipCode = attorneyForm.ZipCode,
+                    MaxTravelMiles = attorneyForm.MaxTravelMiles,
                     Password = string.IsNullOrWhiteSpace(attorneyForm.Password) ? null : attorneyForm.Password
                 };
                 
                 var result = await Http.PutAsJsonAsync($"api/admin/update-attorney/{editingAttorney.Id}", updateRequest);
                 if (result.IsSuccessStatusCode)
                 {
+                    // Update expertise
+                    var expertiseResult = await ExpertiseService.SetSmeExpertisesAsync(editingAttorney.Id, selectedAttorneyExpertiseIds);
+                    if (!expertiseResult)
+                    {
+                        NotificationService.Notify(NotificationSeverity.Warning, "Warning", "Attorney updated but failed to update expertise. You can try again later.");
+                    }
+                    
                     NotificationService.Notify(NotificationSeverity.Success, "Success", "Attorney updated successfully!");
                     CloseAttorneyForm();
                     await LoadAttorneys();
@@ -437,6 +546,9 @@
         public DateTime DateOfBirth { get; set; }
         public string Gender { get; set; } = string.Empty;
         public string? MobilePhone { get; set; }
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     public class UpdateAttorneyRequest
@@ -448,6 +560,9 @@
         public string? Gender { get; set; }
         public string? MobilePhone { get; set; }
         public string? Password { get; set; }
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 }
 

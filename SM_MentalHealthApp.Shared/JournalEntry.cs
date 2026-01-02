@@ -75,6 +75,12 @@ namespace SM_MentalHealthApp.Shared
         // Doctor-specific fields (nullable for non-doctors)
         public string? Specialization { get; set; }
         public string? LicenseNumber { get; set; }
+
+        // SME scoring (for doctors and attorneys)
+        public int SmeScore { get; set; } = 100; // Behavior-based score (0-150), default 100
+        
+        // Company association for SMEs (if set, billing goes to company, else to individual SME)
+        public int? CompanyId { get; set; }
         
         // Accident-related fields (captured from user requests)
         public int? Age { get; set; }
@@ -109,6 +115,13 @@ namespace SM_MentalHealthApp.Shared
         
         [MaxLength(2000)]
         public string? AdditionalNotes { get; set; }
+        
+        // Location fields for location-based matching
+        [MaxLength(10)]
+        public string? ZipCode { get; set; }
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
+        public int? MaxTravelMiles { get; set; } // For SMEs: how far they're willing to travel
 
         // New Accident fields from Script121525.sql
         // 1) Detailed Injury Assessment
@@ -198,6 +211,9 @@ namespace SM_MentalHealthApp.Shared
         // Navigation properties
         [JsonIgnore]
         public Role Role { get; set; } = null!;
+        [JsonIgnore]
+        public Company? Company { get; set; }
+        public List<SmeExpertise> SmeExpertises { get; set; } = new();
         [JsonIgnore]
         public List<JournalEntry> JournalEntries { get; set; } = new();
         [JsonIgnore]

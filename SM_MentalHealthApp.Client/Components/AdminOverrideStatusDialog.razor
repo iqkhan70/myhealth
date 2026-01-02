@@ -1,0 +1,233 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@inject IServiceRequestService ServiceRequestService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<div class="p-3">
+    <RadzenFieldset Text="Admin Override Assignment Status">
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Admin Override:</strong> This action allows you to change the assignment status regardless of normal workflow rules.
+            Use this to correct mistakes (e.g., if an SME marked an assignment as complete but the client reports it's not done).
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Service Request:</strong> @ServiceRequest.Title
+            </label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>SME:</strong> @Assignment.SmeUserName
+            </label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Current Status:</strong> 
+                <span class="badge @GetStatusClass(Assignment.Status)">@Assignment.Status</span>
+            </label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">
+                <strong>Current Billable Status:</strong> 
+                @if (Assignment.IsBillable)
+                {
+                    <span class="badge bg-success">Billable</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary">Not Billable</span>
+                }
+            </label>
+        </div>
+        
+        <div class="mb-3">
+            <RadzenFormField Text="New Status" class="w-100">
+                <RadzenDropDown @bind-Value="@selectedStatus" 
+                               Data="@StatusOptions" 
+                               ValueProperty="Key" 
+                               TextProperty="Value"
+                               Placeholder="Select new status..."
+                               Style="width: 100%"
+                               TValue="AssignmentStatus?">
+                </RadzenDropDown>
+                <RadzenFormFieldValidator Component="selectedStatus" Text="Status is required" />
+            </RadzenFormField>
+        </div>
+
+        <div class="mb-3">
+            <RadzenFormField Text="Reason (Optional)" class="w-100">
+                <RadzenDropDown @bind-Value="@selectedOutcomeReason" 
+                               Data="@OutcomeReasonOptions" 
+                               ValueProperty="Key" 
+                               TextProperty="Value"
+                               Placeholder="Select reason (optional)..."
+                               AllowClear="true"
+                               Style="width: 100%"
+                               TValue="OutcomeReason?">
+                </RadzenDropDown>
+            </RadzenFormField>
+        </div>
+
+        <div class="mb-3">
+            <RadzenFormField Text="Responsibility Party (Optional)" class="w-100">
+                <RadzenDropDown @bind-Value="@selectedResponsibilityParty" 
+                               Data="@ResponsibilityPartyOptions" 
+                               ValueProperty="Key" 
+                               TextProperty="Value"
+                               Placeholder="Select responsibility party (optional)..."
+                               AllowClear="true"
+                               Style="width: 100%"
+                               TValue="ResponsibilityParty?">
+                </RadzenDropDown>
+            </RadzenFormField>
+        </div>
+
+        <div class="mb-3">
+            <RadzenFormField Text="Notes (Required)" class="w-100">
+                <RadzenTextArea @bind-Value="@notes" 
+                               Placeholder="Explain why you are overriding the status (required)..."
+                               Rows="4"
+                               Style="width: 100%"
+                               MaxLength="1000" />
+                <RadzenFormFieldValidator Component="notes" Text="Notes are required for admin overrides" />
+            </RadzenFormField>
+        </div>
+
+        @if (selectedStatus.HasValue)
+        {
+            <div class="alert alert-info">
+                <strong>New Billable Status:</strong> 
+                @if (selectedStatus.Value == AssignmentStatus.InProgress || selectedStatus.Value == AssignmentStatus.Completed)
+                {
+                    <span class="badge bg-success">Will be Billable</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary">Will NOT be Billable</span>
+                }
+            </div>
+        }
+    </RadzenFieldset>
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="Override Status" ButtonStyle="ButtonStyle.Warning" IsBusy="@isSubmitting" 
+            Disabled="@(isSubmitting || !selectedStatus.HasValue || string.IsNullOrWhiteSpace(notes))" 
+            Click="@HandleOverrideClick" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public ServiceRequestAssignmentDto Assignment { get; set; } = null!;
+    [Parameter] public ServiceRequestDto ServiceRequest { get; set; } = null!;
+
+    private AssignmentStatus? selectedStatus;
+    private OutcomeReason? selectedOutcomeReason;
+    private ResponsibilityParty? selectedResponsibilityParty;
+    private string? notes;
+    private bool isSubmitting = false;
+
+    private Dictionary<AssignmentStatus, string> StatusOptions = new()
+    {
+        { AssignmentStatus.Assigned, "Assigned" },
+        { AssignmentStatus.Accepted, "Accepted" },
+        { AssignmentStatus.Rejected, "Rejected" },
+        { AssignmentStatus.InProgress, "In Progress" },
+        { AssignmentStatus.Completed, "Completed" },
+        { AssignmentStatus.Abandoned, "Abandoned" }
+    };
+
+    private Dictionary<OutcomeReason, string> OutcomeReasonOptions = new()
+    {
+        { OutcomeReason.SME_NoResponse, "SME No Response" },
+        { OutcomeReason.SME_Rejected, "SME Rejected" },
+        { OutcomeReason.SME_Overloaded, "SME Overloaded" },
+        { OutcomeReason.SME_Conflict, "SME Conflict" },
+        { OutcomeReason.SME_OutOfScope, "SME Out of Scope" },
+        { OutcomeReason.Client_NoResponse, "Client No Response" },
+        { OutcomeReason.Client_Cancelled, "Client Cancelled" },
+        { OutcomeReason.Client_Unavailable, "Client Unavailable" },
+        { OutcomeReason.Coordinator_Cancelled, "Coordinator Cancelled" },
+        { OutcomeReason.System_Error, "System Error" },
+        { OutcomeReason.Other, "Other" }
+    };
+
+    private Dictionary<ResponsibilityParty, string> ResponsibilityPartyOptions = new()
+    {
+        { ResponsibilityParty.SME, "SME" },
+        { ResponsibilityParty.Client, "Client" },
+        { ResponsibilityParty.System, "System" },
+        { ResponsibilityParty.Coordinator, "Coordinator" },
+        { ResponsibilityParty.Unknown, "Unknown" }
+    };
+
+    private string GetStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "assigned" => "bg-info",
+            "accepted" => "bg-primary",
+            "inprogress" => "bg-warning",
+            "completed" => "bg-success",
+            "rejected" => "bg-danger",
+            "abandoned" => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+
+    private async Task HandleOverrideClick()
+    {
+        if (!selectedStatus.HasValue || string.IsNullOrWhiteSpace(notes))
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Status and notes are required");
+            return;
+        }
+
+        if (isSubmitting) return;
+
+        var newStatusName = StatusOptions[selectedStatus.Value];
+        var confirm = await DialogService.Confirm(
+            $"Are you sure you want to override the assignment status from '{Assignment.Status}' to '{newStatusName}'? " +
+            "This action will be logged and may affect billing.",
+            "Confirm Admin Override",
+            new ConfirmOptions { OkButtonText = "Yes, Override", CancelButtonText = "Cancel" });
+
+        if (confirm != true) return;
+
+        isSubmitting = true;
+        StateHasChanged();
+        
+        try
+        {
+            var success = await ServiceRequestService.AdminOverrideAssignmentStatusAsync(
+                Assignment.Id, 
+                selectedStatus.Value, 
+                selectedOutcomeReason, 
+                selectedResponsibilityParty, 
+                notes);
+            
+            if (success)
+            {
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Assignment status overridden successfully");
+                await Task.Delay(100);
+                DialogService.Close(true);
+            }
+            else
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to override assignment status");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to override assignment status: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+}
+

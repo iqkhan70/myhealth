@@ -23,14 +23,18 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly ILogger<AdminController> _logger;
         private readonly IPiiEncryptionService _encryptionService;
         private readonly IContentCleanupService _contentCleanupService;
+        private readonly IServiceRequestService _serviceRequestService;
+        private readonly ILocationService _locationService;
 
-        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger, IPiiEncryptionService encryptionService, IContentCleanupService contentCleanupService)
+        public AdminController(IAdminService adminService, JournalDbContext context, ILogger<AdminController> logger, IPiiEncryptionService encryptionService, IContentCleanupService contentCleanupService, IServiceRequestService serviceRequestService, ILocationService locationService)
         {
             _adminService = adminService;
             _context = context;
             _logger = logger;
             _encryptionService = encryptionService;
             _contentCleanupService = contentCleanupService;
+            _serviceRequestService = serviceRequestService;
+            _locationService = locationService;
         }
 
         [HttpGet("doctors")]
@@ -77,7 +81,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("attorneys")]
-        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney")] // Admin, Coordinator, Doctor, and Attorney can view attorneys list (for assignment purposes)
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney,SME")] // Admin, Coordinator, Doctor, Attorney, and SME can view attorneys list (for assignment purposes)
         public async Task<ActionResult<List<User>>> GetAttorneys()
         {
             try
@@ -88,6 +92,21 @@ namespace SM_MentalHealthApp.Server.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, $"Error retrieving attorneys: {ex.Message}");
+            }
+        }
+
+        [HttpGet("smes")]
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney,SME")] // Admin, Coordinator, Doctor, Attorney, and SME can view SMEs list (for assignment purposes)
+        public async Task<ActionResult<List<User>>> GetSmes()
+        {
+            try
+            {
+                var smes = await _adminService.GetAllSmesAsync();
+                return Ok(smes);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error retrieving SMEs: {ex.Message}");
             }
         }
 
@@ -763,7 +782,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPost("assign")]
-        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney")] // Admin, Coordinator, Doctor, and Attorney can create assignments
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney,SME")] // Admin, Coordinator, Doctor, Attorney, and SME can create assignments
         public async Task<ActionResult> AssignPatientToDoctor([FromBody] AssignPatientRequest request)
         {
             try
@@ -784,6 +803,18 @@ namespace SM_MentalHealthApp.Server.Controllers
                         return BadRequest("Attorneys can only assign patients to other attorneys.");
                     }
                 }
+                // For SMEs: validate they can only assign to other SMEs or attorneys (same as attorneys)
+                if (currentRoleId == Shared.Constants.Roles.Sme)
+                {
+                    // Verify target is an SME or attorney
+                    var targetUser = await _context.Users
+                        .FirstOrDefaultAsync(u => u.Id == request.DoctorId && u.IsActive);
+
+                    if (targetUser == null || (targetUser.RoleId != Shared.Constants.Roles.Sme && targetUser.RoleId != Shared.Constants.Roles.Attorney))
+                    {
+                        return BadRequest("SMEs can only assign patients to other SMEs or attorneys.");
+                    }
+                }
                 // For doctors: they can assign to doctors or attorneys (no restriction needed)
                 // For coordinators and admins: they can assign to anyone (no restriction needed)
 
@@ -801,7 +832,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpDelete("unassign")]
-        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney")] // Admin, Coordinator, Doctor, and Attorney can remove assignments
+        [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney,SME")] // Admin, Coordinator, Doctor, Attorney, and SME can remove assignments
         public async Task<ActionResult> UnassignPatientFromDoctor([FromBody] UnassignPatientRequest request)
         {
             try
@@ -834,7 +865,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("patient/{patientId}/doctors")]
-        [Authorize(Roles = "Admin,Doctor,Coordinator,Attorney")] // Admin, Doctor, Coordinator, and Attorney can view assigners for a patient
+        [Authorize(Roles = "Admin,Doctor,Coordinator,Attorney,SME")] // Admin, Doctor, Coordinator, Attorney, and SME can view assigners for a patient
         public async Task<ActionResult<List<User>>> GetDoctorsForPatient(int patientId)
         {
             try
@@ -875,6 +906,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                     RoleId = 2, // Doctor role
                     Specialization = request.Specialization,
                     LicenseNumber = request.LicenseNumber,
+                    ZipCode = request.ZipCode,
+                    MaxTravelMiles = request.MaxTravelMiles,
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true,
                     MustChangePassword = true // Force password change on first login
@@ -885,6 +918,12 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _context.Users.Add(doctor);
                 await _context.SaveChangesAsync();
+
+                // Update location after user is saved (so we have the ID)
+                if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                {
+                    await _locationService.UpdateUserLocationFromZipCodeAsync(doctor.Id, request.ZipCode);
+                }
 
                 return Ok(new { message = "Doctor created successfully", doctorId = doctor.Id });
             }
@@ -938,6 +977,60 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        [HttpPost("create-sme")]
+        [Authorize(Roles = "Admin")] // Only Admin can create SMEs
+        public async Task<ActionResult> CreateSme([FromBody] CreateSmeRequest request)
+        {
+            try
+            {
+                // Check if email already exists
+                var existingUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+                if (existingUser != null)
+                {
+                    return BadRequest("An SME with this email already exists.");
+                }
+
+                // Create new SME user
+                var sme = new User
+                {
+                    FirstName = request.FirstName,
+                    LastName = request.LastName,
+                    Email = request.Email,
+                    PasswordHash = HashPassword(request.Password),
+                    DateOfBirth = request.DateOfBirth,
+                    Gender = request.Gender,
+                    MobilePhone = request.MobilePhone,
+                    RoleId = 6, // SME role
+                    CompanyId = request.CompanyId,
+                    ZipCode = request.ZipCode,
+                    MaxTravelMiles = request.MaxTravelMiles,
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true,
+                    MustChangePassword = true // Force password change on first login
+                };
+
+                // Encrypt DateOfBirth before saving
+                UserEncryptionHelper.EncryptUserData(sme, _encryptionService);
+
+                _context.Users.Add(sme);
+                await _context.SaveChangesAsync();
+
+                // Update location after user is saved (so we have the ID)
+                if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                {
+                    await _locationService.UpdateUserLocationFromZipCodeAsync(sme.Id, request.ZipCode);
+                }
+
+                return Ok(new { message = "SME created successfully", smeId = sme.Id });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error creating SME: {ex.Message}");
+            }
+        }
+
         [HttpPost("create-attorney")]
         [Authorize(Roles = "Admin")] // Only Admin can create attorneys
         public async Task<ActionResult> CreateAttorney([FromBody] CreateAttorneyRequest request)
@@ -964,6 +1057,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                     Gender = request.Gender,
                     MobilePhone = request.MobilePhone,
                     RoleId = 5, // Attorney role
+                    CompanyId = request.CompanyId,
+                    ZipCode = request.ZipCode,
+                    MaxTravelMiles = request.MaxTravelMiles,
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true,
                     MustChangePassword = true // Force password change on first login
@@ -974,6 +1070,12 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _context.Users.Add(attorney);
                 await _context.SaveChangesAsync();
+
+                // Update location after user is saved (so we have the ID)
+                if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                {
+                    await _locationService.UpdateUserLocationFromZipCodeAsync(attorney.Id, request.ZipCode);
+                }
 
                 return Ok(new { message = "Attorney created successfully", attorneyId = attorney.Id });
             }
@@ -1372,6 +1474,45 @@ namespace SM_MentalHealthApp.Server.Controllers
                     doctor.LicenseNumber = request.LicenseNumber;
                 }
 
+                // Update CompanyId if provided
+                if (request.CompanyId.HasValue && doctor.CompanyId != request.CompanyId.Value)
+                {
+                    doctor.CompanyId = request.CompanyId.Value;
+                }
+                else if (!request.CompanyId.HasValue && doctor.CompanyId.HasValue)
+                {
+                    // Allow clearing CompanyId by sending null
+                    doctor.CompanyId = null;
+                }
+
+                // Update location fields if provided
+                if (request.ZipCode != null)
+                {
+                    // Lookup lat/lon from ZIP code and update
+                    if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                    {
+                        var locationUpdated = await _locationService.UpdateUserLocationFromZipCodeAsync(doctor.Id, request.ZipCode);
+                        if (!locationUpdated)
+                        {
+                            _logger.LogWarning("Failed to update location for Doctor {Id} with ZIP {ZipCode}", doctor.Id, request.ZipCode);
+                        }
+                        // Reload the entity to get the updated coordinates
+                        await _context.Entry(doctor).ReloadAsync();
+                    }
+                    else
+                    {
+                        // Clear location if ZIP is cleared
+                        doctor.ZipCode = null;
+                        doctor.Latitude = null;
+                        doctor.Longitude = null;
+                    }
+                }
+
+                if (request.MaxTravelMiles.HasValue)
+                {
+                    doctor.MaxTravelMiles = request.MaxTravelMiles.Value;
+                }
+
                 // Update password only if provided and not empty
                 // Don't change MustChangePassword for existing users - preserve existing value
                 if (!string.IsNullOrWhiteSpace(request.Password))
@@ -1611,6 +1752,129 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        [HttpPut("update-sme/{id}")]
+        [Authorize(Roles = "Admin")] // Only Admin can update SMEs
+        public async Task<ActionResult> UpdateSme(int id, [FromBody] UpdateSmeRequest request)
+        {
+            try
+            {
+                var sme = await _context.Users.FindAsync(id);
+                if (sme == null)
+                {
+                    return NotFound("SME not found.");
+                }
+
+                // Verify this is an SME (RoleId 6) or Doctor (2) or Attorney (5)
+                if (sme.RoleId != 6 && sme.RoleId != 2 && sme.RoleId != 5)
+                {
+                    return BadRequest("User is not an SME, Doctor, or Attorney.");
+                }
+
+                // Check if email already exists (excluding current SME)
+                if (!string.IsNullOrWhiteSpace(request.Email))
+                {
+                    var existingUser = await _context.Users
+                        .FirstOrDefaultAsync(u => u.Email == request.Email && u.Id != id);
+
+                    if (existingUser != null)
+                    {
+                        return BadRequest("A user with this email already exists.");
+                    }
+                }
+
+                // Update fields only if provided
+                if (!string.IsNullOrWhiteSpace(request.FirstName))
+                {
+                    sme.FirstName = request.FirstName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.LastName))
+                {
+                    sme.LastName = request.LastName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Email))
+                {
+                    sme.Email = request.Email;
+                }
+
+                if (request.DateOfBirth.HasValue)
+                {
+                    sme.DateOfBirth = request.DateOfBirth.Value;
+                    UserEncryptionHelper.EncryptUserData(sme, _encryptionService);
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Gender))
+                {
+                    sme.Gender = request.Gender;
+                }
+
+                // MobilePhone can be null, so check if it's provided
+                if (request.MobilePhone != null)
+                {
+                    UserEncryptionHelper.DecryptUserData(sme, _encryptionService);
+                    sme.MobilePhone = request.MobilePhone;
+                    UserEncryptionHelper.EncryptUserData(sme, _encryptionService);
+                }
+                else if (!request.DateOfBirth.HasValue)
+                {
+                    // Ensure encryption is still applied if nothing was updated
+                    UserEncryptionHelper.EncryptUserData(sme, _encryptionService);
+                }
+
+                if (request.CompanyId.HasValue)
+                {
+                    sme.CompanyId = request.CompanyId.Value;
+                }
+
+                // Update location fields if provided
+                if (request.ZipCode != null)
+                {
+                    // Lookup lat/lon from ZIP code and update
+                    if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                    {
+                        var locationUpdated = await _locationService.UpdateUserLocationFromZipCodeAsync(sme.Id, request.ZipCode);
+                        if (!locationUpdated)
+                        {
+                            _logger.LogWarning("Failed to update location for SME {Id} with ZIP {ZipCode}", sme.Id, request.ZipCode);
+                        }
+                        // Reload the entity to get the updated coordinates
+                        await _context.Entry(sme).ReloadAsync();
+                    }
+                    else
+                    {
+                        // Clear location if ZIP is cleared
+                        sme.ZipCode = null;
+                        sme.Latitude = null;
+                        sme.Longitude = null;
+                    }
+                }
+
+                if (request.MaxTravelMiles.HasValue)
+                {
+                    sme.MaxTravelMiles = request.MaxTravelMiles.Value;
+                }
+
+                // Update password only if provided
+                if (!string.IsNullOrWhiteSpace(request.Password))
+                {
+                    sme.PasswordHash = HashPassword(request.Password);
+                }
+
+                await _context.SaveChangesAsync();
+
+                // Decrypt for response
+                UserEncryptionHelper.DecryptUserData(sme, _encryptionService);
+
+                return Ok(sme);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating SME {Id}", id);
+                return StatusCode(500, $"Error updating SME: {ex.Message}");
+            }
+        }
+
         [HttpPut("update-attorney/{id}")]
         [Authorize(Roles = "Admin")] // Only Admin can update attorneys
         public async Task<ActionResult> UpdateAttorney(int id, [FromBody] UpdateAttorneyRequest request)
@@ -1684,6 +1948,44 @@ namespace SM_MentalHealthApp.Server.Controllers
                 {
                     // If MobilePhone wasn't updated but DateOfBirth wasn't either, ensure encryption is still applied
                     UserEncryptionHelper.EncryptUserData(attorney, _encryptionService);
+                }
+
+                // Update CompanyId if provided
+                if (request.CompanyId.HasValue && attorney.CompanyId != request.CompanyId.Value)
+                {
+                    attorney.CompanyId = request.CompanyId.Value;
+                }
+                else if (!request.CompanyId.HasValue && attorney.CompanyId.HasValue)
+                {
+                    attorney.CompanyId = null;
+                }
+
+                // Update location fields if provided
+                if (request.ZipCode != null)
+                {
+                    // Lookup lat/lon from ZIP code and update
+                    if (!string.IsNullOrWhiteSpace(request.ZipCode))
+                    {
+                        var locationUpdated = await _locationService.UpdateUserLocationFromZipCodeAsync(attorney.Id, request.ZipCode);
+                        if (!locationUpdated)
+                        {
+                            _logger.LogWarning("Failed to update location for Attorney {Id} with ZIP {ZipCode}", attorney.Id, request.ZipCode);
+                        }
+                        // Reload the entity to get the updated coordinates
+                        await _context.Entry(attorney).ReloadAsync();
+                    }
+                    else
+                    {
+                        // Clear location if ZIP is cleared
+                        attorney.ZipCode = null;
+                        attorney.Latitude = null;
+                        attorney.Longitude = null;
+                    }
+                }
+
+                if (request.MaxTravelMiles.HasValue)
+                {
+                    attorney.MaxTravelMiles = request.MaxTravelMiles.Value;
                 }
 
                 // Update password only if provided
@@ -1814,6 +2116,26 @@ namespace SM_MentalHealthApp.Server.Controllers
                 return StatusCode(500, new { message = "An error occurred while running the content cleanup job.", error = ex.Message });
             }
         }
+
+        /// <summary>
+        /// Auto-complete Service Requests where all assigned SMEs have completed their work
+        /// </summary>
+        [HttpPost("auto-complete-service-requests")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<Shared.AutoCompleteServiceRequestsResult>> AutoCompleteServiceRequests()
+        {
+            try
+            {
+                _logger.LogInformation("Admin user triggered auto-complete Service Requests job");
+                var result = await _serviceRequestService.AutoCompleteServiceRequestsAsync();
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error running auto-complete Service Requests job");
+                return StatusCode(500, new { message = "An error occurred while running the auto-complete Service Requests job.", error = ex.Message });
+            }
+        }
     }
 
     public class AssignPatientRequest
@@ -1839,6 +2161,9 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? MobilePhone { get; set; }
         public string Specialization { get; set; } = string.Empty;
         public string LicenseNumber { get; set; } = string.Empty;
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     public class UpdateDoctorRequest
@@ -1852,6 +2177,9 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? Specialization { get; set; }
         public string? LicenseNumber { get; set; }
         public string? Password { get; set; }
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     public class CreatePatientRequest
@@ -2008,6 +2336,9 @@ namespace SM_MentalHealthApp.Server.Controllers
         public DateTime DateOfBirth { get; set; }
         public string Gender { get; set; } = string.Empty;
         public string? MobilePhone { get; set; }
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 
     public class UpdateAttorneyRequest
@@ -2019,5 +2350,36 @@ namespace SM_MentalHealthApp.Server.Controllers
         public string? Gender { get; set; }
         public string? MobilePhone { get; set; }
         public string? Password { get; set; }
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
+    }
+
+    public class CreateSmeRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public DateTime DateOfBirth { get; set; }
+        public string Gender { get; set; } = string.Empty;
+        public string? MobilePhone { get; set; }
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
+    }
+
+    public class UpdateSmeRequest
+    {
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? Gender { get; set; }
+        public string? MobilePhone { get; set; }
+        public string? Password { get; set; }
+        public int? CompanyId { get; set; }
+        public string? ZipCode { get; set; }
+        public int? MaxTravelMiles { get; set; }
     }
 }

@@ -7,7 +7,8 @@ INSERT INTO Roles (Id, Name, Description, IsActive, CreatedAt) VALUES
 (2, 'Doctor', 'Medical professionals who provide care and consultations', 1, NOW()),
 (3, 'Admin', 'System administrators who manage users and system settings', 1, NOW()),
 (4, 'Coordinator', 'Coordinators who manage appointments and patient-doctor assignments', 1, NOW()),
-(5, 'Attorney', 'Attorneys who have read access to patient information and can communicate with patients', 1, NOW())
+(5, 'Attorney', 'Attorneys who have read access to patient information and can communicate with patients', 1, NOW()),
+(6, 'SME', 'Subject Matter Experts who can create content for Service Requests they are assigned to', 1, NOW())
 ON DUPLICATE KEY UPDATE 
     Description = VALUES(Description),
     IsActive = VALUES(IsActive);
