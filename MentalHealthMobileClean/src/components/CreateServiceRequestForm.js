@@ -15,6 +15,8 @@ const CreateServiceRequestForm = ({ user, onSuccess, onCancel }) => {
   const [title, setTitle] = useState('');
   const [type, setType] = useState('General');
   const [description, setDescription] = useState('');
+  const [serviceZipCode, setServiceZipCode] = useState('');
+  const [maxDistanceMiles, setMaxDistanceMiles] = useState(50);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const typeOptions = [
@@ -48,6 +50,8 @@ const CreateServiceRequestForm = ({ user, onSuccess, onCancel }) => {
         description: description.trim() || null,
         status: 'Active',
         smeUserId: null, // Patients cannot assign SMEs
+        serviceZipCode: serviceZipCode.trim() || null, // Service location ZIP code
+        maxDistanceMiles: maxDistanceMiles || 50, // Max distance for matching SMEs
       };
 
       await ServiceRequestService.createServiceRequest(serviceRequestData);
@@ -62,6 +66,8 @@ const CreateServiceRequestForm = ({ user, onSuccess, onCancel }) => {
               setTitle('');
               setType('General');
               setDescription('');
+              setServiceZipCode('');
+              setMaxDistanceMiles(50);
               if (onSuccess) {
                 onSuccess();
               }
@@ -81,7 +87,12 @@ const CreateServiceRequestForm = ({ user, onSuccess, onCancel }) => {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={styles.contentContainer}
+      keyboardShouldPersistTaps="handled"
+      nestedScrollEnabled={true}
+    >
       <View style={styles.form}>
         <Text style={styles.label}>Title <Text style={styles.required}>*</Text></Text>
         <TextInput
@@ -127,7 +138,51 @@ const CreateServiceRequestForm = ({ user, onSuccess, onCancel }) => {
           numberOfLines={4}
           maxLength={1000}
           editable={!isSubmitting}
+          blurOnSubmit={false}
+          textAlignVertical="top"
+          scrollEnabled={false}
         />
+
+        <Text style={styles.label}>Service Location ZIP Code (Optional)</Text>
+        <TextInput
+          style={styles.input}
+          value={serviceZipCode}
+          onChangeText={setServiceZipCode}
+          placeholder="e.g., 66221"
+          maxLength={10}
+          keyboardType="numeric"
+          editable={!isSubmitting}
+        />
+        <Text style={styles.helpText}>
+          Enter the ZIP code where the service is needed. If not provided, your ZIP code will be used.
+        </Text>
+
+        <Text style={styles.label}>Maximum Distance (miles)</Text>
+        <View style={styles.distanceContainer}>
+          {[25, 50, 100, 200].map((distance) => (
+            <TouchableOpacity
+              key={distance}
+              style={[
+                styles.distanceButton,
+                maxDistanceMiles === distance && styles.distanceButtonActive,
+              ]}
+              onPress={() => setMaxDistanceMiles(distance)}
+              disabled={isSubmitting}
+            >
+              <Text
+                style={[
+                  styles.distanceButtonText,
+                  maxDistanceMiles === distance && styles.distanceButtonTextActive,
+                ]}
+              >
+                {distance} mi
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={styles.helpText}>
+          Maximum distance to search for matching SMEs. Default is 50 miles.
+        </Text>
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity
@@ -269,6 +324,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#004085',
     lineHeight: 20,
+  },
+  helpText: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginTop: 4,
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
+  distanceContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  distanceButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#28a745',
+    backgroundColor: '#fff',
+  },
+  distanceButtonActive: {
+    backgroundColor: '#28a745',
+  },
+  distanceButtonText: {
+    color: '#28a745',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  distanceButtonTextActive: {
+    color: '#fff',
   },
 });
 
