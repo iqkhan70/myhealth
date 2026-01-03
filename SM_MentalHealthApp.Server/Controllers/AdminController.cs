@@ -906,6 +906,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     RoleId = 2, // Doctor role
                     Specialization = request.Specialization,
                     LicenseNumber = request.LicenseNumber,
+                    CompanyId = request.CompanyId,
                     ZipCode = request.ZipCode,
                     MaxTravelMiles = request.MaxTravelMiles,
                     CreatedAt = DateTime.UtcNow,
@@ -918,6 +919,9 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _context.Users.Add(doctor);
                 await _context.SaveChangesAsync();
+
+                // Ensure BillingAccountId is set (after user is saved so we have the ID)
+                await EnsureBillingAccountIdAsync(doctor);
 
                 // Update location after user is saved (so we have the ID)
                 if (!string.IsNullOrWhiteSpace(request.ZipCode))
@@ -977,6 +981,99 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
+        /// <summary>
+        /// Helper method to ensure BillingAccountId is set for an SME
+        /// </summary>
+        private async Task EnsureBillingAccountIdAsync(User sme)
+        {
+            try
+            {
+                // Reload the entity to get latest state
+                await _context.Entry(sme).ReloadAsync();
+
+                // Only process SMEs (RoleId 6), Doctors (2), or Attorneys (5)
+                if (sme.RoleId != 6 && sme.RoleId != 2 && sme.RoleId != 5)
+                {
+                    return;
+                }
+
+                long? billingAccountId = null;
+
+                if (sme.CompanyId.HasValue)
+                {
+                    // SME belongs to a company - use company's billing account
+                    var companyBillingAccount = await _context.BillingAccounts
+                        .FirstOrDefaultAsync(ba => ba.CompanyId == sme.CompanyId.Value && ba.Type == "Company");
+
+                    if (companyBillingAccount == null)
+                    {
+                        // Create billing account for company if it doesn't exist
+                        var company = await _context.Companies.FindAsync(sme.CompanyId.Value);
+                        if (company != null)
+                        {
+                            companyBillingAccount = new BillingAccount
+                            {
+                                Type = "Company",
+                                CompanyId = sme.CompanyId.Value,
+                                Name = company.Name,
+                                IsActive = true,
+                                CreatedAt = DateTime.UtcNow
+                            };
+                            _context.BillingAccounts.Add(companyBillingAccount);
+                            await _context.SaveChangesAsync();
+                            _logger.LogInformation("Created BillingAccount {BillingAccountId} for Company {CompanyId}", companyBillingAccount.Id, sme.CompanyId.Value);
+                        }
+                    }
+
+                    if (companyBillingAccount != null)
+                    {
+                        billingAccountId = companyBillingAccount.Id;
+                    }
+                }
+                else
+                {
+                    // Independent SME - use individual billing account
+                    var individualBillingAccount = await _context.BillingAccounts
+                        .FirstOrDefaultAsync(ba => ba.UserId == sme.Id && ba.Type == "Individual");
+
+                    if (individualBillingAccount == null)
+                    {
+                        // Create individual billing account if it doesn't exist
+                        individualBillingAccount = new BillingAccount
+                        {
+                            Type = "Individual",
+                            UserId = sme.Id,
+                            Name = $"{sme.FirstName} {sme.LastName}",
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _context.BillingAccounts.Add(individualBillingAccount);
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation("Created BillingAccount {BillingAccountId} for User {UserId}", individualBillingAccount.Id, sme.Id);
+                    }
+
+                    if (individualBillingAccount != null)
+                    {
+                        billingAccountId = individualBillingAccount.Id;
+                    }
+                }
+
+                // Update the SME's BillingAccountId if it changed
+                if (billingAccountId.HasValue && sme.BillingAccountId != billingAccountId.Value)
+                {
+                    sme.BillingAccountId = billingAccountId.Value;
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Set BillingAccountId {BillingAccountId} for User {UserId} (CompanyId: {CompanyId})", 
+                        billingAccountId.Value, sme.Id, sme.CompanyId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error ensuring BillingAccountId for User {UserId}", sme.Id);
+                // Don't throw - this is a helper that shouldn't break the main operation
+            }
+        }
+
         [HttpPost("create-sme")]
         [Authorize(Roles = "Admin")] // Only Admin can create SMEs
         public async Task<ActionResult> CreateSme([FromBody] CreateSmeRequest request)
@@ -1016,6 +1113,9 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 _context.Users.Add(sme);
                 await _context.SaveChangesAsync();
+
+                // Ensure BillingAccountId is set (after user is saved so we have the ID)
+                await EnsureBillingAccountIdAsync(sme);
 
                 // Update location after user is saved (so we have the ID)
                 if (!string.IsNullOrWhiteSpace(request.ZipCode))
@@ -1474,6 +1574,10 @@ namespace SM_MentalHealthApp.Server.Controllers
                     doctor.LicenseNumber = request.LicenseNumber;
                 }
 
+                // Track if CompanyId changed
+                var companyIdChanged = request.CompanyId.HasValue && doctor.CompanyId != request.CompanyId.Value;
+                var companyIdCleared = !request.CompanyId.HasValue && doctor.CompanyId.HasValue;
+
                 // Update CompanyId if provided
                 if (request.CompanyId.HasValue && doctor.CompanyId != request.CompanyId.Value)
                 {
@@ -1527,6 +1631,12 @@ namespace SM_MentalHealthApp.Server.Controllers
                     // Otherwise, keep the existing MustChangePassword value unchanged
                 }
 
+                await _context.SaveChangesAsync();
+
+                // Always ensure BillingAccountId is set/updated (especially if CompanyId changed or BillingAccountId is missing)
+                // Reload to get latest CompanyId state
+                await _context.Entry(doctor).ReloadAsync();
+                await EnsureBillingAccountIdAsync(doctor);
                 await _context.SaveChangesAsync();
 
                 return Ok(new { message = "Doctor updated successfully" });
@@ -1822,9 +1932,18 @@ namespace SM_MentalHealthApp.Server.Controllers
                     UserEncryptionHelper.EncryptUserData(sme, _encryptionService);
                 }
 
+                // Track if CompanyId changed
+                var companyIdChanged = request.CompanyId.HasValue && sme.CompanyId != request.CompanyId.Value;
+                var companyIdCleared = !request.CompanyId.HasValue && sme.CompanyId.HasValue;
+
                 if (request.CompanyId.HasValue)
                 {
                     sme.CompanyId = request.CompanyId.Value;
+                }
+                else if (request.CompanyId == null && companyIdCleared)
+                {
+                    // Explicitly clearing CompanyId
+                    sme.CompanyId = null;
                 }
 
                 // Update location fields if provided
@@ -1862,6 +1981,13 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 await _context.SaveChangesAsync();
+
+                // Ensure BillingAccountId is set/updated (especially if CompanyId changed)
+                if (companyIdChanged || companyIdCleared || !sme.BillingAccountId.HasValue)
+                {
+                    await EnsureBillingAccountIdAsync(sme);
+                    await _context.SaveChangesAsync();
+                }
 
                 // Decrypt for response
                 UserEncryptionHelper.DecryptUserData(sme, _encryptionService);
@@ -1950,29 +2076,34 @@ namespace SM_MentalHealthApp.Server.Controllers
                     UserEncryptionHelper.EncryptUserData(attorney, _encryptionService);
                 }
 
-                // Update CompanyId if provided
-                if (request.CompanyId.HasValue && attorney.CompanyId != request.CompanyId.Value)
+                // Update CompanyId if provided (match UpdateSme logic)
+                _logger.LogInformation("UpdateAttorney: Before update - request.CompanyId = {RequestCompanyId}, attorney.CompanyId = {AttorneyCompanyId}", 
+                    request.CompanyId, attorney.CompanyId);
+                
+                if (request.CompanyId.HasValue)
                 {
                     attorney.CompanyId = request.CompanyId.Value;
+                    _logger.LogInformation("UpdateAttorney: Set attorney.CompanyId = {CompanyId}", request.CompanyId.Value);
                 }
-                else if (!request.CompanyId.HasValue && attorney.CompanyId.HasValue)
+                else if (request.CompanyId == null && attorney.CompanyId.HasValue)
                 {
+                    // Explicitly clearing CompanyId
                     attorney.CompanyId = null;
+                    _logger.LogInformation("UpdateAttorney: Cleared attorney.CompanyId");
                 }
+                
+                _logger.LogInformation("UpdateAttorney: After CompanyId update - attorney.CompanyId = {CompanyId}", attorney.CompanyId);
 
                 // Update location fields if provided
+                // NOTE: We'll update location AFTER SaveChangesAsync to avoid reloading and overwriting CompanyId changes
+                string? zipCodeToUpdate = null;
                 if (request.ZipCode != null)
                 {
-                    // Lookup lat/lon from ZIP code and update
                     if (!string.IsNullOrWhiteSpace(request.ZipCode))
                     {
-                        var locationUpdated = await _locationService.UpdateUserLocationFromZipCodeAsync(attorney.Id, request.ZipCode);
-                        if (!locationUpdated)
-                        {
-                            _logger.LogWarning("Failed to update location for Attorney {Id} with ZIP {ZipCode}", attorney.Id, request.ZipCode);
-                        }
-                        // Reload the entity to get the updated coordinates
-                        await _context.Entry(attorney).ReloadAsync();
+                        zipCodeToUpdate = request.ZipCode;
+                        // Set ZipCode on the entity, but don't update lat/lon yet (will do after save)
+                        attorney.ZipCode = request.ZipCode;
                     }
                     else
                     {
@@ -2005,7 +2136,32 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Ensure DateOfBirth is encrypted before saving (in case it wasn't updated above)
                 UserEncryptionHelper.EncryptUserData(attorney, _encryptionService);
 
+                _logger.LogInformation("UpdateAttorney: Before SaveChangesAsync - attorney.CompanyId = {CompanyId}", attorney.CompanyId);
                 await _context.SaveChangesAsync();
+                _logger.LogInformation("UpdateAttorney: After SaveChangesAsync - attorney.CompanyId = {CompanyId}", attorney.CompanyId);
+
+                // Now update location (lat/lon) after CompanyId is saved
+                if (!string.IsNullOrWhiteSpace(zipCodeToUpdate))
+                {
+                    var locationUpdated = await _locationService.UpdateUserLocationFromZipCodeAsync(attorney.Id, zipCodeToUpdate);
+                    if (!locationUpdated)
+                    {
+                        _logger.LogWarning("Failed to update location for Attorney {Id} with ZIP {ZipCode}", attorney.Id, zipCodeToUpdate);
+                    }
+                    // Reload the entity to get the updated coordinates
+                    await _context.Entry(attorney).ReloadAsync();
+                    // Save the lat/lon update
+                    await _context.SaveChangesAsync();
+                }
+
+                // Always ensure BillingAccountId is set/updated (especially if CompanyId changed or BillingAccountId is missing)
+                // Note: EnsureBillingAccountIdAsync will reload the entity internally to get latest CompanyId state
+                await EnsureBillingAccountIdAsync(attorney);
+                _logger.LogInformation("UpdateAttorney: After EnsureBillingAccountIdAsync - attorney.CompanyId = {CompanyId}", attorney.CompanyId);
+                
+                // Save again if BillingAccountId was updated by EnsureBillingAccountIdAsync
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("UpdateAttorney: After final SaveChangesAsync - attorney.CompanyId = {CompanyId}", attorney.CompanyId);
 
                 // Decrypt after saving for response
                 UserEncryptionHelper.DecryptUserData(attorney, _encryptionService);

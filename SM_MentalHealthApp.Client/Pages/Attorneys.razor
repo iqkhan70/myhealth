@@ -222,7 +222,9 @@
                             <div class="form-group">
                                 <label>Company (Optional)</label>
                                 <RadzenDropDown Data="@companies" TextProperty="Name" ValueProperty="Id"
-                                    @bind-Value="attorneyForm.CompanyId" AllowFiltering="true"
+                                    @bind-Value="attorneyForm.CompanyId" 
+                                    AllowFiltering="true"
+                                    AllowClear="true"
                                     FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
                                     Placeholder="Select a company or leave blank if independent..."
                                     Style="width: 100%;" />
@@ -337,6 +339,10 @@
         if (attorney == null) return;
         
         editingAttorney = attorney;
+        // Ensure CompanyId is properly set (can be null)
+        var companyId = attorney.CompanyId;
+        Console.WriteLine($"EditAttorney: attorney.CompanyId = {companyId}");
+        
         attorneyForm = new CreateAttorneyRequest
         {
             FirstName = attorney.FirstName ?? string.Empty,
@@ -345,11 +351,13 @@
             DateOfBirth = attorney.DateOfBirth,
             Gender = attorney.Gender ?? string.Empty,
             MobilePhone = attorney.MobilePhone ?? string.Empty,
-            CompanyId = attorney.CompanyId,
+            CompanyId = companyId, // Explicitly set (can be null)
             ZipCode = attorney.ZipCode,
             MaxTravelMiles = attorney.MaxTravelMiles,
             Password = string.Empty // Don't populate password
         };
+        
+        Console.WriteLine($"EditAttorney: attorneyForm.CompanyId = {attorneyForm.CompanyId}");
         
         // Load current expertise IDs for this attorney
         try
@@ -364,6 +372,7 @@
         
         await LoadCompanies(); // Refresh companies list
         showAttorneyForm = true;
+        StateHasChanged(); // Force UI update to ensure dropdown reflects the value
     }
 
     private void CloseAttorneyForm()
@@ -427,6 +436,9 @@
             else
             {
                 // Update existing attorney
+                // Debug: Log the CompanyId value before sending
+                Console.WriteLine($"SaveAttorney: attorneyForm.CompanyId = {attorneyForm.CompanyId}, editingAttorney.CompanyId = {editingAttorney?.CompanyId}");
+                
                 var updateRequest = new UpdateAttorneyRequest
                 {
                     FirstName = attorneyForm.FirstName,
@@ -435,11 +447,14 @@
                     DateOfBirth = attorneyForm.DateOfBirth,
                     Gender = attorneyForm.Gender,
                     MobilePhone = attorneyForm.MobilePhone,
-                    CompanyId = attorneyForm.CompanyId,
+                    CompanyId = attorneyForm.CompanyId, // Explicitly include CompanyId (can be null to clear)
                     ZipCode = attorneyForm.ZipCode,
                     MaxTravelMiles = attorneyForm.MaxTravelMiles,
                     Password = string.IsNullOrWhiteSpace(attorneyForm.Password) ? null : attorneyForm.Password
                 };
+                
+                // Debug: Log the updateRequest CompanyId
+                Console.WriteLine($"SaveAttorney: updateRequest.CompanyId = {updateRequest.CompanyId}");
                 
                 var result = await Http.PutAsJsonAsync($"api/admin/update-attorney/{editingAttorney.Id}", updateRequest);
                 if (result.IsSuccessStatusCode)
