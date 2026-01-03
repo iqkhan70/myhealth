@@ -82,6 +82,11 @@ namespace SM_MentalHealthApp.Shared
         // Company association for SMEs (if set, billing goes to company, else to individual SME)
         public int? CompanyId { get; set; }
         
+        /// <summary>
+        /// Billing account for this user. If SME belongs to company, points to company billing account, else to individual billing account.
+        /// </summary>
+        public long? BillingAccountId { get; set; }
+        
         // Accident-related fields (captured from user requests)
         public int? Age { get; set; }
         

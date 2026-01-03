@@ -7,23 +7,29 @@ namespace SM_MentalHealthApp.Server.Services
     /// <summary>
     /// Service to manage ServiceRequestCharges
     /// 
-    /// CRITICAL SAFETY: This service ensures only ONE charge per SR per company/individual
+    /// CRITICAL SAFETY: This service ensures only ONE charge per SR per BillingAccount
     /// by using database unique constraint (ServiceRequestId, BillingAccountId)
+    /// 
+    /// Pricing Logic:
+    /// 1. Determine PrimaryExpertiseId from ServiceRequest
+    /// 2. Look up BillingRate for (BillingAccountId, PrimaryExpertiseId)
+    /// 3. If rate exists and IsActive → use it
+    /// 4. Else fallback to SystemDefaultAmount ($100)
     /// </summary>
     public interface IServiceRequestChargeService
     {
         /// <summary>
         /// Creates charges for a Service Request based on billable assignments
-        /// Groups by BillingAccount (CompanyId or SmeUserId) to prevent double billing
+        /// Groups by BillingAccountId to prevent double billing
+        /// Uses BillingRates to determine pricing per (BillingAccount, Expertise)
         /// </summary>
-        Task CreateChargesForServiceRequestAsync(int serviceRequestId, decimal? amountPerCharge = null);
+        Task CreateChargesForServiceRequestAsync(int serviceRequestId, decimal? systemDefaultAmount = null);
 
         /// <summary>
-        /// Gets all Ready charges for a billing account (company or individual)
+        /// Gets all Ready charges for a billing account
         /// </summary>
         Task<List<ServiceRequestCharge>> GetReadyChargesForBillingAccountAsync(
-            int billingAccountId, 
-            string billingAccountType,
+            long billingAccountId,
             DateTime? startDate = null, 
             DateTime? endDate = null);
     }
@@ -32,6 +38,7 @@ namespace SM_MentalHealthApp.Server.Services
     {
         private readonly JournalDbContext _context;
         private readonly ILogger<ServiceRequestChargeService> _logger;
+        private const decimal DEFAULT_SYSTEM_AMOUNT = 100.00m;
 
         public ServiceRequestChargeService(
             JournalDbContext context,
@@ -45,15 +52,62 @@ namespace SM_MentalHealthApp.Server.Services
         /// Creates charges for a Service Request based on billable assignments
         /// 
         /// Algorithm:
-        /// 1. Get all billable assignments for the SR
-        /// 2. Group by BillingAccountId (CompanyId if exists, else SmeUserId)
-        /// 3. Create ONE charge per BillingAccountId
-        /// 4. Database unique constraint prevents duplicates
+        /// 1. Get ServiceRequest with PrimaryExpertiseId
+        /// 2. Get all billable assignments for the SR
+        /// 3. Group by BillingAccountId (from User.BillingAccountId)
+        /// 4. For each BillingAccount:
+        ///    a. Determine PrimaryExpertiseId (from SR or auto-detect)
+        ///    b. Look up BillingRate for (BillingAccountId, PrimaryExpertiseId)
+        ///    c. Create charge with determined amount
+        /// 5. Database unique constraint prevents duplicates
         /// </summary>
-        public async Task CreateChargesForServiceRequestAsync(int serviceRequestId, decimal? amountPerCharge = null)
+        public async Task CreateChargesForServiceRequestAsync(int serviceRequestId, decimal? systemDefaultAmount = null)
         {
             try
             {
+                // Get ServiceRequest with expertise information
+                var serviceRequest = await _context.ServiceRequests
+                    .Include(sr => sr.Expertises)
+                        .ThenInclude(sre => sre.Expertise)
+                    .FirstOrDefaultAsync(sr => sr.Id == serviceRequestId);
+
+                if (serviceRequest == null)
+                {
+                    _logger.LogWarning("ServiceRequest {ServiceRequestId} not found", serviceRequestId);
+                    return;
+                }
+
+                // Determine PrimaryExpertiseId
+                int? primaryExpertiseId = serviceRequest.PrimaryExpertiseId;
+                
+                if (!primaryExpertiseId.HasValue)
+                {
+                    // Auto-detect: if SR has exactly 1 expertise, use it
+                    var expertiseCount = serviceRequest.Expertises?.Count ?? 0;
+                    if (expertiseCount == 1)
+                    {
+                        primaryExpertiseId = serviceRequest.Expertises!.First().ExpertiseId;
+                        _logger.LogInformation(
+                            "Auto-detected PrimaryExpertiseId {ExpertiseId} for ServiceRequest {ServiceRequestId} (single expertise)",
+                            primaryExpertiseId, serviceRequestId);
+                    }
+                    else if (expertiseCount > 1)
+                    {
+                        _logger.LogWarning(
+                            "ServiceRequest {ServiceRequestId} has {Count} expertise tags but no PrimaryExpertiseId. Coordinator must select primary expertise before billing.",
+                            serviceRequestId, expertiseCount);
+                        // Don't create charges if we can't determine pricing category
+                        return;
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "ServiceRequest {ServiceRequestId} has no expertise tags and no PrimaryExpertiseId. Cannot determine pricing.",
+                            serviceRequestId);
+                        return;
+                    }
+                }
+
                 // Get all billable assignments for this SR
                 var billableAssignments = await _context.ServiceRequestAssignments
                     .Include(a => a.SmeUser)
@@ -73,43 +127,78 @@ namespace SM_MentalHealthApp.Server.Services
                     return;
                 }
 
-                // Group by BillingAccountId (CompanyId if exists, else SmeUserId)
+                // Group by BillingAccountId (from User.BillingAccountId)
                 var billingGroups = billableAssignments
-                    .GroupBy(a => new
-                    {
-                        BillingAccountId = a.SmeUser.CompanyId ?? a.SmeUserId,
-                        BillingAccountType = a.SmeUser.CompanyId.HasValue ? "Company" : "Individual"
-                    })
+                    .Where(a => a.SmeUser.BillingAccountId.HasValue) // Only process SMEs with billing accounts
+                    .GroupBy(a => a.SmeUser.BillingAccountId!.Value)
                     .ToList();
 
-                var defaultAmount = amountPerCharge ?? 100.00m; // Default $100 per charge
+                if (!billingGroups.Any())
+                {
+                    _logger.LogWarning(
+                        "No billable assignments with BillingAccountId found for ServiceRequest {ServiceRequestId}",
+                        serviceRequestId);
+                    return;
+                }
+
+                var defaultAmount = systemDefaultAmount ?? DEFAULT_SYSTEM_AMOUNT;
                 var chargesCreated = 0;
 
                 foreach (var group in billingGroups)
                 {
                     try
                     {
+                        var billingAccountId = group.Key;
+
                         // Check if charge already exists (unique constraint will prevent duplicates)
                         var existingCharge = await _context.ServiceRequestCharges
                             .FirstOrDefaultAsync(c =>
                                 c.ServiceRequestId == serviceRequestId &&
-                                c.BillingAccountId == group.Key.BillingAccountId);
+                                c.BillingAccountId == billingAccountId);
 
                         if (existingCharge != null)
                         {
                             _logger.LogInformation(
-                                "Charge already exists for ServiceRequest {ServiceRequestId}, BillingAccount {BillingAccountId} ({Type})",
-                                serviceRequestId, group.Key.BillingAccountId, group.Key.BillingAccountType);
+                                "Charge already exists for ServiceRequest {ServiceRequestId}, BillingAccount {BillingAccountId}",
+                                serviceRequestId, billingAccountId);
                             continue;
+                        }
+
+                        // Look up BillingRate for (BillingAccountId, PrimaryExpertiseId)
+                        var billingRate = await _context.BillingRates
+                            .FirstOrDefaultAsync(br =>
+                                br.BillingAccountId == billingAccountId &&
+                                br.ExpertiseId == primaryExpertiseId.Value &&
+                                br.IsActive);
+
+                        decimal chargeAmount;
+                        string rateSource;
+
+                        if (billingRate != null)
+                        {
+                            chargeAmount = billingRate.Amount;
+                            rateSource = "BillingRate";
+                            _logger.LogInformation(
+                                "Using BillingRate {Amount} for BillingAccount {BillingAccountId}, Expertise {ExpertiseId}",
+                                chargeAmount, billingAccountId, primaryExpertiseId.Value);
+                        }
+                        else
+                        {
+                            chargeAmount = defaultAmount;
+                            rateSource = "Default";
+                            _logger.LogInformation(
+                                "No BillingRate found for BillingAccount {BillingAccountId}, Expertise {ExpertiseId}. Using default {Amount}",
+                                billingAccountId, primaryExpertiseId.Value, defaultAmount);
                         }
 
                         // Create ONE charge per BillingAccount
                         var charge = new ServiceRequestCharge
                         {
                             ServiceRequestId = serviceRequestId,
-                            BillingAccountId = group.Key.BillingAccountId,
-                            BillingAccountType = group.Key.BillingAccountType,
-                            Amount = defaultAmount,
+                            BillingAccountId = billingAccountId,
+                            ExpertiseId = primaryExpertiseId.Value,
+                            RateSource = rateSource,
+                            Amount = chargeAmount,
                             Status = ChargeStatus.Ready.ToString(),
                             CreatedAt = DateTime.UtcNow
                         };
@@ -118,15 +207,16 @@ namespace SM_MentalHealthApp.Server.Services
                         chargesCreated++;
 
                         _logger.LogInformation(
-                            "Created charge for ServiceRequest {ServiceRequestId}, BillingAccount {BillingAccountId} ({Type}) with {AssignmentCount} assignments",
-                            serviceRequestId, group.Key.BillingAccountId, group.Key.BillingAccountType, group.Count());
+                            "Created charge for ServiceRequest {ServiceRequestId}, BillingAccount {BillingAccountId}, Expertise {ExpertiseId}, Amount {Amount}, Source {Source} with {AssignmentCount} assignments",
+                            serviceRequestId, billingAccountId, primaryExpertiseId.Value, chargeAmount, rateSource, group.Count());
                     }
-                    catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("UQ_SR_BillingAccount") == true)
+                    catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("UQ_Charge_SR_BillingAccount") == true ||
+                                                       ex.InnerException?.Message?.Contains("UQ_SR_BillingAccount") == true)
                     {
                         // Unique constraint violation - charge already exists (race condition)
                         _logger.LogWarning(
                             "Charge already exists for ServiceRequest {ServiceRequestId}, BillingAccount {BillingAccountId} (unique constraint violation)",
-                            serviceRequestId, group.Key.BillingAccountId);
+                            serviceRequestId, group.Key);
                     }
                 }
 
@@ -148,19 +238,18 @@ namespace SM_MentalHealthApp.Server.Services
         }
 
         /// <summary>
-        /// Gets all Ready charges for a billing account (company or individual)
+        /// Gets all Ready charges for a billing account
         /// </summary>
         public async Task<List<ServiceRequestCharge>> GetReadyChargesForBillingAccountAsync(
-            int billingAccountId,
-            string billingAccountType,
+            long billingAccountId,
             DateTime? startDate = null,
             DateTime? endDate = null)
         {
             var query = _context.ServiceRequestCharges
                 .Include(c => c.ServiceRequest)
                     .ThenInclude(sr => sr.Client)
+                .Include(c => c.Expertise)
                 .Where(c => c.BillingAccountId == billingAccountId &&
-                           c.BillingAccountType == billingAccountType &&
                            c.Status == ChargeStatus.Ready.ToString() &&
                            c.InvoiceId == null);
 
@@ -192,4 +281,3 @@ namespace SM_MentalHealthApp.Server.Services
         }
     }
 }
-

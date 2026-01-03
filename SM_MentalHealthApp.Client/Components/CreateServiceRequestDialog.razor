@@ -2,6 +2,7 @@
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Client.Components
 @inject IServiceRequestService ServiceRequestService
+@inject IExpertiseService ExpertiseService
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 @inject IAuthService AuthService
@@ -89,9 +90,33 @@
                     <ExpertiseMultiSelect Label="Expertise Categories"
                                          Placeholder="Type to search and select expertise..."
                                          HelpText="Select one or more expertise categories for this service request"
-                                         @bind-SelectedExpertiseIds="selectedExpertiseIds" />
+                                         SelectedExpertiseIds="selectedExpertiseIds"
+                                         SelectedExpertiseIdsChanged="@OnExpertiseIdsChanged" />
                 </div>
             </div>
+            @if (selectedExpertiseIds.Any())
+            {
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <RadzenFormField Text="Primary Expertise (for Billing)" class="w-100">
+                            <RadzenDropDown @bind-Value="@request.PrimaryExpertiseId" 
+                                           Data="@availablePrimaryExpertises" 
+                                           ValueProperty="Id" 
+                                           TextProperty="Name"
+                                           Placeholder="Select primary expertise for billing..."
+                                           AllowFiltering="true"
+                                           FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                           Style="width: 100%"
+                                           TValue="int?">
+                                <EmptyMessageTemplate>
+                                    No expertise selected
+                                </EmptyMessageTemplate>
+                            </RadzenDropDown>
+                            <RadzenFormFieldHint Text="Select the primary expertise that will be used for billing purposes" />
+                        </RadzenFormField>
+                    </div>
+                </div>
+            }
         }
 
         <div class="row">
@@ -194,6 +219,8 @@
     private int? initialSmeUserId;
     private bool isSubmitting = false;
     private List<int> selectedExpertiseIds = new();
+    private List<Expertise> allExpertises = new();
+    private List<Expertise> availablePrimaryExpertises = new();
     private int maxDistanceMiles = 50;
 
     private List<string> typeOptions = new()
@@ -225,13 +252,68 @@
         await CreateServiceRequest();
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         // Auto-set ClientId for patients
         if (AuthService.CurrentUser?.RoleId == 1 && AuthService.CurrentUser?.Id > 0)
         {
             request.ClientId = AuthService.CurrentUser.Id;
             // Note: ServiceZipCode will default to client's ZIP code on the backend if not provided
+        }
+
+        // Load expertises for primary expertise dropdown
+        if (AuthService.CurrentUser?.RoleId != 1)
+        {
+            await LoadExpertises();
+        }
+    }
+
+    private async Task LoadExpertises()
+    {
+        try
+        {
+            allExpertises = await ExpertiseService.GetAllExpertisesAsync(activeOnly: true);
+            UpdateAvailablePrimaryExpertises();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading expertises: {ex.Message}");
+        }
+    }
+
+    private void OnExpertiseIdsChanged()
+    {
+        UpdateAvailablePrimaryExpertises();
+        
+        // Auto-select PrimaryExpertiseId if only one expertise is selected
+        if (selectedExpertiseIds.Count == 1)
+        {
+            request.PrimaryExpertiseId = selectedExpertiseIds.First();
+        }
+        else if (selectedExpertiseIds.Count == 0)
+        {
+            request.PrimaryExpertiseId = null;
+        }
+        // If multiple expertise selected and PrimaryExpertiseId is not in the list, clear it
+        else if (request.PrimaryExpertiseId.HasValue && !selectedExpertiseIds.Contains(request.PrimaryExpertiseId.Value))
+        {
+            request.PrimaryExpertiseId = null;
+        }
+        
+        StateHasChanged();
+    }
+
+    private void UpdateAvailablePrimaryExpertises()
+    {
+        if (selectedExpertiseIds.Any())
+        {
+            availablePrimaryExpertises = allExpertises
+                .Where(e => selectedExpertiseIds.Contains(e.Id))
+                .ToList();
+        }
+        else
+        {
+            availablePrimaryExpertises = new List<Expertise>();
         }
     }
 
@@ -291,6 +373,12 @@
             if (AuthService.CurrentUser?.RoleId != 1 && selectedExpertiseIds.Any())
             {
                 request.ExpertiseIds = selectedExpertiseIds;
+                
+                // Set PrimaryExpertiseId if not set but only one expertise selected
+                if (!request.PrimaryExpertiseId.HasValue && selectedExpertiseIds.Count == 1)
+                {
+                    request.PrimaryExpertiseId = selectedExpertiseIds.First();
+                }
             }
 
             // Set location fields

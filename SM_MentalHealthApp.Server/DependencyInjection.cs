@@ -148,6 +148,7 @@ public static class DependencyInjection
         services.AddScoped<IAssignmentLifecycleService, AssignmentLifecycleService>();
         services.AddScoped<IExpertiseService, ExpertiseService>();
         services.AddScoped<ILocationService, LocationService>();
+        services.AddScoped<IBillingRateService, BillingRateService>();
         services.AddScoped<IServiceRequestChargeService, ServiceRequestChargeService>();
         services.AddScoped<IInvoicingService, InvoicingService>();
         services.AddScoped<IMultimediaAnalysisService, MultimediaAnalysisService>();
@@ -408,13 +409,17 @@ public static class DependencyInjection
         userAssignmentSet.EntityType.HasKey(ua => new { ua.AssignerId, ua.AssigneeId });
         // Navigation properties are NOT ignored to allow expansion
 
+        // Expertise - Required for ServiceRequest navigation property expansion
+        var expertiseSet = builder.EntitySet<Expertise>("Expertise");
+        expertiseSet.EntityType.HasKey(e => e.Id);
+
         // ServiceRequests - Expose as EntitySet for server-side pagination
         var serviceRequestSet = builder.EntitySet<ServiceRequest>("ServiceRequests");
         serviceRequestSet.EntityType.HasKey(sr => sr.Id);
         // Ignore navigation properties to avoid circular references (we'll load them via Include in controller)
         serviceRequestSet.EntityType.Ignore(sr => sr.Client);
         serviceRequestSet.EntityType.Ignore(sr => sr.CreatedByUser);
-        // Note: Assignments is NOT ignored so it can be expanded via $expand
+        // Note: Assignments, Expertises, and PrimaryExpertise are NOT ignored so they can be expanded via $expand
         // The controller uses Include() to load them, and OData will serialize them
 
         return builder.GetEdmModel();

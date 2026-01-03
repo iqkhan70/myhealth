@@ -22,19 +22,22 @@ namespace SM_MentalHealthApp.Shared
         public int ServiceRequestId { get; set; }
 
         /// <summary>
-        /// Billing Account ID:
-        /// - If SME has CompanyId → this is the CompanyId
-        /// - If SME is independent → this is the SmeUserId
+        /// Billing Account ID (references BillingAccounts table)
         /// </summary>
         [Required]
-        public int BillingAccountId { get; set; }
+        public long BillingAccountId { get; set; }
 
         /// <summary>
-        /// Type of billing account: "Company" or "Individual"
+        /// Primary expertise used for pricing this charge
+        /// </summary>
+        public int? ExpertiseId { get; set; }
+
+        /// <summary>
+        /// Source of the rate: "BillingRate" or "Default" (system default $100)
         /// </summary>
         [Required]
-        [MaxLength(20)]
-        public string BillingAccountType { get; set; } = "Individual";
+        [MaxLength(50)]
+        public string RateSource { get; set; } = "Default";
 
         /// <summary>
         /// Charge amount for this SR to this billing account
@@ -66,6 +69,7 @@ namespace SM_MentalHealthApp.Shared
 
         // Navigation properties
         public ServiceRequest ServiceRequest { get; set; } = null!;
+        public Expertise? Expertise { get; set; }
         public SmeInvoice? Invoice { get; set; }
     }
 

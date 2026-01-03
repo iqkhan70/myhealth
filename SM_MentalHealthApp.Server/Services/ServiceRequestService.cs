@@ -41,6 +41,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 var query = _context.ServiceRequests
                     .Include(sr => sr.Client)
+                    .Include(sr => sr.PrimaryExpertise)
                     .Include(sr => sr.Assignments)
                         .ThenInclude(a => a.SmeUser)
                     .Include(sr => sr.Expertises)
@@ -85,6 +86,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 var serviceRequest = await _context.ServiceRequests
                     .Include(sr => sr.Client)
+                    .Include(sr => sr.PrimaryExpertise)
                     .Include(sr => sr.Assignments)
                         .ThenInclude(a => a.SmeUser)
                     .Include(sr => sr.Expertises)
@@ -135,6 +137,7 @@ namespace SM_MentalHealthApp.Server.Services
                     Description = request.Description,
                     ServiceZipCode = serviceZipCode,
                     MaxDistanceMiles = maxDistanceMiles,
+                    PrimaryExpertiseId = request.PrimaryExpertiseId,
                     CreatedByUserId = createdByUserId,
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true
@@ -197,10 +200,68 @@ namespace SM_MentalHealthApp.Server.Services
                 if (request.MaxDistanceMiles.HasValue)
                     serviceRequest.MaxDistanceMiles = request.MaxDistanceMiles.Value;
 
-                // Update expertise if provided
+                // Update expertise if provided (do this BEFORE PrimaryExpertiseId to validate it)
                 if (request.ExpertiseIds != null)
                 {
                     await _expertiseService.SetServiceRequestExpertisesAsync(id, request.ExpertiseIds);
+                    
+                    // After updating expertise, validate/cleanup PrimaryExpertiseId
+                    // Reload the ServiceRequest to get updated expertise list
+                    await _context.Entry(serviceRequest).Collection(sr => sr.Expertises).LoadAsync();
+                    
+                    var currentExpertiseIds = serviceRequest.Expertises?.Select(e => e.ExpertiseId).ToList() ?? new List<int>();
+                    
+                    // Validate PrimaryExpertiseId
+                    if (serviceRequest.PrimaryExpertiseId.HasValue)
+                    {
+                        // If PrimaryExpertiseId is no longer in the expertise list, clear it
+                        if (!currentExpertiseIds.Contains(serviceRequest.PrimaryExpertiseId.Value))
+                        {
+                            _logger.LogWarning(
+                                "PrimaryExpertiseId {PrimaryExpertiseId} for ServiceRequest {ServiceRequestId} is no longer in expertise list. Clearing it.",
+                                serviceRequest.PrimaryExpertiseId.Value, id);
+                            serviceRequest.PrimaryExpertiseId = null;
+                            
+                            // Auto-select if only 1 expertise remains
+                            if (currentExpertiseIds.Count == 1)
+                            {
+                                serviceRequest.PrimaryExpertiseId = currentExpertiseIds.First();
+                                _logger.LogInformation(
+                                    "Auto-selected PrimaryExpertiseId {PrimaryExpertiseId} for ServiceRequest {ServiceRequestId} (single expertise after update)",
+                                    serviceRequest.PrimaryExpertiseId.Value, id);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // If PrimaryExpertiseId was not set, auto-select if exactly 1 expertise
+                        if (currentExpertiseIds.Count == 1)
+                        {
+                            serviceRequest.PrimaryExpertiseId = currentExpertiseIds.First();
+                            _logger.LogInformation(
+                                "Auto-selected PrimaryExpertiseId {PrimaryExpertiseId} for ServiceRequest {ServiceRequestId} (single expertise)",
+                                serviceRequest.PrimaryExpertiseId.Value, id);
+                        }
+                    }
+                }
+
+                // Update PrimaryExpertiseId if explicitly provided (after expertise validation)
+                if (request.PrimaryExpertiseId.HasValue)
+                {
+                    // Validate that the provided PrimaryExpertiseId is in the current expertise list
+                    await _context.Entry(serviceRequest).Collection(sr => sr.Expertises).LoadAsync();
+                    var currentExpertiseIds = serviceRequest.Expertises?.Select(e => e.ExpertiseId).ToList() ?? new List<int>();
+                    
+                    if (currentExpertiseIds.Contains(request.PrimaryExpertiseId.Value))
+                    {
+                        serviceRequest.PrimaryExpertiseId = request.PrimaryExpertiseId.Value;
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Attempted to set PrimaryExpertiseId {PrimaryExpertiseId} for ServiceRequest {ServiceRequestId}, but it's not in the expertise list. Ignoring.",
+                            request.PrimaryExpertiseId.Value, id);
+                    }
                 }
 
                 serviceRequest.UpdatedAt = DateTime.UtcNow;
@@ -425,6 +486,8 @@ namespace SM_MentalHealthApp.Server.Services
                 Description = sr.Description,
                 ServiceZipCode = sr.ServiceZipCode,
                 MaxDistanceMiles = sr.MaxDistanceMiles,
+                PrimaryExpertiseId = sr.PrimaryExpertiseId,
+                PrimaryExpertiseName = sr.PrimaryExpertise?.Name,
                 ExpertiseIds = sr.Expertises?.Select(e => e.ExpertiseId).ToList() ?? new List<int>(),
                 ExpertiseNames = sr.Expertises?.Select(e => e.Expertise.Name).ToList() ?? new List<string>(),
                 Assignments = sr.Assignments

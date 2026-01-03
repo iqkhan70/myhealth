@@ -1765,6 +1765,79 @@ echo -e "${GREEN}Step 8.11: Running Companies Table Migration${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
+# Step 8.12: Run Billing Accounts and Rates Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.12: Running Billing Accounts and Rates Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddBillingAccountsAndRates.sql" ]; then
+    echo "Copying Billing Accounts and Rates migration script to server..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddBillingAccountsAndRates.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/billing_accounts_rates_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Billing Accounts and Rates migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using password from .env file"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "❌ ERROR: Cannot connect to MySQL"
+                exit 1
+            fi
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_accounts_rates_migration.sql || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    if docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_accounts_rates_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Billing Accounts and Rates migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Billing Accounts and Rates migration failed"
+                        exit 1
+                    fi
+                }
+            else
+                docker exec -e MYSQL_PWD="$MYSQL_PWD_TO_USE" -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_accounts_rates_migration.sql || {
+                    if docker exec -e MYSQL_PWD="$MYSQL_PWD_TO_USE" -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_accounts_rates_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Billing Accounts and Rates migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Billing Accounts and Rates migration failed"
+                        exit 1
+                    fi
+                }
+            fi
+        else
+            echo "Managed DB mode - skipping local migration (run manually on managed DB)"
+        fi
+        
+        echo "✅ Billing Accounts and Rates migration completed successfully"
+ENDSSH
+    
+    echo -e "${GREEN}Billing Accounts and Rates migration completed.${NC}"
+else
+    echo -e "${YELLOW}Billing Accounts and Rates migration script not found, skipping...${NC}"
+fi
+
+echo ""
+
 if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddCompaniesTable.sql" ]; then
     echo "Copying Companies table migration script to server..."
     scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddCompaniesTable.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/companies_migration.sql"

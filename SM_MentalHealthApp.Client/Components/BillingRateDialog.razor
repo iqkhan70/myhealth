@@ -1,0 +1,243 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using Radzen
+@using Radzen.Blazor
+@inject IBillingRateService BillingRateService
+@inject IExpertiseService ExpertiseService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject HttpClient Http
+@inject IAuthService AuthService
+
+<div class="billing-rate-dialog">
+    <RadzenForm Data="@billingRateForm" Submit="@OnSubmit">
+        <RadzenFieldset Text="Billing Rate Details">
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <RadzenFormField Text="Billing Account" class="w-100">
+                        <RadzenDropDown @bind-Value="@billingRateForm.BillingAccountId" 
+                                       Data="@BillingAccounts" 
+                                       ValueProperty="Id" 
+                                       TextProperty="Name"
+                                       Placeholder="Select billing account..."
+                                       AllowFiltering="true"
+                                       FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                       Style="width: 100%"
+                                       TValue="long"
+                                       Disabled="@(EditingBillingRate != null)">
+                            <EmptyMessageTemplate>
+                                No billing accounts found
+                            </EmptyMessageTemplate>
+                        </RadzenDropDown>
+                        <RadzenFormFieldValidator Component="BillingAccountId" Text="Billing account is required" />
+                    </RadzenFormField>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <RadzenFormField Text="Expertise" class="w-100">
+                        <RadzenDropDown @bind-Value="@billingRateForm.ExpertiseId" 
+                                       Data="@Expertises" 
+                                       ValueProperty="Id" 
+                                       TextProperty="Name"
+                                       Placeholder="Select expertise..."
+                                       AllowFiltering="true"
+                                       FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                       Style="width: 100%"
+                                       TValue="int"
+                                       Disabled="@(EditingBillingRate != null)">
+                            <EmptyMessageTemplate>
+                                No expertise found
+                            </EmptyMessageTemplate>
+                        </RadzenDropDown>
+                        <RadzenFormFieldValidator Component="ExpertiseId" Text="Expertise is required" />
+                    </RadzenFormField>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <RadzenFormField Text="Amount ($)" class="w-100">
+                        <RadzenNumeric @bind-Value="@billingRateForm.Amount" 
+                                      Placeholder="Enter amount..."
+                                      Style="width: 100%"
+                                      Min="0.01m"
+                                      Max="999999.99m"
+                                      Step="0.01m"
+                                      Format="F2"
+                                      TValue="decimal" />
+                        <RadzenFormFieldValidator Component="Amount" Text="Amount is required and must be greater than 0" />
+                    </RadzenFormField>
+                </div>
+            </div>
+            @if (EditingBillingRate != null)
+            {
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <RadzenFormField Text="Status" class="w-100">
+                            <RadzenDropDown @bind-Value="@billingRateForm.IsActive" 
+                                           Data="@statusOptions" 
+                                           ValueProperty="Value" 
+                                           TextProperty="Label"
+                                           Placeholder="Select status..."
+                                           Style="width: 100%"
+                                           TValue="bool">
+                            </RadzenDropDown>
+                            <RadzenFormFieldHint Text="Active rates are used for billing calculations" />
+                        </RadzenFormField>
+                    </div>
+                </div>
+            }
+        </RadzenFieldset>
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="d-flex justify-content-end gap-2">
+                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                    <RadzenButton Text="@(EditingBillingRate == null ? "Create" : "Update")" 
+                                 ButtonStyle="ButtonStyle.Success" 
+                                 IsBusy="@isSaving"
+                                 Disabled="@isSaving" 
+                                 Click="@HandleSaveClick" />
+                </div>
+            </div>
+        </div>
+    </RadzenForm>
+</div>
+
+@code {
+    [Parameter] public BillingRate? EditingBillingRate { get; set; }
+    [Parameter] public List<BillingAccount> BillingAccounts { get; set; } = new();
+    [Parameter] public List<SM_MentalHealthApp.Shared.Expertise> Expertises { get; set; } = new();
+    [Parameter] public EventCallback<bool> OnSaved { get; set; }
+
+    private BillingRateForm billingRateForm = new();
+    private bool isSaving = false;
+
+    private List<StatusOption> statusOptions = new()
+    {
+        new StatusOption { Value = true, Label = "Active" },
+        new StatusOption { Value = false, Label = "Inactive" }
+    };
+
+    private class StatusOption
+    {
+        public bool Value { get; set; }
+        public string Label { get; set; } = string.Empty;
+    }
+
+    private class BillingRateForm
+    {
+        public long BillingAccountId { get; set; }
+        public int ExpertiseId { get; set; }
+        public decimal Amount { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+
+    protected override void OnInitialized()
+    {
+        if (EditingBillingRate != null)
+        {
+            billingRateForm = new BillingRateForm
+            {
+                BillingAccountId = EditingBillingRate.BillingAccountId,
+                ExpertiseId = EditingBillingRate.ExpertiseId,
+                Amount = EditingBillingRate.Amount,
+                IsActive = EditingBillingRate.IsActive
+            };
+        }
+        else
+        {
+            billingRateForm = new BillingRateForm { IsActive = true };
+        }
+    }
+
+    private async Task HandleSaveClick()
+    {
+        await SaveBillingRate();
+    }
+
+    private async Task OnSubmit(BillingRateForm model)
+    {
+        await SaveBillingRate();
+    }
+
+    private async Task SaveBillingRate()
+    {
+        if (billingRateForm.BillingAccountId <= 0)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please select a billing account");
+            return;
+        }
+
+        if (billingRateForm.ExpertiseId <= 0)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please select an expertise");
+            return;
+        }
+
+        if (billingRateForm.Amount <= 0)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Amount must be greater than 0");
+            return;
+        }
+
+        if (isSaving) return;
+
+        isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            if (EditingBillingRate == null)
+            {
+                var request = new CreateBillingRateRequest
+                {
+                    BillingAccountId = billingRateForm.BillingAccountId,
+                    ExpertiseId = billingRateForm.ExpertiseId,
+                    Amount = billingRateForm.Amount,
+                    IsActive = billingRateForm.IsActive
+                };
+
+                var created = await BillingRateService.CreateBillingRateAsync(request);
+                NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                    $"Billing rate created successfully: ${created.Amount:F2} for {created.Expertise?.Name ?? "N/A"}");
+            }
+            else
+            {
+                var request = new UpdateBillingRateRequest
+                {
+                    Amount = billingRateForm.Amount,
+                    IsActive = billingRateForm.IsActive
+                };
+
+                var updated = await BillingRateService.UpdateBillingRateAsync(EditingBillingRate.Id, request);
+                
+                if (updated != null)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                        $"Billing rate updated successfully: ${updated.Amount:F2}");
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update billing rate");
+                }
+            }
+
+            await Task.Delay(100);
+            DialogService.Close(true);
+            if (OnSaved.HasDelegate)
+            {
+                await OnSaved.InvokeAsync(true);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to save billing rate: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+}
+
