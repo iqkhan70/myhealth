@@ -30,6 +30,21 @@
     }
 </style>
 
+@if (AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) // Attorney or SME - Access Denied
+{
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-warning" role="alert">
+                    <h2>Access Denied</h2>
+                    <p>AI Chat History is not available for your role at this time.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
@@ -37,13 +52,13 @@
                          Icon="fas fa-comments" 
                          Description="View and search your conversation history with the AI assistant" />
 
-            <!-- Service Request Selector (for SMEs) -->
-            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 4)
+            <!-- Service Request Selector (for Doctors and Coordinators) -->
+            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4)
             {
                 <ServiceRequestSelector ClientId="@selectedPatientId" ServiceRequestIdChanged="@OnServiceRequestChanged" />
             }
 
-            @if ((currentUserRole == "Doctor" || currentUserRole == "Attorney") && patients != null && patients.Any())
+            @if (currentUserRole == "Doctor" && patients != null && patients.Any())
             {
                 <div class="row mb-3">
                     <div class="col-md-6">
@@ -189,6 +204,7 @@
         </div>
     </div>
 </div>
+}
 
 @code {
     private SMDataGrid<ChatSession>? _grid;
@@ -304,19 +320,10 @@
             var userResponse = await Http.GetFromJsonAsync<AuthUser>("api/auth/me");
             currentUserRole = userResponse?.RoleName;
 
-            if (userResponse?.RoleId == 2 || userResponse?.RoleId == 5) // Doctor or Attorney
+            if (userResponse?.RoleId == 2) // Doctor
             {
-                if (userResponse?.RoleId == 2)
-                {
-                    var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/doctor/patients");
-                    patients = patientsResponse ?? new List<User>();
-                }
-                else if (userResponse?.RoleId == 5) // Attorney
-                {
-                    // For Attorney, get patients assigned to them
-                    var patientsResponse = await Http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{userResponse.Id}/patients");
-                    patients = patientsResponse ?? new List<User>();
-                }
+                var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/doctor/patients");
+                patients = patientsResponse ?? new List<User>();
             }
         }
         catch (Exception ex)

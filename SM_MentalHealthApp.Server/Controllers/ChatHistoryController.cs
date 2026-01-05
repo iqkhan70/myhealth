@@ -28,6 +28,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("sessions")]
+        [Authorize(Roles = "Admin,Doctor,Coordinator,Patient")] // Attorney and SME access denied for now
         public async Task<ActionResult<List<ChatSession>>> GetUserSessions([FromQuery] int? patientId = null, [FromQuery] int? serviceRequestId = null)
         {
             try
@@ -43,8 +44,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return Unauthorized("User not authenticated");
                 }
 
-                // For doctors and attorneys, filter by assigned ServiceRequests
-                if ((currentRoleId == Shared.Constants.Roles.Doctor || currentRoleId == Shared.Constants.Roles.Attorney || currentRoleId == Shared.Constants.Roles.Sme) && userId.HasValue)
+                // For doctors, filter by assigned ServiceRequests
+                if (currentRoleId == Shared.Constants.Roles.Doctor && userId.HasValue)
                 {
                     // Get assigned ServiceRequest IDs for this SME
                     var serviceRequestIds = await _serviceRequestService.GetServiceRequestIdsForSmeAsync(userId.Value);
@@ -99,6 +100,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpGet("sessions/{sessionId}")]
+        [Authorize(Roles = "Admin,Doctor,Coordinator,Patient")] // Attorney and SME access denied for now
         public async Task<ActionResult<ChatSession>> GetSession(int sessionId)
         {
             try
@@ -127,9 +129,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                         return StatusCode(403, "Access denied to this session");
                     }
                 }
-                else if (userRole == Shared.Constants.Roles.Doctor || userRole == Shared.Constants.Roles.Attorney || userRole == Shared.Constants.Roles.Sme)
+                else if (userRole == Shared.Constants.Roles.Doctor)
                 {
-                    // Doctors and attorneys can see sessions they created OR sessions in their assigned ServiceRequests
+                    // Doctors can see sessions they created OR sessions in their assigned ServiceRequests
                     bool hasAccess = session.UserId == userId.Value;
                     
                     if (!hasAccess && session.ServiceRequestId.HasValue)
@@ -164,6 +166,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
 
         [HttpDelete("sessions/{sessionId}")]
+        [Authorize(Roles = "Admin,Doctor,Coordinator,Patient")] // Attorney and SME access denied for now
         public async Task<ActionResult> DeleteSession(int sessionId)
         {
             try

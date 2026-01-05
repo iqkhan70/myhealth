@@ -47,6 +47,11 @@
             <h2>My Clients</h2>
             <p>View your assigned clients.</p>
         }
+        else if (AuthService.CurrentUser?.RoleId == 6) // SME
+        {
+            <h2>My Clients</h2>
+            <p>View your assigned clients.</p>
+        }
         else
         {
             <h2>Access Denied</h2>
@@ -54,7 +59,7 @@
         }
     </div>
 
-    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5) // Doctor, Admin, Coordinator, or Attorney
+    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) // Doctor, Admin, Coordinator, Attorney, or SME
     {
         <!-- Custom Filters -->
         <div class="custom-filters">
