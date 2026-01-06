@@ -11,30 +11,20 @@ import {
   ActivityIndicator,
 } from 'react-native';
 
-const SmsComponent = ({ visible, onClose, user, contacts, apiBaseUrl }) => {
-  const [selectedDoctor, setSelectedDoctor] = useState(null);
+const SmsComponent = ({ visible, onClose, user, selectedContact, apiBaseUrl }) => {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
-  const [doctors, setDoctors] = useState([]);
 
   useEffect(() => {
-    if (visible && contacts.length > 0) {
-      // Filter contacts to get only doctors
-      const doctorContacts = contacts.filter(contact => 
-        contact.roleId === 2 || contact.roleName === 'Doctor'
-      );
-      setDoctors(doctorContacts);
-      
-      // Auto-select first doctor if only one
-      if (doctorContacts.length === 1) {
-        setSelectedDoctor(doctorContacts[0]);
-      }
+    if (visible) {
+      // Reset message when modal opens
+      setMessage('');
     }
-  }, [visible, contacts]);
+  }, [visible]);
 
   const sendSms = async () => {
-    if (!selectedDoctor) {
-      Alert.alert('Error', 'Please select a doctor to send SMS to');
+    if (!selectedContact) {
+      Alert.alert('Error', 'No contact selected. Please select an SME, Attorney, or Doctor first.');
       return;
     }
 
@@ -42,6 +32,11 @@ const SmsComponent = ({ visible, onClose, user, contacts, apiBaseUrl }) => {
       Alert.alert('Error', 'Please enter a message');
       return;
     }
+
+    // Get contact display name
+    const contactName = selectedContact.roleId === 2 
+      ? `Dr. ${selectedContact.firstName} ${selectedContact.lastName}`
+      : `${selectedContact.firstName} ${selectedContact.lastName}`;
 
     setSending(true);
     try {
@@ -52,7 +47,7 @@ const SmsComponent = ({ visible, onClose, user, contacts, apiBaseUrl }) => {
           'Authorization': `Bearer ${await getAuthToken()}`,
         },
         body: JSON.stringify({
-          targetUserId: selectedDoctor.id,
+          targetUserId: selectedContact.id,
           message: message.trim(),
         }),
       });
@@ -62,7 +57,7 @@ const SmsComponent = ({ visible, onClose, user, contacts, apiBaseUrl }) => {
       if (response.ok) {
         Alert.alert(
           'SMS Sent!',
-          `Message sent successfully to Dr. ${selectedDoctor.firstName} ${selectedDoctor.lastName}`,
+          `Message sent successfully to ${contactName}`,
           [
             {
               text: 'OK',
@@ -95,12 +90,21 @@ const SmsComponent = ({ visible, onClose, user, contacts, apiBaseUrl }) => {
   };
 
   const quickMessages = [
-    "I need urgent help",
-    "Having a panic attack",
-    "Feeling very anxious",
-    "Need to talk to you",
-    "Having trouble sleeping",
-    "Feeling depressed",
+    "I need immediate assistance",
+    "Time-sensitive issue",
+    "Feeling overwhelmed",
+    "Service-related issue",
+    "Impact from an incident",
+    "Discomfort",
+    "Assessment",
+    "Resolution",
+    "Subject Matter Expert",
+    "Background information",
+    "Professional guidance",
+    "Observed issues",
+    "Resolution progress",
+    "Scheduled review",
+    "Recommended action"
   ];
 
   const insertQuickMessage = (quickMsg) => {
@@ -114,38 +118,32 @@ const SmsComponent = ({ visible, onClose, user, contacts, apiBaseUrl }) => {
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <Text style={styles.closeButtonText}>✕</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Send SMS to Doctor</Text>
+          <Text style={styles.title}>Send SMS</Text>
           <View style={styles.placeholder} />
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Doctor Selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Select Doctor</Text>
-            {doctors.length === 0 ? (
-              <Text style={styles.noDoctorsText}>No doctors available</Text>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {doctors.map((doctor) => (
-                  <TouchableOpacity
-                    key={doctor.id}
-                    style={[
-                      styles.doctorCard,
-                      selectedDoctor?.id === doctor.id && styles.selectedDoctorCard,
-                    ]}
-                    onPress={() => setSelectedDoctor(doctor)}
-                  >
-                    <Text style={styles.doctorName}>
-                      Dr. {doctor.firstName} {doctor.lastName}
-                    </Text>
-                    <Text style={styles.doctorPhone}>
-                      {doctor.mobilePhone || 'No phone number'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-          </View>
+          {/* Selected Contact Display */}
+          {selectedContact && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Sending SMS To</Text>
+              <View style={styles.selectedContactCard}>
+                <Text style={styles.contactName}>
+                  {selectedContact.roleId === 2 
+                    ? `Dr. ${selectedContact.firstName} ${selectedContact.lastName}`
+                    : `${selectedContact.firstName} ${selectedContact.lastName}`}
+                </Text>
+                <Text style={styles.contactRole}>
+                  {selectedContact.roleName || 'Contact'}
+                </Text>
+                {selectedContact.mobilePhone && (
+                  <Text style={styles.contactPhone}>
+                    📱 {selectedContact.mobilePhone}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
 
           {/* Quick Messages */}
           <View style={styles.section}>
@@ -182,9 +180,9 @@ const SmsComponent = ({ visible, onClose, user, contacts, apiBaseUrl }) => {
 
           {/* Send Button */}
           <TouchableOpacity
-            style={[styles.sendButton, sending && styles.disabledButton]}
+            style={[styles.sendButton, (sending || !selectedContact || !message.trim()) && styles.disabledButton]}
             onPress={sendSms}
-            disabled={sending || !selectedDoctor || !message.trim()}
+            disabled={sending || !selectedContact || !message.trim()}
           >
             {sending ? (
               <ActivityIndicator color="white" />
@@ -196,7 +194,7 @@ const SmsComponent = ({ visible, onClose, user, contacts, apiBaseUrl }) => {
           {/* Info */}
           <View style={styles.infoSection}>
             <Text style={styles.infoText}>
-              📱 This will send an SMS directly to your doctor's phone number
+              📱 This will send an SMS directly to the selected contact's phone number
             </Text>
             <Text style={styles.infoText}>
               ⚠️ Use this for urgent matters only
@@ -254,37 +252,30 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 10,
   },
-  noDoctorsText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    padding: 20,
-  },
-  doctorCard: {
+  selectedContactCard: {
     backgroundColor: 'white',
     padding: 15,
     borderRadius: 10,
-    marginRight: 10,
-    minWidth: 150,
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: '#007bff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  selectedDoctorCard: {
-    borderColor: '#007bff',
-    backgroundColor: '#f0f8ff',
-  },
-  doctorName: {
-    fontSize: 14,
+  contactName: {
+    fontSize: 16,
     fontWeight: '600',
     color: '#333',
     marginBottom: 5,
   },
-  doctorPhone: {
+  contactRole: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  contactPhone: {
     fontSize: 12,
     color: '#666',
   },

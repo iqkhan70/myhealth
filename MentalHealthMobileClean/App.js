@@ -2313,7 +2313,7 @@ export default function App() {
           visible={smsModalVisible}
           onClose={() => setSmsModalVisible(false)}
           user={user}
-          contacts={contacts}
+          selectedContact={selectedContactDetail}
           apiBaseUrl={API_BASE_URL}
         />
         
@@ -2321,7 +2321,7 @@ export default function App() {
           visible={emergencyModalVisible}
           onClose={() => setEmergencyModalVisible(false)}
           user={user}
-          contacts={contacts}
+          selectedContact={selectedContactDetail}
           apiBaseUrl={API_BASE_URL}
           deviceToken={deviceToken}
           onEmergencySent={() => {

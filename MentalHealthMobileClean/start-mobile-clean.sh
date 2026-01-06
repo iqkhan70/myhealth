@@ -3,7 +3,7 @@
 # Clean Mobile App Startup Script
 # This script ensures proper environment setup for the mobile app
 
-echo "🚀 Starting Clean Mental Health Mobile App..."
+echo "🚀 Starting Clean Customer Helpline App..."
 
 # Set environment variables for better performance
 export WATCHMAN_NO_LOCAL=1

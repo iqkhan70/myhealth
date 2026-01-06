@@ -12,35 +12,22 @@ import {
   Platform,
 } from 'react-native';
 
-const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, deviceToken, onEmergencySent }) => {
-  const [selectedDoctor, setSelectedDoctor] = useState(null);
+const EmergencyComponent = ({ visible, onClose, user, selectedContact, apiBaseUrl, deviceToken, onEmergencySent }) => {
   const [emergencyMessage, setEmergencyMessage] = useState('');
   const [severity, setSeverity] = useState('High');
   const [sending, setSending] = useState(false);
-  const [doctors, setDoctors] = useState([]);
 
   useEffect(() => {
-    if (visible && contacts.length > 0) {
-      // Filter contacts to get only doctors
-      const doctorContacts = contacts.filter(contact => 
-        contact.roleId === 2 || contact.roleName === 'Doctor'
-      );
-      setDoctors(doctorContacts);
-      
-      // Auto-select first doctor if only one
-      if (doctorContacts.length === 1) {
-        setSelectedDoctor(doctorContacts[0]);
-      }
-      
+    if (visible) {
       // Reset form when modal opens
       setEmergencyMessage('');
       setSeverity('High');
     }
-  }, [visible, contacts]);
+  }, [visible]);
 
   const sendEmergency = async () => {
-    if (!selectedDoctor) {
-      Alert.alert('Error', 'Please select a doctor to send emergency alert to');
+    if (!selectedContact) {
+      Alert.alert('Error', 'No contact selected. Please select an SME, Attorney, or Doctor first.');
       return;
     }
 
@@ -54,10 +41,15 @@ const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, devi
       return;
     }
 
+    // Get contact display name
+    const contactName = selectedContact.roleId === 2 
+      ? `Dr. ${selectedContact.firstName} ${selectedContact.lastName}`
+      : `${selectedContact.firstName} ${selectedContact.lastName}`;
+
     // Confirm before sending
     Alert.alert(
       'Send Emergency Alert?',
-      `This will send an emergency alert to Dr. ${selectedDoctor.firstName} ${selectedDoctor.lastName} and log an incident in the emergency dashboard.\n\nSeverity: ${severity}\n\nContinue?`,
+      `This will send an emergency alert to ${contactName} and log an incident in the emergency dashboard.\n\nSeverity: ${severity}\n\nContinue?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -95,7 +87,7 @@ const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, devi
               if (data.success) {
                 Alert.alert(
                   'Emergency Sent!',
-                  `Emergency alert sent successfully to Dr. ${selectedDoctor.firstName} ${selectedDoctor.lastName}.\n\nIncident ID: ${data.incidentId}\n\nThe incident has been logged and will appear in the emergency dashboard.`,
+                  `Emergency alert sent successfully to ${contactName}.\n\nIncident ID: ${data.incidentId}\n\nThe incident has been logged and will appear in the emergency dashboard.`,
                   [
                     {
                       text: 'OK',
@@ -132,13 +124,13 @@ const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, devi
   };
 
   const quickMessages = [
-    "Car accident - need immediate attention",
-    "Workplace injury - urgent follow-up needed",
-    "Severe pain after treatment",
-    "Accident at home - reporting for records",
-    "Sports injury - need consultation",
-    "Slip and fall incident",
-    "Other emergency situation",
+    "Incident requiring immediate attention",
+    "Work-related issue requiring urgent follow-up",
+    "Significant discomfort following recent service",
+    "Incident at a residence - reporting for documentation",
+    "Activity-related issue requiring consultation",
+    "Other-related incident",
+    "Other time-sensitive situation"
   ];
 
   const insertQuickMessage = (quickMsg) => {
@@ -166,33 +158,27 @@ const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, devi
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Doctor Selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Select Doctor</Text>
-            {doctors.length === 0 ? (
-              <Text style={styles.noDoctorsText}>No doctors available</Text>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {doctors.map((doctor) => (
-                  <TouchableOpacity
-                    key={doctor.id}
-                    style={[
-                      styles.doctorCard,
-                      selectedDoctor?.id === doctor.id && styles.selectedDoctorCard,
-                    ]}
-                    onPress={() => setSelectedDoctor(doctor)}
-                  >
-                    <Text style={styles.doctorName}>
-                      Dr. {doctor.firstName} {doctor.lastName}
-                    </Text>
-                    <Text style={styles.doctorPhone}>
-                      {doctor.mobilePhone || 'No phone number'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-          </View>
+          {/* Selected Contact Display */}
+          {selectedContact && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Sending Emergency Alert To</Text>
+              <View style={styles.selectedContactCard}>
+                <Text style={styles.contactName}>
+                  {selectedContact.roleId === 2 
+                    ? `Dr. ${selectedContact.firstName} ${selectedContact.lastName}`
+                    : `${selectedContact.firstName} ${selectedContact.lastName}`}
+                </Text>
+                <Text style={styles.contactRole}>
+                  {selectedContact.roleName || 'Contact'}
+                </Text>
+                {selectedContact.mobilePhone && (
+                  <Text style={styles.contactPhone}>
+                    📱 {selectedContact.mobilePhone}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
 
           {/* Severity Selection */}
           <View style={styles.section}>
@@ -265,9 +251,9 @@ const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, devi
 
           {/* Send Button */}
           <TouchableOpacity
-            style={[styles.sendButton, (sending || !selectedDoctor || !emergencyMessage.trim()) && styles.disabledButton]}
+            style={[styles.sendButton, (sending || !selectedContact || !emergencyMessage.trim()) && styles.disabledButton]}
             onPress={sendEmergency}
-            disabled={sending || !selectedDoctor || !emergencyMessage.trim()}
+            disabled={sending || !selectedContact || !emergencyMessage.trim()}
           >
             {sending ? (
               <ActivityIndicator color="white" />
@@ -280,7 +266,7 @@ const EmergencyComponent = ({ visible, onClose, user, contacts, apiBaseUrl, devi
           <View style={styles.infoSection}>
             <Text style={styles.infoTitle}>⚠️ Important Information</Text>
             <Text style={styles.infoText}>
-              • This emergency alert will be sent to the selected doctor
+              • This emergency alert will be sent to the selected contact
             </Text>
             <Text style={styles.infoText}>
               • The incident will be logged in the emergency dashboard
@@ -350,54 +336,50 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontStyle: 'italic',
   },
-  noDoctorsText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    padding: 20,
-  },
-  doctorCard: {
+  selectedContactCard: {
     backgroundColor: 'white',
     padding: 15,
     borderRadius: 10,
-    marginRight: 10,
-    minWidth: 150,
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: '#dc3545',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  selectedDoctorCard: {
-    borderColor: '#dc3545',
-    backgroundColor: '#ffebee',
-  },
-  doctorName: {
-    fontSize: 14,
+  contactName: {
+    fontSize: 16,
     fontWeight: '600',
     color: '#333',
     marginBottom: 5,
   },
-  doctorPhone: {
+  contactRole: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  contactPhone: {
     fontSize: 12,
     color: '#666',
   },
   severityContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    flexWrap: 'nowrap',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   severityButton: {
     backgroundColor: 'white',
-    paddingHorizontal: 15,
+    paddingHorizontal: 10,
     paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 2,
-    minWidth: 80,
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     position: 'relative',
+    marginHorizontal: 2,
   },
   selectedSeverityButton: {
     backgroundColor: '#fff3cd',
@@ -407,16 +389,16 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   severityText: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
   },
   lowPriorityText: {
-    fontSize: 12,
+    fontSize: 11,
   },
   recommendedBadge: {
-    fontSize: 9,
+    fontSize: 10,
     color: '#28a745',
-    fontWeight: '600',
+    fontWeight: '700',
     marginTop: 2,
   },
   quickMessagesContainer: {
