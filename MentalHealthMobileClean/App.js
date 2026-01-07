@@ -834,7 +834,10 @@ export default function App() {
       lastLoadedUserIdRef.current = userData?.id; // Mark as loading for this user
       
       let endpoint;
-      if (userData.roleId === 2 || userData.roleName === 'Doctor') {
+      // Coordinators (3), Admins (4), Doctors (2), Attorneys (5), and SMEs (6) use doctor/patients endpoint
+      if (userData.roleId === 2 || userData.roleId === 3 || userData.roleId === 4 || userData.roleId === 5 || userData.roleId === 6 || 
+          userData.roleName === 'Doctor' || userData.roleName === 'Coordinator' || userData.roleName === 'Admin' || 
+          userData.roleName === 'Attorney' || userData.roleName === 'SME') {
         endpoint = `${API_BASE_URL}/mobile/doctor/patients`;
       } else {
         endpoint = `${API_BASE_URL}/mobile/patient/doctors`;
@@ -2252,7 +2255,42 @@ export default function App() {
     );
   }
 
+  // Helper function to open contact detail page for client from service request
+  const contactClient = () => {
+    if (!selectedServiceRequest) return;
+    
+    const clientId = selectedServiceRequest.clientId || selectedServiceRequest.ClientId;
+    if (!clientId) {
+      Alert.alert('Error', 'Client information not available');
+      return;
+    }
+
+    // Try to find client in existing contacts
+    let clientContact = contacts.find(c => c.id === clientId);
+    
+    // If not found, create a contact object from service request data
+    if (!clientContact) {
+      const clientName = selectedServiceRequest.clientName || selectedServiceRequest.ClientName || 'Client';
+      const nameParts = clientName.split(' ');
+      clientContact = {
+        id: clientId,
+        firstName: nameParts[0] || 'Client',
+        lastName: nameParts.slice(1).join(' ') || '',
+        email: '', // Will be empty if not in contacts
+        roleName: 'Patient',
+        roleId: 1, // Patient role
+        mobilePhone: ''
+      };
+    }
+
+    // Open contact detail page (allows choosing chat, audio, or video)
+    openContactDetail(clientContact);
+  };
+
   if (currentView === 'service-request-detail') {
+    const isCoordinatorOrAdmin = user?.roleId === 3 || user?.roleId === 4; // Coordinator = 3, Admin = 4
+    const clientId = selectedServiceRequest?.clientId || selectedServiceRequest?.ClientId;
+
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar style="auto" />
@@ -2290,6 +2328,26 @@ export default function App() {
                 <Text style={{ fontSize: 14, color: '#666', marginBottom: 0 }}>
                   {selectedServiceRequest.description || selectedServiceRequest.Description}
                 </Text>
+              )}
+              
+              {/* Contact Client button for Coordinators and Admins */}
+              {isCoordinatorOrAdmin && clientId && (
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#007bff',
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    marginTop: 12,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onPress={contactClient}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+                    📞 Contact Client
+                  </Text>
+                </TouchableOpacity>
               )}
             </View>
           )}

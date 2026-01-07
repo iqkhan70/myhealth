@@ -36,30 +36,53 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get assigned patients for a doctor or coordinator (mobile app)
         /// </summary>
         [HttpGet("doctor/patients")]
-        [Authorize(Roles = "Doctor,Coordinator,Attorney,SME")]
+        [Authorize(Roles = "Doctor,Coordinator,Attorney,SME,Admin")]
         public async Task<ActionResult<List<User>>> GetDoctorPatients()
         {
             try
             {
                 var userIdClaim = User.FindFirst("userId")?.Value;
-                if (!int.TryParse(userIdClaim, out int doctorId))
+                var roleIdClaim = User.FindFirst("roleId")?.Value;
+                if (!int.TryParse(userIdClaim, out int userId))
                 {
                     return Unauthorized("Invalid user token");
                 }
 
-                _logger.LogInformation("Getting patients for doctor {DoctorId}", doctorId);
+                int? roleId = null;
+                if (int.TryParse(roleIdClaim, out int rId))
+                {
+                    roleId = rId;
+                }
 
-                // Get clients from ServiceRequests assigned to this SME
-                var serviceRequestIds = await _context.ServiceRequestAssignments
-                    .Where(a => a.SmeUserId == doctorId && a.IsActive)
-                    .Select(a => a.ServiceRequestId)
-                    .ToListAsync();
-                
-                var clientIds = await _context.ServiceRequests
-                    .Where(sr => serviceRequestIds.Contains(sr.Id) && sr.IsActive)
-                    .Select(sr => sr.ClientId)
-                    .Distinct()
-                    .ToListAsync();
+                _logger.LogInformation("Getting patients for user {UserId} (Role: {RoleId})", userId, roleId);
+
+                List<int> clientIds;
+
+                // For Coordinators (3) and Admins (4), return all clients from active service requests
+                if (roleId == 3 || roleId == 4) // Coordinator or Admin
+                {
+                    clientIds = await _context.ServiceRequests
+                        .Where(sr => sr.IsActive)
+                        .Select(sr => sr.ClientId)
+                        .Distinct()
+                        .ToListAsync();
+                    
+                    _logger.LogInformation("Coordinator/Admin {UserId} accessing all clients from service requests", userId);
+                }
+                else
+                {
+                    // For other roles (Doctor, Attorney, SME), get clients from assigned ServiceRequests
+                    var serviceRequestIds = await _context.ServiceRequestAssignments
+                        .Where(a => a.SmeUserId == userId && a.IsActive)
+                        .Select(a => a.ServiceRequestId)
+                        .ToListAsync();
+                    
+                    clientIds = await _context.ServiceRequests
+                        .Where(sr => serviceRequestIds.Contains(sr.Id) && sr.IsActive)
+                        .Select(sr => sr.ClientId)
+                        .Distinct()
+                        .ToListAsync();
+                }
                 
                 var patients = await _context.Users
                     .Where(u => clientIds.Contains(u.Id) && u.IsActive && u.RoleId == 1) // Active patients only
@@ -372,22 +395,56 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var userIdClaim = User.FindFirst("userId")?.Value;
+                var roleIdClaim = User.FindFirst("roleId")?.Value;
                 if (!int.TryParse(userIdClaim, out int senderId))
                 {
                     return Unauthorized("Invalid user token");
                 }
 
-                _logger.LogInformation("Sending message from {SenderId} to {TargetUserId}", senderId, request.TargetUserId);
-
-                // Verify target user exists and relationship exists
-                var hasRelationship = await _context.UserAssignments
-                    .AnyAsync(ua =>
-                        (ua.AssignerId == senderId && ua.AssigneeId == request.TargetUserId) ||
-                        (ua.AssignerId == request.TargetUserId && ua.AssigneeId == senderId));
-
-                if (!hasRelationship)
+                int? senderRoleId = null;
+                if (int.TryParse(roleIdClaim, out int roleId))
                 {
-                    return Forbid("No relationship exists with target user");
+                    senderRoleId = roleId;
+                }
+
+                _logger.LogInformation("Sending message from {SenderId} (Role: {RoleId}) to {TargetUserId}", senderId, senderRoleId, request.TargetUserId);
+
+                // Verify target user exists
+                var targetUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == request.TargetUserId && u.IsActive);
+
+                if (targetUser == null)
+                {
+                    return NotFound("Target user not found");
+                }
+
+                // For Coordinators (3) and Admins (4), allow messaging clients via service requests
+                bool canMessage = false;
+                if (senderRoleId == 3 || senderRoleId == 4) // Coordinator or Admin
+                {
+                    // Check if there's a service request connecting the coordinator/admin to this client
+                    var hasServiceRequest = await _context.ServiceRequests
+                        .AnyAsync(sr => sr.ClientId == request.TargetUserId && sr.IsActive);
+                    
+                    if (hasServiceRequest)
+                    {
+                        canMessage = true;
+                        _logger.LogInformation("Coordinator/Admin {SenderId} can message client {TargetUserId} via service request", senderId, request.TargetUserId);
+                    }
+                }
+
+                // For other roles, check relationship via UserAssignments
+                if (!canMessage)
+                {
+                    var hasRelationship = await _context.UserAssignments
+                        .AnyAsync(ua =>
+                            (ua.AssignerId == senderId && ua.AssigneeId == request.TargetUserId) ||
+                            (ua.AssignerId == request.TargetUserId && ua.AssigneeId == senderId));
+
+                    if (!hasRelationship)
+                    {
+                        return Forbid("No relationship exists with target user");
+                    }
                 }
 
                 // Get sender info for message data
