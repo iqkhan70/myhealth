@@ -66,7 +66,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                         .Select(sr => sr.ClientId)
                         .Distinct()
                         .ToListAsync();
-                    
+
                     _logger.LogInformation("Coordinator/Admin {UserId} accessing all clients from service requests", userId);
                 }
                 else
@@ -76,14 +76,14 @@ namespace SM_MentalHealthApp.Server.Controllers
                         .Where(a => a.SmeUserId == userId && a.IsActive)
                         .Select(a => a.ServiceRequestId)
                         .ToListAsync();
-                    
+
                     clientIds = await _context.ServiceRequests
                         .Where(sr => serviceRequestIds.Contains(sr.Id) && sr.IsActive)
                         .Select(sr => sr.ClientId)
                         .Distinct()
                         .ToListAsync();
                 }
-                
+
                 var patients = await _context.Users
                     .Where(u => clientIds.Contains(u.Id) && u.IsActive && u.RoleId == 1) // Active patients only
                     .OrderBy(p => p.LastName)
@@ -93,7 +93,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Decrypt DateOfBirth for all patients
                 UserEncryptionHelper.DecryptUserData(patients, _encryptionService);
 
-                _logger.LogInformation("Found {PatientCount} patients for doctor {DoctorId}", patients.Count, doctorId);
+                _logger.LogInformation("Found {PatientCount} patients for user {UserId}", patients.Count, userId);
 
                 return Ok(patients);
             }
@@ -157,8 +157,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Step 3: Get the full User entities for these SMEs
                 var assignerUsers = await _context.Users
                     .Include(u => u.Role)
-                    .Where(u => smeUserIds.Contains(u.Id) && 
-                               u.IsActive && 
+                    .Where(u => smeUserIds.Contains(u.Id) &&
+                               u.IsActive &&
                                (u.RoleId == 2 || u.RoleId == 4 || u.RoleId == 5 || u.RoleId == 6)) // Active doctors, coordinators, attorneys, and SMEs
                     .OrderBy(d => d.LastName)
                     .ThenBy(d => d.FirstName)
@@ -425,7 +425,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     // Check if there's a service request connecting the coordinator/admin to this client
                     var hasServiceRequest = await _context.ServiceRequests
                         .AnyAsync(sr => sr.ClientId == request.TargetUserId && sr.IsActive);
-                    
+
                     if (hasServiceRequest)
                     {
                         canMessage = true;
@@ -496,7 +496,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     _logger.LogWarning("Target user {TargetUserId} is not connected via SignalR, message saved but not delivered in real-time",
                         request.TargetUserId);
                 }
-                
+
                 // Also send confirmation to sender if they're connected
                 if (MobileHub.UserConnections.TryGetValue(senderId, out string? senderConnectionId))
                 {

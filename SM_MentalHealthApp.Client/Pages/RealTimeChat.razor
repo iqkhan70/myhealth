@@ -2,6 +2,7 @@
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Shared
 @using System.Text.Json
+@using System
 @using ChatMsg = SM_MentalHealthApp.Client.Services.ChatMessage
 @inject IAuthService AuthService
 @inject IRealtimeService RealtimeService
@@ -1061,7 +1062,7 @@
                 var parts = param.Split('=');
                 if (parts.Length == 2 && parts[0] == "clientId")
                 {
-                    if (int.TryParse(Uri.UnescapeDataString(parts[1]), out int clientId))
+                    if (int.TryParse(System.Uri.UnescapeDataString(parts[1]), out int clientId))
                     {
                         targetClientId = clientId;
                         break;
@@ -1416,7 +1417,7 @@
             };
             
             // ✅ Navigate to VideoCall page - this will automatically join the channel
-            var callUrl = $"/video-call/{user.Id}?channel={Uri.EscapeDataString(channelName)}";
+            var callUrl = $"/video-call/{user.Id}?channel={System.Uri.EscapeDataString(channelName)}";
             Navigation.NavigateTo(callUrl);
             
             NotificationService.Notify(NotificationSeverity.Info, "Video Call", $"Connecting to {user.FirstName}...");
@@ -1450,7 +1451,7 @@
             };
             
             // ✅ Navigate to AudioCall page - this will automatically join the channel
-            var callUrl = $"/audio-call/{user.Id}?channel={Uri.EscapeDataString(channelName)}";
+            var callUrl = $"/audio-call/{user.Id}?channel={System.Uri.EscapeDataString(channelName)}";
             Navigation.NavigateTo(callUrl);
             
             NotificationService.Notify(NotificationSeverity.Info, "Audio Call", $"Connecting to {user.FirstName}...");
@@ -1682,8 +1683,8 @@
             // Navigate to the appropriate call page based on call type
             // Pass the channel name as a query parameter so the call page can auto-join
             var callUrl = incomingCall.CallType?.ToLower() == "video"
-            ? $"/video-call/{incomingCall.CallerId}?channel={Uri.EscapeDataString(channelName)}&mobile_call=true"
-            : $"/audio-call/{incomingCall.CallerId}?channel={Uri.EscapeDataString(channelName)}&mobile_call=true";
+            ? $"/video-call/{incomingCall.CallerId}?channel={System.Uri.EscapeDataString(channelName)}&mobile_call=true"
+            : $"/audio-call/{incomingCall.CallerId}?channel={System.Uri.EscapeDataString(channelName)}&mobile_call=true";
             
             Navigation.NavigateTo(callUrl);
 
