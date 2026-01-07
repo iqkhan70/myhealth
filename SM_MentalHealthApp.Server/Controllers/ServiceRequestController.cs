@@ -171,13 +171,28 @@ namespace SM_MentalHealthApp.Server.Controllers
 
         /// <summary>
         /// Delete (soft delete) a service request
+        /// Admin/Coordinator can delete any, Patients can delete their own
         /// </summary>
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin,Coordinator")]
+        [Authorize(Roles = "Admin,Coordinator,Patient")]
         public async Task<ActionResult> DeleteServiceRequest(int id)
         {
             try
             {
+                var currentUserId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+
+                // If Patient, verify they own this service request
+                if (currentRoleId == Roles.Patient && currentUserId.HasValue)
+                {
+                    var serviceRequest = await _serviceRequestService.GetServiceRequestByIdAsync(id);
+                    if (serviceRequest == null)
+                        return NotFound();
+
+                    if (serviceRequest.ClientId != currentUserId.Value)
+                        return Forbid("You can only delete your own service requests");
+                }
+
                 var deleted = await _serviceRequestService.DeleteServiceRequestAsync(id);
                 if (!deleted)
                     return NotFound();

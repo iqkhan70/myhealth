@@ -1,5 +1,5 @@
 // App.js
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ScrollView,
   Platform, KeyboardAvoidingView, Modal
@@ -145,6 +145,7 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [selectedContact, setSelectedContact] = useState(null);
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
 
   const [signalRConnected, setSignalRConnected] = useState(false);
 
@@ -1723,6 +1724,32 @@ export default function App() {
     </SafeAreaView>
   );
 
+  // Filter contacts based on search query (must be at component level, not inside render function)
+  const filteredContacts = useMemo(() => {
+    if (!contactSearchQuery.trim()) {
+      return contacts;
+    }
+
+    const query = contactSearchQuery.toLowerCase().trim();
+    return contacts.filter((contact) => {
+      const firstName = (contact.firstName || '').toLowerCase();
+      const lastName = (contact.lastName || '').toLowerCase();
+      const fullName = `${firstName} ${lastName}`;
+      const roleName = (contact.roleName || '').toLowerCase();
+      const specialization = (contact.specialization || '').toLowerCase();
+      const mobilePhone = (contact.mobilePhone || '').toLowerCase();
+
+      return (
+        firstName.includes(query) ||
+        lastName.includes(query) ||
+        fullName.includes(query) ||
+        roleName.includes(query) ||
+        specialization.includes(query) ||
+        mobilePhone.includes(query)
+      );
+    });
+  }, [contacts, contactSearchQuery]);
+
   const renderCallModal = () => (
     <Modal visible={callModal.visible} animationType="slide">
       <SafeAreaView style={styles.callContainer}>
@@ -1845,7 +1872,26 @@ export default function App() {
         <Text style={styles.contactsTitle}>
           {user?.roleId === 2 ? 'Your Clients' : 'Your Coordinators & SMEs'}
         </Text>
-        <Text style={styles.contactsCount}>({contacts.length})</Text>
+        <Text style={styles.contactsCount}>({filteredContacts.length})</Text>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search contacts..."
+          value={contactSearchQuery}
+          onChangeText={setContactSearchQuery}
+          placeholderTextColor="#999"
+        />
+        {contactSearchQuery.length > 0 && (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={() => setContactSearchQuery('')}
+          >
+            <Text style={styles.clearButtonText}>✕</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView style={styles.contactsList}>
@@ -1864,7 +1910,12 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        {contacts.map((contact) => (
+        {filteredContacts.length === 0 && contactSearchQuery.trim() ? (
+          <View style={styles.emptyContactsContainer}>
+            <Text style={styles.emptyContactsText}>No contacts found matching "{contactSearchQuery}"</Text>
+          </View>
+        ) : (
+          filteredContacts.map((contact) => (
           <TouchableOpacity key={contact.id} style={styles.contactItem} onPress={() => openContactDetail(contact)}>
             <View style={styles.contactInfo}>
               <Text style={styles.contactName}>
@@ -1880,7 +1931,8 @@ export default function App() {
               <Text style={styles.contactArrowText}>›</Text>
             </View>
           </TouchableOpacity>
-        ))}
+        ))
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -2710,6 +2762,43 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#2c3e50',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#333',
+  },
+  clearButton: {
+    marginLeft: 8,
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearButtonText: {
+    fontSize: 18,
+    color: '#666',
+  },
+  emptyContactsContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyContactsText: {
+    fontSize: 16,
+    color: '#666',
   },
   contactsHeader: {
     flexDirection: 'row',
