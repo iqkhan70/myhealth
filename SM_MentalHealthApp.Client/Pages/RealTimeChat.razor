@@ -1049,7 +1049,82 @@
         // Also listen to SignalRService for messages sent via SignalR (e.g., from mobile app)
         SignalRService.OnNewMessage += HandleNewMessage;
 
+        // Check for clientId query parameter
+        int? targetClientId = null;
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (!string.IsNullOrEmpty(uri.Query))
+        {
+            var queryString = uri.Query.TrimStart('?');
+            var queryParams = queryString.Split('&');
+            foreach (var param in queryParams)
+            {
+                var parts = param.Split('=');
+                if (parts.Length == 2 && parts[0] == "clientId")
+                {
+                    if (int.TryParse(Uri.UnescapeDataString(parts[1]), out int clientId))
+                    {
+                        targetClientId = clientId;
+                        break;
+                    }
+                }
+            }
+        }
+
         await LoadUsers();
+
+        // Auto-select client if clientId was provided in query string
+        if (targetClientId.HasValue)
+        {
+            var client = users.FirstOrDefault(u => u.Id == targetClientId.Value);
+            if (client == null)
+            {
+                // Client not in filtered list - fetch them directly and add to list
+                // This allows admins/coordinators to access clients from service requests
+                try
+                {
+                    var clientResponse = await Http.GetAsync($"odata/Users({targetClientId.Value})");
+                    if (clientResponse.IsSuccessStatusCode)
+                    {
+                        var json = await clientResponse.Content.ReadFromJsonAsync<JsonElement>();
+                        User? fetchedClient = null;
+                        
+                        // Handle OData response format
+                        if (json.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Array)
+                        {
+                            var usersArray = valueElement.EnumerateArray().ToList();
+                            if (usersArray.Any())
+                            {
+                                fetchedClient = JsonSerializer.Deserialize<User>(usersArray.First().GetRawText(), 
+                                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                            }
+                        }
+                        else if (json.TryGetProperty("FirstName", out _) || json.TryGetProperty("firstName", out _))
+                        {
+                            fetchedClient = JsonSerializer.Deserialize<User>(json.GetRawText(), 
+                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        }
+                        
+                        if (fetchedClient != null && fetchedClient.RoleId == 1)
+                        {
+                            if (!users.Any(u => u.Id == fetchedClient.Id))
+                            {
+                                users.Add(fetchedClient);
+                            }
+                            client = fetchedClient;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error fetching client {targetClientId.Value}: {ex.Message}");
+                }
+            }
+            
+            if (client != null)
+            {
+                await SelectUser(client);
+            }
+        }
 
         if (selectedUser != null && RealtimeService.IsConnected)
             await LoadChatHistory();
