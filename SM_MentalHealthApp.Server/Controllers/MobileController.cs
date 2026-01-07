@@ -58,8 +58,8 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 List<int> clientIds;
 
-                // For Coordinators (3) and Admins (4), return all clients from active service requests
-                if (roleId == 3 || roleId == 4) // Coordinator or Admin
+                // For Admin (3), return all clients from service requests
+                if (roleId == 3) // Admin
                 {
                     clientIds = await _context.ServiceRequests
                         .Where(sr => sr.IsActive)
@@ -67,11 +67,12 @@ namespace SM_MentalHealthApp.Server.Controllers
                         .Distinct()
                         .ToListAsync();
 
-                    _logger.LogInformation("Coordinator/Admin {UserId} accessing all clients from service requests", userId);
+                    _logger.LogInformation("Admin {UserId} accessing all clients from service requests", userId);
                 }
                 else
                 {
-                    // For other roles (Doctor, Attorney, SME), get clients from assigned ServiceRequests
+                    // For Coordinator (4), Doctor (2), Attorney (5), and SME (6), get clients from assigned ServiceRequests
+                    // This ensures coordinators only see clients from service requests assigned to them
                     var serviceRequestIds = await _context.ServiceRequestAssignments
                         .Where(a => a.SmeUserId == userId && a.IsActive)
                         .Select(a => a.ServiceRequestId)
@@ -82,6 +83,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                         .Select(sr => sr.ClientId)
                         .Distinct()
                         .ToListAsync();
+
+                    _logger.LogInformation("User {UserId} (Role: {RoleId}) accessing clients from {ServiceRequestCount} assigned service requests", userId, roleId, serviceRequestIds.Count);
                 }
 
                 var patients = await _context.Users

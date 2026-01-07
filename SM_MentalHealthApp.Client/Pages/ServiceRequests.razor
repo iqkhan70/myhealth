@@ -11,6 +11,7 @@
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 @inject ODataService ODataService
+@inject NavigationManager Navigation
 
 <PageTitle>Service Requests</PageTitle>
 
@@ -66,7 +67,23 @@
                 FilterMode="FilterMode.Advanced" ShowPagingSummary="true">
                     <Columns>
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Id" Title="ID" Width="80px" />
-                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="ClientName" Title="Client" Width="200px" />
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="ClientName" Title="Client" Width="200px">
+                            <Template Context="sr">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span>@sr.ClientName</span>
+                                    @{
+                                        var isCoordinatorOrAdmin = AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4;
+                                        var hasClientId = sr.ClientId > 0;
+                                    }
+                                    @if (isCoordinatorOrAdmin && hasClientId)
+                                    {
+                                        <RadzenButton Icon="phone" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.ExtraSmall"
+                                            Click="@(() => ContactClient(sr.ClientId))" Title="Contact Client"
+                                            style="padding: 2px 6px; min-width: auto;" />
+                                    }
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Title" Title="Title" Width="250px" />
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Type" Title="Type" Width="120px" />
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Status" Title="Status" Width="120px" Filterable="false">
@@ -1140,6 +1157,15 @@
         catch (Exception ex)
         {
             NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to open admin override dialog: {ex.Message}");
+        }
+    }
+
+    private void ContactClient(int clientId)
+    {
+        if (clientId > 0)
+        {
+            // Navigate to real-time chat with clientId query parameter
+            Navigation.NavigateTo($"/real-time-chat?clientId={clientId}");
         }
     }
 
