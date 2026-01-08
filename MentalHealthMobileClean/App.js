@@ -1948,6 +1948,11 @@ export default function App() {
         >
           <Text style={styles.guestButtonText}>Continue as Guest</Text>
         </TouchableOpacity>
+        <View style={styles.disclaimerContainer}>
+          <Text style={styles.disclaimerText}>
+            We help clients connect with qualified professionals. Services are provided independently by each party.
+          </Text>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -2875,6 +2880,17 @@ const styles = StyleSheet.create({
     color: '#007bff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  disclaimerContainer: {
+    marginTop: 30,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+  },
+  disclaimerText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   linkButton: {
     marginTop: 15,
