@@ -131,7 +131,23 @@ namespace SM_MentalHealthApp.Server.Services
 
                     try
                     {
-                        await SendEmailViaMailgun(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName, mailgunApiKey, mailgunDomain);
+                        // For Mailgun, the From email must use the Mailgun domain
+                        // Extract the local part (before @) from fromEmail, or use "noreply"
+                        string mailgunFromEmail;
+                        if (fromEmail.Contains("@"))
+                        {
+                            var localPart = fromEmail.Split('@')[0];
+                            mailgunFromEmail = $"{localPart}@{mailgunDomain}";
+                        }
+                        else
+                        {
+                            mailgunFromEmail = $"noreply@{mailgunDomain}";
+                        }
+
+                        _logger.LogInformation("Using Mailgun From address: {FromEmail} (original: {OriginalFromEmail})",
+                            mailgunFromEmail, fromEmail);
+
+                        await SendEmailViaMailgun(userId, user.Email, user.FirstName, user.LastName, subject, body, mailgunFromEmail, fromName, mailgunApiKey, mailgunDomain);
                     }
                     catch (Exception mailgunEx)
                     {
