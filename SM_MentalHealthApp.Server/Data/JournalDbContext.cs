@@ -166,6 +166,10 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.VehicleDispositionId);
                         entity.HasIndex(e => e.TransportToCareMethodId);
                         entity.HasIndex(e => e.MedicalAttentionTypeId);
+
+                        // Password reset fields
+                        entity.Property(e => e.PasswordResetToken).HasMaxLength(500);
+                        entity.HasIndex(e => e.PasswordResetToken); // Index for faster token lookups
                   });
 
                   // Configure State entity

@@ -22,49 +22,49 @@ namespace SM_MentalHealthApp.Shared
         public string LastName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
-        
+
         // Encrypted DateOfBirth stored in database (not sent to client for security)
         [System.Text.Json.Serialization.JsonIgnore]
         public string DateOfBirthEncrypted { get; set; } = string.Empty;
-        
+
         // Computed property for decrypted DateOfBirth (not stored in DB, sent to client)
         // This will be populated by the service layer after decryption
         private DateTime _decryptedDateOfBirth = DateTime.MinValue;
-        public DateTime DateOfBirth 
-        { 
-            get 
+        public DateTime DateOfBirth
+        {
+            get
             {
                 // This will be set by the service layer after decryption
                 return _decryptedDateOfBirth;
             }
-            set 
+            set
             {
                 _decryptedDateOfBirth = value;
             }
         }
-        
+
         public string? Gender { get; set; }
-        
+
         // Encrypted MobilePhone stored in database (not sent to client for security)
         [System.Text.Json.Serialization.JsonIgnore]
         public string? MobilePhoneEncrypted { get; set; }
-        
+
         // Computed property for decrypted MobilePhone (not stored in DB, sent to client)
         // This will be populated by the service layer after decryption
         private string? _decryptedMobilePhone;
-        public string? MobilePhone 
-        { 
-            get 
+        public string? MobilePhone
+        {
+            get
             {
                 // This will be set by the service layer after decryption
                 return _decryptedMobilePhone;
             }
-            set 
+            set
             {
                 _decryptedMobilePhone = value;
             }
         }
-        
+
         public int RoleId { get; set; } = 1; // Default to Patient role
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastLoginAt { get; set; }
@@ -72,55 +72,61 @@ namespace SM_MentalHealthApp.Shared
         public bool IsFirstLogin { get; set; } = true;
         public bool MustChangePassword { get; set; } = false;
 
+        // Password reset fields
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? PasswordResetToken { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public DateTime? PasswordResetTokenExpiry { get; set; }
+
         // Doctor-specific fields (nullable for non-doctors)
         public string? Specialization { get; set; }
         public string? LicenseNumber { get; set; }
 
         // SME scoring (for doctors and attorneys)
         public int SmeScore { get; set; } = 100; // Behavior-based score (0-150), default 100
-        
+
         // Company association for SMEs (if set, billing goes to company, else to individual SME)
         public int? CompanyId { get; set; }
-        
+
         /// <summary>
         /// Billing account for this user. If SME belongs to company, points to company billing account, else to individual billing account.
         /// </summary>
         public long? BillingAccountId { get; set; }
-        
+
         // Accident-related fields (captured from user requests)
         public int? Age { get; set; }
-        
+
         [MaxLength(100)]
         public string? Race { get; set; }
-        
+
         [MaxLength(500)]
         public string? AccidentAddress { get; set; }
-        
+
         public DateTime? AccidentDate { get; set; }
-        
+
         [MaxLength(1000)]
         public string? VehicleDetails { get; set; }
-        
+
         public DateTime? DateReported { get; set; }
-        
+
         [MaxLength(100)]
         public string? PoliceCaseNumber { get; set; }
-        
+
         [MaxLength(2000)]
         public string? AccidentDetails { get; set; }
-        
+
         [MaxLength(200)]
         public string? RoadConditions { get; set; }
-        
+
         [MaxLength(1000)]
         public string? DoctorsInformation { get; set; }
-        
+
         [MaxLength(1000)]
         public string? LawyersInformation { get; set; }
-        
+
         [MaxLength(2000)]
         public string? AdditionalNotes { get; set; }
-        
+
         // Location fields for location-based matching
         [MaxLength(10)]
         public string? ZipCode { get; set; }
@@ -184,33 +190,33 @@ namespace SM_MentalHealthApp.Shared
         // Lead Intake fields
         [MaxLength(2)]
         public string? ResidenceStateCode { get; set; }
-        
+
         [MaxLength(2)]
         public string? AccidentStateCode { get; set; }
-        
+
         public int? AccidentParticipantRoleId { get; set; }
-        
+
         public int? VehicleDispositionId { get; set; }
-        
+
         public int? TransportToCareMethodId { get; set; }
-        
+
         public int? MedicalAttentionTypeId { get; set; }
-        
+
         public bool? PoliceInvolvement { get; set; }
-        
+
         public bool? LostConsciousness { get; set; }
-        
+
         public bool? NeuroSymptoms { get; set; }
-        
+
         public bool? MusculoskeletalSymptoms { get; set; }
-        
+
         public bool? PsychologicalSymptoms { get; set; }
-        
+
         [MaxLength(2000)]
         public string? SymptomsNotes { get; set; }
-        
+
         public bool? InsuranceContacted { get; set; }
-        
+
         public bool? RepresentedByAttorney { get; set; }
 
         // Navigation properties
@@ -350,6 +356,39 @@ namespace SM_MentalHealthApp.Shared
     }
 
     public class ChangePasswordResponse
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+    public class ForgotPasswordRequest
+    {
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+    }
+
+    public class ForgotPasswordResponse
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+    public class ResetPasswordRequest
+    {
+        [Required]
+        public string Token { get; set; } = string.Empty;
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+        [Required]
+        [MinLength(6)]
+        public string NewPassword { get; set; } = string.Empty;
+        [Required]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+
+    public class ResetPasswordResponse
     {
         public bool Success { get; set; }
         public string Message { get; set; } = string.Empty;

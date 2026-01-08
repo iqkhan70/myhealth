@@ -1983,6 +1983,86 @@ else
     echo -e "${YELLOW}Billing Accounts and Rates migration script not found, skipping...${NC}"
 fi
 
+# ============================================================================
+# Step 8.13: Run Password Reset Fields Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.13: Running Password Reset Fields Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddPasswordResetFields.sql" ]; then
+    echo "Copying Password Reset Fields migration script to server..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddPasswordResetFields.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/password_reset_fields_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Password Reset Fields migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using .env password"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "Using fallback password"
+                MYSQL_PWD_TO_USE="UthmanBasima70"
+            fi
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/password_reset_fields_migration.sql 2>&1 | grep -v "Warning" || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/password_reset_fields_migration.sql 2>&1 || true)
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Password Reset Fields migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Password Reset Fields migration failed"
+                        echo "$ERROR_OUTPUT"
+                        exit 1
+                    fi
+                }
+            else
+                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/password_reset_fields_migration.sql 2>&1 | grep -v "Warning" || {
+                    # Check if errors are just "already exists" - that's OK for idempotent script
+                    ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/password_reset_fields_migration.sql 2>&1 || true)
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                        echo "✅ Password Reset Fields migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Password Reset Fields migration failed"
+                        echo "$ERROR_OUTPUT"
+                        exit 1
+                    fi
+                }
+            fi
+            
+            echo "✅ Password Reset Fields migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Password Reset Fields migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/password_reset_fields_migration.sql"
+        fi
+        
+        rm -f /tmp/password_reset_fields_migration.sql
+ENDSSH
+    
+    echo -e "${GREEN}✅ Password Reset Fields migration completed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Password Reset Fields migration script not found, skipping...${NC}"
+fi
+
 echo ""
 
 # ============================================================================

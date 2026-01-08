@@ -1088,7 +1088,7 @@
                 }
             }
         }
-        
+
         // If no query parameter but we have sessionStorage value, we're returning from a call
         // Restore the clientId from sessionStorage
         if (!targetClientId.HasValue)
@@ -1131,7 +1131,7 @@
                     Console.WriteLine($"⚠️ Error clearing sessionStorage: {ex.Message}");
                 }
             }
-            await LoadUsers();
+        await LoadUsers();
         }
 
         // Auto-select client if clientId was provided in query string or stored

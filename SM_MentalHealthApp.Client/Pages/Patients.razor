@@ -3505,17 +3505,17 @@
                 if (getResponse.IsSuccessStatusCode)
                 {
                     var allAssigners = await getResponse.Content.ReadFromJsonAsync<List<User>>();
-                    if (allAssigners != null)
+                if (allAssigners != null)
+                {
+                    // Count doctors (excluding the one being unassigned if it's a doctor)
+                    var remainingDoctors = allAssigners
+                        .Where(a => a.RoleId == 2 && a.Id != selectedDoctorId) // RoleId 2 = Doctor, exclude the one being unassigned
+                        .ToList();
+                    
+                    if (!remainingDoctors.Any())
                     {
-                        // Count doctors (excluding the one being unassigned if it's a doctor)
-                        var remainingDoctors = allAssigners
-                            .Where(a => a.RoleId == 2 && a.Id != selectedDoctorId) // RoleId 2 = Doctor, exclude the one being unassigned
-                            .ToList();
-                        
-                        if (!remainingDoctors.Any())
-                        {
-                            NotificationService.ShowWarning("This client must be assigned to at least one SME. You cannot unassign yourself if the client will have no SMEs assigned.");
-                            return;
+                        NotificationService.ShowWarning("This client must be assigned to at least one SME. You cannot unassign yourself if the client will have no SMEs assigned.");
+                        return;
                         }
                     }
                 }

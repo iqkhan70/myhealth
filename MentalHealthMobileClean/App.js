@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ScrollView,
-  Platform, KeyboardAvoidingView, Modal
+  Platform, KeyboardAvoidingView, Modal, Linking
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -164,9 +164,20 @@ export default function App() {
   const incomingCallTimeoutRef = useRef(null);
 
   // 📄 Document upload state
-  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password', 'service-requests', 'service-request-detail', 'create-service-request'
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password', 'service-requests', 'service-request-detail', 'create-service-request', 'forgot-password', 'reset-password'
   const [availablePatients, setAvailablePatients] = useState([]);
   const [selectedContactDetail, setSelectedContactDetail] = useState(null);
+  
+  // 🔐 Password reset state
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [resetPasswordEmail, setResetPasswordEmail] = useState('');
+  const [resetPasswordToken, setResetPasswordToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [forgotPasswordMessage, setForgotPasswordMessage] = useState('');
+  const [resetPasswordMessage, setResetPasswordMessage] = useState('');
   const [selectedServiceRequest, setSelectedServiceRequest] = useState(null);
 
   // 📱 SMS state
@@ -213,6 +224,71 @@ export default function App() {
       registerDeviceForEmergency();
     }
   }, [user?.id]); // Only run when user ID changes, not on every user object change
+
+  // Handle deep links for password reset
+  useEffect(() => {
+    // Handle initial URL (when app is opened from a link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink(url);
+      }
+    }).catch(err => console.error('Error getting initial URL:', err));
+
+    // Handle URL when app is already running
+    const subscription = Linking.addEventListener('url', (event) => {
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleDeepLink = (url) => {
+    try {
+      console.log('📱 Deep link received:', url);
+      
+      // Skip Expo development URLs and other non-HTTP URLs
+      if (!url || url.startsWith('exp://') || url.startsWith('exps://')) {
+        console.log('📱 Skipping Expo development URL');
+        return;
+      }
+      
+      // Parse URL - format: https://caseflowstage.store/reset-password?token=XXX&email=YYY
+      // or mentalhealthapp://reset-password?token=XXX&email=YYY
+      // or https://192.168.86.25:5283/reset-password?token=XXX&email=YYY
+      let urlObj;
+      try {
+        urlObj = new URL(url);
+      } catch (e) {
+        // Try parsing as custom scheme
+        if (url.startsWith('mentalhealthapp://')) {
+          const cleanUrl = url.replace('mentalhealthapp://', 'https://');
+          urlObj = new URL(cleanUrl);
+        } else {
+          console.log('📱 Invalid URL format, skipping:', url);
+          return;
+        }
+      }
+      
+      if (urlObj.pathname && urlObj.pathname.includes('reset-password')) {
+        const token = urlObj.searchParams.get('token');
+        const email = urlObj.searchParams.get('email');
+        
+        if (token && email) {
+          console.log('📱 Password reset deep link detected');
+          setResetPasswordToken(token);
+          setResetPasswordEmail(decodeURIComponent(email));
+          setCurrentView('reset-password');
+          currentViewRef.current = 'reset-password';
+        } else {
+          console.log('📱 Reset password URL detected but missing token or email');
+        }
+      }
+    } catch (error) {
+      console.error('Error handling deep link:', error);
+    }
+  };
 
   const checkAuthStatus = async () => {
     try {
@@ -1704,6 +1780,142 @@ export default function App() {
     );
   };
 
+  // ---------- PASSWORD RESET FUNCTIONS ----------
+  const handleForgotPassword = async () => {
+    if (!forgotPasswordEmail.trim()) {
+      Alert.alert('Error', 'Please enter your email address');
+      return;
+    }
+
+    setForgotPasswordLoading(true);
+    setForgotPasswordMessage('');
+    
+    try {
+      const forgotPasswordUrl = ensureValidUrl(`${API_BASE_URL}/auth/forgot-password`);
+      console.log('📱 Forgot password URL:', forgotPasswordUrl);
+      console.log('📱 API_BASE_URL:', API_BASE_URL);
+      
+      const resp = await fetch(forgotPasswordUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotPasswordEmail.trim() })
+      });
+      
+      console.log('📱 Forgot password response status:', resp.status);
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        setForgotPasswordMessage('If an account with that email exists, a password reset link has been sent.');
+        Alert.alert('Success', 'If an account with that email exists, a password reset link has been sent to your email.');
+        // Return to login after a delay
+        setTimeout(() => {
+          setForgotPasswordEmail('');
+          setForgotPasswordMessage('');
+          setCurrentView('login');
+          currentViewRef.current = 'login';
+        }, 2000);
+      } else {
+        setForgotPasswordMessage(data.message || 'An error occurred. Please try again.');
+        Alert.alert('Error', data.message || 'An error occurred. Please try again.');
+      }
+    } catch (e) {
+      console.error('Forgot password error:', e);
+      console.error('Error details:', {
+        message: e.message,
+        name: e.name,
+        stack: e.stack
+      });
+      
+      let errorMsg = 'Network error. Please check your connection and try again.';
+      
+      // Provide more specific error messages
+      if (e.message && e.message.includes('Network request failed')) {
+        errorMsg = `Cannot connect to server.\n\n` +
+          `Server: ${API_BASE_URL}\n\n` +
+          `Troubleshooting:\n` +
+          `1. Test in browser: Open https://192.168.86.25:5263/swagger on your device\n` +
+          `2. If login works, this is likely a certificate issue\n` +
+          `3. Make sure device and Mac are on same Wi-Fi\n` +
+          `4. Check Mac firewall allows port 5263\n` +
+          `5. For iOS: Trust certificate in Safari first\n` +
+          `6. Rebuild app if you changed config: npx expo run:ios`;
+      }
+      
+      setForgotPasswordMessage(errorMsg);
+      Alert.alert('Connection Error', errorMsg);
+    } finally {
+      setForgotPasswordLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!newPassword || !confirmPassword) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+
+    if (!resetPasswordToken || !resetPasswordEmail) {
+      Alert.alert('Error', 'Invalid reset link. Please request a new password reset.');
+      return;
+    }
+
+    setResetPasswordLoading(true);
+    setResetPasswordMessage('');
+    
+    try {
+      const resetPasswordUrl = ensureValidUrl(`${API_BASE_URL}/auth/reset-password`);
+      const resp = await fetch(resetPasswordUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: resetPasswordEmail,
+          token: resetPasswordToken,
+          newPassword: newPassword,
+          confirmPassword: confirmPassword
+        })
+      });
+      
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        setResetPasswordMessage(data.message || 'Password has been reset successfully.');
+        Alert.alert('Success', data.message || 'Password has been reset successfully. You can now login with your new password.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Clear state and return to login
+              setResetPasswordEmail('');
+              setResetPasswordToken('');
+              setNewPassword('');
+              setConfirmPassword('');
+              setResetPasswordMessage('');
+              setCurrentView('login');
+              currentViewRef.current = 'login';
+            }
+          }
+        ]);
+      } else {
+        setResetPasswordMessage(data.message || 'An error occurred. Please try again.');
+        Alert.alert('Error', data.message || 'An error occurred. Please try again.');
+      }
+    } catch (e) {
+      console.error('Reset password error:', e);
+      const errorMsg = 'Network error. Please check your connection and try again.';
+      setResetPasswordMessage(errorMsg);
+      Alert.alert('Error', errorMsg);
+    } finally {
+      setResetPasswordLoading(false);
+    }
+  };
+
   // ---------- RENDER ----------
   const renderLogin = () => (
     <SafeAreaView style={styles.container}>
@@ -1713,6 +1925,17 @@ export default function App() {
         <TextInput style={styles.input} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
         <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={login} disabled={loading}>
           <Text style={styles.buttonText}>{loading ? 'Logging in…' : 'Login'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.linkButton}
+          onPress={() => {
+            setForgotPasswordEmail('');
+            setForgotPasswordMessage('');
+            setCurrentView('forgot-password');
+            currentViewRef.current = 'forgot-password';
+          }}
+        >
+          <Text style={styles.linkButtonText}>Forgot your password?</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.guestButton} 
@@ -1726,6 +1949,131 @@ export default function App() {
       </View>
     </SafeAreaView>
   );
+
+  const renderForgotPassword = () => (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.loginContainer}>
+        <Text style={styles.title}>Forgot Password</Text>
+        <Text style={styles.subtitle}>Enter your email address and we'll send you a password reset link.</Text>
+        
+        {forgotPasswordMessage ? (
+          <View style={styles.messageContainer}>
+            <Text style={styles.messageText}>{forgotPasswordMessage}</Text>
+          </View>
+        ) : null}
+        
+        <TextInput 
+          style={styles.input} 
+          placeholder="Email" 
+          value={forgotPasswordEmail} 
+          onChangeText={setForgotPasswordEmail} 
+          autoCapitalize="none"
+          keyboardType="email-address"
+          editable={!forgotPasswordLoading}
+        />
+        
+        <TouchableOpacity 
+          style={[styles.button, forgotPasswordLoading && styles.buttonDisabled]} 
+          onPress={handleForgotPassword} 
+          disabled={forgotPasswordLoading}
+        >
+          <Text style={styles.buttonText}>{forgotPasswordLoading ? 'Sending…' : 'Send Reset Link'}</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.linkButton}
+          onPress={() => {
+            setForgotPasswordEmail('');
+            setForgotPasswordMessage('');
+            setCurrentView('login');
+            currentViewRef.current = 'login';
+          }}
+        >
+          <Text style={styles.linkButtonText}>Back to Login</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+
+  const renderResetPassword = () => (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.loginContainer}>
+          <Text style={styles.title}>Reset Password</Text>
+          <Text style={styles.subtitle}>Enter your new password</Text>
+          
+          {resetPasswordMessage ? (
+            <View style={styles.messageContainer}>
+              <Text style={styles.messageText}>{resetPasswordMessage}</Text>
+            </View>
+          ) : null}
+          
+          <TextInput 
+            style={styles.input} 
+            placeholder="Email Address" 
+            value={resetPasswordEmail} 
+            onChangeText={setResetPasswordEmail} 
+            autoCapitalize="none"
+            keyboardType="email-address"
+            editable={!resetPasswordLoading}
+          />
+          
+          <TextInput 
+            style={styles.input} 
+            placeholder="Reset Token (from email link)" 
+            value={resetPasswordToken} 
+            onChangeText={setResetPasswordToken} 
+            autoCapitalize="none"
+            editable={!resetPasswordLoading}
+            secureTextEntry={false}
+          />
+          <Text style={styles.helperText}>
+            {resetPasswordToken ? 'Token loaded from link ✓' : 'Paste the token from your email, or click the link in your email to open the app'}
+          </Text>
+          
+          <TextInput 
+            style={styles.input} 
+            placeholder="New Password" 
+            value={newPassword} 
+            onChangeText={setNewPassword} 
+            secureTextEntry
+            editable={!resetPasswordLoading}
+          />
+          <Text style={styles.helperText}>Password must be at least 6 characters long</Text>
+          
+          <TextInput 
+            style={styles.input} 
+            placeholder="Confirm Password" 
+            value={confirmPassword} 
+            onChangeText={setConfirmPassword} 
+            secureTextEntry
+            editable={!resetPasswordLoading}
+          />
+          
+          <TouchableOpacity 
+            style={[styles.button, resetPasswordLoading && styles.buttonDisabled]} 
+            onPress={handleResetPassword} 
+            disabled={resetPasswordLoading}
+          >
+            <Text style={styles.buttonText}>{resetPasswordLoading ? 'Resetting…' : 'Reset Password'}</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.linkButton}
+            onPress={() => {
+              setResetPasswordEmail('');
+              setResetPasswordToken('');
+              setNewPassword('');
+              setConfirmPassword('');
+              setResetPasswordMessage('');
+              setCurrentView('login');
+              currentViewRef.current = 'login';
+            }}
+          >
+            <Text style={styles.linkButtonText}>Back to Login</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
 
   // Filter contacts based on search query (must be at component level, not inside render function)
   const filteredContacts = useMemo(() => {
@@ -2086,6 +2434,14 @@ export default function App() {
   );
 
   if (!user) {
+    if (currentView === 'forgot-password') {
+      return renderForgotPassword();
+    }
+
+    if (currentView === 'reset-password') {
+      return renderResetPassword();
+    }
+
     if (currentView === 'guest-registration') {
       return (
         <SafeAreaView style={styles.container}>
@@ -2516,6 +2872,40 @@ const styles = StyleSheet.create({
     color: '#007bff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  linkButton: {
+    marginTop: 15,
+    alignItems: 'center',
+  },
+  linkButtonText: {
+    color: '#007bff',
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
+  subtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    color: '#666',
+    marginBottom: 20,
+    paddingHorizontal: 10,
+  },
+  messageContainer: {
+    backgroundColor: '#e7f3ff',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  messageText: {
+    color: '#0066cc',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: -10,
+    marginBottom: 15,
+    paddingHorizontal: 5,
   },
   header: {
     flexDirection: 'row',

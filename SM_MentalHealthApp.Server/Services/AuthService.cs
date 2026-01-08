@@ -1,12 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using SM_MentalHealthApp.Server.Data;
 using SM_MentalHealthApp.Server.Helpers;
+using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.Http;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -17,6 +19,8 @@ namespace SM_MentalHealthApp.Server.Services
         Task<bool> ValidateTokenAsync(string token);
         Task<AuthUser?> GetUserFromTokenAsync(string token);
         Task<ChangePasswordResponse> ChangePasswordAsync(int userId, ChangePasswordRequest request);
+        Task<ForgotPasswordResponse> ForgotPasswordAsync(ForgotPasswordRequest request);
+        Task<ResetPasswordResponse> ResetPasswordAsync(ResetPasswordRequest request);
     }
 
     public class AuthService : IAuthService
@@ -24,12 +28,16 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly JournalDbContext _context;
         private readonly IConfiguration _configuration;
         private readonly IPiiEncryptionService _encryptionService;
+        private readonly INotificationService? _notificationService;
+        private readonly IHttpContextAccessor? _httpContextAccessor;
 
-        public AuthService(JournalDbContext context, IConfiguration configuration, IPiiEncryptionService encryptionService)
+        public AuthService(JournalDbContext context, IConfiguration configuration, IPiiEncryptionService encryptionService, INotificationService? notificationService = null, IHttpContextAccessor? httpContextAccessor = null)
         {
             _context = context;
             _configuration = configuration;
             _encryptionService = encryptionService;
+            _notificationService = notificationService;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         public async Task<LoginResponse> LoginAsync(LoginRequest request)
@@ -355,6 +363,184 @@ namespace SM_MentalHealthApp.Server.Services
             catch
             {
                 return false;
+            }
+        }
+
+        public async Task<ForgotPasswordResponse> ForgotPasswordAsync(ForgotPasswordRequest request)
+        {
+            try
+            {
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email && u.IsActive);
+
+                // Always return success to prevent email enumeration
+                if (user == null)
+                {
+                    return new ForgotPasswordResponse
+                    {
+                        Success = true,
+                        Message = "If an account with that email exists, a password reset link has been sent."
+                    };
+                }
+
+                // Generate reset token
+                var resetToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+                    .Replace("+", "-")
+                    .Replace("/", "_")
+                    .Replace("=", "");
+
+                user.PasswordResetToken = resetToken;
+                user.PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(1); // Token valid for 1 hour
+                await _context.SaveChangesAsync();
+
+                // Send email with reset link
+                // Try to get base URL from request origin first, then config, then environment variable
+                string baseUrl = "https://localhost:5263"; // Default fallback
+
+                // First, try to get from HTTP request (Origin header or Request URL)
+                try
+                {
+                    if (_httpContextAccessor?.HttpContext != null)
+                    {
+                        var httpRequest = _httpContextAccessor.HttpContext.Request;
+                        var origin = httpRequest.Headers["Origin"].FirstOrDefault();
+                        if (!string.IsNullOrEmpty(origin))
+                        {
+                            baseUrl = origin;
+                        }
+                        else
+                        {
+                            var scheme = httpRequest.Scheme;
+                            var host = httpRequest.Host.Value;
+                            if (!string.IsNullOrEmpty(host))
+                            {
+                                baseUrl = $"{scheme}://{host}";
+                            }
+                        }
+                    }
+
+                }
+                catch
+                {
+                    // If accessing HttpContext fails, fall through to config-based approach
+                }
+
+                // If we still have localhost, try config/environment variables
+                if (baseUrl.Contains("localhost"))
+                {
+                    baseUrl = _configuration["AppSettings:BaseUrl"]
+                        ?? Environment.GetEnvironmentVariable("BASE_URL")
+                        ?? _configuration["BASE_URL"]
+                        ?? baseUrl;
+                }
+
+                // If still localhost and we're in production/staging, use environment-specific domains
+                if (baseUrl.Contains("localhost") && !string.IsNullOrEmpty(_configuration["ASPNETCORE_ENVIRONMENT"]))
+                {
+                    var env = _configuration["ASPNETCORE_ENVIRONMENT"];
+                    if (env == "Staging")
+                    {
+                        baseUrl = "https://caseflowstage.store";
+                    }
+                    else if (env == "Production")
+                    {
+                        baseUrl = "https://caseflow.store";
+                    }
+                }
+
+                var resetLink = $"{baseUrl}/reset-password?token={resetToken}&email={Uri.EscapeDataString(user.Email)}";
+
+                var emailSubject = "Password Reset Request";
+                var emailBody = $@"
+<html>
+<body>
+    <h2>Password Reset Request</h2>
+    <p>Hello {user.FirstName},</p>
+    <p>You requested to reset your password. Click the link below to reset your password:</p>
+    <p><a href=""{resetLink}"">{resetLink}</a></p>
+    <p>This link will expire in 1 hour.</p>
+    <p>If you did not request this password reset, please ignore this email.</p>
+    <p>Thank you,<br/>Health App Team</p>
+</body>
+</html>";
+
+                if (_notificationService != null)
+                {
+                    await _notificationService.SendEmailNotification(user.Id, emailSubject, emailBody);
+                }
+
+                return new ForgotPasswordResponse
+                {
+                    Success = true,
+                    Message = "If an account with that email exists, a password reset link has been sent."
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ForgotPasswordResponse
+                {
+                    Success = false,
+                    Message = "An error occurred while processing your request. Please try again later."
+                };
+            }
+        }
+
+        public async Task<ResetPasswordResponse> ResetPasswordAsync(ResetPasswordRequest request)
+        {
+            try
+            {
+                if (request.NewPassword != request.ConfirmPassword)
+                {
+                    return new ResetPasswordResponse
+                    {
+                        Success = false,
+                        Message = "New password and confirm password do not match."
+                    };
+                }
+
+                if (request.NewPassword.Length < 6)
+                {
+                    return new ResetPasswordResponse
+                    {
+                        Success = false,
+                        Message = "Password must be at least 6 characters long."
+                    };
+                }
+
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == request.Email &&
+                                             u.PasswordResetToken == request.Token &&
+                                             u.IsActive);
+
+                if (user == null || user.PasswordResetTokenExpiry == null || user.PasswordResetTokenExpiry < DateTime.UtcNow)
+                {
+                    return new ResetPasswordResponse
+                    {
+                        Success = false,
+                        Message = "Invalid or expired reset token. Please request a new password reset."
+                    };
+                }
+
+                // Update password
+                user.PasswordHash = HashPassword(request.NewPassword);
+                user.PasswordResetToken = null;
+                user.PasswordResetTokenExpiry = null;
+                user.MustChangePassword = false;
+                await _context.SaveChangesAsync();
+
+                return new ResetPasswordResponse
+                {
+                    Success = true,
+                    Message = "Password has been reset successfully. You can now login with your new password."
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ResetPasswordResponse
+                {
+                    Success = false,
+                    Message = $"An error occurred while resetting your password: {ex.Message}"
+                };
             }
         }
 

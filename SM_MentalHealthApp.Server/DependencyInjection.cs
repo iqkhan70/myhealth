@@ -1,5 +1,6 @@
 using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.Versioning;
@@ -137,8 +138,18 @@ public static class DependencyInjection
         services.AddScoped<JournalService>();
         services.AddScoped<ChatService>();
 
+        // HTTP Context Accessor (needed for AuthService to get base URL from request)
+        services.AddHttpContextAccessor();
+
         // Interface-based Services
-        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAuthService, AuthService>(sp =>
+            new AuthService(
+                sp.GetRequiredService<JournalDbContext>(),
+                sp.GetRequiredService<IConfiguration>(),
+                sp.GetRequiredService<IPiiEncryptionService>(),
+                sp.GetService<INotificationService>(), // Optional - may be null if not configured
+                sp.GetService<IHttpContextAccessor>() // Optional - for getting base URL from request
+            ));
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IUserRequestService, UserRequestService>();
         services.AddScoped<IDoctorService, DoctorService>();
