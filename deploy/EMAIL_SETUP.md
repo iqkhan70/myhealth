@@ -38,10 +38,13 @@ For production (custom domain):
 Create or edit `deploy/secrets.env`:
 
 ```bash
+EMAIL_PROVIDER="Mailgun"
 EMAIL_MAILGUN_API_KEY="your_mailgun_api_key_here"
 EMAIL_MAILGUN_DOMAIN="sandbox12345.mailgun.org"
 EMAIL_FROMEMAIL="noreply@healthapp.com"
-EMAIL_PROVIDER="Mailgun"
+EMAIL_FROMNAME="Customer Support App"
+APP_BASE_URL="https://caseflowstage.store"  # For staging
+# APP_BASE_URL="https://caseflow.store"     # For production
 ```
 
 The deployment script will automatically load this file.
@@ -51,10 +54,13 @@ The deployment script will automatically load this file.
 Before running deployment:
 
 ```bash
+export EMAIL_PROVIDER="Mailgun"
 export EMAIL_MAILGUN_API_KEY="your_api_key_here"
 export EMAIL_MAILGUN_DOMAIN="sandbox12345.mailgun.org"
 export EMAIL_FROMEMAIL="noreply@healthapp.com"
-export EMAIL_PROVIDER="Mailgun"
+export EMAIL_FROMNAME="Customer Support App"
+export APP_BASE_URL="https://caseflowstage.store"  # For staging
+# export APP_BASE_URL="https://caseflow.store"      # For production
 ./consolidated-container-deploy.sh staging
 ```
 
@@ -63,10 +69,12 @@ export EMAIL_PROVIDER="Mailgun"
 After deployment, SSH to your server and edit `/opt/mental-health-app/.env`:
 
 ```bash
+EMAIL_PROVIDER=Mailgun
 EMAIL_MAILGUN_API_KEY=your_api_key_here
 EMAIL_MAILGUN_DOMAIN=sandbox12345.mailgun.org
 EMAIL_FROMEMAIL=noreply@healthapp.com
-EMAIL_PROVIDER=Mailgun
+EMAIL_FROMNAME=Customer Support App
+AppSettings__BaseUrl=https://caseflowstage.store
 ```
 
 Then restart containers:

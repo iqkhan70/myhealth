@@ -262,6 +262,9 @@ namespace SM_MentalHealthApp.Server.Services
         {
             try
             {
+                // Security: userId parameter comes from authenticated JWT token, not from request body
+                // This ensures users can only change their own password
+
                 // Validate input
                 if (string.IsNullOrEmpty(request.NewPassword) || request.NewPassword.Length < 6)
                 {
@@ -281,7 +284,7 @@ namespace SM_MentalHealthApp.Server.Services
                     };
                 }
 
-                // Get the user
+                // Get the user by ID from token (not from request) - security enforced
                 var user = await _context.Users
                     .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
 

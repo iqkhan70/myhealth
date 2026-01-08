@@ -172,6 +172,7 @@ export default function App() {
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   const [resetPasswordEmail, setResetPasswordEmail] = useState('');
   const [resetPasswordToken, setResetPasswordToken] = useState('');
+  const [resetPasswordFromUrl, setResetPasswordFromUrl] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
@@ -279,6 +280,7 @@ export default function App() {
           console.log('📱 Password reset deep link detected');
           setResetPasswordToken(token);
           setResetPasswordEmail(decodeURIComponent(email));
+          setResetPasswordFromUrl(true); // Mark as loaded from URL - make fields read-only
           setCurrentView('reset-password');
           currentViewRef.current = 'reset-password';
         } else {
@@ -2008,22 +2010,22 @@ export default function App() {
           ) : null}
           
           <TextInput 
-            style={styles.input} 
+            style={[styles.input, { backgroundColor: '#f5f5f5' }]} 
             placeholder="Email Address" 
             value={resetPasswordEmail} 
             onChangeText={setResetPasswordEmail} 
             autoCapitalize="none"
             keyboardType="email-address"
-            editable={!resetPasswordLoading}
+            editable={false}
           />
           
           <TextInput 
-            style={styles.input} 
+            style={[styles.input, resetPasswordFromUrl && { backgroundColor: '#f5f5f5' }]} 
             placeholder="Reset Token (from email link)" 
             value={resetPasswordToken} 
             onChangeText={setResetPasswordToken} 
             autoCapitalize="none"
-            editable={!resetPasswordLoading}
+            editable={!resetPasswordLoading && !resetPasswordFromUrl}
             secureTextEntry={false}
           />
           <Text style={styles.helperText}>
@@ -2062,6 +2064,7 @@ export default function App() {
             onPress={() => {
               setResetPasswordEmail('');
               setResetPasswordToken('');
+              setResetPasswordFromUrl(false);
               setNewPassword('');
               setConfirmPassword('');
               setResetPasswordMessage('');

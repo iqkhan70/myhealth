@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
@@ -150,8 +151,11 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPost("change-password")]
+        [Authorize] // Require authentication
         public async Task<ActionResult<ChangePasswordResponse>> ChangePassword([FromBody] ChangePasswordRequest request)
         {
+            // Security: User ID comes from JWT token, NOT from request body
+            // This prevents users from changing other users' passwords
             var authHeader = Request.Headers["Authorization"].FirstOrDefault();
             if (authHeader == null || !authHeader.StartsWith("Bearer "))
             {
@@ -166,6 +170,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 return Unauthorized();
             }
 
+            // Use authenticated user's ID - ignore any email/userId in request body for security
             var result = await _authService.ChangePasswordAsync(user.Id, request);
 
             if (!result.Success)

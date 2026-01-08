@@ -523,6 +523,14 @@ EMAIL_PROVIDER=${EMAIL_PROVIDER:-Mailgun}
 EMAIL_MAILGUN_API_KEY=${EMAIL_MAILGUN_API_KEY:-}
 EMAIL_MAILGUN_DOMAIN=${EMAIL_MAILGUN_DOMAIN:-}
 EMAIL_FROMEMAIL=${EMAIL_FROMEMAIL:-noreply@healthapp.com}
+EMAIL_FROMNAME=${EMAIL_FROMNAME:-Customer Support App}
+
+# Base URL for password reset links (set based on environment)
+if [ "$ENVIRONMENT" = "production" ]; then
+    APP_BASE_URL=${APP_BASE_URL:-https://caseflow.store}
+else
+    APP_BASE_URL=${APP_BASE_URL:-https://caseflowstage.store}
+fi
 
 # Create .env file on droplet
 # Generate .env content locally first to ensure variables are expanded correctly
@@ -583,13 +591,17 @@ EMAIL_PROVIDER=$EMAIL_PROVIDER
 EMAIL_MAILGUN_API_KEY=$EMAIL_MAILGUN_API_KEY
 EMAIL_MAILGUN_DOMAIN=$EMAIL_MAILGUN_DOMAIN
 EMAIL_FROMEMAIL=$EMAIL_FROMEMAIL
+EMAIL_FROMNAME=$EMAIL_FROMNAME
 EMAIL_ENABLED=true
 # SMTP fallback (optional, for local dev)
 EMAIL_SMTPHOST=\${EMAIL_SMTPHOST:-}
 EMAIL_SMTPPORT=587
 EMAIL_SMTPUSERNAME=\${EMAIL_SMTPUSERNAME:-}
 EMAIL_SMTPPASSWORD=\${EMAIL_SMTPPASSWORD:-}
-EMAIL_ENABLESSL=true"
+EMAIL_ENABLESSL=true
+
+# App Settings - Base URL for password reset links
+AppSettings__BaseUrl=$APP_BASE_URL"
 
 # Write .env file to remote server
 echo "$ENV_CONTENT" | ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "cat > /opt/mental-health-app/.env && chmod 600 /opt/mental-health-app/.env && echo '✅ .env file created'"

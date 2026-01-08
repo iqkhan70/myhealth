@@ -5,17 +5,38 @@
 export DIGITALOCEAN_ACCESS_KEY="your_access_key_here"
 export DIGITALOCEAN_SECRET_KEY="your_secret_key_here"
 
-# Mailgun Email API Configuration
+# Email Configuration - Mailgun API (Recommended)
 # Get your API key and domain from: https://app.mailgun.com/app/dashboard
 # Free tier: 5,000 emails/month for 3 months, then 1,000 emails/month
+export Email__Provider="Mailgun"
 export Email__MailgunApiKey="your_mailgun_api_key_here"
 export Email__MailgunDomain="your_domain.mailgun.org"
+export Email__FromEmail="noreply@healthapp.com"
+export Email__FromName="Customer Support App"
+export Email__Enabled="true"
+
+# Email Configuration - SMTP Fallback (Optional, for local dev)
+# Only needed if Mailgun is not configured or for local development
+export Email__SmtpHost="smtp.gmail.com"
+export Email__SmtpPort="587"
+export Email__SmtpUsername="your-email@gmail.com"
+export Email__SmtpPassword="your-app-password"
+export Email__EnableSsl="true"
+
+# App Settings - Base URL for password reset links
+# This should match your deployed domain (staging or production)
+export AppSettings__BaseUrl="https://caseflowstage.store"  # For staging
+# export AppSettings__BaseUrl="https://caseflow.store"      # For production
 
 # To set these in your terminal:
 # export DIGITALOCEAN_ACCESS_KEY="DO00Z6VU8Q38KXLFZ7V4"
 # export DIGITALOCEAN_SECRET_KEY="ZDK61LfGdaqu5FpTcKnUfK8GNSW+cTSSbK8vK8GnMno"
+# export Email__Provider="Mailgun"
 # export Email__MailgunApiKey="your_mailgun_api_key_here"
-# export Email__MailgunDomain="your_domain.mailgun.org"
+# export Email__MailgunDomain="sandbox12345.mailgun.org"
+# export Email__FromEmail="noreply@healthapp.com"
+# export Email__FromName="Customer Support App"
+# export AppSettings__BaseUrl="https://caseflowstage.store"
 
 # Then run your application:
 # dotnet run
