@@ -23,11 +23,13 @@ namespace SM_MentalHealthApp.Server.Services
     {
         private readonly JournalDbContext _context;
         private readonly IPiiEncryptionService _encryptionService;
+        private readonly IServiceRequestService? _serviceRequestService;
 
-        public AdminService(JournalDbContext context, IPiiEncryptionService encryptionService)
+        public AdminService(JournalDbContext context, IPiiEncryptionService encryptionService, IServiceRequestService? serviceRequestService = null)
         {
             _context = context;
             _encryptionService = encryptionService;
+            _serviceRequestService = serviceRequestService;
         }
 
         public async Task<List<User>> GetAllDoctorsAsync()
@@ -142,6 +144,44 @@ namespace SM_MentalHealthApp.Server.Services
             _context.UserAssignments.Add(assignment);
             await _context.SaveChangesAsync();
 
+            // Also assign to the patient's default "General" Service Request if it exists
+            // This ensures the assignment shows up in GetDoctorsForPatientAsync which uses ServiceRequestAssignments
+            if (_serviceRequestService != null)
+            {
+                try
+                {
+                    var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(patientId);
+                    if (defaultSr != null)
+                    {
+                        // Check if assignment already exists
+                        var existingSrAssignment = await _context.ServiceRequestAssignments
+                            .FirstOrDefaultAsync(a => a.ServiceRequestId == defaultSr.Id && 
+                                a.SmeUserId == doctorId && 
+                                a.IsActive);
+
+                        if (existingSrAssignment == null)
+                        {
+                            var srAssignment = new ServiceRequestAssignment
+                            {
+                                ServiceRequestId = defaultSr.Id,
+                                SmeUserId = doctorId,
+                                AssignedAt = DateTime.UtcNow,
+                                IsActive = true,
+                                Status = "Assigned"
+                            };
+                            _context.ServiceRequestAssignments.Add(srAssignment);
+                            await _context.SaveChangesAsync();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log but don't fail the assignment - UserAssignment was already created
+                    // This is a best-effort sync to ServiceRequestAssignments
+                    System.Diagnostics.Debug.WriteLine($"Failed to sync assignment to ServiceRequest: {ex.Message}");
+                }
+            }
+
             return true;
         }
 
@@ -157,6 +197,35 @@ namespace SM_MentalHealthApp.Server.Services
 
             _context.UserAssignments.Remove(assignment);
             await _context.SaveChangesAsync();
+
+            // Also unassign from the patient's default "General" Service Request if it exists
+            // This ensures the unassignment is reflected in GetDoctorsForPatientAsync
+            if (_serviceRequestService != null)
+            {
+                try
+                {
+                    var defaultSr = await _serviceRequestService.GetDefaultServiceRequestForClientAsync(patientId);
+                    if (defaultSr != null)
+                    {
+                        var srAssignment = await _context.ServiceRequestAssignments
+                            .FirstOrDefaultAsync(a => a.ServiceRequestId == defaultSr.Id && 
+                                a.SmeUserId == doctorId && 
+                                a.IsActive);
+
+                        if (srAssignment != null)
+                        {
+                            srAssignment.IsActive = false;
+                            srAssignment.UnassignedAt = DateTime.UtcNow;
+                            await _context.SaveChangesAsync();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log but don't fail the unassignment - UserAssignment was already removed
+                    System.Diagnostics.Debug.WriteLine($"Failed to sync unassignment from ServiceRequest: {ex.Message}");
+                }
+            }
 
             return true;
         }

@@ -831,12 +831,25 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-        [HttpDelete("unassign")]
+        [HttpPost("unassign")]
         [Authorize(Roles = "Admin,Coordinator,Doctor,Attorney,SME")] // Admin, Coordinator, Doctor, Attorney, and SME can remove assignments
-        public async Task<ActionResult> UnassignPatientFromDoctor([FromBody] UnassignPatientRequest request)
+        public async Task<ActionResult> UnassignPatientFromDoctor([FromBody] UnassignPatientRequest? request)
         {
             try
             {
+                if (request == null)
+                {
+                    _logger.LogWarning("UnassignPatientFromDoctor called with null request body");
+                    return BadRequest("Request body is required");
+                }
+
+                if (request.PatientId <= 0 || request.DoctorId <= 0)
+                {
+                    _logger.LogWarning("UnassignPatientFromDoctor called with invalid IDs: PatientId={PatientId}, DoctorId={DoctorId}", 
+                        request.PatientId, request.DoctorId);
+                    return BadRequest("PatientId and DoctorId must be greater than 0");
+                }
+
                 var success = await _adminService.UnassignPatientFromDoctorAsync(request.PatientId, request.DoctorId);
                 if (success)
                 {
@@ -846,6 +859,8 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error unassigning patient from doctor: PatientId={PatientId}, DoctorId={DoctorId}", 
+                    request?.PatientId, request?.DoctorId);
                 return StatusCode(500, $"Error unassigning patient from doctor: {ex.Message}");
             }
         }

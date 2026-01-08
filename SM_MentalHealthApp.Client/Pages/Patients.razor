@@ -6,6 +6,7 @@
 @inject ODataService ODataService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
+@inject DialogService DialogService
 @using Microsoft.AspNetCore.Components
 @using SM_MentalHealthApp.Shared
 @using SM_MentalHealthApp.Client.Services
@@ -844,6 +845,24 @@
                     <p><strong>Email:</strong> @selectedUser.Email</p>
                 </div>
                 
+                @if (currentAssignments != null && currentAssignments.Any())
+                {
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Currently Assigned SMEs:</strong></label>
+                        <div>
+                            @foreach (var assignment in currentAssignments)
+                            {
+                                <span class="badge bg-primary me-2 mb-2">
+                                    @assignment.FullName
+                                    <button class="btn-close btn-close-white ms-2" style="font-size: 0.7em;" 
+                                        @onclick="@(() => UnassignPatientFromDoctorInline(assignment.Id))" 
+                                        title="Unassign @assignment.FullName"></button>
+                                </span>
+                            }
+                        </div>
+                    </div>
+                }
+                
                 <div class="form-group">
                     <label>
                         @if (AuthService.CurrentUser?.RoleId == 5) // Attorney
@@ -1551,6 +1570,7 @@
     private User? editingUser;
     private CreatePatientRequest patientForm = new();
     private List<User> availableDoctors = new();
+    private List<User> currentAssignments = new(); // Current assignments for selected patient
     private int selectedDoctorId = 0;
     private bool showEditPatientAccidentInfoDialog = false;
     private bool isSavingAccidentInfo = false;
@@ -2901,6 +2921,28 @@
         {
             selectedUser = user;
             selectedDoctorId = 0;
+            currentAssignments.Clear();
+            
+            // Load current assignments for this patient
+            try
+            {
+                var token = AuthService.Token;
+                var getRequest = new HttpRequestMessage(HttpMethod.Get, $"api/admin/patient/{user.Id}/doctors");
+                if (!string.IsNullOrEmpty(token))
+                {
+                    getRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+                var assignmentsResponse = await Http.SendAsync(getRequest);
+                if (assignmentsResponse.IsSuccessStatusCode)
+                {
+                    currentAssignments = await assignmentsResponse.Content.ReadFromJsonAsync<List<User>>() ?? new List<User>();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to load current assignments: {ex.Message}");
+                currentAssignments = new List<User>();
+            }
             
             // Load assigners based on current user's role
             if (AuthService.CurrentUser?.RoleId == 2) // Doctor - can assign to doctors or attorneys
@@ -2940,6 +2982,7 @@
         selectedUser = null;
         selectedDoctorId = 0;
         availableDoctors.Clear();
+        currentAssignments.Clear();
         StateHasChanged();
     }
 
@@ -2963,10 +3006,29 @@
                     PatientId = selectedUser.Id,
                     DoctorId = selectedDoctorId
                 };
-                var response = await Http.PostAsJsonAsync("api/admin/assign", request);
+                
+                // Create HttpRequestMessage with authorization header
+                var token = AuthService.Token;
+                var jsonContent = JsonContent.Create(request);
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/admin/assign")
+                {
+                    Content = jsonContent
+                };
+                
+                if (!string.IsNullOrEmpty(token))
+                {
+                    httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+                
+                // Ensure Content-Type is set
+                httpRequest.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+                
+                Console.WriteLine($"Assigning patient {selectedUser.Id} to doctor {selectedDoctorId}");
+                var response = await Http.SendAsync(httpRequest);
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"Assignment failed: {response.StatusCode} - {errorContent}");
                     throw new Exception(errorContent);
                 }
             }
@@ -2984,7 +3046,30 @@
             var selectedAssigner = availableDoctors.FirstOrDefault(d => d.Id == selectedDoctorId);
             var assignerType = selectedAssigner?.RoleId == 5 ? "attorney" : "doctor";
             NotificationService.ShowSuccess($"Client assigned to {assignerType} successfully!");
-            CloseAssignModal();
+            
+            // Reload current assignments to show the new assignment
+            try
+            {
+                var token = AuthService.Token;
+                var getRequest = new HttpRequestMessage(HttpMethod.Get, $"api/admin/patient/{selectedUser.Id}/doctors");
+                if (!string.IsNullOrEmpty(token))
+                {
+                    getRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+                var assignmentsResponse = await Http.SendAsync(getRequest);
+                if (assignmentsResponse.IsSuccessStatusCode)
+                {
+                    currentAssignments = await assignmentsResponse.Content.ReadFromJsonAsync<List<User>>() ?? new List<User>();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to reload assignments: {ex.Message}");
+            }
+            
+            selectedDoctorId = 0; // Reset selection
+            StateHasChanged();
+            
             if (_grid != null)
             {
                 await _grid.RefreshAsync();
@@ -3304,6 +3389,98 @@
         StateHasChanged();
     }
 
+    private async Task UnassignPatientFromDoctorInline(int doctorId)
+    {
+        if (selectedUser == null)
+        {
+            NotificationService.ShowWarning("No patient selected.");
+            return;
+        }
+
+        var doctor = currentAssignments.FirstOrDefault(a => a.Id == doctorId);
+        var doctorName = doctor?.FullName ?? "SME";
+        
+        var confirm = await DialogService.Confirm($"Are you sure you want to unassign {doctorName} from this client?",
+            "Confirm Unassignment", new ConfirmOptions { OkButtonText = "Yes", CancelButtonText = "No" });
+        
+        if (!confirm ?? false)
+        {
+            return;
+        }
+
+        try
+        {
+            isUnassigning = true;
+            StateHasChanged();
+            
+            var request = new UnassignPatientRequest
+            {
+                PatientId = selectedUser.Id,
+                DoctorId = doctorId
+            };
+
+            var jsonContent = JsonContent.Create(request);
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/admin/unassign")
+            {
+                Content = jsonContent
+            };
+            var authToken = AuthService.Token;
+            if (!string.IsNullOrEmpty(authToken))
+            {
+                httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
+            }
+            
+            // Ensure Content-Type is set
+            httpRequest.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+            
+            Console.WriteLine($"Unassigning patient {selectedUser.Id} from doctor {doctorId}");
+            var response = await Http.SendAsync(httpRequest);
+
+            if (response.IsSuccessStatusCode)
+            {
+                NotificationService.ShowSuccess("Client unassigned successfully!");
+                
+                // Reload current assignments
+                try
+                {
+                    var getRequest = new HttpRequestMessage(HttpMethod.Get, $"api/admin/patient/{selectedUser.Id}/doctors");
+                    if (!string.IsNullOrEmpty(authToken))
+                    {
+                        getRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
+                    }
+                    var assignmentsResponse = await Http.SendAsync(getRequest);
+                    if (assignmentsResponse.IsSuccessStatusCode)
+                    {
+                        currentAssignments = await assignmentsResponse.Content.ReadFromJsonAsync<List<User>>() ?? new List<User>();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to reload assignments: {ex.Message}");
+                }
+                
+                if (_grid != null)
+                {
+                    await _grid.RefreshAsync();
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                NotificationService.ShowError($"Failed to unassign client: {errorContent}");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error unassigning client: {ex.Message}");
+        }
+        finally
+        {
+            isUnassigning = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task UnassignPatientFromDoctor()
     {
         if (selectedUser == null || selectedDoctorId == 0)
@@ -3318,18 +3495,28 @@
             if (AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5)
             {
                 // Get all current assigners to check if at least one doctor will remain
-                var allAssigners = await Http.GetFromJsonAsync<List<User>>($"api/admin/patient/{selectedUser.Id}/doctors");
-                if (allAssigners != null)
+                var getRequest = new HttpRequestMessage(HttpMethod.Get, $"api/admin/patient/{selectedUser.Id}/doctors");
+                var token = AuthService.Token;
+                if (!string.IsNullOrEmpty(token))
                 {
-                    // Count doctors (excluding the one being unassigned if it's a doctor)
-                    var remainingDoctors = allAssigners
-                        .Where(a => a.RoleId == 2 && a.Id != selectedDoctorId) // RoleId 2 = Doctor, exclude the one being unassigned
-                        .ToList();
-                    
-                    if (!remainingDoctors.Any())
+                    getRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+                var getResponse = await Http.SendAsync(getRequest);
+                if (getResponse.IsSuccessStatusCode)
+                {
+                    var allAssigners = await getResponse.Content.ReadFromJsonAsync<List<User>>();
+                    if (allAssigners != null)
                     {
-                        NotificationService.ShowWarning("This client must be assigned to at least one SME. You cannot unassign yourself if the client will have no SMEs assigned.");
-                        return;
+                        // Count doctors (excluding the one being unassigned if it's a doctor)
+                        var remainingDoctors = allAssigners
+                            .Where(a => a.RoleId == 2 && a.Id != selectedDoctorId) // RoleId 2 = Doctor, exclude the one being unassigned
+                            .ToList();
+                        
+                        if (!remainingDoctors.Any())
+                        {
+                            NotificationService.ShowWarning("This client must be assigned to at least one SME. You cannot unassign yourself if the client will have no SMEs assigned.");
+                            return;
+                        }
                     }
                 }
             }
@@ -3342,10 +3529,22 @@
                 DoctorId = selectedDoctorId
             };
 
-            var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/admin/unassign")
+            var jsonContent = JsonContent.Create(request);
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/admin/unassign")
             {
-                Content = JsonContent.Create(request)
-            });
+                Content = jsonContent
+            };
+            var authToken = AuthService.Token;
+            if (!string.IsNullOrEmpty(authToken))
+            {
+                httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
+            }
+            
+            // Ensure Content-Type is set
+            httpRequest.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+            
+            Console.WriteLine($"Unassigning patient {selectedUser.Id} from doctor {selectedDoctorId}");
+            var response = await Http.SendAsync(httpRequest);
 
             if (response.IsSuccessStatusCode)
             {
