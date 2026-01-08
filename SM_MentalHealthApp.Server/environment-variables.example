@@ -5,9 +5,15 @@
 export DIGITALOCEAN_ACCESS_KEY="your_access_key_here"
 export DIGITALOCEAN_SECRET_KEY="your_secret_key_here"
 
+# SendGrid Email API Key
+# Get your API key from: https://app.sendgrid.com/settings/api_keys
+# Free tier: 100 emails/day forever
+export Email__SendGridApiKey="SG.your_sendgrid_api_key_here"
+
 # To set these in your terminal:
 # export DIGITALOCEAN_ACCESS_KEY="DO00Z6VU8Q38KXLFZ7V4"
 # export DIGITALOCEAN_SECRET_KEY="ZDK61LfGdaqu5FpTcKnUfK8GNSW+cTSSbK8vK8GnMno"
+# export Email__SendGridApiKey="SG.xxxxxxxxxxxxxxxxxxxxx"
 
 # Then run your application:
 # dotnet run

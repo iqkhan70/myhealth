@@ -6,11 +6,10 @@ using SM_MentalHealthApp.Server.Models;
 using SM_MentalHealthApp.Server.Helpers;
 using SM_MentalHealthApp.Shared;
 using System.Collections.Concurrent;
-using System.Net;
+using SendGrid;
+using SendGrid.Helpers.Mail;
 using System.Net.Mail;
-using System.Net.Mime;
-using System.Net.Security;
-using System.Security.Cryptography.X509Certificates;
+using System.Net;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -97,15 +96,11 @@ namespace SM_MentalHealthApp.Server.Services
                     return;
                 }
 
-                // Get SMTP configuration
-                var smtpHost = _configuration["Email:SmtpHost"];
-                var smtpPort = _configuration.GetValue<int>("Email:SmtpPort", 587);
-                var smtpUsername = _configuration["Email:SmtpUsername"];
-                var smtpPassword = _configuration["Email:SmtpPassword"];
-                var smtpFromEmail = _configuration["Email:FromEmail"] ?? "noreply@healthapp.com";
-                var smtpFromName = _configuration["Email:FromName"] ?? "Health App";
-                var smtpEnableSsl = _configuration.GetValue<bool>("Email:EnableSsl", true);
+                // Get email configuration - support both SendGrid API and SMTP (fallback)
+                var emailProvider = _configuration["Email:Provider"] ?? "SendGrid"; // "SendGrid" or "SMTP"
                 var emailEnabled = _configuration.GetValue<bool>("Email:Enabled", false);
+                var fromEmail = _configuration["Email:FromEmail"] ?? "noreply@healthapp.com";
+                var fromName = _configuration["Email:FromName"] ?? "Health App";
 
                 if (!emailEnabled)
                 {
@@ -115,87 +110,66 @@ namespace SM_MentalHealthApp.Server.Services
                     return;
                 }
 
-                if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(smtpUsername) || string.IsNullOrEmpty(smtpPassword))
+                // Use SendGrid API (recommended - no port issues)
+                if (emailProvider.Equals("SendGrid", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogWarning("SMTP configuration is incomplete. Email notification for user {UserId} ({Email}) not sent. Subject: {Subject}",
-                        userId, user.Email, subject);
-                    _logger.LogInformation("Email body: {Body}", body);
-                    return;
-                }
-
-                // Create mail message
-                using var mailMessage = new MailMessage();
-                mailMessage.From = new MailAddress(smtpFromEmail, smtpFromName);
-                mailMessage.To.Add(new MailAddress(user.Email, $"{user.FirstName} {user.LastName}"));
-                mailMessage.Subject = subject;
-
-                // Check if body is HTML
-                if (body.Contains("<html>") || body.Contains("<body>") || body.Contains("<p>"))
-                {
-                    mailMessage.Body = body;
-                    mailMessage.IsBodyHtml = true;
-                }
-                else
-                {
-                    mailMessage.Body = body;
-                    mailMessage.IsBodyHtml = false;
-                }
-
-                // Create SMTP client
-                using var smtpClient = new SmtpClient(smtpHost, smtpPort);
-                
-                // For Gmail, configure TLS properly
-                if (smtpHost.Contains("gmail.com"))
-                {
-                    // Gmail requires TLS 1.2 or higher
-                    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
-                    ServicePointManager.ServerCertificateValidationCallback = 
-                        delegate (object s, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) 
-                        { return true; };
+                    var sendGridApiKey = _configuration["Email:SendGridApiKey"];
                     
-                    smtpClient.EnableSsl = true;
-                    smtpClient.UseDefaultCredentials = false;
-                    
-                    // Gmail requires the username to be the full email address
-                    smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
-                    smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
-                    smtpClient.Timeout = 30000; // 30 second timeout
+                    // Check if API key is missing or is a placeholder
+                    if (string.IsNullOrEmpty(sendGridApiKey) || 
+                        sendGridApiKey.Equals("USE_ENV_VARIABLE", StringComparison.OrdinalIgnoreCase) ||
+                        !sendGridApiKey.StartsWith("SG.", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogWarning("SendGrid API key is not configured or invalid. Falling back to SMTP. " +
+                            "To use SendGrid, set Email:SendGridApiKey in config or Email__SendGridApiKey environment variable.");
+                        
+                        // Fallback to SMTP if SendGrid is not properly configured
+                        await SendEmailViaSmtp(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName);
+                        return;
+                    }
+
+                    try
+                    {
+                        var client = new SendGridClient(sendGridApiKey);
+                        var from = new EmailAddress(fromEmail, fromName);
+                        var to = new EmailAddress(user.Email, $"{user.FirstName} {user.LastName}");
+                        
+                        // Check if body is HTML
+                        var isHtml = body.Contains("<html>") || body.Contains("<body>") || body.Contains("<p>");
+                        
+                        var msg = MailHelper.CreateSingleEmail(from, to, subject, 
+                            isHtml ? null : body, // Plain text version
+                            isHtml ? body : null); // HTML version
+
+                        var response = await client.SendEmailAsync(msg);
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            _logger.LogInformation("Email sent successfully via SendGrid to {Email} (user {UserId}): {Subject}",
+                                user.Email, userId, subject);
+                        }
+                        else
+                        {
+                            var responseBody = await response.Body.ReadAsStringAsync();
+                            _logger.LogWarning("SendGrid API error (Status={Status}): {Body}. Falling back to SMTP.",
+                                response.StatusCode, responseBody);
+                            
+                            // Fallback to SMTP on SendGrid errors
+                            await SendEmailViaSmtp(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName);
+                        }
+                    }
+                    catch (Exception sendGridEx)
+                    {
+                        _logger.LogWarning(sendGridEx, "SendGrid error: {Message}. Falling back to SMTP.", sendGridEx.Message);
+                        // Fallback to SMTP on exceptions
+                        await SendEmailViaSmtp(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName);
+                    }
                 }
                 else
                 {
-                    smtpClient.EnableSsl = smtpEnableSsl;
-                    smtpClient.UseDefaultCredentials = false;
-                    smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
-                    smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
-                    smtpClient.Timeout = 30000;
+                    // Use SMTP directly
+                    await SendEmailViaSmtp(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName);
                 }
-
-                // Log configuration (without password)
-                _logger.LogInformation("Attempting to send email via SMTP: Host={Host}, Port={Port}, Username={Username}, SSL={Ssl}", 
-                    smtpHost, smtpPort, smtpUsername, smtpClient.EnableSsl);
-
-                // Send email
-                await smtpClient.SendMailAsync(mailMessage);
-
-                _logger.LogInformation("Email sent successfully to {Email} (user {UserId}): {Subject}",
-                    user.Email, userId, subject);
-            }
-            catch (SmtpException smtpEx)
-            {
-                var errorMessage = smtpEx.Message;
-                if (errorMessage.Contains("Authentication Required") || errorMessage.Contains("5.7.0"))
-                {
-                    _logger.LogError(smtpEx, 
-                        "Gmail authentication failed for user {UserId}. This usually means you need to use a Gmail App Password instead of your regular password. " +
-                        "Go to https://myaccount.google.com/apppasswords to generate one. Error: {Message}", 
-                        userId, smtpEx.Message);
-                }
-                else
-                {
-                    _logger.LogError(smtpEx, "SMTP error sending email notification to user {UserId}: {Message}", 
-                        userId, smtpEx.Message);
-                }
-                throw; // Re-throw to allow caller to handle
             }
             catch (Exception ex)
             {
@@ -203,6 +177,57 @@ namespace SM_MentalHealthApp.Server.Services
                     userId, ex.Message);
                 throw; // Re-throw to allow caller to handle
             }
+        }
+
+        private async Task SendEmailViaSmtp(int userId, string toEmail, string firstName, string lastName, 
+            string subject, string body, string fromEmail, string fromName)
+        {
+            // Get SMTP configuration
+            var smtpHost = _configuration["Email:SmtpHost"];
+            var smtpPort = _configuration.GetValue<int>("Email:SmtpPort", 587);
+            var smtpUsername = _configuration["Email:SmtpUsername"];
+            var smtpPassword = _configuration["Email:SmtpPassword"];
+            var smtpEnableSsl = _configuration.GetValue<bool>("Email:EnableSsl", true);
+
+            if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(smtpUsername) || string.IsNullOrEmpty(smtpPassword))
+            {
+                _logger.LogWarning("SMTP configuration is incomplete. Email notification for user {UserId} ({Email}) not sent. Subject: {Subject}",
+                    userId, toEmail, subject);
+                return;
+            }
+
+            // Create mail message
+            using var mailMessage = new MailMessage();
+            mailMessage.From = new MailAddress(fromEmail, fromName);
+            mailMessage.To.Add(new MailAddress(toEmail, $"{firstName} {lastName}"));
+            mailMessage.Subject = subject;
+
+            // Check if body is HTML
+            if (body.Contains("<html>") || body.Contains("<body>") || body.Contains("<p>"))
+            {
+                mailMessage.Body = body;
+                mailMessage.IsBodyHtml = true;
+            }
+            else
+            {
+                mailMessage.Body = body;
+                mailMessage.IsBodyHtml = false;
+            }
+
+            // Create SMTP client
+            using var smtpClient = new SmtpClient(smtpHost, smtpPort);
+            smtpClient.EnableSsl = smtpEnableSsl;
+            smtpClient.UseDefaultCredentials = false;
+            smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
+            smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+            smtpClient.Timeout = 30000;
+
+            _logger.LogInformation("Attempting to send email via SMTP: Host={Host}, Port={Port}, Username={Username}",
+                smtpHost, smtpPort, smtpUsername);
+
+            await smtpClient.SendMailAsync(mailMessage);
+            _logger.LogInformation("Email sent successfully via SMTP to {Email} (user {UserId}): {Subject}",
+                toEmail, userId, subject);
         }
 
         public async Task SendSmsNotification(int userId, string message)

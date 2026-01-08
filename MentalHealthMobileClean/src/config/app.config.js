@@ -11,7 +11,7 @@ const AppConfig = {
   // For local development: use your Mac's local IP (e.g., 192.168.86.25)
   // For production: use your production DNS (when ready)
   // To update: Run ./switch-to-digitalocean.sh or ./update-mobile-config-from-droplet.sh
-  SERVER_IP: '104.236.221.170',  // Staging DNS
+  SERVER_IP: 'caseflowstage.store',  // Staging DNS
   
   // Server Port
   // Mobile app connects directly to the server API (not through the Blazor client)

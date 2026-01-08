@@ -48,6 +48,15 @@ services:
       Agora__UseTokens: "${AGORA_USE_TOKENS}"
       Agora__AppCertificate: "${AGORA_APP_CERT}"
 
+      # Email
+      Email__SmtpHost: "${EMAIL_SMTPHOST}"
+      Email__SmtpPort: 587
+      Email__SmtpUsername: "${EMAIL_SMTPUSERNAME}"
+      Email__SmtpPassword: "${EMAIL_SMTPPASSWORD}"
+      Email__FromEmail: "${EMAIL_FROMEMAIL}"
+      Email__FromName: "Customer Support App"
+      Email__EnableSsl: "true"
+
     networks:
       - internal
     restart: always
