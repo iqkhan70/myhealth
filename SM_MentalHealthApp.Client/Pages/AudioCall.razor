@@ -473,9 +473,25 @@
                         await AgoraService.LeaveChannelAsync();
                         await Task.Delay(300); // Small delay for cleanup
                     }
-                    await InvokeAsync(() =>
+                    await InvokeAsync(async () =>
                     {
-                        Navigation.NavigateTo("/real-time-chat");
+                        // Preserve clientId query parameter if in service request mode
+                        try
+                        {
+                            var clientId = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "serviceRequestClientId");
+                            if (!string.IsNullOrEmpty(clientId))
+                            {
+                                Navigation.NavigateTo($"/real-time-chat?clientId={clientId}");
+                            }
+                            else
+                            {
+                                Navigation.NavigateTo("/real-time-chat");
+                            }
+                        }
+                        catch
+                        {
+                            Navigation.NavigateTo("/real-time-chat");
+                        }
                         StateHasChanged();
                     });
                 }
@@ -864,9 +880,24 @@
             callStatus = "Call ended";
             StateHasChanged();
             
-            // Navigate back to chat
+            // Navigate back to chat - preserve clientId if in service request mode
             await Task.Delay(500); // Small delay to show call ended status
-            Navigation.NavigateTo("/real-time-chat");
+            try
+            {
+                var clientId = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "serviceRequestClientId");
+                if (!string.IsNullOrEmpty(clientId))
+                {
+                    Navigation.NavigateTo($"/real-time-chat?clientId={clientId}");
+                }
+                else
+                {
+                    Navigation.NavigateTo("/real-time-chat");
+                }
+            }
+            catch
+            {
+                Navigation.NavigateTo("/real-time-chat");
+            }
         }
         catch (Exception ex)
         {

@@ -1018,6 +1018,7 @@
     private Timer? autoRefreshTimer;
     private bool isAutoRefreshing = false;
     private bool isServiceRequestMode = false; // Track if coming from service request (single client only)
+    private int? serviceRequestClientId = null; // Store clientId from service request to persist across navigation
 
     private IncomingCall? incomingCall = null;
     private ActiveCall? activeCall = null;
@@ -1078,10 +1079,34 @@
                     if (int.TryParse(System.Uri.UnescapeDataString(parts[1]), out int clientId))
                     {
                         targetClientId = clientId;
+                        serviceRequestClientId = clientId; // Store for persistence across navigation
                         isServiceRequestMode = true; // Coming from service request - show only this client
+                        // Persist in sessionStorage for navigation persistence
+                        await JS.InvokeVoidAsync("sessionStorage.setItem", "serviceRequestClientId", clientId.ToString());
                         break;
                     }
                 }
+            }
+        }
+        
+        // If no query parameter but we have sessionStorage value, we're returning from a call
+        // Restore the clientId from sessionStorage
+        if (!targetClientId.HasValue)
+        {
+            try
+            {
+                var storedClientId = await JS.InvokeAsync<string>("sessionStorage.getItem", "serviceRequestClientId");
+                if (!string.IsNullOrEmpty(storedClientId) && int.TryParse(storedClientId, out int clientId))
+                {
+                    targetClientId = clientId;
+                    serviceRequestClientId = clientId;
+                    isServiceRequestMode = true;
+                    Console.WriteLine($"✅ Restored serviceRequestClientId from sessionStorage: {clientId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Error reading sessionStorage: {ex.Message}");
             }
         }
 
@@ -1093,10 +1118,23 @@
         }
         else
         {
+            // If not in service request mode, clear the stored clientId from sessionStorage
+            if (!isServiceRequestMode)
+            {
+                serviceRequestClientId = null;
+                try
+                {
+                    await JS.InvokeVoidAsync("sessionStorage.removeItem", "serviceRequestClientId");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ Error clearing sessionStorage: {ex.Message}");
+                }
+            }
             await LoadUsers();
         }
 
-        // Auto-select client if clientId was provided in query string
+        // Auto-select client if clientId was provided in query string or stored
         if (targetClientId.HasValue)
         {
             var client = users.FirstOrDefault(u => u.Id == targetClientId.Value);
