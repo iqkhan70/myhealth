@@ -818,12 +818,52 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // For doctors: they can assign to doctors or attorneys (no restriction needed)
                 // For coordinators and admins: they can assign to anyone (no restriction needed)
 
+                // Validate patient exists
+                var patient = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == request.PatientId && u.RoleId == 1 && u.IsActive);
+
+                if (patient == null)
+                {
+                    _logger.LogWarning("Assignment failed: Patient {PatientId} not found, inactive, or not a patient (RoleId != 1)", request.PatientId);
+                    return BadRequest($"Patient with ID {request.PatientId} not found, inactive, or is not a patient.");
+                }
+
+                // Validate assigner exists and has correct role
+                var assigner = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == request.DoctorId && u.IsActive);
+
+                if (assigner == null)
+                {
+                    _logger.LogWarning("Assignment failed: Assigner {DoctorId} not found or inactive", request.DoctorId);
+                    return BadRequest($"Assigner with ID {request.DoctorId} not found or inactive.");
+                }
+
+                if (assigner.RoleId != 2 && assigner.RoleId != 5 && assigner.RoleId != 6)
+                {
+                    _logger.LogWarning("Assignment failed: Assigner {DoctorId} has invalid role {RoleId}. Must be Doctor (2), Attorney (5), or SME (6)",
+                        request.DoctorId, assigner.RoleId);
+                    return BadRequest($"Cannot assign patient to user with role '{Shared.Constants.Roles.GetRoleName(assigner.RoleId)}'. Only Doctors, Attorneys, and SMEs can be assigned to patients.");
+                }
+
+                // Check if already assigned
+                var existingAssignment = await _context.UserAssignments
+                    .FirstOrDefaultAsync(ua => ua.AssigneeId == request.PatientId && ua.AssignerId == request.DoctorId);
+
+                if (existingAssignment != null)
+                {
+                    _logger.LogWarning("Assignment failed: Patient {PatientId} already assigned to {DoctorId}", request.PatientId, request.DoctorId);
+                    return BadRequest($"Patient is already assigned to this {Shared.Constants.Roles.GetRoleName(assigner.RoleId)}.");
+                }
+
                 var success = await _adminService.AssignPatientToDoctorAsync(request.PatientId, request.DoctorId);
                 if (success)
                 {
                     return Ok(new { message = "Patient assigned successfully" });
                 }
-                return BadRequest("Failed to assign patient. Patient or assigner may not exist, or assignment may already exist.");
+
+                _logger.LogWarning("Assignment failed for unknown reason: PatientId={PatientId}, DoctorId={DoctorId}",
+                    request.PatientId, request.DoctorId);
+                return BadRequest("Failed to assign patient. Please check the server logs for details.");
             }
             catch (Exception ex)
             {
@@ -845,7 +885,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
                 if (request.PatientId <= 0 || request.DoctorId <= 0)
                 {
-                    _logger.LogWarning("UnassignPatientFromDoctor called with invalid IDs: PatientId={PatientId}, DoctorId={DoctorId}", 
+                    _logger.LogWarning("UnassignPatientFromDoctor called with invalid IDs: PatientId={PatientId}, DoctorId={DoctorId}",
                         request.PatientId, request.DoctorId);
                     return BadRequest("PatientId and DoctorId must be greater than 0");
                 }
@@ -859,7 +899,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error unassigning patient from doctor: PatientId={PatientId}, DoctorId={DoctorId}", 
+                _logger.LogError(ex, "Error unassigning patient from doctor: PatientId={PatientId}, DoctorId={DoctorId}",
                     request?.PatientId, request?.DoctorId);
                 return StatusCode(500, $"Error unassigning patient from doctor: {ex.Message}");
             }
@@ -1079,7 +1119,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 {
                     sme.BillingAccountId = billingAccountId.Value;
                     await _context.SaveChangesAsync();
-                    _logger.LogInformation("Set BillingAccountId {BillingAccountId} for User {UserId} (CompanyId: {CompanyId})", 
+                    _logger.LogInformation("Set BillingAccountId {BillingAccountId} for User {UserId} (CompanyId: {CompanyId})",
                         billingAccountId.Value, sme.Id, sme.CompanyId);
                 }
             }
@@ -2093,9 +2133,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                 }
 
                 // Update CompanyId if provided (match UpdateSme logic)
-                _logger.LogInformation("UpdateAttorney: Before update - request.CompanyId = {RequestCompanyId}, attorney.CompanyId = {AttorneyCompanyId}", 
+                _logger.LogInformation("UpdateAttorney: Before update - request.CompanyId = {RequestCompanyId}, attorney.CompanyId = {AttorneyCompanyId}",
                     request.CompanyId, attorney.CompanyId);
-                
+
                 if (request.CompanyId.HasValue)
                 {
                     attorney.CompanyId = request.CompanyId.Value;
@@ -2107,7 +2147,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     attorney.CompanyId = null;
                     _logger.LogInformation("UpdateAttorney: Cleared attorney.CompanyId");
                 }
-                
+
                 _logger.LogInformation("UpdateAttorney: After CompanyId update - attorney.CompanyId = {CompanyId}", attorney.CompanyId);
 
                 // Update location fields if provided
@@ -2174,7 +2214,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Note: EnsureBillingAccountIdAsync will reload the entity internally to get latest CompanyId state
                 await EnsureBillingAccountIdAsync(attorney);
                 _logger.LogInformation("UpdateAttorney: After EnsureBillingAccountIdAsync - attorney.CompanyId = {CompanyId}", attorney.CompanyId);
-                
+
                 // Save again if BillingAccountId was updated by EnsureBillingAccountIdAsync
                 await _context.SaveChangesAsync();
                 _logger.LogInformation("UpdateAttorney: After final SaveChangesAsync - attorney.CompanyId = {CompanyId}", attorney.CompanyId);

@@ -40,7 +40,7 @@ namespace SM_MentalHealthApp.Server.Services
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .ToListAsync();
-            
+
             UserEncryptionHelper.DecryptUserData(doctors, _encryptionService);
             return doctors;
         }
@@ -53,7 +53,7 @@ namespace SM_MentalHealthApp.Server.Services
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .ToListAsync();
-            
+
             UserEncryptionHelper.DecryptUserData(patients, _encryptionService);
             return patients;
         }
@@ -66,7 +66,7 @@ namespace SM_MentalHealthApp.Server.Services
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .ToListAsync();
-            
+
             UserEncryptionHelper.DecryptUserData(coordinators, _encryptionService);
             return coordinators;
         }
@@ -79,7 +79,7 @@ namespace SM_MentalHealthApp.Server.Services
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .ToListAsync();
-            
+
             UserEncryptionHelper.DecryptUserData(attorneys, _encryptionService);
             return attorneys;
         }
@@ -92,7 +92,7 @@ namespace SM_MentalHealthApp.Server.Services
                 .OrderBy(u => u.LastName)
                 .ThenBy(u => u.FirstName)
                 .ToListAsync();
-            
+
             UserEncryptionHelper.DecryptUserData(smes, _encryptionService);
             return smes;
         }
@@ -113,6 +113,7 @@ namespace SM_MentalHealthApp.Server.Services
 
             if (existingAssignment != null)
             {
+                System.Diagnostics.Debug.WriteLine($"Assignment already exists: PatientId={patientId}, DoctorId={doctorId}");
                 return false; // Already assigned
             }
 
@@ -122,6 +123,13 @@ namespace SM_MentalHealthApp.Server.Services
 
             if (patient == null)
             {
+                System.Diagnostics.Debug.WriteLine($"Patient not found or invalid: PatientId={patientId}, RoleId should be 1, IsActive should be true");
+                // Check if user exists but wrong role or inactive
+                var userCheck = await _context.Users.FirstOrDefaultAsync(u => u.Id == patientId);
+                if (userCheck != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"User exists but RoleId={userCheck.RoleId}, IsActive={userCheck.IsActive}");
+                }
                 return false; // Invalid patient
             }
 
@@ -131,6 +139,13 @@ namespace SM_MentalHealthApp.Server.Services
 
             if (assigner == null)
             {
+                System.Diagnostics.Debug.WriteLine($"Assigner not found or invalid: DoctorId={doctorId}, Must be RoleId 2, 5, or 6 and IsActive=true");
+                // Check if user exists but wrong role or inactive
+                var userCheck = await _context.Users.FirstOrDefaultAsync(u => u.Id == doctorId);
+                if (userCheck != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"User exists but RoleId={userCheck.RoleId}, IsActive={userCheck.IsActive}");
+                }
                 return false; // Invalid doctor or attorney
             }
 
@@ -155,8 +170,8 @@ namespace SM_MentalHealthApp.Server.Services
                     {
                         // Check if assignment already exists
                         var existingSrAssignment = await _context.ServiceRequestAssignments
-                            .FirstOrDefaultAsync(a => a.ServiceRequestId == defaultSr.Id && 
-                                a.SmeUserId == doctorId && 
+                            .FirstOrDefaultAsync(a => a.ServiceRequestId == defaultSr.Id &&
+                                a.SmeUserId == doctorId &&
                                 a.IsActive);
 
                         if (existingSrAssignment == null)
@@ -167,11 +182,22 @@ namespace SM_MentalHealthApp.Server.Services
                                 SmeUserId = doctorId,
                                 AssignedAt = DateTime.UtcNow,
                                 IsActive = true,
-                                Status = "Assigned"
+                                Status = AssignmentStatus.Assigned.ToString(), // Use enum
+                                IsBillable = false, // Not billable until work starts
+                                BillingStatus = BillingStatus.NotBillable.ToString() // Not billable initially
                             };
                             _context.ServiceRequestAssignments.Add(srAssignment);
                             await _context.SaveChangesAsync();
+                            System.Diagnostics.Debug.WriteLine($"Successfully synced assignment to ServiceRequest {defaultSr.Id} for patient {patientId} and doctor {doctorId}");
                         }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"ServiceRequest assignment already exists for SR {defaultSr.Id}, patient {patientId}, doctor {doctorId}");
+                        }
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"No default ServiceRequest found for patient {patientId} - skipping SR sync");
                     }
                 }
                 catch (Exception ex)
@@ -179,7 +205,12 @@ namespace SM_MentalHealthApp.Server.Services
                     // Log but don't fail the assignment - UserAssignment was already created
                     // This is a best-effort sync to ServiceRequestAssignments
                     System.Diagnostics.Debug.WriteLine($"Failed to sync assignment to ServiceRequest: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
                 }
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"ServiceRequestService is null - skipping SR sync for patient {patientId} and doctor {doctorId}");
             }
 
             return true;
@@ -208,8 +239,8 @@ namespace SM_MentalHealthApp.Server.Services
                     if (defaultSr != null)
                     {
                         var srAssignment = await _context.ServiceRequestAssignments
-                            .FirstOrDefaultAsync(a => a.ServiceRequestId == defaultSr.Id && 
-                                a.SmeUserId == doctorId && 
+                            .FirstOrDefaultAsync(a => a.ServiceRequestId == defaultSr.Id &&
+                                a.SmeUserId == doctorId &&
                                 a.IsActive);
 
                         if (srAssignment != null)
@@ -237,27 +268,29 @@ namespace SM_MentalHealthApp.Server.Services
                 .Where(a => a.SmeUserId == doctorId && a.IsActive)
                 .Select(a => a.ServiceRequestId)
                 .ToListAsync();
-            
+
             var clientIds = await _context.ServiceRequests
                 .Where(sr => serviceRequestIds.Contains(sr.Id) && sr.IsActive)
                 .Select(sr => sr.ClientId)
                 .Distinct()
                 .ToListAsync();
-            
+
             var patients = await _context.Users
                 .Include(u => u.Role)
                 .Where(u => clientIds.Contains(u.Id) && u.IsActive && u.RoleId == 1)
                 .OrderBy(p => p.LastName)
                 .ThenBy(p => p.FirstName)
                 .ToListAsync();
-            
+
             UserEncryptionHelper.DecryptUserData(patients, _encryptionService);
             return patients;
         }
 
         public async Task<List<User>> GetDoctorsForPatientAsync(int patientId)
         {
-            // Get all SMEs (doctors, coordinators, attorneys) assigned to this patient's ServiceRequests
+            // Get all SMEs (doctors, coordinators, attorneys) assigned to this patient
+            // We check both ServiceRequestAssignments (for SR-based assignments) and UserAssignments (for direct assignments)
+
             // Step 1: Get all ServiceRequests for this patient
             var serviceRequestIds = await _context.ServiceRequests
                 .Where(sr => sr.ClientId == patientId && sr.IsActive)
@@ -265,22 +298,32 @@ namespace SM_MentalHealthApp.Server.Services
                 .ToListAsync();
 
             // Step 2: Get all active assignments for these ServiceRequests
-            var smeUserIds = await _context.ServiceRequestAssignments
+            var smeUserIdsFromSr = await _context.ServiceRequestAssignments
                 .Where(a => serviceRequestIds.Contains(a.ServiceRequestId) && a.IsActive)
                 .Select(a => a.SmeUserId)
                 .Distinct()
                 .ToListAsync();
 
-            // Step 3: Get the full User entities for these SMEs
+            // Step 3: Also get assignments from UserAssignments (for assignments made via Patients page)
+            var smeUserIdsFromUserAssignments = await _context.UserAssignments
+                .Where(ua => ua.AssigneeId == patientId)
+                .Select(ua => ua.AssignerId)
+                .Distinct()
+                .ToListAsync();
+
+            // Step 4: Combine both lists and get unique SME user IDs
+            var smeUserIds = smeUserIdsFromSr.Union(smeUserIdsFromUserAssignments).Distinct().ToList();
+
+            // Step 5: Get the full User entities for these SMEs
             var assigners = await _context.Users
                 .Include(u => u.Role)
-                .Where(u => smeUserIds.Contains(u.Id) && 
-                           u.IsActive && 
+                .Where(u => smeUserIds.Contains(u.Id) &&
+                           u.IsActive &&
                            (u.RoleId == 2 || u.RoleId == 4 || u.RoleId == 5 || u.RoleId == 6)) // Active doctors, coordinators, attorneys, and SMEs
                 .OrderBy(d => d.LastName)
                 .ThenBy(d => d.FirstName)
                 .ToListAsync();
-            
+
             UserEncryptionHelper.DecryptUserData(assigners, _encryptionService);
             return assigners;
         }
