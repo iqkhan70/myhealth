@@ -518,6 +518,12 @@ HUGGINGFACE_BIOMISTRAL_MODEL_URL=${HUGGINGFACE_BIOMISTRAL_MODEL_URL:-https://api
 HUGGINGFACE_MEDITRON_MODEL_URL=${HUGGINGFACE_MEDITRON_MODEL_URL:-https://api-inference.huggingface.co/models/epfl-llm/meditron-7b}
 OPENAI_API_KEY=${OPENAI_API_KEY:-sk-your-actual-openai-api-key-here}
 
+# Email configuration defaults
+EMAIL_PROVIDER=${EMAIL_PROVIDER:-Mailgun}
+EMAIL_MAILGUN_API_KEY=${EMAIL_MAILGUN_API_KEY:-}
+EMAIL_MAILGUN_DOMAIN=${EMAIL_MAILGUN_DOMAIN:-}
+EMAIL_FROMEMAIL=${EMAIL_FROMEMAIL:-noreply@healthapp.com}
+
 # Create .env file on droplet
 # Generate .env content locally first to ensure variables are expanded correctly
 ENV_CONTENT="# Environment
@@ -570,7 +576,20 @@ HUGGINGFACE_BIOMISTRAL_MODEL_URL=$HUGGINGFACE_BIOMISTRAL_MODEL_URL
 HUGGINGFACE_MEDITRON_MODEL_URL=$HUGGINGFACE_MEDITRON_MODEL_URL
 
 # OpenAI
-OPENAI_API_KEY=$OPENAI_API_KEY"
+OPENAI_API_KEY=$OPENAI_API_KEY
+
+# Email - Mailgun API (recommended for production)
+EMAIL_PROVIDER=$EMAIL_PROVIDER
+EMAIL_MAILGUN_API_KEY=$EMAIL_MAILGUN_API_KEY
+EMAIL_MAILGUN_DOMAIN=$EMAIL_MAILGUN_DOMAIN
+EMAIL_FROMEMAIL=$EMAIL_FROMEMAIL
+EMAIL_ENABLED=true
+# SMTP fallback (optional, for local dev)
+EMAIL_SMTPHOST=\${EMAIL_SMTPHOST:-}
+EMAIL_SMTPPORT=587
+EMAIL_SMTPUSERNAME=\${EMAIL_SMTPUSERNAME:-}
+EMAIL_SMTPPASSWORD=\${EMAIL_SMTPPASSWORD:-}
+EMAIL_ENABLESSL=true"
 
 # Write .env file to remote server
 echo "$ENV_CONTENT" | ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "cat > /opt/mental-health-app/.env && chmod 600 /opt/mental-health-app/.env && echo '✅ .env file created'"

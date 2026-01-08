@@ -6,10 +6,10 @@ using SM_MentalHealthApp.Server.Models;
 using SM_MentalHealthApp.Server.Helpers;
 using SM_MentalHealthApp.Shared;
 using System.Collections.Concurrent;
-using SendGrid;
-using SendGrid.Helpers.Mail;
 using System.Net.Mail;
 using System.Net;
+using System.Text;
+using System.Text.Json;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -96,8 +96,8 @@ namespace SM_MentalHealthApp.Server.Services
                     return;
                 }
 
-                // Get email configuration - support both SendGrid API and SMTP (fallback)
-                var emailProvider = _configuration["Email:Provider"] ?? "SendGrid"; // "SendGrid" or "SMTP"
+                // Get email configuration - support Mailgun API and SMTP (fallback)
+                var emailProvider = _configuration["Email:Provider"] ?? "Mailgun"; // "Mailgun" or "SMTP"
                 var emailEnabled = _configuration.GetValue<bool>("Email:Enabled", false);
                 var fromEmail = _configuration["Email:FromEmail"] ?? "noreply@healthapp.com";
                 var fromName = _configuration["Email:FromName"] ?? "Health App";
@@ -110,57 +110,32 @@ namespace SM_MentalHealthApp.Server.Services
                     return;
                 }
 
-                // Use SendGrid API (recommended - no port issues)
-                if (emailProvider.Equals("SendGrid", StringComparison.OrdinalIgnoreCase))
+                // Use Mailgun API (recommended - no port issues)
+                if (emailProvider.Equals("Mailgun", StringComparison.OrdinalIgnoreCase))
                 {
-                    var sendGridApiKey = _configuration["Email:SendGridApiKey"];
-                    
+                    var mailgunApiKey = _configuration["Email:MailgunApiKey"];
+                    var mailgunDomain = _configuration["Email:MailgunDomain"];
+
                     // Check if API key is missing or is a placeholder
-                    if (string.IsNullOrEmpty(sendGridApiKey) || 
-                        sendGridApiKey.Equals("USE_ENV_VARIABLE", StringComparison.OrdinalIgnoreCase) ||
-                        !sendGridApiKey.StartsWith("SG.", StringComparison.OrdinalIgnoreCase))
+                    if (string.IsNullOrEmpty(mailgunApiKey) ||
+                        mailgunApiKey.Equals("USE_ENV_VARIABLE", StringComparison.OrdinalIgnoreCase) ||
+                        string.IsNullOrEmpty(mailgunDomain))
                     {
-                        _logger.LogWarning("SendGrid API key is not configured or invalid. Falling back to SMTP. " +
-                            "To use SendGrid, set Email:SendGridApiKey in config or Email__SendGridApiKey environment variable.");
-                        
-                        // Fallback to SMTP if SendGrid is not properly configured
+                        _logger.LogWarning("Mailgun API key or domain is not configured. Falling back to SMTP. " +
+                            "To use Mailgun, set Email:MailgunApiKey and Email:MailgunDomain in config or environment variables.");
+
+                        // Fallback to SMTP if Mailgun is not properly configured
                         await SendEmailViaSmtp(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName);
                         return;
                     }
 
                     try
                     {
-                        var client = new SendGridClient(sendGridApiKey);
-                        var from = new EmailAddress(fromEmail, fromName);
-                        var to = new EmailAddress(user.Email, $"{user.FirstName} {user.LastName}");
-                        
-                        // Check if body is HTML
-                        var isHtml = body.Contains("<html>") || body.Contains("<body>") || body.Contains("<p>");
-                        
-                        var msg = MailHelper.CreateSingleEmail(from, to, subject, 
-                            isHtml ? null : body, // Plain text version
-                            isHtml ? body : null); // HTML version
-
-                        var response = await client.SendEmailAsync(msg);
-
-                        if (response.IsSuccessStatusCode)
-                        {
-                            _logger.LogInformation("Email sent successfully via SendGrid to {Email} (user {UserId}): {Subject}",
-                                user.Email, userId, subject);
-                        }
-                        else
-                        {
-                            var responseBody = await response.Body.ReadAsStringAsync();
-                            _logger.LogWarning("SendGrid API error (Status={Status}): {Body}. Falling back to SMTP.",
-                                response.StatusCode, responseBody);
-                            
-                            // Fallback to SMTP on SendGrid errors
-                            await SendEmailViaSmtp(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName);
-                        }
+                        await SendEmailViaMailgun(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName, mailgunApiKey, mailgunDomain);
                     }
-                    catch (Exception sendGridEx)
+                    catch (Exception mailgunEx)
                     {
-                        _logger.LogWarning(sendGridEx, "SendGrid error: {Message}. Falling back to SMTP.", sendGridEx.Message);
+                        _logger.LogWarning(mailgunEx, "Mailgun error: {Message}. Falling back to SMTP.", mailgunEx.Message);
                         // Fallback to SMTP on exceptions
                         await SendEmailViaSmtp(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName);
                     }
@@ -173,13 +148,74 @@ namespace SM_MentalHealthApp.Server.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending email notification to user {UserId}: {Message}", 
+                _logger.LogError(ex, "Error sending email notification to user {UserId}: {Message}",
                     userId, ex.Message);
                 throw; // Re-throw to allow caller to handle
             }
         }
 
-        private async Task SendEmailViaSmtp(int userId, string toEmail, string firstName, string lastName, 
+        private async Task SendEmailViaMailgun(int userId, string toEmail, string firstName, string lastName,
+            string subject, string body, string fromEmail, string fromName, string apiKey, string domain)
+        {
+            try
+            {
+                // Mailgun API endpoint
+                var apiUrl = $"https://api.mailgun.net/v3/{domain}/messages";
+
+                // Create HTTP client with basic auth
+                using var httpClient = new HttpClient();
+                var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"api:{apiKey}"));
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authValue);
+
+                // Check if body is HTML
+                var isHtml = body.Contains("<html>") || body.Contains("<body>") || body.Contains("<p>");
+
+                // Prepare form data
+                var formData = new List<KeyValuePair<string, string>>
+                {
+                    new KeyValuePair<string, string>("from", $"{fromName} <{fromEmail}>"),
+                    new KeyValuePair<string, string>("to", $"{firstName} {lastName} <{toEmail}>"),
+                    new KeyValuePair<string, string>("subject", subject)
+                };
+
+                if (isHtml)
+                {
+                    formData.Add(new KeyValuePair<string, string>("html", body));
+                }
+                else
+                {
+                    formData.Add(new KeyValuePair<string, string>("text", body));
+                }
+
+                var content = new FormUrlEncodedContent(formData);
+
+                _logger.LogInformation("Attempting to send email via Mailgun: Domain={Domain}, To={To}",
+                    domain, toEmail);
+
+                var response = await httpClient.PostAsync(apiUrl, content);
+                var responseBody = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("Email sent successfully via Mailgun to {Email} (user {UserId}): {Subject}",
+                        toEmail, userId, subject);
+                }
+                else
+                {
+                    _logger.LogError("Mailgun API error: Status={Status}, Body={Body}",
+                        response.StatusCode, responseBody);
+                    throw new Exception($"Mailgun API error: {response.StatusCode} - {responseBody}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending email via Mailgun to user {UserId}: {Message}",
+                    userId, ex.Message);
+                throw;
+            }
+        }
+
+        private async Task SendEmailViaSmtp(int userId, string toEmail, string firstName, string lastName,
             string subject, string body, string fromEmail, string fromName)
         {
             // Get SMTP configuration
