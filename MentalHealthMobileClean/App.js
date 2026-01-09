@@ -286,6 +286,15 @@ export default function App() {
         } else {
           console.log('📱 Reset password URL detected but missing token or email');
         }
+      } else if (urlObj.pathname && (urlObj.pathname.includes('login') || urlObj.pathname === '/')) {
+        // Handle login deep link (e.g., mentalhealthapp://login)
+        console.log('📱 Login deep link detected - navigating to login screen');
+        setCurrentView('login');
+        currentViewRef.current = 'login';
+        // Clear any reset password state
+        setResetPasswordToken('');
+        setResetPasswordEmail('');
+        setResetPasswordFromUrl(false);
       }
     } catch (error) {
       console.error('Error handling deep link:', error);
