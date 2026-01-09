@@ -463,7 +463,7 @@ namespace SM_MentalHealthApp.Server.Services
     <p><a href=""{resetLink}"">{resetLink}</a></p>
     <p>This link will expire in 1 hour.</p>
     <p>If you did not request this password reset, please ignore this email.</p>
-    <p>Thank you,<br/>Health App Team</p>
+    <p>Thank you,<br/>Customer Care Team</p>
 </body>
 </html>";
 
