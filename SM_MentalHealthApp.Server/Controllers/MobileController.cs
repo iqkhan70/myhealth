@@ -36,31 +36,57 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// Get assigned patients for a doctor or coordinator (mobile app)
         /// </summary>
         [HttpGet("doctor/patients")]
-        [Authorize(Roles = "Doctor,Coordinator,Attorney,SME")]
+        [Authorize(Roles = "Doctor,Coordinator,Attorney,SME,Admin")]
         public async Task<ActionResult<List<User>>> GetDoctorPatients()
         {
             try
             {
                 var userIdClaim = User.FindFirst("userId")?.Value;
-                if (!int.TryParse(userIdClaim, out int doctorId))
+                var roleIdClaim = User.FindFirst("roleId")?.Value;
+                if (!int.TryParse(userIdClaim, out int userId))
                 {
                     return Unauthorized("Invalid user token");
                 }
 
-                _logger.LogInformation("Getting patients for doctor {DoctorId}", doctorId);
+                int? roleId = null;
+                if (int.TryParse(roleIdClaim, out int rId))
+                {
+                    roleId = rId;
+                }
 
-                // Get clients from ServiceRequests assigned to this SME
-                var serviceRequestIds = await _context.ServiceRequestAssignments
-                    .Where(a => a.SmeUserId == doctorId && a.IsActive)
-                    .Select(a => a.ServiceRequestId)
-                    .ToListAsync();
-                
-                var clientIds = await _context.ServiceRequests
-                    .Where(sr => serviceRequestIds.Contains(sr.Id) && sr.IsActive)
-                    .Select(sr => sr.ClientId)
-                    .Distinct()
-                    .ToListAsync();
-                
+                _logger.LogInformation("Getting patients for user {UserId} (Role: {RoleId})", userId, roleId);
+
+                List<int> clientIds;
+
+                // For Admin (3), return all clients from service requests
+                if (roleId == 3) // Admin
+                {
+                    clientIds = await _context.ServiceRequests
+                        .Where(sr => sr.IsActive)
+                        .Select(sr => sr.ClientId)
+                        .Distinct()
+                        .ToListAsync();
+
+                    _logger.LogInformation("Admin {UserId} accessing all clients from service requests", userId);
+                }
+                else
+                {
+                    // For Coordinator (4), Doctor (2), Attorney (5), and SME (6), get clients from assigned ServiceRequests
+                    // This ensures coordinators only see clients from service requests assigned to them
+                    var serviceRequestIds = await _context.ServiceRequestAssignments
+                        .Where(a => a.SmeUserId == userId && a.IsActive)
+                        .Select(a => a.ServiceRequestId)
+                        .ToListAsync();
+
+                    clientIds = await _context.ServiceRequests
+                        .Where(sr => serviceRequestIds.Contains(sr.Id) && sr.IsActive)
+                        .Select(sr => sr.ClientId)
+                        .Distinct()
+                        .ToListAsync();
+
+                    _logger.LogInformation("User {UserId} (Role: {RoleId}) accessing clients from {ServiceRequestCount} assigned service requests", userId, roleId, serviceRequestIds.Count);
+                }
+
                 var patients = await _context.Users
                     .Where(u => clientIds.Contains(u.Id) && u.IsActive && u.RoleId == 1) // Active patients only
                     .OrderBy(p => p.LastName)
@@ -70,7 +96,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Decrypt DateOfBirth for all patients
                 UserEncryptionHelper.DecryptUserData(patients, _encryptionService);
 
-                _logger.LogInformation("Found {PatientCount} patients for doctor {DoctorId}", patients.Count, doctorId);
+                _logger.LogInformation("Found {PatientCount} patients for user {UserId}", patients.Count, userId);
 
                 return Ok(patients);
             }
@@ -134,8 +160,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // Step 3: Get the full User entities for these SMEs
                 var assignerUsers = await _context.Users
                     .Include(u => u.Role)
-                    .Where(u => smeUserIds.Contains(u.Id) && 
-                               u.IsActive && 
+                    .Where(u => smeUserIds.Contains(u.Id) &&
+                               u.IsActive &&
                                (u.RoleId == 2 || u.RoleId == 4 || u.RoleId == 5 || u.RoleId == 6)) // Active doctors, coordinators, attorneys, and SMEs
                     .OrderBy(d => d.LastName)
                     .ThenBy(d => d.FirstName)
@@ -372,22 +398,56 @@ namespace SM_MentalHealthApp.Server.Controllers
             try
             {
                 var userIdClaim = User.FindFirst("userId")?.Value;
+                var roleIdClaim = User.FindFirst("roleId")?.Value;
                 if (!int.TryParse(userIdClaim, out int senderId))
                 {
                     return Unauthorized("Invalid user token");
                 }
 
-                _logger.LogInformation("Sending message from {SenderId} to {TargetUserId}", senderId, request.TargetUserId);
-
-                // Verify target user exists and relationship exists
-                var hasRelationship = await _context.UserAssignments
-                    .AnyAsync(ua =>
-                        (ua.AssignerId == senderId && ua.AssigneeId == request.TargetUserId) ||
-                        (ua.AssignerId == request.TargetUserId && ua.AssigneeId == senderId));
-
-                if (!hasRelationship)
+                int? senderRoleId = null;
+                if (int.TryParse(roleIdClaim, out int roleId))
                 {
-                    return Forbid("No relationship exists with target user");
+                    senderRoleId = roleId;
+                }
+
+                _logger.LogInformation("Sending message from {SenderId} (Role: {RoleId}) to {TargetUserId}", senderId, senderRoleId, request.TargetUserId);
+
+                // Verify target user exists
+                var targetUser = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == request.TargetUserId && u.IsActive);
+
+                if (targetUser == null)
+                {
+                    return NotFound("Target user not found");
+                }
+
+                // For Coordinators (3) and Admins (4), allow messaging clients via service requests
+                bool canMessage = false;
+                if (senderRoleId == 3 || senderRoleId == 4) // Coordinator or Admin
+                {
+                    // Check if there's a service request connecting the coordinator/admin to this client
+                    var hasServiceRequest = await _context.ServiceRequests
+                        .AnyAsync(sr => sr.ClientId == request.TargetUserId && sr.IsActive);
+
+                    if (hasServiceRequest)
+                    {
+                        canMessage = true;
+                        _logger.LogInformation("Coordinator/Admin {SenderId} can message client {TargetUserId} via service request", senderId, request.TargetUserId);
+                    }
+                }
+
+                // For other roles, check relationship via UserAssignments
+                if (!canMessage)
+                {
+                    var hasRelationship = await _context.UserAssignments
+                        .AnyAsync(ua =>
+                            (ua.AssignerId == senderId && ua.AssigneeId == request.TargetUserId) ||
+                            (ua.AssignerId == request.TargetUserId && ua.AssigneeId == senderId));
+
+                    if (!hasRelationship)
+                    {
+                        return Forbid("No relationship exists with target user");
+                    }
                 }
 
                 // Get sender info for message data
@@ -439,7 +499,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     _logger.LogWarning("Target user {TargetUserId} is not connected via SignalR, message saved but not delivered in real-time",
                         request.TargetUserId);
                 }
-                
+
                 // Also send confirmation to sender if they're connected
                 if (MobileHub.UserConnections.TryGetValue(senderId, out string? senderConnectionId))
                 {

@@ -26,6 +26,10 @@ public class PatientService : BaseService, IPatientService
         {
             return await _http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{currentUser.Id}/patients", ct) ?? new List<User>();
         }
+        else if (currentUser?.RoleId == 6) // SME - get assigned patients
+        {
+            return await _http.GetFromJsonAsync<List<User>>($"api/admin/doctor/{currentUser.Id}/patients", ct) ?? new List<User>();
+        }
         else if (currentUser?.RoleId == 3) // Admin
         {
             return await _http.GetFromJsonAsync<List<User>>("api/admin/patients", ct) ?? new List<User>();

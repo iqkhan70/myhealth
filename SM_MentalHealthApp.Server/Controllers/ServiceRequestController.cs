@@ -171,13 +171,28 @@ namespace SM_MentalHealthApp.Server.Controllers
 
         /// <summary>
         /// Delete (soft delete) a service request
+        /// Admin/Coordinator can delete any, Patients can delete their own
         /// </summary>
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin,Coordinator")]
+        [Authorize(Roles = "Admin,Coordinator,Patient")]
         public async Task<ActionResult> DeleteServiceRequest(int id)
         {
             try
             {
+                var currentUserId = GetCurrentUserId();
+                var currentRoleId = GetCurrentRoleId();
+
+                // If Patient, verify they own this service request
+                if (currentRoleId == Roles.Patient && currentUserId.HasValue)
+                {
+                    var serviceRequest = await _serviceRequestService.GetServiceRequestByIdAsync(id);
+                    if (serviceRequest == null)
+                        return NotFound();
+
+                    if (serviceRequest.ClientId != currentUserId.Value)
+                        return Forbid("You can only delete your own service requests");
+                }
+
                 var deleted = await _serviceRequestService.DeleteServiceRequestAsync(id);
                 if (!deleted)
                     return NotFound();
@@ -526,6 +541,8 @@ namespace SM_MentalHealthApp.Server.Controllers
                 var query = _context.ServiceRequestAssignments
                     .Include(a => a.ServiceRequest)
                         .ThenInclude(sr => sr.Client)
+                    .Include(a => a.ServiceRequest)
+                        .ThenInclude(sr => sr.Expertises)
                     .Include(a => a.SmeUser)
                         .ThenInclude(u => u.Company)
                     .Where(a => a.IsActive && 
@@ -534,7 +551,10 @@ namespace SM_MentalHealthApp.Server.Controllers
                         (a.Status == AssignmentStatus.Accepted.ToString() || 
                          a.Status == AssignmentStatus.InProgress.ToString() || 
                          a.Status == AssignmentStatus.Completed.ToString()) && // Accepted, InProgress, or Completed assignments are ready to bill
-                        a.IsBillable); // Must be marked as billable
+                        a.IsBillable && // Must be marked as billable
+                        // PrimaryExpertiseId validation: must be set OR SR must have exactly 1 expertise (for auto-detection)
+                        (a.ServiceRequest.PrimaryExpertiseId.HasValue || 
+                         a.ServiceRequest.Expertises.Count == 1)); // Allow if PrimaryExpertiseId is set OR exactly 1 expertise (auto-detect)
 
                 if (smeUserId.HasValue)
                     query = query.Where(a => a.SmeUserId == smeUserId.Value);

@@ -36,10 +36,10 @@ namespace SM_MentalHealthApp.Shared
         public int SmeUserId { get; set; }
         
         /// <summary>
-        /// Billing Account ID: CompanyId if company, SmeUserId if individual
+        /// Billing Account ID (references BillingAccounts table)
         /// </summary>
         [Required]
-        public int BillingAccountId { get; set; }
+        public long BillingAccountId { get; set; }
         
         /// <summary>
         /// Type of billing account: "Company" or "Individual"
@@ -196,7 +196,7 @@ namespace SM_MentalHealthApp.Shared
         public List<SmeInvoiceLineDto> InvoiceLines { get; set; } = new();
         
         // Company billing fields
-        public int? BillingAccountId { get; set; }
+        public long? BillingAccountId { get; set; }
         public string? BillingAccountType { get; set; }
         public string? CompanyName { get; set; }
         public List<string> SmeNames { get; set; } = new(); // All SME names for company invoices

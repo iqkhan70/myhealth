@@ -2,6 +2,9 @@
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Shared
 @using System.Text.Json
+@using System
+@using System.Net.Http
+@using System.Net.Http.Headers
 @using ChatMsg = SM_MentalHealthApp.Client.Services.ChatMessage
 @inject IAuthService AuthService
 @inject IRealtimeService RealtimeService
@@ -107,7 +110,11 @@
         <div class="chat-sidebar">
             <div class="sidebar-header">
                 <h4>
-                    @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) // Doctor, Attorney, or SME
+                    @if (isServiceRequestMode)
+                    {
+                        <text>Service Request Client</text>
+                    }
+                    else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) // Doctor, Attorney, or SME
                     {
                         <text>My Clients</text>
                     }
@@ -120,6 +127,12 @@
                         <text>My SMEs</text>
                     }
                 </h4>
+                @if (!isServiceRequestMode)
+                {
+                    <button class="refresh-btn" @onclick="LoadUsers" disabled="@isLoadingUsers">
+                        <i class="fas fa-refresh @(isLoadingUsers ? "spinning" : "")"></i>
+                    </button>
+                }
                 <button class="refresh-btn" @onclick="LoadUsers" disabled="@isLoadingUsers">
                     <i class="fas fa-refresh @(isLoadingUsers ? "spinning" : "")"></i>
                 </button>
@@ -1004,6 +1017,8 @@
     private ElementReference messagesContainer;
     private Timer? autoRefreshTimer;
     private bool isAutoRefreshing = false;
+    private bool isServiceRequestMode = false; // Track if coming from service request (single client only)
+    private int? serviceRequestClientId = null; // Store clientId from service request to persist across navigation
 
     private IncomingCall? incomingCall = null;
     private ActiveCall? activeCall = null;
@@ -1049,7 +1064,89 @@
         // Also listen to SignalRService for messages sent via SignalR (e.g., from mobile app)
         SignalRService.OnNewMessage += HandleNewMessage;
 
+        // Check for clientId query parameter - if present, we're coming from service request
+        int? targetClientId = null;
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (!string.IsNullOrEmpty(uri.Query))
+        {
+            var queryString = uri.Query.TrimStart('?');
+            var queryParams = queryString.Split('&');
+            foreach (var param in queryParams)
+            {
+                var parts = param.Split('=');
+                if (parts.Length == 2 && parts[0] == "clientId")
+                {
+                    if (int.TryParse(System.Uri.UnescapeDataString(parts[1]), out int clientId))
+                    {
+                        targetClientId = clientId;
+                        serviceRequestClientId = clientId; // Store for persistence across navigation
+                        isServiceRequestMode = true; // Coming from service request - show only this client
+                        // Persist in sessionStorage for navigation persistence
+                        await JS.InvokeVoidAsync("sessionStorage.setItem", "serviceRequestClientId", clientId.ToString());
+                        break;
+                    }
+                }
+            }
+        }
+
+        // If no query parameter but we have sessionStorage value, we're returning from a call
+        // Restore the clientId from sessionStorage
+        if (!targetClientId.HasValue)
+        {
+            try
+            {
+                var storedClientId = await JS.InvokeAsync<string>("sessionStorage.getItem", "serviceRequestClientId");
+                if (!string.IsNullOrEmpty(storedClientId) && int.TryParse(storedClientId, out int clientId))
+                {
+                    targetClientId = clientId;
+                    serviceRequestClientId = clientId;
+                    isServiceRequestMode = true;
+                    Console.WriteLine($"✅ Restored serviceRequestClientId from sessionStorage: {clientId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"⚠️ Error reading sessionStorage: {ex.Message}");
+            }
+        }
+
+        // If coming from service request, only load that specific client
+        // Otherwise, load all assigned clients as usual
+        if (isServiceRequestMode && targetClientId.HasValue)
+        {
+            await LoadSingleClient(targetClientId.Value);
+        }
+        else
+        {
+            // If not in service request mode, clear the stored clientId from sessionStorage
+            if (!isServiceRequestMode)
+            {
+                serviceRequestClientId = null;
+                try
+                {
+                    await JS.InvokeVoidAsync("sessionStorage.removeItem", "serviceRequestClientId");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ Error clearing sessionStorage: {ex.Message}");
+                }
+            }
         await LoadUsers();
+        }
+
+        // Auto-select client if clientId was provided in query string or stored
+        if (targetClientId.HasValue)
+        {
+            var client = users.FirstOrDefault(u => u.Id == targetClientId.Value);
+            if (client != null)
+            {
+                await SelectUser(client);
+            }
+            else
+            {
+                Console.WriteLine($"⚠️ Client {targetClientId.Value} not found in users list after loading");
+            }
+        }
 
         if (selectedUser != null && RealtimeService.IsConnected)
             await LoadChatHistory();
@@ -1090,6 +1187,7 @@
         {
             // Doctors, Coordinators, Attorneys, and SMEs load their assigned patients
             // Patients load their assigned doctors/coordinators/attorneys/SMEs
+            // Note: Coordinators now only see clients from service requests assigned to them
             string endpoint = (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 4 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6)
             ? "/api/mobile/doctor/patients"
             : "/api/mobile/patient/doctors";
@@ -1097,6 +1195,109 @@
             var response = await Http.GetAsync(endpoint);
             if (response.IsSuccessStatusCode)
                 users = await response.Content.ReadFromJsonAsync<List<User>>() ?? new();
+        }
+        finally
+        {
+            isLoadingUsers = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadSingleClient(int clientId)
+    {
+        isLoadingUsers = true;
+        StateHasChanged();
+
+        User? fetchedClient = null;
+
+        try
+        {
+            // Try api/patient/{clientId} first (most reliable endpoint)
+            try
+            {
+                fetchedClient = await Http.GetFromJsonAsync<User>($"api/patient/{clientId}");
+                if (fetchedClient != null && !string.IsNullOrEmpty(fetchedClient.FirstName))
+                {
+                    Console.WriteLine($"✅ LoadSingleClient: Fetched client {clientId} from api/patient: {fetchedClient.FirstName} {fetchedClient.LastName}");
+                }
+            }
+            catch (Exception ex1)
+            {
+                Console.WriteLine($"⚠️ LoadSingleClient: api/patient/{clientId} failed: {ex1.Message}");
+            }
+
+            // Try OData endpoint as last fallback
+            if (fetchedClient == null)
+            {
+                try
+                {
+                    var request = new HttpRequestMessage(HttpMethod.Get, $"odata/Users({clientId})");
+                    
+                    // Add authorization header
+                    var token = AuthService.Token;
+                    if (!string.IsNullOrEmpty(token))
+                    {
+                        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    }
+                    
+                    // Request JSON response
+                    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/odata+json"));
+                    
+                    var clientResponse = await Http.SendAsync(request);
+                    
+                    if (clientResponse.IsSuccessStatusCode)
+                    {
+                        var json = await clientResponse.Content.ReadFromJsonAsync<JsonElement>();
+                        
+                        // Handle OData response format
+                        if (json.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Array)
+                        {
+                            var usersArray = valueElement.EnumerateArray().ToList();
+                            if (usersArray.Any())
+                            {
+                                fetchedClient = JsonSerializer.Deserialize<User>(usersArray.First().GetRawText(), 
+                                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                            }
+                        }
+                        else if (json.TryGetProperty("FirstName", out _) || json.TryGetProperty("firstName", out _))
+                        {
+                            fetchedClient = JsonSerializer.Deserialize<User>(json.GetRawText(), 
+                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        }
+                        
+                        if (fetchedClient != null && !string.IsNullOrEmpty(fetchedClient.FirstName))
+                        {
+                            Console.WriteLine($"✅ LoadSingleClient: Fetched client {clientId} from OData: {fetchedClient.FirstName} {fetchedClient.LastName}");
+                        }
+                    }
+                    else
+                    {
+                        var errorContent = await clientResponse.Content.ReadAsStringAsync();
+                        Console.WriteLine($"⚠️ LoadSingleClient: OData request failed with status {clientResponse.StatusCode}: {errorContent?.Substring(0, Math.Min(200, errorContent?.Length ?? 0))}");
+                    }
+                }
+                catch (Exception ex3)
+                {
+                    Console.WriteLine($"⚠️ LoadSingleClient: OData endpoint failed: {ex3.Message}");
+                }
+            }
+
+            if (fetchedClient != null)
+            {
+                users = new List<User> { fetchedClient }; // Only show this one client
+            }
+            else
+            {
+                Console.WriteLine($"❌ LoadSingleClient: All API attempts failed for client {clientId}");
+                users = new List<User>(); // Empty if client not found
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ LoadSingleClient: Unexpected error fetching client {clientId}: {ex.Message}");
+            Console.WriteLine($"❌ Stack trace: {ex.StackTrace}");
+            users = new List<User>(); // Empty on error
         }
         finally
         {
@@ -1341,7 +1542,7 @@
             };
             
             // ✅ Navigate to VideoCall page - this will automatically join the channel
-            var callUrl = $"/video-call/{user.Id}?channel={Uri.EscapeDataString(channelName)}";
+            var callUrl = $"/video-call/{user.Id}?channel={System.Uri.EscapeDataString(channelName)}";
             Navigation.NavigateTo(callUrl);
             
             NotificationService.Notify(NotificationSeverity.Info, "Video Call", $"Connecting to {user.FirstName}...");
@@ -1375,7 +1576,7 @@
             };
             
             // ✅ Navigate to AudioCall page - this will automatically join the channel
-            var callUrl = $"/audio-call/{user.Id}?channel={Uri.EscapeDataString(channelName)}";
+            var callUrl = $"/audio-call/{user.Id}?channel={System.Uri.EscapeDataString(channelName)}";
             Navigation.NavigateTo(callUrl);
             
             NotificationService.Notify(NotificationSeverity.Info, "Audio Call", $"Connecting to {user.FirstName}...");
@@ -1607,8 +1808,8 @@
             // Navigate to the appropriate call page based on call type
             // Pass the channel name as a query parameter so the call page can auto-join
             var callUrl = incomingCall.CallType?.ToLower() == "video"
-            ? $"/video-call/{incomingCall.CallerId}?channel={Uri.EscapeDataString(channelName)}&mobile_call=true"
-            : $"/audio-call/{incomingCall.CallerId}?channel={Uri.EscapeDataString(channelName)}&mobile_call=true";
+            ? $"/video-call/{incomingCall.CallerId}?channel={System.Uri.EscapeDataString(channelName)}&mobile_call=true"
+            : $"/audio-call/{incomingCall.CallerId}?channel={System.Uri.EscapeDataString(channelName)}&mobile_call=true";
             
             Navigation.NavigateTo(callUrl);
 

@@ -48,6 +48,23 @@ services:
       Agora__UseTokens: "${AGORA_USE_TOKENS}"
       Agora__AppCertificate: "${AGORA_APP_CERT}"
 
+      # Email - Mailgun API (recommended, no port issues)
+      Email__Provider: "${EMAIL_PROVIDER:-Mailgun}"
+      Email__MailgunApiKey: "${EMAIL_MAILGUN_API_KEY}"
+      Email__MailgunDomain: "${EMAIL_MAILGUN_DOMAIN}"
+      Email__FromEmail: "${EMAIL_FROMEMAIL}"
+      Email__FromName: "${EMAIL_FROMNAME:-Customer Support App}"
+      Email__Enabled: "true"
+      # SMTP fallback (for local dev or if Mailgun not configured)
+      Email__SmtpHost: "${EMAIL_SMTPHOST:-}"
+      Email__SmtpPort: "${EMAIL_SMTPPORT:-587}"
+      Email__SmtpUsername: "${EMAIL_SMTPUSERNAME:-}"
+      Email__SmtpPassword: "${EMAIL_SMTPPASSWORD:-}"
+      Email__EnableSsl: "${EMAIL_ENABLESSL:-true}"
+
+      # App Settings - Base URL for password reset links
+      AppSettings__BaseUrl: "${APP_BASE_URL:-https://caseflowstage.store}"
+
     networks:
       - internal
     restart: always

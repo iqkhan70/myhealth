@@ -11,24 +11,24 @@ const AppConfig = {
   // For local development: use your Mac's local IP (e.g., 192.168.86.25)
   // For production: use your production DNS (when ready)
   // To update: Run ./switch-to-digitalocean.sh or ./update-mobile-config-from-droplet.sh
-  SERVER_IP: '192.168.86.25',  // Staging DNS
+  SERVER_IP: 'caseflowstage.store',  // Staging DNS
   
   // Server Port
   // Mobile app connects directly to the server API (not through the Blazor client)
   // For staging/production: use port 443 (HTTPS via Nginx)
-  // For local: use port 5262
-  SERVER_PORT: 5262,  // Staging/Production uses 443 (HTTPS via Nginx)
+  // For local: use port 5263 for HTTPS (5262 for HTTP)
+  SERVER_PORT: 443,  // Staging/Production uses 443 (HTTPS via Nginx), local HTTPS uses 5263
 
   // Use HTTPS (true) or HTTP (false)
   // NOTE: HTTPS is REQUIRED for Agora video/audio calls to work
   // Staging/Production server uses HTTPS on port 443
   // For development with self-signed certificates, the app is configured to bypass
   // certificate validation (see network_security_config.xml for Android and app.json for iOS)
-  USE_HTTPS: false,  // Staging/Production uses HTTPS
+  USE_HTTPS: true,  // Staging/Production uses HTTPS
   
   // Development mode: Allow self-signed certificates (iOS/Android may still reject)
   // This is a flag for documentation - actual handling depends on platform
-  ALLOW_SELF_SIGNED_CERT: true,
+  ALLOW_SELF_SIGNED_CERT: false,
   
   // API Base URL (automatically constructed)
   get API_BASE_URL() {

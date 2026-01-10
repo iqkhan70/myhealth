@@ -39,9 +39,17 @@ namespace SM_MentalHealthApp.Shared
         public string? ServiceZipCode { get; set; } // Service location ZIP (defaults to client ZIP)
         public int MaxDistanceMiles { get; set; } = 50; // Maximum distance to search for SMEs
 
+        /// <summary>
+        /// Primary expertise used for billing/pricing.
+        /// ServiceRequests can have multiple expertise tags, but pricing needs a single "billing category".
+        /// If NULL and SR has exactly 1 expertise, use that. Otherwise coordinator must select.
+        /// </summary>
+        public int? PrimaryExpertiseId { get; set; }
+
         // Navigation properties
         public User Client { get; set; } = null!;
         public User? CreatedByUser { get; set; }
+        public Expertise? PrimaryExpertise { get; set; }
         public List<ServiceRequestAssignment> Assignments { get; set; } = new();
         public List<ServiceRequestExpertise> Expertises { get; set; } = new();
     }
@@ -125,6 +133,7 @@ namespace SM_MentalHealthApp.Shared
 
         public int? SmeUserId { get; set; } // Optional: assign SME immediately on creation
         public List<int>? ExpertiseIds { get; set; } // Optional: expertise categories for this SR
+        public int? PrimaryExpertiseId { get; set; } // Primary expertise for billing/pricing
         [MaxLength(10)]
         public string? ServiceZipCode { get; set; } // Optional: service location ZIP (defaults to client ZIP)
         public int? MaxDistanceMiles { get; set; } // Optional: max distance in miles (defaults to 50)
@@ -147,6 +156,7 @@ namespace SM_MentalHealthApp.Shared
         [MaxLength(1000)]
         public string? Description { get; set; }
         public List<int>? ExpertiseIds { get; set; } // Optional: expertise categories for this SR
+        public int? PrimaryExpertiseId { get; set; } // Primary expertise for billing/pricing
         [MaxLength(10)]
         public string? ServiceZipCode { get; set; } // Optional: service location ZIP
         public int? MaxDistanceMiles { get; set; } // Optional: max distance in miles
@@ -192,6 +202,8 @@ namespace SM_MentalHealthApp.Shared
         public string? Description { get; set; }
         public string? ServiceZipCode { get; set; } // Service location ZIP (defaults to client ZIP)
         public int MaxDistanceMiles { get; set; } = 50; // Maximum distance to search for SMEs
+        public int? PrimaryExpertiseId { get; set; } // Primary expertise for billing/pricing
+        public string? PrimaryExpertiseName { get; set; } // Primary expertise name for display
         public List<ServiceRequestAssignmentDto> Assignments { get; set; } = new();
         public List<int> ExpertiseIds { get; set; } = new();
         public List<string> ExpertiseNames { get; set; } = new();

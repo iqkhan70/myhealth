@@ -16,6 +16,8 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<ServiceRequestAssignment> ServiceRequestAssignments { get; set; }
             public DbSet<ServiceRequestCharge> ServiceRequestCharges { get; set; }
             public DbSet<Company> Companies { get; set; }
+            public DbSet<BillingAccount> BillingAccounts { get; set; }
+            public DbSet<BillingRate> BillingRates { get; set; }
             public DbSet<Expertise> Expertises { get; set; }
             public DbSet<SmeExpertise> SmeExpertises { get; set; }
             public DbSet<ServiceRequestExpertise> ServiceRequestExpertises { get; set; }
@@ -164,6 +166,10 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.VehicleDispositionId);
                         entity.HasIndex(e => e.TransportToCareMethodId);
                         entity.HasIndex(e => e.MedicalAttentionTypeId);
+
+                        // Password reset fields
+                        entity.Property(e => e.PasswordResetToken).HasMaxLength(500);
+                        entity.HasIndex(e => e.PasswordResetToken); // Index for faster token lookups
                   });
 
                   // Configure State entity
@@ -965,6 +971,12 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.IsActive).HasDefaultValue(true);
                         entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
 
+                        // Foreign key relationship to PrimaryExpertise
+                        entity.HasOne(e => e.PrimaryExpertise)
+                              .WithMany()
+                              .HasForeignKey(e => e.PrimaryExpertiseId)
+                              .OnDelete(DeleteBehavior.SetNull);
+
                         // Foreign key relationships
                         entity.HasOne(e => e.Client)
                         .WithMany()
@@ -1145,6 +1157,87 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.Property(e => e.City).HasMaxLength(100);
                         entity.Property(e => e.State).HasMaxLength(2);
                         entity.HasIndex(e => e.State);
+                  });
+
+                  // Configure BillingAccount entity
+                  modelBuilder.Entity<BillingAccount>(entity =>
+                  {
+                        entity.ToTable("BillingAccounts");
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Type).IsRequired().HasMaxLength(20);
+                        entity.Property(e => e.Name).HasMaxLength(255);
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.Company)
+                              .WithMany()
+                              .HasForeignKey(e => e.CompanyId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.User)
+                              .WithMany()
+                              .HasForeignKey(e => e.UserId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        // Indexes
+                        entity.HasIndex(e => e.Type);
+                        entity.HasIndex(e => e.IsActive);
+                        entity.HasIndex(e => e.CompanyId).IsUnique();
+                        entity.HasIndex(e => e.UserId).IsUnique();
+                  });
+
+                  // Configure BillingRate entity
+                  modelBuilder.Entity<BillingRate>(entity =>
+                  {
+                        entity.ToTable("BillingRates");
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Amount).IsRequired().HasColumnType("DECIMAL(10,2)");
+                        entity.Property(e => e.IsActive).HasDefaultValue(true);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.BillingAccount)
+                              .WithMany(ba => ba.BillingRates)
+                              .HasForeignKey(e => e.BillingAccountId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.Expertise)
+                              .WithMany()
+                              .HasForeignKey(e => e.ExpertiseId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        // Unique constraint: one rate per (BillingAccount, Expertise)
+                        entity.HasIndex(e => new { e.BillingAccountId, e.ExpertiseId }).IsUnique();
+                        entity.HasIndex(e => e.ExpertiseId);
+                        entity.HasIndex(e => e.IsActive);
+                  });
+
+                  // Configure ServiceRequestCharge entity (update for new fields)
+                  modelBuilder.Entity<ServiceRequestCharge>(entity =>
+                  {
+                        entity.ToTable("ServiceRequestCharges");
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.RateSource).IsRequired().HasMaxLength(50).HasDefaultValue("Default");
+                        entity.Property(e => e.Amount).IsRequired().HasColumnType("DECIMAL(18,2)");
+                        entity.Property(e => e.Status).IsRequired().HasMaxLength(20).HasDefaultValue("Ready");
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.ServiceRequest)
+                              .WithMany()
+                              .HasForeignKey(e => e.ServiceRequestId)
+                              .OnDelete(DeleteBehavior.Restrict);
+
+                        entity.HasOne(e => e.Expertise)
+                              .WithMany()
+                              .HasForeignKey(e => e.ExpertiseId)
+                              .OnDelete(DeleteBehavior.SetNull);
+
+                        // Unique constraint: one charge per (ServiceRequest, BillingAccount)
+                        entity.HasIndex(e => new { e.ServiceRequestId, e.BillingAccountId }).IsUnique();
+                        entity.HasIndex(e => e.BillingAccountId);
+                        entity.HasIndex(e => e.ExpertiseId);
+                        entity.HasIndex(e => e.Status);
                   });
             }
       }

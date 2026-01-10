@@ -194,6 +194,8 @@
     {
         if (company == null) return;
         
+        Console.WriteLine($"EditCompanyAsync: Editing company {company.Id} - {company.Name}");
+        
         editingCompany = company;
         companyForm = new CreateCompanyRequest
         {
@@ -201,6 +203,10 @@
             Description = company.Description
         };
         showCompanyForm = true;
+        
+        Console.WriteLine($"EditCompanyAsync: showCompanyForm = {showCompanyForm}, editingCompany = {editingCompany?.Id}");
+        
+        StateHasChanged(); // Force UI update to show the modal
     }
 
     private void CloseCompanyForm()

@@ -50,15 +50,21 @@ namespace SM_MentalHealthApp.Server.Services
                     throw new InvalidOperationException($"SME user {request.SmeUserId} not found");
                 }
 
-                // Determine billing account (CompanyId if exists, else SmeUserId)
-                var billingAccountId = smeUser.CompanyId ?? request.SmeUserId;
-                var billingAccountType = smeUser.CompanyId.HasValue ? "Company" : "Individual";
+                // Get the actual BillingAccountId from the user
+                if (!smeUser.BillingAccountId.HasValue)
+                {
+                    throw new InvalidOperationException($"SME user {request.SmeUserId} does not have a BillingAccountId. Please run the billing accounts migration.");
+                }
+                var billingAccountId = smeUser.BillingAccountId.Value;
 
-                // If company billing, get ALL Ready assignments for ALL SMEs in the company
-                // If individual billing, get assignments for this SME only
+                // Get ALL Ready assignments for ALL SMEs that share the same BillingAccountId
+                // This handles both company billing (all SMEs in company share same BillingAccountId) 
+                // and individual billing (only this SME has this BillingAccountId)
                 var readyAssignmentsQuery = _context.ServiceRequestAssignments
                     .Include(a => a.ServiceRequest)
                         .ThenInclude(sr => sr.Client)
+                    .Include(a => a.ServiceRequest)
+                        .ThenInclude(sr => sr.Expertises)
                     .Include(a => a.SmeUser)
                         .ThenInclude(u => u.Company)
                     .Where(a => a.IsActive &&
@@ -68,29 +74,39 @@ namespace SM_MentalHealthApp.Server.Services
                          a.Status == AssignmentStatus.InProgress.ToString() || 
                          a.Status == AssignmentStatus.Completed.ToString()) && // Accepted, InProgress, or Completed assignments are ready to bill
                         a.IsBillable && // Must be marked as billable
-                                        // Date filter: use StartedAt if available, otherwise AssignedAt
-                        ((a.StartedAt.HasValue && a.StartedAt >= request.PeriodStart && a.StartedAt <= request.PeriodEnd) ||
-                         (!a.StartedAt.HasValue && a.AssignedAt >= request.PeriodStart && a.AssignedAt <= request.PeriodEnd)));
+                        a.SmeUser.BillingAccountId == billingAccountId); // Filter by BillingAccountId
 
-                // Filter by billing account: if company, get all SMEs in company; if individual, get this SME only
-                if (billingAccountType == "Company")
+                // Apply date filter
+                readyAssignmentsQuery = readyAssignmentsQuery.Where(a =>
+                    (a.StartedAt.HasValue && a.StartedAt >= request.PeriodStart && a.StartedAt <= request.PeriodEnd) ||
+                    (!a.StartedAt.HasValue && a.AssignedAt >= request.PeriodStart && a.AssignedAt <= request.PeriodEnd));
+
+                // Materialize the query to check PrimaryExpertiseId in memory (EF Core can't translate .Count in complex queries)
+                var allAssignments = await readyAssignmentsQuery.ToListAsync();
+                
+                // Filter by PrimaryExpertiseId validation in memory
+                var readyAssignments = allAssignments.Where(a =>
                 {
-                    readyAssignmentsQuery = readyAssignmentsQuery.Where(a =>
-                        a.SmeUser.CompanyId == billingAccountId);
-                }
-                else
-                {
-                    readyAssignmentsQuery = readyAssignmentsQuery.Where(a =>
-                        a.SmeUserId == request.SmeUserId);
-                }
+                    var sr = a.ServiceRequest;
+                    var hasPrimaryExpertise = sr.PrimaryExpertiseId.HasValue;
+                    var expertiseCount = sr.Expertises?.Count ?? 0;
+                    var isValid = hasPrimaryExpertise || expertiseCount == 1;
+                    
+                    if (!isValid)
+                    {
+                        _logger.LogWarning(
+                            "Assignment {AssignmentId} for ServiceRequest {ServiceRequestId} filtered out: PrimaryExpertiseId={PrimaryExpertiseId}, ExpertiseCount={ExpertiseCount}",
+                            a.Id, sr.Id, sr.PrimaryExpertiseId, expertiseCount);
+                    }
+                    
+                    return isValid;
+                }).ToList();
 
                 // Apply assignment filter if specified
                 if (request.AssignmentIds != null && request.AssignmentIds.Any())
                 {
-                    readyAssignmentsQuery = readyAssignmentsQuery.Where(a => request.AssignmentIds.Contains(a.Id));
+                    readyAssignments = readyAssignments.Where(a => request.AssignmentIds.Contains(a.Id)).ToList();
                 }
-
-                var readyAssignments = await readyAssignmentsQuery.ToListAsync();
 
                 if (!readyAssignments.Any())
                 {
@@ -115,7 +131,6 @@ namespace SM_MentalHealthApp.Server.Services
                 // Get ALL Ready charges for this billing account in the period
                 var readyCharges = await _chargeService.GetReadyChargesForBillingAccountAsync(
                     billingAccountId,
-                    billingAccountType,
                     request.PeriodStart,
                     request.PeriodEnd);
 
@@ -129,17 +144,27 @@ namespace SM_MentalHealthApp.Server.Services
                     throw new InvalidOperationException("No ready-to-bill charges found for this billing account in the specified period. Charges may have already been invoiced.");
                 }
 
-                // Group by: Service Request → Company (or Individual SME if no company)
-                // If multiple SMEs from the same company work on the same SR → ONE invoice
-                // If individual SME (no company) works on SR → Separate invoice per SME
+                // Group by: Service Request → BillingAccount (Company or Individual)
+                // If multiple SMEs from the same company work on the same SR → ONE invoice (same BillingAccountId)
+                // If individual SME (no company) works on SR → Separate invoice per SME (different BillingAccountId)
+                _logger.LogInformation(
+                    "Grouping {Count} ready assignments for BillingAccount {BillingAccountId}. Assignments: {Assignments}",
+                    readyAssignments.Count, billingAccountId,
+                    string.Join(", ", readyAssignments.Select(a => $"SR{a.ServiceRequestId}-SME{a.SmeUserId}(BA{a.SmeUser.BillingAccountId})")));
+                
                 var assignmentsByGroup = readyAssignments
+                    .Where(a => a.SmeUser.BillingAccountId.HasValue) // Only process assignments with billing accounts
                     .GroupBy(a => new
                     {
                         ServiceRequestId = a.ServiceRequestId,
-                        BillingAccountId = a.SmeUser.CompanyId ?? a.SmeUserId, // Use CompanyId if exists, else SmeUserId for individual
-                        BillingAccountType = a.SmeUser.CompanyId.HasValue ? "Company" : "Individual"
+                        BillingAccountId = a.SmeUser.BillingAccountId!.Value // Use actual BillingAccountId from Users table
                     })
                     .ToList();
+                
+                _logger.LogInformation(
+                    "Grouped into {GroupCount} invoice groups. Groups: {Groups}",
+                    assignmentsByGroup.Count,
+                    string.Join(", ", assignmentsByGroup.Select(g => $"SR{g.Key.ServiceRequestId}-BA{g.Key.BillingAccountId}({g.Count()} assignments)")));
 
                 if (!assignmentsByGroup.Any())
                 {
@@ -154,12 +179,14 @@ namespace SM_MentalHealthApp.Server.Services
                     var groupAssignments = group.ToList();
                     var serviceRequestId = group.Key.ServiceRequestId;
                     var groupBillingAccountId = group.Key.BillingAccountId;
-                    var groupBillingAccountType = group.Key.BillingAccountType;
                     var serviceRequest = groupAssignments.First().ServiceRequest;
                     
                     // Get the first SME user for invoice generation (for invoice number)
                     var firstSmeUser = groupAssignments.First().SmeUser;
                     var smeUserId = firstSmeUser.Id;
+                    
+                    // Determine billing account type for display
+                    var groupBillingAccountType = firstSmeUser.CompanyId.HasValue ? "Company" : "Individual";
 
                     // Get charge for this SR and billing account
                     var charge = relevantCharges.FirstOrDefault(c =>
@@ -480,13 +507,21 @@ namespace SM_MentalHealthApp.Server.Services
                     return new List<BillableAssignmentDto>();
                 }
 
-                // Determine billing account (CompanyId if exists, else SmeUserId)
-                var billingAccountId = smeUser.CompanyId ?? smeUserId;
-                var billingAccountType = smeUser.CompanyId.HasValue ? "Company" : "Individual";
+                // Get the actual BillingAccountId from the user
+                if (!smeUser.BillingAccountId.HasValue)
+                {
+                    return new List<BillableAssignmentDto>();
+                }
+                var billingAccountId = smeUser.BillingAccountId.Value;
 
+                // Get ALL Ready assignments for ALL SMEs that share the same BillingAccountId
+                // This handles both company billing (all SMEs in company share same BillingAccountId) 
+                // and individual billing (only this SME has this BillingAccountId)
                 var query = _context.ServiceRequestAssignments
                     .Include(a => a.ServiceRequest)
                         .ThenInclude(sr => sr.Client)
+                    .Include(a => a.ServiceRequest)
+                        .ThenInclude(sr => sr.Expertises)
                     .Include(a => a.SmeUser)
                         .ThenInclude(u => u.Company)
                     .Where(a => a.IsActive &&
@@ -495,17 +530,11 @@ namespace SM_MentalHealthApp.Server.Services
                         (a.Status == AssignmentStatus.Accepted.ToString() || 
                          a.Status == AssignmentStatus.InProgress.ToString() || 
                          a.Status == AssignmentStatus.Completed.ToString()) && // Accepted, InProgress, or Completed assignments are ready to bill
-                        a.IsBillable); // Must be marked as billable
-
-                // Filter by billing account: if company, get all SMEs in company; if individual, get this SME only
-                if (billingAccountType == "Company")
-                {
-                    query = query.Where(a => a.SmeUser.CompanyId == billingAccountId);
-                }
-                else
-                {
-                    query = query.Where(a => a.SmeUserId == smeUserId);
-                }
+                        a.IsBillable && // Must be marked as billable
+                        a.SmeUser.BillingAccountId == billingAccountId && // Filter by BillingAccountId
+                        // PrimaryExpertiseId validation: must be set OR SR must have exactly 1 expertise (for auto-detection)
+                        (a.ServiceRequest.PrimaryExpertiseId.HasValue || 
+                         a.ServiceRequest.Expertises.Count == 1)); // Allow if PrimaryExpertiseId is set OR exactly 1 expertise (auto-detect)
 
                 // Date filter
                 if (startDate.HasValue)
@@ -542,6 +571,10 @@ namespace SM_MentalHealthApp.Server.Services
                     CompletedAt = a.CompletedAt,
                     AssignedAt = a.AssignedAt,
                     IsBillable = a.IsBillable,
+                    BillingStatus = a.BillingStatus ?? "NotBillable",
+                    InvoiceId = a.InvoiceId,
+                    BilledAt = a.BilledAt,
+                    PaidAt = a.PaidAt,
                     DaysToComplete = a.CompletedAt.HasValue && a.StartedAt.HasValue
                         ? (int?)(a.CompletedAt.Value - a.StartedAt.Value).TotalDays
                         : null
@@ -585,28 +618,34 @@ namespace SM_MentalHealthApp.Server.Services
 
             if (invoice.BillingAccountType == "Company")
             {
-                // Get company name
-                var company = await _context.Companies.FindAsync(invoice.BillingAccountId);
-                companyName = company?.Name;
+                // Get the BillingAccount to find the CompanyId
+                var billingAccount = await _context.BillingAccounts
+                    .Include(ba => ba.Company)
+                    .FirstOrDefaultAsync(ba => ba.Id == invoice.BillingAccountId);
+                
+                if (billingAccount != null && billingAccount.CompanyId.HasValue)
+                {
+                    companyName = billingAccount.Company?.Name;
 
-                // Get all SMEs in this company that have assignments in this invoice
-                var invoiceLineAssignmentIds = invoice.InvoiceLines
-                    .Where(l => l.AssignmentId > 0)
-                    .Select(l => l.AssignmentId)
-                    .ToList();
+                    // Get all SMEs in this company that have assignments in this invoice
+                    var invoiceLineAssignmentIds = invoice.InvoiceLines
+                        .Where(l => l.AssignmentId > 0)
+                        .Select(l => l.AssignmentId)
+                        .ToList();
 
-                // Load assignments first, then format names in memory (EF Core can't translate string.Format)
-                var assignments = await _context.ServiceRequestAssignments
-                    .Include(a => a.SmeUser)
-                    .Where(a => invoiceLineAssignmentIds.Contains(a.Id) &&
-                               a.SmeUser.CompanyId == invoice.BillingAccountId)
-                    .ToListAsync();
+                    // Load assignments first, then format names in memory (EF Core can't translate string.Format)
+                    var assignments = await _context.ServiceRequestAssignments
+                        .Include(a => a.SmeUser)
+                        .Where(a => invoiceLineAssignmentIds.Contains(a.Id) &&
+                                   a.SmeUser.CompanyId == billingAccount.CompanyId.Value)
+                        .ToListAsync();
 
-                smeNames = assignments
-                    .Select(a => $"{a.SmeUser.FirstName} {a.SmeUser.LastName}")
-                    .Distinct()
-                    .OrderBy(n => n)
-                    .ToList();
+                    smeNames = assignments
+                        .Select(a => $"{a.SmeUser.FirstName} {a.SmeUser.LastName}")
+                        .Distinct()
+                        .OrderBy(n => n)
+                        .ToList();
+                }
             }
             else
             {

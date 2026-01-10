@@ -2,7 +2,8 @@
 
 <Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
-        @if (IsLoginPage(routeData.PageType) || IsChangePasswordPage(routeData.PageType))
+        @if (IsLoginPage(routeData.PageType) || IsChangePasswordPage(routeData.PageType) ||
+                IsForgotPasswordPage(routeData.PageType) || IsResetPasswordPage(routeData.PageType))
         {
             <RouteView RouteData="@routeData" />
         }
@@ -34,5 +35,15 @@
     private bool IsChangePasswordPage(Type? pageType)
     {
         return pageType?.Name == "ChangePassword";
+    }
+
+    private bool IsForgotPasswordPage(Type? pageType)
+    {
+        return pageType?.Name == "ForgotPassword";
+    }
+
+    private bool IsResetPasswordPage(Type? pageType)
+    {
+        return pageType?.Name == "ResetPassword";
     }
 }

@@ -22,12 +22,19 @@
 
 @code {
     [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
     [Parameter] public string Title { get; set; } = string.Empty;
     [Parameter] public RenderFragment? Body { get; set; }
     [Parameter] public RenderFragment? Footer { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public bool CloseOnOverlayClick { get; set; } = false;
     [Parameter] public string Size { get; set; } = "Medium";
+
+    protected override void OnParametersSet()
+    {
+        // Ensure component updates when IsVisible changes
+        base.OnParametersSet();
+    }
 
     private string SizeClass => Size switch
     {

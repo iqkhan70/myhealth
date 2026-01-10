@@ -166,6 +166,7 @@ public static class DependencyInjection
         services.AddScoped<IEmergencyService, EmergencyService>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
         services.AddScoped<IExpertiseService, ExpertiseService>();
+        services.AddScoped<IBillingRateService, BillingRateService>();
         services.AddScoped<IInvoicingService, InvoicingService>();
         services.AddScoped<ODataService>(); // OData service for server-side pagination
 

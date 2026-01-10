@@ -48,6 +48,9 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                     .Include(sr => sr.Client)
                     .Include(sr => sr.Assignments)
                         .ThenInclude(a => a.SmeUser)
+                    .Include(sr => sr.Expertises)
+                        .ThenInclude(e => e.Expertise)
+                    .Include(sr => sr.PrimaryExpertise)
                     .Where(sr => sr.IsActive)
                     .AsQueryable();
 

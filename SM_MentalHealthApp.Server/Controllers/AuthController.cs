@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
@@ -33,7 +34,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
 
             var result = await _authService.LoginAsync(request);
-            
+
             if (!result.Success)
             {
                 return Unauthorized(result);
@@ -78,7 +79,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
 
             var result = await _authService.RegisterAsync(request);
-            
+
             if (!result.Success)
             {
                 return BadRequest(result);
@@ -125,7 +126,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var sessionKey = $"session:{user.Id}:{token}";
             var sessionExists = await _redisCache.ExistsAsync(sessionKey);
-            
+
             return Ok(sessionExists);
         }
 
@@ -140,7 +141,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var token = authHeader.Substring("Bearer ".Length).Trim();
             var user = await _authService.GetUserFromTokenAsync(token);
-            
+
             if (user == null)
             {
                 return Unauthorized();
@@ -150,8 +151,11 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         [HttpPost("change-password")]
+        [Authorize] // Require authentication
         public async Task<ActionResult<ChangePasswordResponse>> ChangePassword([FromBody] ChangePasswordRequest request)
         {
+            // Security: User ID comes from JWT token, NOT from request body
+            // This prevents users from changing other users' passwords
             var authHeader = Request.Headers["Authorization"].FirstOrDefault();
             if (authHeader == null || !authHeader.StartsWith("Bearer "))
             {
@@ -160,14 +164,53 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var token = authHeader.Substring("Bearer ".Length).Trim();
             var user = await _authService.GetUserFromTokenAsync(token);
-            
+
             if (user == null)
             {
                 return Unauthorized();
             }
 
+            // Use authenticated user's ID - ignore any email/userId in request body for security
             var result = await _authService.ChangePasswordAsync(user.Id, request);
-            
+
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
+        [HttpPost("forgot-password")]
+        public async Task<ActionResult<ForgotPasswordResponse>> ForgotPassword([FromBody] ForgotPasswordRequest request)
+        {
+            if (string.IsNullOrEmpty(request.Email))
+            {
+                return BadRequest(new ForgotPasswordResponse
+                {
+                    Success = false,
+                    Message = "Email is required"
+                });
+            }
+
+            var result = await _authService.ForgotPasswordAsync(request);
+            return Ok(result);
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<ActionResult<ResetPasswordResponse>> ResetPassword([FromBody] ResetPasswordRequest request)
+        {
+            if (string.IsNullOrEmpty(request.Token) || string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.NewPassword))
+            {
+                return BadRequest(new ResetPasswordResponse
+                {
+                    Success = false,
+                    Message = "Token, email, and new password are required"
+                });
+            }
+
+            var result = await _authService.ResetPasswordAsync(request);
+
             if (!result.Success)
             {
                 return BadRequest(result);
@@ -191,13 +234,13 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var token = authHeader.Substring("Bearer ".Length).Trim();
             var user = await _authService.GetUserFromTokenAsync(token);
-            
+
             if (user != null)
             {
                 // ✅ Remove all sessions for this user from Redis
                 var sessionKey = $"session:{user.Id}:{token}";
                 await _redisCache.RemoveAsync(sessionKey);
-                
+
                 // Also remove any other sessions for this user (optional - for security)
                 // This would require scanning Redis keys, which is expensive, so we'll just remove the current session
             }
@@ -220,19 +263,19 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var token = authHeader.Substring("Bearer ".Length).Trim();
             var user = await _authService.GetUserFromTokenAsync(token);
-            
+
             if (user == null)
             {
                 return Unauthorized();
             }
 
             var cacheKey = $"user:{user.Id}:{request.Key}";
-            var expiration = request.ExpirationMinutes > 0 
-                ? TimeSpan.FromMinutes(request.ExpirationMinutes) 
+            var expiration = request.ExpirationMinutes > 0
+                ? TimeSpan.FromMinutes(request.ExpirationMinutes)
                 : TimeSpan.FromDays(30); // Default 30 days
 
             await _redisCache.SetAsync(cacheKey, request.Value, expiration);
-            
+
             return Ok(new { success = true });
         }
 
@@ -251,7 +294,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var token = authHeader.Substring("Bearer ".Length).Trim();
             var user = await _authService.GetUserFromTokenAsync(token);
-            
+
             if (user == null)
             {
                 return Unauthorized();
@@ -259,7 +302,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var cacheKey = $"user:{user.Id}:{key}";
             var value = await _redisCache.GetAsync(cacheKey);
-            
+
             return Ok(new { success = true, value = value });
         }
 
@@ -278,7 +321,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var token = authHeader.Substring("Bearer ".Length).Trim();
             var user = await _authService.GetUserFromTokenAsync(token);
-            
+
             if (user == null)
             {
                 return Unauthorized();
@@ -286,7 +329,7 @@ namespace SM_MentalHealthApp.Server.Controllers
 
             var cacheKey = $"user:{user.Id}:{key}";
             await _redisCache.RemoveAsync(cacheKey);
-            
+
             return Ok(new { success = true });
         }
     }

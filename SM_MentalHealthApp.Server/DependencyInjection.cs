@@ -1,5 +1,6 @@
 using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.Versioning;
@@ -137,8 +138,18 @@ public static class DependencyInjection
         services.AddScoped<JournalService>();
         services.AddScoped<ChatService>();
 
+        // HTTP Context Accessor (needed for AuthService to get base URL from request)
+        services.AddHttpContextAccessor();
+
         // Interface-based Services
-        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAuthService, AuthService>(sp =>
+            new AuthService(
+                sp.GetRequiredService<JournalDbContext>(),
+                sp.GetRequiredService<IConfiguration>(),
+                sp.GetRequiredService<IPiiEncryptionService>(),
+                sp.GetService<INotificationService>(), // Optional - may be null if not configured
+                sp.GetService<IHttpContextAccessor>() // Optional - for getting base URL from request
+            ));
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IUserRequestService, UserRequestService>();
         services.AddScoped<IDoctorService, DoctorService>();
@@ -148,6 +159,7 @@ public static class DependencyInjection
         services.AddScoped<IAssignmentLifecycleService, AssignmentLifecycleService>();
         services.AddScoped<IExpertiseService, ExpertiseService>();
         services.AddScoped<ILocationService, LocationService>();
+        services.AddScoped<IBillingRateService, BillingRateService>();
         services.AddScoped<IServiceRequestChargeService, ServiceRequestChargeService>();
         services.AddScoped<IInvoicingService, InvoicingService>();
         services.AddScoped<IMultimediaAnalysisService, MultimediaAnalysisService>();
@@ -408,13 +420,17 @@ public static class DependencyInjection
         userAssignmentSet.EntityType.HasKey(ua => new { ua.AssignerId, ua.AssigneeId });
         // Navigation properties are NOT ignored to allow expansion
 
+        // Expertise - Required for ServiceRequest navigation property expansion
+        var expertiseSet = builder.EntitySet<Expertise>("Expertise");
+        expertiseSet.EntityType.HasKey(e => e.Id);
+
         // ServiceRequests - Expose as EntitySet for server-side pagination
         var serviceRequestSet = builder.EntitySet<ServiceRequest>("ServiceRequests");
         serviceRequestSet.EntityType.HasKey(sr => sr.Id);
         // Ignore navigation properties to avoid circular references (we'll load them via Include in controller)
         serviceRequestSet.EntityType.Ignore(sr => sr.Client);
         serviceRequestSet.EntityType.Ignore(sr => sr.CreatedByUser);
-        // Note: Assignments is NOT ignored so it can be expanded via $expand
+        // Note: Assignments, Expertises, and PrimaryExpertise are NOT ignored so they can be expanded via $expand
         // The controller uses Include() to load them, and OData will serialize them
 
         return builder.GetEdmModel();

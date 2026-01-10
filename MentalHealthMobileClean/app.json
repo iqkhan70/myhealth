@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Mental Health Mobile",
+    "name": "Customer Helpline",
     "slug": "mental-health-mobile-clean",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -50,8 +50,29 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.mentalhealthapp.mobile.clean"
+      "package": "com.mentalhealthapp.mobile.clean",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "caseflowstage.store",
+              "pathPrefix": "/reset-password"
+            },
+            {
+              "scheme": "https",
+              "host": "caseflow.store",
+              "pathPrefix": "/reset-password"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
+    "scheme": "mentalhealthapp",
+    "associatedDomains": ["applinks:caseflowstage.store", "applinks:caseflow.store"],
     "web": {
       "favicon": "./assets/favicon.png"
     },

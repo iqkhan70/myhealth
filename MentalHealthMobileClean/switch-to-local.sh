@@ -26,7 +26,7 @@ fi
 echo ""
 echo "✅ Updated configuration:"
 echo "   SERVER_IP: 192.168.86.25"
-echo "   SERVER_PORT: 5262"
+echo "   SERVER_PORT: 5283"
 echo "   USE_HTTPS: false"
 echo ""
 echo "📋 Next steps:"

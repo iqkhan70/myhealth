@@ -1,0 +1,292 @@
+@page "/billing-rates"
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using SM_MentalHealthApp.Client.Components
+@using Radzen
+@using Radzen.Blazor
+@inject IBillingRateService BillingRateService
+@inject IExpertiseService ExpertiseService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject IAuthService AuthService
+@inject HttpClient Http
+@using SM_MentalHealthApp.Client.Components
+
+<PageTitle>Billing Rates Management</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <SMPageHeader Title="Billing Rates Management" Icon="fas fa-dollar-sign">
+            </SMPageHeader>
+
+            @if (AuthService.CurrentUser?.RoleId == 3) // Admin
+            {
+                <div class="row mb-3">
+                    <div class="col-12 d-flex justify-content-end">
+                        <button class="btn btn-success" @onclick="ShowAddBillingRateForm">
+                            <i class="fas fa-plus"></i> Add Billing Rate
+                        </button>
+                    </div>
+                </div>
+
+                @if (isLoading)
+                {
+                    <div class="text-center p-4">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <RadzenDataGrid @ref="grid" TItem="BillingRate" 
+                        Data="@billingRates" 
+                        AllowPaging="true" 
+                        PageSize="20" 
+                        AllowSorting="true" 
+                        AllowFiltering="true"
+                        FilterMode="FilterMode.Advanced"
+                        ShowPagingSummary="true">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="BillingRate" Property="BillingAccount.Name" Title="Billing Account" Width="200px">
+                                <Template Context="rate">
+                                    @if (rate.BillingAccount != null)
+                                    {
+                                        <span>@rate.BillingAccount.Name</span>
+                                        <small class="text-muted d-block">(@rate.BillingAccount.Type)</small>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">N/A</span>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="BillingRate" Property="Expertise.Name" Title="Expertise" Width="200px">
+                                <Template Context="rate">
+                                    @if (rate.Expertise != null)
+                                    {
+                                        <span>@rate.Expertise.Name</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">N/A</span>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="BillingRate" Property="Amount" Title="Amount" Width="120px">
+                                <Template Context="rate">
+                                    <span class="fw-bold">$@rate.Amount.ToString("F2")</span>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="BillingRate" Property="IsActive" Title="Status" Width="100px">
+                                <Template Context="rate">
+                                    <span class="badge @(rate.IsActive ? "bg-success" : "bg-secondary")">
+                                        @(rate.IsActive ? "Active" : "Inactive")
+                                    </span>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="BillingRate" Property="CreatedAt" Title="Created" Width="150px">
+                                <Template Context="rate">
+                                    @rate.CreatedAt.ToString("MMM dd, yyyy")
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="BillingRate" Title="Actions" Width="150px" Sortable="false" Filterable="false">
+                                <Template Context="rate">
+                                    <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Info" 
+                                                 Variant="Variant.Flat" 
+                                                 Size="ButtonSize.Small"
+                                                 Title="Edit"
+                                                 Click="@(() => EditBillingRate(rate))" />
+                                    <RadzenButton Icon="@(rate.IsActive ? "block" : "check")" 
+                                                 ButtonStyle="@(rate.IsActive ? ButtonStyle.Warning : ButtonStyle.Success)" 
+                                                 Variant="Variant.Flat" 
+                                                 Size="ButtonSize.Small"
+                                                 Title="@(rate.IsActive ? "Deactivate" : "Activate")"
+                                                 Click="@(() => ToggleBillingRateStatus(rate))" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+            }
+            else
+            {
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Access Denied:</strong> You don't have permission to view this page.
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+
+@code {
+    private RadzenDataGrid<BillingRate>? grid;
+    private List<BillingRate> billingRates = new();
+    private List<BillingAccount> billingAccounts = new();
+    private List<SM_MentalHealthApp.Shared.Expertise> expertises = new();
+    private bool isLoading = true;
+    private BillingRate? editingBillingRate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthService.CurrentUser?.RoleId == 3) // Admin
+        {
+            await LoadBillingRates();
+            await LoadBillingAccounts();
+            await LoadExpertises();
+        }
+    }
+
+    private async Task LoadBillingRates()
+    {
+        try
+        {
+            isLoading = true;
+            StateHasChanged();
+            billingRates = await BillingRateService.GetBillingRatesAsync();
+            Console.WriteLine($"Loaded {billingRates.Count} billing rates");
+            if (billingRates.Count == 0)
+            {
+                NotificationService.Notify(NotificationSeverity.Info, "Info", "No billing rates found. Click 'Add Billing Rate' to create one.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading billing rates: {ex}");
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load billing rates: {ex.Message}");
+            billingRates = new List<BillingRate>();
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadBillingAccounts()
+    {
+        try
+        {
+            AddAuthorizationHeader();
+            billingAccounts = await Http.GetFromJsonAsync<List<BillingAccount>>("api/BillingRate/billing-accounts") ?? new List<BillingAccount>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading billing accounts: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load billing accounts: {ex.Message}");
+            billingAccounts = new List<BillingAccount>();
+        }
+    }
+
+    private async Task LoadExpertises()
+    {
+        try
+        {
+            expertises = await ExpertiseService.GetAllExpertisesAsync(activeOnly: true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading expertises: {ex.Message}");
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load expertises: {ex.Message}");
+            expertises = new List<SM_MentalHealthApp.Shared.Expertise>();
+        }
+    }
+
+    private void AddAuthorizationHeader()
+    {
+        var token = AuthService.Token;
+        if (!string.IsNullOrEmpty(token))
+        {
+            Http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+    }
+
+    private async Task ShowAddBillingRateForm()
+    {
+        editingBillingRate = null;
+        await OpenBillingRateDialog();
+    }
+
+    private async Task EditBillingRate(BillingRate billingRate)
+    {
+        editingBillingRate = billingRate;
+        await OpenBillingRateDialog();
+    }
+
+    private async Task OpenBillingRateDialog()
+    {
+        try
+        {
+            var result = await DialogService.OpenAsync<BillingRateDialog>(
+                editingBillingRate == null ? "Add Billing Rate" : "Edit Billing Rate",
+                new Dictionary<string, object>
+                {
+                    { "EditingBillingRate", editingBillingRate },
+                    { "BillingAccounts", billingAccounts },
+                    { "Expertises", expertises }
+                },
+                new DialogOptions
+                {
+                    Width = "600px",
+                    Resizable = true,
+                    Draggable = true
+                });
+
+            if (result == true)
+            {
+                await LoadBillingRates();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to open dialog: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleBillingRateStatus(BillingRate billingRate)
+    {
+        var action = billingRate.IsActive ? "deactivate" : "activate";
+        var confirm = await DialogService.Confirm(
+            $"Are you sure you want to {action} this billing rate?",
+            $"{(billingRate.IsActive ? "Deactivate" : "Activate")} Billing Rate",
+            new ConfirmOptions { OkButtonText = "Yes", CancelButtonText = "No" });
+
+        if (confirm == true)
+        {
+            try
+            {
+                var request = new UpdateBillingRateRequest
+                {
+                    IsActive = !billingRate.IsActive
+                };
+
+                var updated = await BillingRateService.UpdateBillingRateAsync(billingRate.Id, request);
+                
+                if (updated != null)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", 
+                        $"Billing rate {(updated.IsActive ? "activated" : "deactivated")} successfully");
+                    await LoadBillingRates();
+                    if (grid != null)
+                    {
+                        await grid.Reload();
+                    }
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update billing rate");
+                }
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to update billing rate: {ex.Message}");
+            }
+        }
+    }
+}
+
+

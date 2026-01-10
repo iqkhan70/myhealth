@@ -6,11 +6,10 @@ using SM_MentalHealthApp.Server.Models;
 using SM_MentalHealthApp.Server.Helpers;
 using SM_MentalHealthApp.Shared;
 using System.Collections.Concurrent;
-using System.Net;
 using System.Net.Mail;
-using System.Net.Mime;
-using System.Net.Security;
-using System.Security.Cryptography.X509Certificates;
+using System.Net;
+using System.Text;
+using System.Text.Json;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -97,15 +96,11 @@ namespace SM_MentalHealthApp.Server.Services
                     return;
                 }
 
-                // Get SMTP configuration
-                var smtpHost = _configuration["Email:SmtpHost"];
-                var smtpPort = _configuration.GetValue<int>("Email:SmtpPort", 587);
-                var smtpUsername = _configuration["Email:SmtpUsername"];
-                var smtpPassword = _configuration["Email:SmtpPassword"];
-                var smtpFromEmail = _configuration["Email:FromEmail"] ?? "noreply@healthapp.com";
-                var smtpFromName = _configuration["Email:FromName"] ?? "Health App";
-                var smtpEnableSsl = _configuration.GetValue<bool>("Email:EnableSsl", true);
+                // Get email configuration - support Mailgun API and SMTP (fallback)
+                var emailProvider = _configuration["Email:Provider"] ?? "Mailgun"; // "Mailgun" or "SMTP"
                 var emailEnabled = _configuration.GetValue<bool>("Email:Enabled", false);
+                var fromEmail = _configuration["Email:FromEmail"] ?? "noreply@healthapp.com";
+                var fromName = _configuration["Email:FromName"] ?? "Health App";
 
                 if (!emailEnabled)
                 {
@@ -115,94 +110,176 @@ namespace SM_MentalHealthApp.Server.Services
                     return;
                 }
 
-                if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(smtpUsername) || string.IsNullOrEmpty(smtpPassword))
+                // Use Mailgun API (recommended - no port issues)
+                if (emailProvider.Equals("Mailgun", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogWarning("SMTP configuration is incomplete. Email notification for user {UserId} ({Email}) not sent. Subject: {Subject}",
-                        userId, user.Email, subject);
-                    _logger.LogInformation("Email body: {Body}", body);
-                    return;
-                }
+                    var mailgunApiKey = _configuration["Email:MailgunApiKey"];
+                    var mailgunDomain = _configuration["Email:MailgunDomain"];
 
-                // Create mail message
-                using var mailMessage = new MailMessage();
-                mailMessage.From = new MailAddress(smtpFromEmail, smtpFromName);
-                mailMessage.To.Add(new MailAddress(user.Email, $"{user.FirstName} {user.LastName}"));
-                mailMessage.Subject = subject;
+                    // Check if API key is missing or is a placeholder
+                    if (string.IsNullOrEmpty(mailgunApiKey) ||
+                        mailgunApiKey.Equals("USE_ENV_VARIABLE", StringComparison.OrdinalIgnoreCase) ||
+                        string.IsNullOrEmpty(mailgunDomain))
+                    {
+                        _logger.LogWarning("Mailgun API key or domain is not configured. Falling back to SMTP. " +
+                            "To use Mailgun, set Email:MailgunApiKey and Email:MailgunDomain in config or environment variables.");
 
-                // Check if body is HTML
-                if (body.Contains("<html>") || body.Contains("<body>") || body.Contains("<p>"))
-                {
-                    mailMessage.Body = body;
-                    mailMessage.IsBodyHtml = true;
+                        // Fallback to SMTP if Mailgun is not properly configured
+                        await SendEmailViaSmtp(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName);
+                        return;
+                    }
+
+                    try
+                    {
+                        // For Mailgun, the From email must use the Mailgun domain
+                        // Extract the local part (before @) from fromEmail, or use "noreply"
+                        string mailgunFromEmail;
+                        if (fromEmail.Contains("@"))
+                        {
+                            var localPart = fromEmail.Split('@')[0];
+                            mailgunFromEmail = $"{localPart}@{mailgunDomain}";
+                        }
+                        else
+                        {
+                            mailgunFromEmail = $"noreply@{mailgunDomain}";
+                        }
+
+                        _logger.LogInformation("Using Mailgun From address: {FromEmail} (original: {OriginalFromEmail})",
+                            mailgunFromEmail, fromEmail);
+
+                        await SendEmailViaMailgun(userId, user.Email, user.FirstName, user.LastName, subject, body, mailgunFromEmail, fromName, mailgunApiKey, mailgunDomain);
+                    }
+                    catch (Exception mailgunEx)
+                    {
+                        _logger.LogWarning(mailgunEx, "Mailgun error: {Message}. Falling back to SMTP.", mailgunEx.Message);
+                        // Fallback to SMTP on exceptions
+                        await SendEmailViaSmtp(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName);
+                    }
                 }
                 else
                 {
-                    mailMessage.Body = body;
-                    mailMessage.IsBodyHtml = false;
+                    // Use SMTP directly
+                    await SendEmailViaSmtp(userId, user.Email, user.FirstName, user.LastName, subject, body, fromEmail, fromName);
                 }
-
-                // Create SMTP client
-                using var smtpClient = new SmtpClient(smtpHost, smtpPort);
-                
-                // For Gmail, configure TLS properly
-                if (smtpHost.Contains("gmail.com"))
-                {
-                    // Gmail requires TLS 1.2 or higher
-                    ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13;
-                    ServicePointManager.ServerCertificateValidationCallback = 
-                        delegate (object s, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) 
-                        { return true; };
-                    
-                    smtpClient.EnableSsl = true;
-                    smtpClient.UseDefaultCredentials = false;
-                    
-                    // Gmail requires the username to be the full email address
-                    smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
-                    smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
-                    smtpClient.Timeout = 30000; // 30 second timeout
-                }
-                else
-                {
-                    smtpClient.EnableSsl = smtpEnableSsl;
-                    smtpClient.UseDefaultCredentials = false;
-                    smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
-                    smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
-                    smtpClient.Timeout = 30000;
-                }
-
-                // Log configuration (without password)
-                _logger.LogInformation("Attempting to send email via SMTP: Host={Host}, Port={Port}, Username={Username}, SSL={Ssl}", 
-                    smtpHost, smtpPort, smtpUsername, smtpClient.EnableSsl);
-
-                // Send email
-                await smtpClient.SendMailAsync(mailMessage);
-
-                _logger.LogInformation("Email sent successfully to {Email} (user {UserId}): {Subject}",
-                    user.Email, userId, subject);
-            }
-            catch (SmtpException smtpEx)
-            {
-                var errorMessage = smtpEx.Message;
-                if (errorMessage.Contains("Authentication Required") || errorMessage.Contains("5.7.0"))
-                {
-                    _logger.LogError(smtpEx, 
-                        "Gmail authentication failed for user {UserId}. This usually means you need to use a Gmail App Password instead of your regular password. " +
-                        "Go to https://myaccount.google.com/apppasswords to generate one. Error: {Message}", 
-                        userId, smtpEx.Message);
-                }
-                else
-                {
-                    _logger.LogError(smtpEx, "SMTP error sending email notification to user {UserId}: {Message}", 
-                        userId, smtpEx.Message);
-                }
-                throw; // Re-throw to allow caller to handle
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending email notification to user {UserId}: {Message}", 
+                _logger.LogError(ex, "Error sending email notification to user {UserId}: {Message}",
                     userId, ex.Message);
                 throw; // Re-throw to allow caller to handle
             }
+        }
+
+        private async Task SendEmailViaMailgun(int userId, string toEmail, string firstName, string lastName,
+            string subject, string body, string fromEmail, string fromName, string apiKey, string domain)
+        {
+            try
+            {
+                // Mailgun API endpoint
+                var apiUrl = $"https://api.mailgun.net/v3/{domain}/messages";
+
+                // Create HTTP client with basic auth
+                using var httpClient = new HttpClient();
+                var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"api:{apiKey}"));
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authValue);
+
+                // Check if body is HTML
+                var isHtml = body.Contains("<html>") || body.Contains("<body>") || body.Contains("<p>");
+
+                // Prepare form data
+                var formData = new List<KeyValuePair<string, string>>
+                {
+                    new KeyValuePair<string, string>("from", $"{fromName} <{fromEmail}>"),
+                    new KeyValuePair<string, string>("to", $"{firstName} {lastName} <{toEmail}>"),
+                    new KeyValuePair<string, string>("subject", subject)
+                };
+
+                if (isHtml)
+                {
+                    formData.Add(new KeyValuePair<string, string>("html", body));
+                }
+                else
+                {
+                    formData.Add(new KeyValuePair<string, string>("text", body));
+                }
+
+                var content = new FormUrlEncodedContent(formData);
+
+                _logger.LogInformation("Attempting to send email via Mailgun: Domain={Domain}, To={To}",
+                    domain, toEmail);
+
+                var response = await httpClient.PostAsync(apiUrl, content);
+                var responseBody = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("Email sent successfully via Mailgun to {Email} (user {UserId}): {Subject}",
+                        toEmail, userId, subject);
+                }
+                else
+                {
+                    _logger.LogError("Mailgun API error: Status={Status}, Body={Body}",
+                        response.StatusCode, responseBody);
+                    throw new Exception($"Mailgun API error: {response.StatusCode} - {responseBody}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending email via Mailgun to user {UserId}: {Message}",
+                    userId, ex.Message);
+                throw;
+            }
+        }
+
+        private async Task SendEmailViaSmtp(int userId, string toEmail, string firstName, string lastName,
+            string subject, string body, string fromEmail, string fromName)
+        {
+            // Get SMTP configuration
+            var smtpHost = _configuration["Email:SmtpHost"];
+            var smtpPort = _configuration.GetValue<int>("Email:SmtpPort", 587);
+            var smtpUsername = _configuration["Email:SmtpUsername"];
+            var smtpPassword = _configuration["Email:SmtpPassword"];
+            var smtpEnableSsl = _configuration.GetValue<bool>("Email:EnableSsl", true);
+
+            if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(smtpUsername) || string.IsNullOrEmpty(smtpPassword))
+            {
+                _logger.LogWarning("SMTP configuration is incomplete. Email notification for user {UserId} ({Email}) not sent. Subject: {Subject}",
+                    userId, toEmail, subject);
+                return;
+            }
+
+            // Create mail message
+            using var mailMessage = new MailMessage();
+            mailMessage.From = new MailAddress(fromEmail, fromName);
+            mailMessage.To.Add(new MailAddress(toEmail, $"{firstName} {lastName}"));
+            mailMessage.Subject = subject;
+
+            // Check if body is HTML
+            if (body.Contains("<html>") || body.Contains("<body>") || body.Contains("<p>"))
+            {
+                mailMessage.Body = body;
+                mailMessage.IsBodyHtml = true;
+            }
+            else
+            {
+                mailMessage.Body = body;
+                mailMessage.IsBodyHtml = false;
+            }
+
+            // Create SMTP client
+            using var smtpClient = new SmtpClient(smtpHost, smtpPort);
+            smtpClient.EnableSsl = smtpEnableSsl;
+            smtpClient.UseDefaultCredentials = false;
+            smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
+            smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+            smtpClient.Timeout = 30000;
+
+            _logger.LogInformation("Attempting to send email via SMTP: Host={Host}, Port={Port}, Username={Username}",
+                smtpHost, smtpPort, smtpUsername);
+
+            await smtpClient.SendMailAsync(mailMessage);
+            _logger.LogInformation("Email sent successfully via SMTP to {Email} (user {UserId}): {Subject}",
+                toEmail, userId, subject);
         }
 
         public async Task SendSmsNotification(int userId, string message)

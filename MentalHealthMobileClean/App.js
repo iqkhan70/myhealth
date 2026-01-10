@@ -1,8 +1,8 @@
 // App.js
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ScrollView,
-  Platform, KeyboardAvoidingView, Modal
+  Platform, KeyboardAvoidingView, Modal, Linking
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -145,6 +145,7 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [selectedContact, setSelectedContact] = useState(null);
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
 
   const [signalRConnected, setSignalRConnected] = useState(false);
 
@@ -163,9 +164,21 @@ export default function App() {
   const incomingCallTimeoutRef = useRef(null);
 
   // 📄 Document upload state
-  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password', 'service-requests', 'service-request-detail', 'create-service-request'
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password', 'service-requests', 'service-request-detail', 'create-service-request', 'forgot-password', 'reset-password'
   const [availablePatients, setAvailablePatients] = useState([]);
   const [selectedContactDetail, setSelectedContactDetail] = useState(null);
+  
+  // 🔐 Password reset state
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [resetPasswordEmail, setResetPasswordEmail] = useState('');
+  const [resetPasswordToken, setResetPasswordToken] = useState('');
+  const [resetPasswordFromUrl, setResetPasswordFromUrl] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [forgotPasswordMessage, setForgotPasswordMessage] = useState('');
+  const [resetPasswordMessage, setResetPasswordMessage] = useState('');
   const [selectedServiceRequest, setSelectedServiceRequest] = useState(null);
 
   // 📱 SMS state
@@ -212,6 +225,81 @@ export default function App() {
       registerDeviceForEmergency();
     }
   }, [user?.id]); // Only run when user ID changes, not on every user object change
+
+  // Handle deep links for password reset
+  useEffect(() => {
+    // Handle initial URL (when app is opened from a link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink(url);
+      }
+    }).catch(err => console.error('Error getting initial URL:', err));
+
+    // Handle URL when app is already running
+    const subscription = Linking.addEventListener('url', (event) => {
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleDeepLink = (url) => {
+    try {
+      console.log('📱 Deep link received:', url);
+      
+      // Skip Expo development URLs and other non-HTTP URLs
+      if (!url || url.startsWith('exp://') || url.startsWith('exps://')) {
+        console.log('📱 Skipping Expo development URL');
+        return;
+      }
+      
+      // Parse URL - format: https://caseflowstage.store/reset-password?token=XXX&email=YYY
+      // or mentalhealthapp://reset-password?token=XXX&email=YYY
+      // or https://192.168.86.25:5283/reset-password?token=XXX&email=YYY
+      let urlObj;
+      try {
+        urlObj = new URL(url);
+      } catch (e) {
+        // Try parsing as custom scheme
+        if (url.startsWith('mentalhealthapp://')) {
+          const cleanUrl = url.replace('mentalhealthapp://', 'https://');
+          urlObj = new URL(cleanUrl);
+        } else {
+          console.log('📱 Invalid URL format, skipping:', url);
+          return;
+        }
+      }
+      
+      if (urlObj.pathname && urlObj.pathname.includes('reset-password')) {
+        const token = urlObj.searchParams.get('token');
+        const email = urlObj.searchParams.get('email');
+        
+        if (token && email) {
+          console.log('📱 Password reset deep link detected');
+          setResetPasswordToken(token);
+          setResetPasswordEmail(decodeURIComponent(email));
+          setResetPasswordFromUrl(true); // Mark as loaded from URL - make fields read-only
+          setCurrentView('reset-password');
+          currentViewRef.current = 'reset-password';
+        } else {
+          console.log('📱 Reset password URL detected but missing token or email');
+        }
+      } else if (urlObj.pathname && (urlObj.pathname.includes('login') || urlObj.pathname === '/')) {
+        // Handle login deep link (e.g., mentalhealthapp://login)
+        console.log('📱 Login deep link detected - navigating to login screen');
+        setCurrentView('login');
+        currentViewRef.current = 'login';
+        // Clear any reset password state
+        setResetPasswordToken('');
+        setResetPasswordEmail('');
+        setResetPasswordFromUrl(false);
+      }
+    } catch (error) {
+      console.error('Error handling deep link:', error);
+    }
+  };
 
   const checkAuthStatus = async () => {
     try {
@@ -833,7 +921,10 @@ export default function App() {
       lastLoadedUserIdRef.current = userData?.id; // Mark as loading for this user
       
       let endpoint;
-      if (userData.roleId === 2 || userData.roleName === 'Doctor') {
+      // Coordinators (3), Admins (4), Doctors (2), Attorneys (5), and SMEs (6) use doctor/patients endpoint
+      if (userData.roleId === 2 || userData.roleId === 3 || userData.roleId === 4 || userData.roleId === 5 || userData.roleId === 6 || 
+          userData.roleName === 'Doctor' || userData.roleName === 'Coordinator' || userData.roleName === 'Admin' || 
+          userData.roleName === 'Attorney' || userData.roleName === 'SME') {
         endpoint = `${API_BASE_URL}/mobile/doctor/patients`;
       } else {
         endpoint = `${API_BASE_URL}/mobile/patient/doctors`;
@@ -1700,15 +1791,162 @@ export default function App() {
     );
   };
 
+  // ---------- PASSWORD RESET FUNCTIONS ----------
+  const handleForgotPassword = async () => {
+    if (!forgotPasswordEmail.trim()) {
+      Alert.alert('Error', 'Please enter your email address');
+      return;
+    }
+
+    setForgotPasswordLoading(true);
+    setForgotPasswordMessage('');
+    
+    try {
+      const forgotPasswordUrl = ensureValidUrl(`${API_BASE_URL}/auth/forgot-password`);
+      console.log('📱 Forgot password URL:', forgotPasswordUrl);
+      console.log('📱 API_BASE_URL:', API_BASE_URL);
+      
+      const resp = await fetch(forgotPasswordUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotPasswordEmail.trim() })
+      });
+      
+      console.log('📱 Forgot password response status:', resp.status);
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        setForgotPasswordMessage('If an account with that email exists, a password reset link has been sent.');
+        Alert.alert('Success', 'If an account with that email exists, a password reset link has been sent to your email.');
+        // Return to login after a delay
+        setTimeout(() => {
+          setForgotPasswordEmail('');
+          setForgotPasswordMessage('');
+          setCurrentView('login');
+          currentViewRef.current = 'login';
+        }, 2000);
+      } else {
+        setForgotPasswordMessage(data.message || 'An error occurred. Please try again.');
+        Alert.alert('Error', data.message || 'An error occurred. Please try again.');
+      }
+    } catch (e) {
+      console.error('Forgot password error:', e);
+      console.error('Error details:', {
+        message: e.message,
+        name: e.name,
+        stack: e.stack
+      });
+      
+      let errorMsg = 'Network error. Please check your connection and try again.';
+      
+      // Provide more specific error messages
+      if (e.message && e.message.includes('Network request failed')) {
+        errorMsg = `Cannot connect to server.\n\n` +
+          `Server: ${API_BASE_URL}\n\n` +
+          `Troubleshooting:\n` +
+          `1. Test in browser: Open https://192.168.86.25:5263/swagger on your device\n` +
+          `2. If login works, this is likely a certificate issue\n` +
+          `3. Make sure device and Mac are on same Wi-Fi\n` +
+          `4. Check Mac firewall allows port 5263\n` +
+          `5. For iOS: Trust certificate in Safari first\n` +
+          `6. Rebuild app if you changed config: npx expo run:ios`;
+      }
+      
+      setForgotPasswordMessage(errorMsg);
+      Alert.alert('Connection Error', errorMsg);
+    } finally {
+      setForgotPasswordLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!newPassword || !confirmPassword) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+
+    if (!resetPasswordToken || !resetPasswordEmail) {
+      Alert.alert('Error', 'Invalid reset link. Please request a new password reset.');
+      return;
+    }
+
+    setResetPasswordLoading(true);
+    setResetPasswordMessage('');
+    
+    try {
+      const resetPasswordUrl = ensureValidUrl(`${API_BASE_URL}/auth/reset-password`);
+      const resp = await fetch(resetPasswordUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: resetPasswordEmail,
+          token: resetPasswordToken,
+          newPassword: newPassword,
+          confirmPassword: confirmPassword
+        })
+      });
+      
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        setResetPasswordMessage(data.message || 'Password has been reset successfully.');
+        Alert.alert('Success', data.message || 'Password has been reset successfully. You can now login with your new password.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Clear state and return to login
+              setResetPasswordEmail('');
+              setResetPasswordToken('');
+              setNewPassword('');
+              setConfirmPassword('');
+              setResetPasswordMessage('');
+              setCurrentView('login');
+              currentViewRef.current = 'login';
+            }
+          }
+        ]);
+      } else {
+        setResetPasswordMessage(data.message || 'An error occurred. Please try again.');
+        Alert.alert('Error', data.message || 'An error occurred. Please try again.');
+      }
+    } catch (e) {
+      console.error('Reset password error:', e);
+      const errorMsg = 'Network error. Please check your connection and try again.';
+      setResetPasswordMessage(errorMsg);
+      Alert.alert('Error', errorMsg);
+    } finally {
+      setResetPasswordLoading(false);
+    }
+  };
+
   // ---------- RENDER ----------
   const renderLogin = () => (
     <SafeAreaView style={styles.container}>
       <View style={styles.loginContainer}>
-        <Text style={styles.title}>Health App</Text>
+        <Text style={styles.title}>Customer Care App</Text>
         <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" />
         <TextInput style={styles.input} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
         <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={login} disabled={loading}>
           <Text style={styles.buttonText}>{loading ? 'Logging in…' : 'Login'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.linkButton}
+          onPress={() => {
+            setForgotPasswordEmail('');
+            setForgotPasswordMessage('');
+            setCurrentView('forgot-password');
+            currentViewRef.current = 'forgot-password';
+          }}
+        >
+          <Text style={styles.linkButtonText}>Forgot your password?</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.guestButton} 
@@ -1719,9 +1957,166 @@ export default function App() {
         >
           <Text style={styles.guestButtonText}>Continue as Guest</Text>
         </TouchableOpacity>
+        <View style={styles.disclaimerContainer}>
+          <Text style={styles.disclaimerText}>
+            We help clients connect with qualified professionals. Services are provided independently by each party.
+          </Text>
+        </View>
       </View>
     </SafeAreaView>
   );
+
+  const renderForgotPassword = () => (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.loginContainer}>
+        <Text style={styles.title}>Forgot Password</Text>
+        <Text style={styles.subtitle}>Enter your email address and we'll send you a password reset link.</Text>
+        
+        {forgotPasswordMessage ? (
+          <View style={styles.messageContainer}>
+            <Text style={styles.messageText}>{forgotPasswordMessage}</Text>
+          </View>
+        ) : null}
+        
+        <TextInput 
+          style={styles.input} 
+          placeholder="Email" 
+          value={forgotPasswordEmail} 
+          onChangeText={setForgotPasswordEmail} 
+          autoCapitalize="none"
+          keyboardType="email-address"
+          editable={!forgotPasswordLoading}
+        />
+        
+        <TouchableOpacity 
+          style={[styles.button, forgotPasswordLoading && styles.buttonDisabled]} 
+          onPress={handleForgotPassword} 
+          disabled={forgotPasswordLoading}
+        >
+          <Text style={styles.buttonText}>{forgotPasswordLoading ? 'Sending…' : 'Send Reset Link'}</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.linkButton}
+          onPress={() => {
+            setForgotPasswordEmail('');
+            setForgotPasswordMessage('');
+            setCurrentView('login');
+            currentViewRef.current = 'login';
+          }}
+        >
+          <Text style={styles.linkButtonText}>Back to Login</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+
+  const renderResetPassword = () => (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.loginContainer}>
+          <Text style={styles.title}>Reset Password</Text>
+          <Text style={styles.subtitle}>Enter your new password</Text>
+          
+          {resetPasswordMessage ? (
+            <View style={styles.messageContainer}>
+              <Text style={styles.messageText}>{resetPasswordMessage}</Text>
+            </View>
+          ) : null}
+          
+          <TextInput 
+            style={[styles.input, { backgroundColor: '#f5f5f5' }]} 
+            placeholder="Email Address" 
+            value={resetPasswordEmail} 
+            onChangeText={setResetPasswordEmail} 
+            autoCapitalize="none"
+            keyboardType="email-address"
+            editable={false}
+          />
+          
+          <TextInput 
+            style={[styles.input, resetPasswordFromUrl && { backgroundColor: '#f5f5f5' }]} 
+            placeholder="Reset Token (from email link)" 
+            value={resetPasswordToken} 
+            onChangeText={setResetPasswordToken} 
+            autoCapitalize="none"
+            editable={!resetPasswordLoading && !resetPasswordFromUrl}
+            secureTextEntry={false}
+          />
+          <Text style={styles.helperText}>
+            {resetPasswordToken ? 'Token loaded from link ✓' : 'Paste the token from your email, or click the link in your email to open the app'}
+          </Text>
+          
+          <TextInput 
+            style={styles.input} 
+            placeholder="New Password" 
+            value={newPassword} 
+            onChangeText={setNewPassword} 
+            secureTextEntry
+            editable={!resetPasswordLoading}
+          />
+          <Text style={styles.helperText}>Password must be at least 6 characters long</Text>
+          
+          <TextInput 
+            style={styles.input} 
+            placeholder="Confirm Password" 
+            value={confirmPassword} 
+            onChangeText={setConfirmPassword} 
+            secureTextEntry
+            editable={!resetPasswordLoading}
+          />
+          
+          <TouchableOpacity 
+            style={[styles.button, resetPasswordLoading && styles.buttonDisabled]} 
+            onPress={handleResetPassword} 
+            disabled={resetPasswordLoading}
+          >
+            <Text style={styles.buttonText}>{resetPasswordLoading ? 'Resetting…' : 'Reset Password'}</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.linkButton}
+            onPress={() => {
+              setResetPasswordEmail('');
+              setResetPasswordToken('');
+              setResetPasswordFromUrl(false);
+              setNewPassword('');
+              setConfirmPassword('');
+              setResetPasswordMessage('');
+              setCurrentView('login');
+              currentViewRef.current = 'login';
+            }}
+          >
+            <Text style={styles.linkButtonText}>Back to Login</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+
+  // Filter contacts based on search query (must be at component level, not inside render function)
+  const filteredContacts = useMemo(() => {
+    if (!contactSearchQuery.trim()) {
+      return contacts;
+    }
+
+    const query = contactSearchQuery.toLowerCase().trim();
+    return contacts.filter((contact) => {
+      const firstName = (contact.firstName || '').toLowerCase();
+      const lastName = (contact.lastName || '').toLowerCase();
+      const fullName = `${firstName} ${lastName}`;
+      const roleName = (contact.roleName || '').toLowerCase();
+      const specialization = (contact.specialization || '').toLowerCase();
+      const mobilePhone = (contact.mobilePhone || '').toLowerCase();
+
+      return (
+        firstName.includes(query) ||
+        lastName.includes(query) ||
+        fullName.includes(query) ||
+        roleName.includes(query) ||
+        specialization.includes(query) ||
+        mobilePhone.includes(query)
+      );
+    });
+  }, [contacts, contactSearchQuery]);
 
   const renderCallModal = () => (
     <Modal visible={callModal.visible} animationType="slide">
@@ -1845,7 +2240,26 @@ export default function App() {
         <Text style={styles.contactsTitle}>
           {user?.roleId === 2 ? 'Your Clients' : 'Your Coordinators & SMEs'}
         </Text>
-        <Text style={styles.contactsCount}>({contacts.length})</Text>
+        <Text style={styles.contactsCount}>({filteredContacts.length})</Text>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search contacts..."
+          value={contactSearchQuery}
+          onChangeText={setContactSearchQuery}
+          placeholderTextColor="#999"
+        />
+        {contactSearchQuery.length > 0 && (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={() => setContactSearchQuery('')}
+          >
+            <Text style={styles.clearButtonText}>✕</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView style={styles.contactsList}>
@@ -1864,7 +2278,12 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        {contacts.map((contact) => (
+        {filteredContacts.length === 0 && contactSearchQuery.trim() ? (
+          <View style={styles.emptyContactsContainer}>
+            <Text style={styles.emptyContactsText}>No contacts found matching "{contactSearchQuery}"</Text>
+          </View>
+        ) : (
+          filteredContacts.map((contact) => (
           <TouchableOpacity key={contact.id} style={styles.contactItem} onPress={() => openContactDetail(contact)}>
             <View style={styles.contactInfo}>
               <Text style={styles.contactName}>
@@ -1880,7 +2299,8 @@ export default function App() {
               <Text style={styles.contactArrowText}>›</Text>
             </View>
           </TouchableOpacity>
-        ))}
+        ))
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -2031,6 +2451,14 @@ export default function App() {
   );
 
   if (!user) {
+    if (currentView === 'forgot-password') {
+      return renderForgotPassword();
+    }
+
+    if (currentView === 'reset-password') {
+      return renderResetPassword();
+    }
+
     if (currentView === 'guest-registration') {
       return (
         <SafeAreaView style={styles.container}>
@@ -2200,7 +2628,42 @@ export default function App() {
     );
   }
 
+  // Helper function to open contact detail page for client from service request
+  const contactClient = () => {
+    if (!selectedServiceRequest) return;
+    
+    const clientId = selectedServiceRequest.clientId || selectedServiceRequest.ClientId;
+    if (!clientId) {
+      Alert.alert('Error', 'Client information not available');
+      return;
+    }
+
+    // Try to find client in existing contacts
+    let clientContact = contacts.find(c => c.id === clientId);
+    
+    // If not found, create a contact object from service request data
+    if (!clientContact) {
+      const clientName = selectedServiceRequest.clientName || selectedServiceRequest.ClientName || 'Client';
+      const nameParts = clientName.split(' ');
+      clientContact = {
+        id: clientId,
+        firstName: nameParts[0] || 'Client',
+        lastName: nameParts.slice(1).join(' ') || '',
+        email: '', // Will be empty if not in contacts
+        roleName: 'Patient',
+        roleId: 1, // Patient role
+        mobilePhone: ''
+      };
+    }
+
+    // Open contact detail page (allows choosing chat, audio, or video)
+    openContactDetail(clientContact);
+  };
+
   if (currentView === 'service-request-detail') {
+    const isCoordinatorOrAdmin = user?.roleId === 3 || user?.roleId === 4; // Coordinator = 3, Admin = 4
+    const clientId = selectedServiceRequest?.clientId || selectedServiceRequest?.ClientId;
+
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar style="auto" />
@@ -2238,6 +2701,26 @@ export default function App() {
                 <Text style={{ fontSize: 14, color: '#666', marginBottom: 0 }}>
                   {selectedServiceRequest.description || selectedServiceRequest.Description}
                 </Text>
+              )}
+              
+              {/* Contact Client button for Coordinators and Admins */}
+              {isCoordinatorOrAdmin && clientId && (
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#007bff',
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    borderRadius: 6,
+                    marginTop: 12,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onPress={contactClient}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+                    📞 Contact Client
+                  </Text>
+                </TouchableOpacity>
               )}
             </View>
           )}
@@ -2313,7 +2796,7 @@ export default function App() {
           visible={smsModalVisible}
           onClose={() => setSmsModalVisible(false)}
           user={user}
-          contacts={contacts}
+          selectedContact={selectedContactDetail}
           apiBaseUrl={API_BASE_URL}
         />
         
@@ -2321,7 +2804,7 @@ export default function App() {
           visible={emergencyModalVisible}
           onClose={() => setEmergencyModalVisible(false)}
           user={user}
-          contacts={contacts}
+          selectedContact={selectedContactDetail}
           apiBaseUrl={API_BASE_URL}
           deviceToken={deviceToken}
           onEmergencySent={() => {
@@ -2406,6 +2889,51 @@ const styles = StyleSheet.create({
     color: '#007bff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  disclaimerContainer: {
+    marginTop: 30,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+  },
+  disclaimerText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  linkButton: {
+    marginTop: 15,
+    alignItems: 'center',
+  },
+  linkButtonText: {
+    color: '#007bff',
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
+  subtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    color: '#666',
+    marginBottom: 20,
+    paddingHorizontal: 10,
+  },
+  messageContainer: {
+    backgroundColor: '#e7f3ff',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  messageText: {
+    color: '#0066cc',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: -10,
+    marginBottom: 15,
+    paddingHorizontal: 5,
   },
   header: {
     flexDirection: 'row',
@@ -2710,6 +3238,43 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#2c3e50',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#333',
+  },
+  clearButton: {
+    marginLeft: 8,
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearButtonText: {
+    fontSize: 18,
+    color: '#666',
+  },
+  emptyContactsContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyContactsText: {
+    fontSize: 16,
+    color: '#666',
   },
   contactsHeader: {
     flexDirection: 'row',

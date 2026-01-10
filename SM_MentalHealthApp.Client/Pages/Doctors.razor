@@ -350,6 +350,7 @@
                         <label>Company (Optional)</label>
                         <RadzenDropDown Data="@companies" TextProperty="Name" ValueProperty="Id"
                             @bind-Value="doctorForm.CompanyId" AllowFiltering="true"
+                            AllowClear="true"
                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" 
                             Placeholder="Select a company or leave blank if independent..."
                             Style="width: 100%;" />

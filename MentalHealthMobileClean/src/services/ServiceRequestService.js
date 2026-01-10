@@ -141,6 +141,27 @@ class ServiceRequestService {
       throw error;
     }
   }
+
+  // Delete (soft delete) a service request
+  async deleteServiceRequest(id) {
+    try {
+      const headers = await this.getHeaders();
+      const response = await fetch(`${this.baseUrl}/ServiceRequest/${id}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error deleting service request:', error);
+      throw error;
+    }
+  }
 }
 
 export default new ServiceRequestService();

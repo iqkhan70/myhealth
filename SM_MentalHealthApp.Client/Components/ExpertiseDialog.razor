@@ -1,0 +1,172 @@
+@using SM_MentalHealthApp.Shared
+@using SM_MentalHealthApp.Client.Services
+@using Radzen
+@using Radzen.Blazor
+@inject IExpertiseService ExpertiseService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+
+<div class="expertise-dialog">
+    <RadzenForm Data="@expertiseForm" Submit="@OnSubmit">
+        <RadzenFieldset Text="Expertise Details">
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <RadzenFormField Text="Name" class="w-100">
+                        <RadzenTextBox @bind-Value="@expertiseForm.Name" Placeholder="Enter expertise name..." Style="width: 100%" MaxLength="100" />
+                        <RadzenFormFieldValidator Component="Name" Text="Name is required" />
+                    </RadzenFormField>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <RadzenFormField Text="Description (Optional)" class="w-100">
+                        <RadzenTextArea @bind-Value="@expertiseForm.Description" 
+                                       Placeholder="Enter description..." 
+                                       Style="width: 100%; min-height: 80px;"
+                                       MaxLength="500" />
+                    </RadzenFormField>
+                </div>
+            </div>
+            @if (EditingExpertise != null)
+            {
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <RadzenFormField Text="Status" class="w-100">
+                            <RadzenDropDown @bind-Value="@expertiseForm.IsActive" 
+                                           Data="@statusOptions" 
+                                           ValueProperty="Value" 
+                                           TextProperty="Label"
+                                           Placeholder="Select status..."
+                                           Style="width: 100%"
+                                           TValue="bool">
+                            </RadzenDropDown>
+                        </RadzenFormField>
+                    </div>
+                </div>
+            }
+        </RadzenFieldset>
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="d-flex justify-content-end gap-2">
+                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                    <RadzenButton Text="@(EditingExpertise == null ? "Create" : "Update")" 
+                                 ButtonStyle="ButtonStyle.Success" 
+                                 IsBusy="@isSaving"
+                                 Disabled="@isSaving" 
+                                 Click="@HandleSaveClick" />
+                </div>
+            </div>
+        </div>
+    </RadzenForm>
+</div>
+
+@code {
+    [Parameter] public SM_MentalHealthApp.Shared.Expertise? EditingExpertise { get; set; }
+    [Parameter] public EventCallback<bool> OnSaved { get; set; }
+
+    private ExpertiseForm expertiseForm = new();
+    private bool isSaving = false;
+
+    private List<StatusOption> statusOptions = new()
+    {
+        new StatusOption { Value = true, Label = "Active" },
+        new StatusOption { Value = false, Label = "Inactive" }
+    };
+
+    private class StatusOption
+    {
+        public bool Value { get; set; }
+        public string Label { get; set; } = string.Empty;
+    }
+
+    private class ExpertiseForm
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+
+    protected override void OnInitialized()
+    {
+        if (EditingExpertise != null)
+        {
+            expertiseForm = new ExpertiseForm
+            {
+                Name = EditingExpertise.Name,
+                Description = EditingExpertise.Description,
+                IsActive = EditingExpertise.IsActive
+            };
+        }
+        else
+        {
+            expertiseForm = new ExpertiseForm { IsActive = true };
+        }
+    }
+
+    private async Task HandleSaveClick()
+    {
+        await SaveExpertise();
+    }
+
+    private async Task OnSubmit(ExpertiseForm model)
+    {
+        await SaveExpertise();
+    }
+
+    private async Task SaveExpertise()
+    {
+        if (string.IsNullOrWhiteSpace(expertiseForm.Name))
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Validation Error", "Please enter a name");
+            return;
+        }
+
+        if (isSaving) return;
+
+        isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            if (EditingExpertise == null)
+            {
+                var created = await ExpertiseService.CreateExpertiseAsync(expertiseForm.Name, expertiseForm.Description);
+                NotificationService.Notify(NotificationSeverity.Success, "Success", $"Expertise '{created.Name}' created successfully");
+            }
+            else
+            {
+                var updated = await ExpertiseService.UpdateExpertiseAsync(
+                    EditingExpertise.Id, 
+                    expertiseForm.Name, 
+                    expertiseForm.Description, 
+                    expertiseForm.IsActive);
+                
+                if (updated != null)
+                {
+                    NotificationService.Notify(NotificationSeverity.Success, "Success", $"Expertise '{updated.Name}' updated successfully");
+                }
+                else
+                {
+                    NotificationService.Notify(NotificationSeverity.Error, "Error", "Failed to update expertise");
+                }
+            }
+
+            await Task.Delay(100);
+            DialogService.Close(true);
+            if (OnSaved.HasDelegate)
+            {
+                await OnSaved.InvokeAsync(true);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to save expertise: {ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+}
+

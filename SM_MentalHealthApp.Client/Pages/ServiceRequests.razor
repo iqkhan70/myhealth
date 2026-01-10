@@ -11,6 +11,7 @@
 @inject NotificationService NotificationService
 @inject DialogService DialogService
 @inject ODataService ODataService
+@inject NavigationManager Navigation
 
 <PageTitle>Service Requests</PageTitle>
 
@@ -66,12 +67,66 @@
                 FilterMode="FilterMode.Advanced" ShowPagingSummary="true">
                     <Columns>
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Id" Title="ID" Width="80px" />
-                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="ClientName" Title="Client" Width="200px" />
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Property="ClientName" Title="Client" Width="200px">
+                            <Template Context="sr">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span>@sr.ClientName</span>
+                                    @{
+                                        var isCoordinatorOrAdmin = AuthService.CurrentUser?.RoleId == 3 || AuthService.CurrentUser?.RoleId == 4;
+                                        var hasClientId = sr.ClientId > 0;
+                                    }
+                                    @if (isCoordinatorOrAdmin && hasClientId)
+                                    {
+                                        <RadzenButton Icon="phone" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.ExtraSmall"
+                                            Click="@(() => ContactClient(sr.ClientId))" Title="Contact Client"
+                                            style="padding: 2px 6px; min-width: auto;" />
+                                    }
+                                </div>
+                            </Template>
+                        </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Title" Title="Title" Width="250px" />
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Type" Title="Type" Width="120px" />
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="Status" Title="Status" Width="120px" Filterable="false">
                             <Template Context="sr">
                                 <span class="badge @GetStatusClass(sr.Status)">@sr.Status</span>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="ServiceRequestDto" Title="Billing Ready" Width="140px" Sortable="false" Filterable="false">
+                            <Template Context="sr">
+                                @{
+                                    var expertiseCount = sr.ExpertiseIds?.Count ?? 0;
+                                    var hasPrimaryExpertise = sr.PrimaryExpertiseId.HasValue;
+                                    
+                                    // Billing ready if:
+                                    // 1. Has exactly 1 expertise (auto-detected during charge creation)
+                                    // 2. Has multiple expertise AND PrimaryExpertiseId is set
+                                    var isBillingReady = (expertiseCount == 1) || 
+                                                         (expertiseCount > 1 && hasPrimaryExpertise);
+                                    
+                                    // Needs attention if:
+                                    // 1. No expertise at all
+                                    // 2. Multiple expertise but no PrimaryExpertiseId
+                                    var needsAttention = expertiseCount == 0 || 
+                                                         (expertiseCount > 1 && !hasPrimaryExpertise);
+                                }
+                                @if (isBillingReady)
+                                {
+                                    <span class="badge bg-success" title="Expertise properly configured for billing">
+                                        <i class="fas fa-check-circle"></i> Ready
+                                    </span>
+                                }
+                                else if (needsAttention)
+                                {
+                                    <span class="badge bg-warning text-dark" title="@GetBillingWarningMessage(sr)">
+                                        <i class="fas fa-exclamation-triangle"></i> Needs Setup
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary" title="Expertise status unknown">
+                                        <i class="fas fa-question-circle"></i> Unknown
+                                    </span>
+                                }
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="ServiceRequestDto" Property="CreatedAt" Title="Created" Width="150px">
@@ -371,8 +426,8 @@
             }
             
             // Query OData endpoint
-            // Note: Assignments navigation property is not expandable in OData EDM model
-            // We'll load assignments separately after getting ServiceRequests
+            // Note: Assignments, Expertises, and PrimaryExpertise navigation properties are loaded via Include() in the controller
+            // We'll load them separately after getting ServiceRequests to avoid $expand issues
             var result = await ODataService.QueryAsync<ServiceRequest>(
                 "ServiceRequests",
                 args.Skip ?? 0,
@@ -386,15 +441,16 @@
             // Debug: Log raw entity values before mapping
             foreach (var entity in result.Items.Take(3))
             {
-                Console.WriteLine($"OData Entity: ServiceRequest {entity.Id}: ServiceZipCode = '{entity.ServiceZipCode}', MaxDistanceMiles = {entity.MaxDistanceMiles}");
+                Console.WriteLine($"OData Entity: ServiceRequest {entity.Id}: ServiceZipCode = '{entity.ServiceZipCode}', MaxDistanceMiles = {entity.MaxDistanceMiles}, PrimaryExpertiseId = {entity.PrimaryExpertiseId}, Expertises.Count = {entity.Expertises?.Count ?? 0}");
             }
             var mappedItems = result.Items.Select(MapToDto).ToList();
             
-            // Load assignments separately since OData doesn't support $expand for Assignments
-            // We need to load assignments BEFORE applying the AssignedSmeNames filter
+            // Load assignments and expertise data separately since OData $expand is problematic
+            // We need to load them BEFORE applying the AssignedSmeNames filter
             // Temporarily set serviceRequests so LoadAssignmentsForServiceRequests can work
             serviceRequests = mappedItems;
             await LoadAssignmentsForServiceRequests();
+            await LoadExpertiseForServiceRequests();
             
             // Apply AssignedSmeNames filter if needed (client-side filtering)
             // This must be done AFTER assignments are loaded
@@ -498,6 +554,71 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to load assignments: {ex.Message}");
+        }
+    }
+
+    private async Task LoadExpertiseForServiceRequests()
+    {
+        if (!serviceRequests.Any())
+            return;
+
+        try
+        {
+            var serviceRequestIds = serviceRequests.Select(sr => sr.Id).ToList();
+            
+            // Load expertise data for all service requests in parallel (batch)
+            var expertiseTasks = serviceRequestIds.Select(async srId =>
+            {
+                try
+                {
+                    // Get the full service request with expertise via the regular API
+                    var fullSr = await ServiceRequestService.GetServiceRequestByIdAsync(srId);
+                    return new 
+                    { 
+                        SrId = srId, 
+                        ExpertiseIds = fullSr?.ExpertiseIds ?? new List<int>(),
+                        ExpertiseNames = fullSr?.ExpertiseNames ?? new List<string>(),
+                        PrimaryExpertiseId = fullSr?.PrimaryExpertiseId,
+                        PrimaryExpertiseName = fullSr?.PrimaryExpertiseName
+                    };
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to load expertise for SR {srId}: {ex.Message}");
+                    return new 
+                    { 
+                        SrId = srId, 
+                        ExpertiseIds = new List<int>(),
+                        ExpertiseNames = new List<string>(),
+                        PrimaryExpertiseId = (int?)null,
+                        PrimaryExpertiseName = (string?)null
+                    };
+                }
+            });
+            
+            var expertiseResults = await Task.WhenAll(expertiseTasks);
+            
+            // Assign expertise data to each service request
+            foreach (var sr in serviceRequests)
+            {
+                var expertiseData = expertiseResults.FirstOrDefault(r => r.SrId == sr.Id);
+                if (expertiseData != null)
+                {
+                    sr.ExpertiseIds = expertiseData.ExpertiseIds;
+                    sr.ExpertiseNames = expertiseData.ExpertiseNames;
+                    sr.PrimaryExpertiseId = expertiseData.PrimaryExpertiseId;
+                    sr.PrimaryExpertiseName = expertiseData.PrimaryExpertiseName;
+                }
+                else
+                {
+                    sr.ExpertiseIds = new List<int>();
+                    sr.ExpertiseNames = new List<string>();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load expertise: {ex.Message}");
         }
     }
 
@@ -608,8 +729,17 @@
                 .ToList();
         }
 
+        // Handle expertise data
+        var expertiseIds = new List<int>();
+        var expertiseNames = new List<string>();
+        if (sr.Expertises != null && sr.Expertises.Any())
+        {
+            expertiseIds = sr.Expertises.Select(e => e.ExpertiseId).ToList();
+            expertiseNames = sr.Expertises.Select(e => e.Expertise?.Name ?? $"Expertise {e.ExpertiseId}").ToList();
+        }
+
         // Debug: Log mapping
-        Console.WriteLine($"MapToDto: Mapping ServiceRequest {sr.Id}: ServiceZipCode = '{sr.ServiceZipCode}', MaxDistanceMiles = {sr.MaxDistanceMiles}");
+        Console.WriteLine($"MapToDto: Mapping ServiceRequest {sr.Id}: ServiceZipCode = '{sr.ServiceZipCode}', MaxDistanceMiles = {sr.MaxDistanceMiles}, PrimaryExpertiseId = {sr.PrimaryExpertiseId}");
 
         var dto = new ServiceRequestDto
         {
@@ -624,11 +754,15 @@
             Description = sr.Description,
             ServiceZipCode = sr.ServiceZipCode, // Include location fields
             MaxDistanceMiles = sr.MaxDistanceMiles,
+            PrimaryExpertiseId = sr.PrimaryExpertiseId, // Include PrimaryExpertiseId
+            PrimaryExpertiseName = sr.PrimaryExpertise?.Name, // Include PrimaryExpertiseName
+            ExpertiseIds = expertiseIds, // Include ExpertiseIds
+            ExpertiseNames = expertiseNames, // Include ExpertiseNames
             Assignments = assignments
         };
         
         // Debug: Log DTO after mapping
-        Console.WriteLine($"MapToDto: DTO created for ServiceRequest {dto.Id}: ServiceZipCode = '{dto.ServiceZipCode}', MaxDistanceMiles = {dto.MaxDistanceMiles}");
+        Console.WriteLine($"MapToDto: DTO created for ServiceRequest {dto.Id}: ServiceZipCode = '{dto.ServiceZipCode}', MaxDistanceMiles = {dto.MaxDistanceMiles}, PrimaryExpertiseId = {dto.PrimaryExpertiseId}, ExpertiseIds.Count = {dto.ExpertiseIds?.Count ?? 0}");
         
         return dto;
     }
@@ -857,6 +991,27 @@
         return "bg-danger";
     }
 
+    private string GetBillingWarningMessage(ServiceRequestDto sr)
+    {
+        var expertiseCount = sr.ExpertiseIds?.Count ?? 0;
+        var hasPrimaryExpertise = sr.PrimaryExpertiseId.HasValue;
+
+        if (expertiseCount == 0)
+        {
+            return "No expertise categories assigned. Coordinator must add expertise before billing can occur.";
+        }
+        else if (expertiseCount > 1 && !hasPrimaryExpertise)
+        {
+            return $"Multiple expertise categories ({expertiseCount}) assigned but no Primary Expertise selected. Coordinator must select Primary Expertise for billing.";
+        }
+        else if (expertiseCount == 1 && !hasPrimaryExpertise)
+        {
+            return "One expertise category assigned. Primary Expertise will be auto-detected during billing.";
+        }
+
+        return "Expertise configuration issue.";
+    }
+
     private async Task LoadMySmeScore()
     {
         try
@@ -1002,6 +1157,15 @@
         catch (Exception ex)
         {
             NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to open admin override dialog: {ex.Message}");
+        }
+    }
+
+    private void ContactClient(int clientId)
+    {
+        if (clientId > 0)
+        {
+            // Navigate to real-time chat with clientId query parameter
+            Navigation.NavigateTo($"/real-time-chat?clientId={clientId}");
         }
     }
 
