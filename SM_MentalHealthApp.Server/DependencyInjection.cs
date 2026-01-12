@@ -285,7 +285,7 @@ public static class DependencyInjection
             {
                 options.SwaggerDoc(description.GroupName, new Microsoft.OpenApi.Models.OpenApiInfo
                 {
-                    Title = "Health App API",
+                    Title = "Customer App API",
                     Version = description.ApiVersion.ToString(),
                     Description = description.IsDeprecated
                         ? "This API version has been deprecated."
