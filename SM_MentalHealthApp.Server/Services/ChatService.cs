@@ -141,6 +141,18 @@ namespace SM_MentalHealthApp.Server.Services
                     _logger.LogError("Failed to get or create chat session for userId: {UserId}, patientId: {PatientId}", userId, patientId);
                     throw new Exception("Failed to create or retrieve chat session");
                 }
+                
+                // CRITICAL SAFEGUARD: If we're in Medical Chat mode but session has ServiceRequestId,
+                // create a new medical session to prevent context mixing
+                if (!forceServiceRequestMode && session.ServiceRequestId.HasValue && 
+                    userRoleId == Shared.Constants.Roles.Patient && patientId == userId)
+                {
+                    _logger.LogWarning("Session {SessionId} has ServiceRequestId={ServiceRequestId} but user is in Medical Chat mode. Creating new medical session to prevent context mixing.", 
+                        session.Id, session.ServiceRequestId);
+                    // Create a new medical session (no ServiceRequestId)
+                    session = await _chatHistoryService.GetOrCreateSessionAsync(userId, patientId > 0 ? patientId : null, null);
+                    _logger.LogInformation("Created new medical session {SessionId} (no ServiceRequestId)", session.Id);
+                }
 
                 // Add user message to history
                 var isMedicalData = ContainsMedicalData(prompt);
@@ -150,56 +162,34 @@ namespace SM_MentalHealthApp.Server.Services
                 // Check if we should use agentic AI for service requests
                 // IMPORTANT: Only use agentic AI for service requests, NOT for medical chats
                 // This preserves content analysis for medical questions
-                // If user explicitly chose "Service Request Chat" mode, use agentic AI even if message contains medical keywords
-                // Also check if the session already has a ServiceRequestId (maintains context across messages)
+                // CRITICAL: The user's mode choice (forceServiceRequestMode) is the PRIMARY decision factor
                 bool sessionHasServiceRequest = session.ServiceRequestId.HasValue;
                 
-                // CRITICAL: Respect the client's mode choice
-                // - If forceServiceRequestMode=false (Medical Chat), NEVER use agentic AI
+                // CRITICAL: Respect the client's mode choice FIRST
+                // - If forceServiceRequestMode=false (Medical Chat), NEVER use agentic AI, regardless of session state
                 // - If forceServiceRequestMode=true (Service Request Chat), use agentic AI
-                // - If session has ServiceRequestId but user is in Medical mode, don't use agentic AI
                 bool shouldUseAgenticAI = false;
-                if ((serviceRequestId.HasValue || sessionHasServiceRequest) && 
+                
+                // ONLY consider agentic AI if user explicitly chose Service Request Chat mode
+                if (forceServiceRequestMode && 
+                    (serviceRequestId.HasValue || sessionHasServiceRequest) && 
                     userRoleId == Shared.Constants.Roles.Patient && 
                     patientId == userId && 
                     _agenticAIService != null)
                 {
-                    // CRITICAL: If user explicitly chose Medical Chat mode, NEVER use agentic AI
-                    // This prevents service request context from spilling into medical chats
-                    if (!forceServiceRequestMode)
-                    {
-                        shouldUseAgenticAI = false;
-                        _logger.LogInformation("NOT using agentic AI: user is in Medical Chat mode (forceServiceRequestMode=false) for session {SessionId}", session.Id);
-                    }
-                    // If explicitly in service request mode, always use agentic AI
-                    else if (forceServiceRequestMode)
-                    {
-                        shouldUseAgenticAI = true;
-                        _logger.LogInformation("Using agentic AI: forceServiceRequestMode=true for session {SessionId}", session.Id);
-                    }
-                    // CRITICAL: If session has ServiceRequestId, use agentic AI (maintain context)
-                    // Only exception: if message is EXPLICITLY medical AND user didn't force service request mode
-                    else if (sessionHasServiceRequest)
-                    {
-                        // For sessions with ServiceRequestId, only skip if message is explicitly medical
-                        // Short messages like "help please", "thank you", "nope", "yes" are NOT medical
-                        shouldUseAgenticAI = !isMedicalData;
-                        _logger.LogInformation("Using agentic AI: session has ServiceRequestId={ServiceRequestId}, isMedicalData={IsMedical}, prompt='{Prompt}' for session {SessionId}. Decision: {Decision}", 
-                            session.ServiceRequestId, isMedicalData, prompt.Substring(0, Math.Min(50, prompt.Length)), session.Id, shouldUseAgenticAI ? "USE_AGENTIC" : "SKIP_AGENTIC");
-                    }
-                    // If detected service request but no session ServiceRequestId yet, use agentic AI if not medical
-                    else if (serviceRequestId.HasValue)
-                    {
-                        shouldUseAgenticAI = !isMedicalData;
-                        _logger.LogInformation("Using agentic AI: detected ServiceRequestId={ServiceRequestId}, isMedicalData={IsMedical} for session {SessionId}", 
-                            serviceRequestId, isMedicalData, session.Id);
-                    }
+                    // User is in Service Request Chat mode - use agentic AI
+                    shouldUseAgenticAI = true;
+                    _logger.LogInformation("Using agentic AI: forceServiceRequestMode=true for session {SessionId} with ServiceRequestId={ServiceRequestId}", 
+                        session.Id, session.ServiceRequestId);
                 }
-                
-                if (!shouldUseAgenticAI && (serviceRequestId.HasValue || sessionHasServiceRequest))
+                else if (!forceServiceRequestMode && (serviceRequestId.HasValue || sessionHasServiceRequest))
                 {
-                    _logger.LogWarning("NOT using agentic AI: session {SessionId} has ServiceRequestId={ServiceRequestId}, isMedicalData={IsMedical}, forceServiceRequestMode={ForceMode}. This may cause context loss!", 
-                        session.Id, session.ServiceRequestId, isMedicalData, forceServiceRequestMode);
+                    // User is in Medical Chat mode but session has ServiceRequestId
+                    // This can happen if user switched from Service Request to Medical mode
+                    // CRITICAL: Do NOT use agentic AI - use medical chat instead
+                    _logger.LogInformation("NOT using agentic AI: user is in Medical Chat mode (forceServiceRequestMode=false) for session {SessionId} with ServiceRequestId={ServiceRequestId}. Using medical chat instead.", 
+                        session.Id, session.ServiceRequestId);
+                    shouldUseAgenticAI = false;
                 }
                 
                 if (shouldUseAgenticAI)
