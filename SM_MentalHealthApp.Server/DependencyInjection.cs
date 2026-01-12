@@ -209,6 +209,10 @@ public static class DependencyInjection
         services.AddScoped<ConversationRepository>();
         services.AddScoped<LlmClient>();
         services.AddScoped<IChainedAIService, ChainedAIService>();
+        
+        // Client Profile System for Agentic AI
+        services.AddScoped<IClientProfileService, ClientProfileService>();
+        services.AddScoped<IServiceRequestAgenticAIService, ServiceRequestAgenticAIService>();
 
         // External Service Integrations
         services.AddScoped<S3Service>();
