@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
+using SM_MentalHealthApp.Shared.Constants;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {

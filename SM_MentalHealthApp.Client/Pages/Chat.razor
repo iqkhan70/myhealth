@@ -8,6 +8,7 @@
 @inject IJSRuntime JS
 @inject IAuthService AuthService
 @inject IPatientService PatientService
+@inject IServiceRequestService ServiceRequestService
 
 <div class="chat-container">
     <!-- Chat Mode Header (Only for Doctors and Admins) -->
@@ -61,9 +62,47 @@
             }
         </div>
     }
+    else if (AuthService.CurrentUser?.RoleId == 1) // Patient/Client
+    {
+        <!-- Mode selector for clients -->
+        <div class="chat-header">
+            <div class="mode-selector">
+                <label style="white-space: nowrap; margin-bottom: 8px; display: block;">🤖 Chat Mode:</label>
+                <div class="mode-buttons">
+                    <button class="mode-button @(ClientChatMode == ClientChatModeType.ServiceRequest ? "active" : "")" @onclick="() => SetClientMode(ClientChatModeType.ServiceRequest)" disabled="@(!HasActiveServiceRequests)">
+                        🔧 Service Request Chat
+                    </button>
+                    <button class="mode-button @(ClientChatMode == ClientChatModeType.Generic ? "active" : "")" @onclick="() => SetClientMode(ClientChatModeType.Generic)">
+                        🌐 Generic AI
+                    </button>
+                    <button class="mode-button @(ClientChatMode == ClientChatModeType.Medical ? "active" : "")" @onclick="() => SetClientMode(ClientChatModeType.Medical)">
+                        🏥 Medical Chat
+                    </button>
+                </div>
+                @if (ClientChatMode == ClientChatModeType.ServiceRequest && !HasActiveServiceRequests)
+                {
+                    <div style="margin-top: 8px; padding: 8px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; font-size: 12px; color: #856404;">
+                        ℹ️ No active service requests. This mode is for chatting about your service requests (plumbing, car repair, etc.).
+                    </div>
+                }
+                else if (ClientChatMode == ClientChatModeType.ServiceRequest)
+                {
+                    <div style="margin-top: 8px; padding: 8px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; font-size: 12px; color: #0c5460;">
+                        ℹ️ Service Request Chat: Get help with your service requests (plumbing, car repair, legal, etc.). The AI will learn your preferences and personalize responses.
+                    </div>
+                }
+                else if (ClientChatMode == ClientChatModeType.Medical)
+                {
+                    <div style="margin-top: 8px; padding: 8px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; font-size: 12px; color: #0c5460;">
+                        ℹ️ Medical Chat: Ask questions about your health, symptoms, medications, or medical concerns.
+                    </div>
+                }
+            </div>
+        </div>
+    }
     else
     {
-        <!-- Simple header for patients -->
+        <!-- Simple header for other roles -->
         <div class="chat-header">
             <div class="chat-title">
                 <h2>💬 Health Chat</h2>
@@ -214,6 +253,16 @@
     
     // Chat mode management
     private bool IsGenericMode = false;
+    
+    // Client chat mode (for patients/clients)
+    private enum ClientChatModeType
+    {
+        Medical,          // Medical questions - uses content analysis
+        ServiceRequest,  // Service requests - uses agentic AI
+        Generic          // Generic AI - no personalization
+    }
+    private ClientChatModeType ClientChatMode = ClientChatModeType.ServiceRequest; // Default to service request
+    private bool HasActiveServiceRequests = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -239,13 +288,63 @@
             // For patients, they chat as themselves
             SelectedUserId = AuthService.CurrentUser.Id;
             await LoadSelectedUser();
+            await CheckActiveServiceRequests();
         }
         
-        // Add welcome message
-        Messages.Add("Bot: Hello! I'm your health companion. How can I help you today?");
+        // Add welcome message based on mode
+        UpdateWelcomeMessage();
         
         // Initialize sound setting
         await InitializeSound();
+    }
+    
+    private async Task CheckActiveServiceRequests()
+    {
+        try
+        {
+            if (AuthService.CurrentUser?.RoleId == 1 && AuthService.CurrentUser?.Id > 0)
+            {
+                var serviceRequests = await ServiceRequestService.GetServiceRequestsAsync(clientId: AuthService.CurrentUser.Id);
+                HasActiveServiceRequests = serviceRequests.Any(sr => sr.Status == "Active" || sr.Status == "Pending");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking service requests: {ex.Message}");
+            HasActiveServiceRequests = false;
+        }
+    }
+    
+    private void SetClientMode(ClientChatModeType mode)
+    {
+        ClientChatMode = mode;
+        IsGenericMode = (mode == ClientChatModeType.Generic);
+        Messages.Clear();
+        UpdateWelcomeMessage();
+        StateHasChanged();
+    }
+    
+    private void UpdateWelcomeMessage()
+    {
+        if (AuthService.CurrentUser?.RoleId == 1) // Patient
+        {
+            switch (ClientChatMode)
+            {
+                case ClientChatModeType.ServiceRequest:
+                    Messages.Add("Bot: Hello! I'm here to help with your service requests. I'll learn your preferences and provide personalized guidance for your needs (plumbing, car repair, legal, etc.). What can I help you with?");
+                    break;
+                case ClientChatModeType.Generic:
+                    Messages.Add("Bot: Hello! I'm your generic AI assistant. I can help you with any topic - medical research, general knowledge, or any questions you have. How can I assist you today?");
+                    break;
+                case ClientChatModeType.Medical:
+                    Messages.Add("Bot: Hello! I'm your medical AI assistant. I can help you with health questions, symptoms, medications, and medical concerns. How can I help you today?");
+                    break;
+            }
+        }
+        else
+        {
+            Messages.Add("Bot: Hello! I'm your health companion. How can I help you today?");
+        }
     }
 
     private async Task LoadUsers()
@@ -408,6 +507,13 @@
                 await JS.InvokeVoidAsync("playSound", "send");
             }
             
+            // For clients, determine if we should force service request mode
+            bool forceServiceRequestMode = false;
+            if (AuthService.CurrentUser?.RoleId == 1 && ClientChatMode == ClientChatModeType.ServiceRequest)
+            {
+                forceServiceRequestMode = true;
+            }
+            
             var request = new { 
                 prompt = UserInput, 
                 conversationId = Guid.NewGuid().ToString(), 
@@ -415,7 +521,8 @@
                 patientId = patientId,
                 userId = AuthService.CurrentUser?.Id ?? 0,
                 userRoleId = AuthService.CurrentUser?.RoleId ?? 0,
-                isGenericMode = IsGenericMode
+                isGenericMode = IsGenericMode,
+                forceServiceRequestMode = forceServiceRequestMode // New flag to explicitly use agentic AI
             };
             var response = await Http.PostAsJsonAsync("api/chat/send", request);
             var data = await response.Content.ReadFromJsonAsync<ChatResponse>();

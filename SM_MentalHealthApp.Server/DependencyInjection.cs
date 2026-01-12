@@ -136,7 +136,26 @@ public static class DependencyInjection
         // Core Services
         services.AddScoped<UserService>();
         services.AddScoped<JournalService>();
-        services.AddScoped<ChatService>();
+        services.AddScoped<ChatService>(sp =>
+        {
+            // Inject agentic AI service if available (for service request chats)
+            var agenticAIService = sp.GetService<IServiceRequestAgenticAIService>();
+            // Inject Redis cache service if available (for conversation history caching)
+            var redisCache = sp.GetService<IRedisCacheService>();
+            return new ChatService(
+                sp.GetRequiredService<ConversationRepository>(),
+                sp.GetRequiredService<HuggingFaceService>(),
+                sp.GetRequiredService<JournalService>(),
+                sp.GetRequiredService<UserService>(),
+                sp.GetRequiredService<IContentAnalysisService>(),
+                sp.GetRequiredService<IIntelligentContextService>(),
+                sp.GetRequiredService<IChatHistoryService>(),
+                sp.GetRequiredService<IServiceRequestService>(),
+                sp.GetRequiredService<JournalDbContext>(),
+                sp.GetRequiredService<ILogger<ChatService>>(),
+                agenticAIService,
+                redisCache);
+        });
 
         // HTTP Context Accessor (needed for AuthService to get base URL from request)
         services.AddHttpContextAccessor();

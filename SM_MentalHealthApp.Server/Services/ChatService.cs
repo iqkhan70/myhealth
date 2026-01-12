@@ -17,10 +17,12 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly IIntelligentContextService _intelligentContextService;
         private readonly IChatHistoryService _chatHistoryService;
         private readonly IServiceRequestService _serviceRequestService;
+        private readonly IServiceRequestAgenticAIService? _agenticAIService; // Optional - only for service requests
+        private readonly IRedisCacheService? _redisCache; // Optional - for caching conversation history
         private readonly JournalDbContext _context;
         private readonly ILogger<ChatService> _logger;
 
-        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, IIntelligentContextService intelligentContextService, IChatHistoryService chatHistoryService, IServiceRequestService serviceRequestService, JournalDbContext context, ILogger<ChatService> logger)
+        public ChatService(ConversationRepository conversationRepository, HuggingFaceService huggingFaceService, JournalService journalService, UserService userService, IContentAnalysisService contentAnalysisService, IIntelligentContextService intelligentContextService, IChatHistoryService chatHistoryService, IServiceRequestService serviceRequestService, JournalDbContext context, ILogger<ChatService> logger, IServiceRequestAgenticAIService? agenticAIService = null, IRedisCacheService? redisCache = null)
         {
             _conversationRepository = conversationRepository;
             _huggingFaceService = huggingFaceService;
@@ -30,11 +32,13 @@ namespace SM_MentalHealthApp.Server.Services
             _intelligentContextService = intelligentContextService;
             _chatHistoryService = chatHistoryService;
             _serviceRequestService = serviceRequestService;
+            _agenticAIService = agenticAIService;
+            _redisCache = redisCache;
             _context = context;
             _logger = logger;
         }
 
-        public async Task<ChatResponse> SendMessageAsync(string prompt, string conversationId, AiProvider provider, int patientId = 0, int userId = 0, int userRoleId = 0, bool isGenericMode = false)
+        public async Task<ChatResponse> SendMessageAsync(string prompt, string conversationId, AiProvider provider, int patientId = 0, int userId = 0, int userRoleId = 0, bool isGenericMode = false, bool forceServiceRequestMode = false)
         {
             try
             {
@@ -61,9 +65,76 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                     }
                 }
+                // NEW: Also detect service request for patients chatting about their service requests
+                else if (!isGenericMode && userRoleId == Shared.Constants.Roles.Patient && patientId == userId)
+                {
+                    // Get patient's active service requests
+                    var activeServiceRequests = await _serviceRequestService.GetServiceRequestsAsync(clientId: patientId);
+                    var activeSr = activeServiceRequests.FirstOrDefault(sr => 
+                        sr.Status == "Active" || sr.Status == "Pending");
+                    if (activeSr != null)
+                    {
+                        serviceRequestId = activeSr.Id;
+                        _logger.LogInformation("Patient {PatientId} chatting about ServiceRequest {ServiceRequestId}", patientId, serviceRequestId);
+                    }
+                }
 
                 // Get or create chat session
-                var session = await _chatHistoryService.GetOrCreateSessionAsync(userId, patientId > 0 ? patientId : null, serviceRequestId);
+                // IMPORTANT: Respect the client's mode choice
+                // - If forceServiceRequestMode=true: Look for service request sessions
+                // - If forceServiceRequestMode=false: Look for medical sessions (no ServiceRequestId)
+                ChatSession? session = null;
+                if (!isGenericMode && userRoleId == Shared.Constants.Roles.Patient && patientId == userId)
+                {
+                    var existingSessions = await _chatHistoryService.GetUserSessionsAsync(userId, patientId);
+                    
+                    if (forceServiceRequestMode)
+                    {
+                        // User is in Service Request Chat mode - look for service request sessions
+                        var todaySession = existingSessions
+                            .Where(s => s.IsActive && s.CreatedAt.Date == DateTime.UtcNow.Date && s.ServiceRequestId.HasValue)
+                            .OrderByDescending(s => s.LastActivityAt)
+                            .FirstOrDefault();
+                        
+                        if (todaySession != null)
+                        {
+                            session = todaySession;
+                            if (!serviceRequestId.HasValue)
+                            {
+                                serviceRequestId = todaySession.ServiceRequestId;
+                            }
+                            _logger.LogInformation("Found existing service request session {SessionId} with ServiceRequestId {ServiceRequestId}", 
+                                session.Id, serviceRequestId);
+                        }
+                    }
+                    else
+                    {
+                        // User is in Medical Chat mode - look for medical sessions (no ServiceRequestId)
+                        // CRITICAL: Don't use service request sessions for medical chats
+                        var todaySession = existingSessions
+                            .Where(s => s.IsActive && s.CreatedAt.Date == DateTime.UtcNow.Date && !s.ServiceRequestId.HasValue)
+                            .OrderByDescending(s => s.LastActivityAt)
+                            .FirstOrDefault();
+                        
+                        if (todaySession != null)
+                        {
+                            session = todaySession;
+                            // Ensure serviceRequestId is null for medical chats
+                            serviceRequestId = null;
+                            _logger.LogInformation("Found existing medical chat session {SessionId} (no ServiceRequestId)", session.Id);
+                        }
+                    }
+                }
+                
+                // If no existing session found, get or create one
+                // CRITICAL: For medical chats (forceServiceRequestMode=false), ensure serviceRequestId is null
+                if (session == null)
+                {
+                    var srIdToUse = forceServiceRequestMode ? serviceRequestId : null;
+                    session = await _chatHistoryService.GetOrCreateSessionAsync(userId, patientId > 0 ? patientId : null, srIdToUse);
+                    _logger.LogInformation("Created/retrieved session {SessionId} with ServiceRequestId={ServiceRequestId}, forceServiceRequestMode={ForceMode}", 
+                        session.Id, session.ServiceRequestId, forceServiceRequestMode);
+                }
 
                 if (session == null)
                 {
@@ -76,7 +147,168 @@ namespace SM_MentalHealthApp.Server.Services
                 var metadata = BuildMessageMetadata(userId, userRoleId, patientId);
                 await _chatHistoryService.AddMessageAsync(session.Id, MessageRole.User, prompt, MessageType.Question, isMedicalData, metadata);
 
+                // Check if we should use agentic AI for service requests
+                // IMPORTANT: Only use agentic AI for service requests, NOT for medical chats
+                // This preserves content analysis for medical questions
+                // If user explicitly chose "Service Request Chat" mode, use agentic AI even if message contains medical keywords
+                // Also check if the session already has a ServiceRequestId (maintains context across messages)
+                bool sessionHasServiceRequest = session.ServiceRequestId.HasValue;
+                
+                // CRITICAL: Respect the client's mode choice
+                // - If forceServiceRequestMode=false (Medical Chat), NEVER use agentic AI
+                // - If forceServiceRequestMode=true (Service Request Chat), use agentic AI
+                // - If session has ServiceRequestId but user is in Medical mode, don't use agentic AI
+                bool shouldUseAgenticAI = false;
+                if ((serviceRequestId.HasValue || sessionHasServiceRequest) && 
+                    userRoleId == Shared.Constants.Roles.Patient && 
+                    patientId == userId && 
+                    _agenticAIService != null)
+                {
+                    // CRITICAL: If user explicitly chose Medical Chat mode, NEVER use agentic AI
+                    // This prevents service request context from spilling into medical chats
+                    if (!forceServiceRequestMode)
+                    {
+                        shouldUseAgenticAI = false;
+                        _logger.LogInformation("NOT using agentic AI: user is in Medical Chat mode (forceServiceRequestMode=false) for session {SessionId}", session.Id);
+                    }
+                    // If explicitly in service request mode, always use agentic AI
+                    else if (forceServiceRequestMode)
+                    {
+                        shouldUseAgenticAI = true;
+                        _logger.LogInformation("Using agentic AI: forceServiceRequestMode=true for session {SessionId}", session.Id);
+                    }
+                    // CRITICAL: If session has ServiceRequestId, use agentic AI (maintain context)
+                    // Only exception: if message is EXPLICITLY medical AND user didn't force service request mode
+                    else if (sessionHasServiceRequest)
+                    {
+                        // For sessions with ServiceRequestId, only skip if message is explicitly medical
+                        // Short messages like "help please", "thank you", "nope", "yes" are NOT medical
+                        shouldUseAgenticAI = !isMedicalData;
+                        _logger.LogInformation("Using agentic AI: session has ServiceRequestId={ServiceRequestId}, isMedicalData={IsMedical}, prompt='{Prompt}' for session {SessionId}. Decision: {Decision}", 
+                            session.ServiceRequestId, isMedicalData, prompt.Substring(0, Math.Min(50, prompt.Length)), session.Id, shouldUseAgenticAI ? "USE_AGENTIC" : "SKIP_AGENTIC");
+                    }
+                    // If detected service request but no session ServiceRequestId yet, use agentic AI if not medical
+                    else if (serviceRequestId.HasValue)
+                    {
+                        shouldUseAgenticAI = !isMedicalData;
+                        _logger.LogInformation("Using agentic AI: detected ServiceRequestId={ServiceRequestId}, isMedicalData={IsMedical} for session {SessionId}", 
+                            serviceRequestId, isMedicalData, session.Id);
+                    }
+                }
+                
+                if (!shouldUseAgenticAI && (serviceRequestId.HasValue || sessionHasServiceRequest))
+                {
+                    _logger.LogWarning("NOT using agentic AI: session {SessionId} has ServiceRequestId={ServiceRequestId}, isMedicalData={IsMedical}, forceServiceRequestMode={ForceMode}. This may cause context loss!", 
+                        session.Id, session.ServiceRequestId, isMedicalData, forceServiceRequestMode);
+                }
+                
+                if (shouldUseAgenticAI)
+                {
+                    try
+                    {
+                        // Use session's ServiceRequestId if available, otherwise use detected one
+                        var srIdToUse = session.ServiceRequestId ?? serviceRequestId;
+                        _logger.LogInformation("Using agentic AI for service request chat: SR {ServiceRequestId} (from session: {FromSession})", 
+                            srIdToUse, sessionHasServiceRequest);
+                        
+                        // Get conversation history for context (with Redis caching)
+                        string historyContext;
+                        var cacheKey = $"chat:history:{session.Id}";
+                        
+                        // Try Redis cache first (if available)
+                        if (_redisCache != null)
+                        {
+                            var cachedHistory = await _redisCache.GetAsync(cacheKey);
+                            if (!string.IsNullOrEmpty(cachedHistory))
+                            {
+                                _logger.LogDebug("Using cached conversation history for session {SessionId}", session.Id);
+                                historyContext = cachedHistory;
+                            }
+                            else
+                            {
+                                // Load from database and cache it
+                                var conversationHistory = await _chatHistoryService.GetRecentMessagesAsync(session.Id, maxMessages: 10);
+                                historyContext = string.Join("\n", conversationHistory
+                                    .OrderBy(m => m.Timestamp)
+                                    .Take(8) // Last 8 messages (4 exchanges)
+                                    .Select(m => $"{m.Role}: {m.Content}"));
+                                
+                                // Cache for 1 hour (active chat sessions)
+                                await _redisCache.SetAsync(cacheKey, historyContext, TimeSpan.FromHours(1));
+                            }
+                        }
+                        else
+                        {
+                            // No Redis, load directly from database
+                            var conversationHistory = await _chatHistoryService.GetRecentMessagesAsync(session.Id, maxMessages: 10);
+                            historyContext = string.Join("\n", conversationHistory
+                                .OrderBy(m => m.Timestamp)
+                                .Take(8) // Last 8 messages (4 exchanges)
+                                .Select(m => $"{m.Role}: {m.Content}"));
+                        }
+                        
+                        // Use agentic AI for service request assistance with conversation context
+                        // _agenticAIService is guaranteed to be non-null here due to the check above
+                        var agenticResponse = await _agenticAIService!.ProcessServiceRequestAsync(
+                            patientId,
+                            prompt,
+                            srIdToUse,
+                            conversationHistory: historyContext);
+                        
+                        // Add AI response to history
+                        await _chatHistoryService.AddMessageAsync(
+                            session.Id, 
+                            MessageRole.Assistant, 
+                            agenticResponse.Message, 
+                            MessageType.Response, 
+                            false, 
+                            null);
+                        
+                        // Invalidate Redis cache since we added a new message
+                        if (_redisCache != null)
+                        {
+                            await _redisCache.RemoveAsync(cacheKey);
+                            _logger.LogDebug("Invalidated conversation history cache for session {SessionId}", session.Id);
+                        }
+                        
+                        await _chatHistoryService.UpdateSessionActivityAsync(session.Id);
+                        
+                        return new ChatResponse
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            Message = agenticResponse.Message,
+                            Provider = "AgenticAI"
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error using agentic AI for session {SessionId} with ServiceRequestId {ServiceRequestId}", 
+                            session.Id, session.ServiceRequestId);
+                        
+                        // CRITICAL: If session has ServiceRequestId, we MUST stay in service request mode
+                        // Don't fall back to medical chat - return a service request appropriate error message
+                        if (sessionHasServiceRequest)
+                        {
+                            _logger.LogWarning("Session has ServiceRequestId but agentic AI failed. Returning service request error message instead of falling back to medical chat.");
+                            return new ChatResponse
+                            {
+                                Id = Guid.NewGuid().ToString(),
+                                Message = "I apologize, but I'm having trouble processing your service request right now. Please try again in a moment, or contact support if the issue persists.",
+                                Provider = "AgenticAI-Error"
+                            };
+                        }
+                        
+                        // Only fall back to regular chat if this wasn't a service request session
+                        _logger.LogInformation("Falling back to regular chat (not a service request session)");
+                    }
+                }
+
                 // Build role-based prompt with chat history context
+                // This path is used for:
+                // 1. Medical chats (content analysis preserved)
+                // 2. Generic mode
+                // 3. Doctor/Admin chats
+                // 4. Fallback if agentic AI fails
                 string roleBasedPrompt;
                 if (isGenericMode)
                 {
@@ -86,10 +318,12 @@ namespace SM_MentalHealthApp.Server.Services
                 else
                 {
                     _logger.LogInformation("Using role-based prompt for patient {PatientId}", patientId);
+                    // Content analysis is preserved here for medical questions
                     roleBasedPrompt = await BuildRoleBasedPromptWithHistory(prompt, patientId, userId, userRoleId, session.Id);
                 }
 
                 // Use HuggingFace service for AI response
+                // Content analysis context is included in roleBasedPrompt for medical questions
                 var response = await _huggingFaceService.GenerateResponse(roleBasedPrompt, isGenericMode);
 
                 // Add AI response to history

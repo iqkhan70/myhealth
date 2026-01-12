@@ -1,11 +1,12 @@
 using SM_MentalHealthApp.Shared;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SM_MentalHealthApp.Server.Services
 {
     public interface IServiceRequestAgenticAIService
     {
-        Task<AgenticResponse> ProcessServiceRequestAsync(int clientId, string clientMessage, int? serviceRequestId = null);
+        Task<AgenticResponse> ProcessServiceRequestAsync(int clientId, string clientMessage, int? serviceRequestId = null, string? conversationHistory = null);
     }
 
     public class ServiceRequestAgenticAIService : IServiceRequestAgenticAIService
@@ -15,22 +16,25 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly LlmClient _llmClient;
         private readonly ILogger<ServiceRequestAgenticAIService> _logger;
         private readonly IServiceRequestService _serviceRequestService;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
 
         public ServiceRequestAgenticAIService(
             IClientProfileService profileService,
             HuggingFaceService huggingFaceService,
             LlmClient llmClient,
             ILogger<ServiceRequestAgenticAIService> logger,
-            IServiceRequestService serviceRequestService)
+            IServiceRequestService serviceRequestService,
+            IServiceScopeFactory serviceScopeFactory)
         {
             _profileService = profileService;
             _huggingFaceService = huggingFaceService;
             _llmClient = llmClient;
             _logger = logger;
             _serviceRequestService = serviceRequestService;
+            _serviceScopeFactory = serviceScopeFactory;
         }
 
-        public async Task<AgenticResponse> ProcessServiceRequestAsync(int clientId, string clientMessage, int? serviceRequestId = null)
+        public async Task<AgenticResponse> ProcessServiceRequestAsync(int clientId, string clientMessage, int? serviceRequestId = null, string? conversationHistory = null)
         {
             try
             {
@@ -46,14 +50,20 @@ namespace SM_MentalHealthApp.Server.Services
                 var strategy = await DetermineResponseStrategyAsync(analysis, profile, serviceRequestId);
 
                 // Step 4: Generate adaptive response
-                var response = await GenerateAdaptiveResponseAsync(clientMessage, analysis, strategy, profile, serviceRequestId);
+                var response = await GenerateAdaptiveResponseAsync(clientMessage, analysis, strategy, profile, serviceRequestId, conversationHistory);
 
                 // Step 5: Learn from interaction (async, don't block)
+                // CRITICAL: Create a new scope for background task to avoid DbContext disposal issues
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        await LearnFromInteractionAsync(clientId, clientMessage, response, analysis, serviceRequestId);
+                        // Create a new scope for the background task
+                        // This ensures we have a fresh DbContext that won't be disposed
+                        using var scope = _serviceScopeFactory.CreateScope();
+                        var profileService = scope.ServiceProvider.GetRequiredService<IClientProfileService>();
+                        
+                        await LearnFromInteractionAsync(clientId, clientMessage, response, analysis, serviceRequestId, profileService);
                     }
                     catch (Exception ex)
                     {
@@ -381,7 +391,8 @@ namespace SM_MentalHealthApp.Server.Services
             MessageAnalysis analysis,
             ResponseStrategy strategy,
             ClientProfile profile,
-            int? serviceRequestId)
+            int? serviceRequestId,
+            string? conversationHistory = null)
         {
             try
             {
@@ -396,14 +407,21 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
-                // Get recent interaction history for context
+                // Get recent interaction history for context (from profile)
                 var recentHistory = await _profileService.GetRecentInteractionHistoryAsync(profile.ClientId, 5);
-                var historyContext = recentHistory.Any() 
+                var profileHistoryContext = recentHistory.Any() 
                     ? $"Recent interactions show: {string.Join(", ", recentHistory.Take(3).Select(h => h.ClientReaction ?? "Neutral"))}"
                     : "This is a new interaction";
 
+                // Use conversation history if provided (for maintaining context within the same chat session)
+                var conversationContext = !string.IsNullOrEmpty(conversationHistory)
+                    ? $"CONVERSATION HISTORY:\n{conversationHistory}\n\nIMPORTANT: The client's current message is a continuation of this conversation. Use the history to understand context and references."
+                    : "This is the start of a new conversation.";
+
                 // Build adaptive prompt
-                var prompt = $@"You are a helpful, cordial service assistant helping a client with a service request (like plumbing, car repair, lawn care, etc.).
+                var prompt = $@"You are a helpful, cordial SERVICE REQUEST assistant helping a client with NON-MEDICAL service requests (like plumbing, car repair, lawn care, legal assistance, home repairs, etc.).
+
+**THIS IS NOT A MEDICAL CONVERSATION. DO NOT MENTION HEALTH, MEDICAL TOPICS, PATIENTS, OR MEDICAL CARE.**
 
 CLIENT PROFILE:
 - Communication Style: {profile.CommunicationStyle}
@@ -423,8 +441,10 @@ CURRENT SITUATION:
 - Client Reaction: {analysis.ClientReaction}
 
 {(!string.IsNullOrEmpty(serviceRequestContext) ? $"SERVICE REQUEST CONTEXT:\n{serviceRequestContext}\n" : "")}
-INTERACTION HISTORY:
-{historyContext}
+{conversationContext}
+
+PROFILE INTERACTION HISTORY:
+{profileHistoryContext}
 
 RESPONSE STRATEGY:
 - Tone: {strategy.Tone} (Supportive=warm/empathetic, Professional=formal/business-like, Casual=friendly/informal)
@@ -432,23 +452,28 @@ RESPONSE STRATEGY:
 - Approach: {strategy.Approach} (Reassuring=calm/comfort, Problem-Solving=action-oriented, Educational=informative)
 
 CRITICAL INSTRUCTIONS:
-1. Respond in a {strategy.Tone} tone that matches the client's emotional state
-2. Provide {strategy.InformationLevel} information - NOT too much (overwhelming) and NOT too little (frustrating)
-3. Make the client feel {strategy.Approach} - help them feel connected and supported, not overwhelmed
-4. Address their main concern: {analysis.Concerns.FirstOrDefault() ?? "general service request"}
-5. If urgency is {analysis.Urgency}, adjust your response accordingly
-6. Be cordial and make the client feel heard and understood
-7. If this is an urgent situation, provide immediate actionable steps
-8. Keep the response conversational and natural, not robotic
-9. Reference successful past resolutions if relevant (client has {profile.SuccessfulResolutions} successful resolutions)
-10. Balance being helpful with not overwhelming the client
+1. **ABSOLUTELY DO NOT mention health, medical topics, patients, medical care, or ask about health concerns. This is a SERVICE REQUEST conversation only.**
+2. Respond in a {strategy.Tone} tone that matches the client's emotional state
+3. Provide {strategy.InformationLevel} information - NOT too much (overwhelming) and NOT too little (frustrating)
+4. Make the client feel {strategy.Approach} - help them feel connected and supported, not overwhelmed
+5. Address their main concern: {analysis.Concerns.FirstOrDefault() ?? "general service request"}
+6. If urgency is {analysis.Urgency}, adjust your response accordingly
+7. Be cordial and make the client feel heard and understood
+8. If this is an urgent situation, provide immediate actionable steps
+9. Keep the response conversational and natural, not robotic
+10. Reference successful past resolutions if relevant (client has {profile.SuccessfulResolutions} successful resolutions)
+11. Balance being helpful with not overwhelming the client
+12. **CRITICAL**: If conversation history is provided above, use it to understand context. For example, if the client says ""Yes please"", ""That sounds good"", ""10-12 AM is good"", or ""thank you, that is all"", refer back to what was discussed in the conversation history and continue from there.
+13. **CRITICAL**: Maintain conversation continuity - if the client is responding to a previous question or suggestion, acknowledge that and continue from where you left off. Don't start a new topic.
+14. **CRITICAL**: If the client says ""thank you, that is all I need for now"" or similar closing statements, acknowledge their service request is complete and offer to help if they need anything else with their SERVICE REQUEST. Do NOT mention health or medical topics.
+15. **CRITICAL**: If the client says ""nope"" or ""no"" in response to a question, acknowledge their answer and continue with the service request conversation. Do NOT switch topics or mention medical/health topics.
 
-Generate a helpful, personalized response that makes the client feel supported and guides them appropriately:";
+Generate a helpful, personalized response that makes the client feel supported and guides them appropriately. Remember: This is ONLY about service requests, NOT medical or health topics:";
 
                 var llmRequest = new LlmRequest
                 {
                     Prompt = prompt,
-                    Temperature = 0.7m, // Creative but consistent
+                    Temperature = 0.7, // Creative but consistent
                     MaxTokens = 300,
                     Provider = AiProvider.OpenAI
                 };
@@ -483,11 +508,12 @@ Generate a helpful, personalized response that makes the client feel supported a
             string clientMessage,
             AgenticResponse response,
             MessageAnalysis analysis,
-            int? serviceRequestId)
+            int? serviceRequestId,
+            IClientProfileService profileService)
         {
             try
             {
-                var profile = await _profileService.GetProfileAsync(clientId);
+                var profile = await profileService.GetProfileAsync(clientId);
                 if (profile == null) return;
 
                 // Learn information tolerance
@@ -514,7 +540,7 @@ Generate a helpful, personalized response that makes the client feel supported a
                 profile.TotalInteractions++;
                 profile.LastUpdated = DateTime.UtcNow;
 
-                await _profileService.UpdateProfileAsync(profile);
+                await profileService.UpdateProfileAsync(profile);
 
                 // Learn keyword reactions
                 var keywords = ExtractKeywords(clientMessage);
@@ -522,7 +548,7 @@ Generate a helpful, personalized response that makes the client feel supported a
                 {
                     var scoreDelta = analysis.Sentiment == Sentiment.Positive ? 1 : 
                                    (analysis.Sentiment == Sentiment.Negative ? -1 : 0);
-                    await _profileService.AddOrUpdateKeywordReactionAsync(clientId, keyword, scoreDelta);
+                    await profileService.AddOrUpdateKeywordReactionAsync(clientId, keyword, scoreDelta);
                 }
 
                 // Store interaction history
@@ -539,7 +565,7 @@ Generate a helpful, personalized response that makes the client feel supported a
                     ClientReaction = analysis.ClientReaction?.ToString()
                 };
 
-                await _profileService.AddInteractionHistoryAsync(history);
+                await profileService.AddInteractionHistoryAsync(history);
 
                 _logger.LogInformation("Learned from interaction for client {ClientId}", clientId);
             }
