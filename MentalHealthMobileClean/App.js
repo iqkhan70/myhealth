@@ -3100,6 +3100,17 @@ export default function App() {
     );
   }
 
+  if (currentView === 'ai-chat') {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="auto" />
+        {renderAiChat()}
+        {renderCallModal()}
+        {renderIncomingCallModal()}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar style="auto" />
