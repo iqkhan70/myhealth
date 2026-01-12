@@ -77,6 +77,13 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<MedicalAttentionType> MedicalAttentionTypes { get; set; }
             public DbSet<SymptomOngoingStatus> SymptomOngoingStatuses { get; set; }
 
+            // Client Profile System for Agentic AI
+            public DbSet<ClientProfile> ClientProfiles { get; set; }
+            public DbSet<ClientInteractionPattern> ClientInteractionPatterns { get; set; }
+            public DbSet<ClientKeywordReaction> ClientKeywordReactions { get; set; }
+            public DbSet<ClientServicePreference> ClientServicePreferences { get; set; }
+            public DbSet<ClientInteractionHistory> ClientInteractionHistories { get; set; }
+
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
                   base.OnModelCreating(modelBuilder);
@@ -1238,6 +1245,118 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.HasIndex(e => e.BillingAccountId);
                         entity.HasIndex(e => e.ExpertiseId);
                         entity.HasIndex(e => e.Status);
+                  });
+
+                  // Configure ClientProfile entity
+                  modelBuilder.Entity<ClientProfile>(entity =>
+                  {
+                        entity.ToTable("ClientProfiles");
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.CommunicationStyle).HasMaxLength(50).HasDefaultValue("Balanced");
+                        entity.Property(e => e.InformationTolerance).IsRequired().HasColumnType("DECIMAL(3,2)").HasDefaultValue(0.5m);
+                        entity.Property(e => e.EmotionalSensitivity).IsRequired().HasColumnType("DECIMAL(3,2)").HasDefaultValue(0.5m);
+                        entity.Property(e => e.PreferredTone).HasMaxLength(50).HasDefaultValue("Supportive");
+                        entity.Property(e => e.TotalInteractions).HasDefaultValue(0);
+                        entity.Property(e => e.SuccessfulResolutions).HasDefaultValue(0);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        entity.HasOne(e => e.Client)
+                              .WithMany()
+                              .HasForeignKey(e => e.ClientId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasIndex(e => e.ClientId).IsUnique();
+                        entity.HasIndex(e => e.LastUpdated);
+                  });
+
+                  // Configure ClientInteractionPattern entity
+                  modelBuilder.Entity<ClientInteractionPattern>(entity =>
+                  {
+                        entity.ToTable("ClientInteractionPatterns");
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.PatternType).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.PatternData).HasColumnType("JSON");
+                        entity.Property(e => e.Confidence).IsRequired().HasColumnType("DECIMAL(3,2)").HasDefaultValue(0.5m);
+                        entity.Property(e => e.OccurrenceCount).HasDefaultValue(1);
+                        entity.Property(e => e.LastObserved).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        entity.HasOne(e => e.ClientProfile)
+                              .WithMany(p => p.InteractionPatterns)
+                              .HasForeignKey(e => e.ClientId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasIndex(e => new { e.ClientId, e.PatternType });
+                        entity.HasIndex(e => e.LastObserved);
+                  });
+
+                  // Configure ClientKeywordReaction entity
+                  modelBuilder.Entity<ClientKeywordReaction>(entity =>
+                  {
+                        entity.ToTable("ClientKeywordReactions");
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.Keyword).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.ReactionScore).HasDefaultValue(0);
+                        entity.Property(e => e.OccurrenceCount).HasDefaultValue(1);
+                        entity.Property(e => e.LastSeen).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        entity.HasOne(e => e.ClientProfile)
+                              .WithMany(p => p.KeywordReactions)
+                              .HasForeignKey(e => e.ClientId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasIndex(e => new { e.ClientId, e.Keyword }).IsUnique();
+                        entity.HasIndex(e => e.ReactionScore);
+                  });
+
+                  // Configure ClientServicePreference entity
+                  modelBuilder.Entity<ClientServicePreference>(entity =>
+                  {
+                        entity.ToTable("ClientServicePreferences");
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.ServiceType).IsRequired().HasMaxLength(100);
+                        entity.Property(e => e.PreferenceScore).IsRequired().HasColumnType("DECIMAL(3,2)").HasDefaultValue(0.5m);
+                        entity.Property(e => e.RequestCount).HasDefaultValue(0);
+                        entity.Property(e => e.SuccessRate).HasColumnType("DECIMAL(3,2)");
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+                        entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)").ValueGeneratedOnAddOrUpdate();
+
+                        entity.HasOne(e => e.ClientProfile)
+                              .WithMany(p => p.ServicePreferences)
+                              .HasForeignKey(e => e.ClientId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasIndex(e => new { e.ClientId, e.ServiceType }).IsUnique();
+                        entity.HasIndex(e => e.PreferenceScore);
+                  });
+
+                  // Configure ClientInteractionHistory entity
+                  modelBuilder.Entity<ClientInteractionHistory>(entity =>
+                  {
+                        entity.ToTable("ClientInteractionHistory");
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.InteractionType).IsRequired().HasMaxLength(50);
+                        entity.Property(e => e.ClientMessage).HasColumnType("TEXT");
+                        entity.Property(e => e.AgentResponse).HasColumnType("TEXT");
+                        entity.Property(e => e.Sentiment).HasMaxLength(50);
+                        entity.Property(e => e.Urgency).HasMaxLength(50);
+                        entity.Property(e => e.InformationLevel).HasMaxLength(50);
+                        entity.Property(e => e.ClientReaction).HasMaxLength(50);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        entity.HasOne(e => e.ClientProfile)
+                              .WithMany()
+                              .HasForeignKey(e => e.ClientId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.ServiceRequest)
+                              .WithMany()
+                              .HasForeignKey(e => e.ServiceRequestId)
+                              .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasIndex(e => new { e.ClientId, e.CreatedAt });
+                        entity.HasIndex(e => e.ServiceRequestId);
                   });
             }
       }

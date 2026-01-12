@@ -164,13 +164,20 @@ export default function App() {
   const incomingCallTimeoutRef = useRef(null);
 
   // 📄 Document upload state
-  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password', 'service-requests', 'service-request-detail', 'create-service-request', 'forgot-password', 'reset-password'
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'main', 'documents', 'chat', 'contact-detail', 'guest-registration', 'change-password', 'service-requests', 'service-request-detail', 'create-service-request', 'forgot-password', 'reset-password', 'ai-chat'
   const [availablePatients, setAvailablePatients] = useState([]);
   const [selectedContactDetail, setSelectedContactDetail] = useState(null);
   
   // 🔐 Password reset state
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   const [resetPasswordEmail, setResetPasswordEmail] = useState('');
+  
+  // 🤖 AI Chat state (for clients/patients only)
+  const [aiChatMode, setAiChatMode] = useState('ServiceRequest'); // 'ServiceRequest', 'Generic', 'Medical'
+  const [aiChatMessages, setAiChatMessages] = useState([]);
+  const [aiChatInput, setAiChatInput] = useState('');
+  const [aiChatLoading, setAiChatLoading] = useState(false);
+  const [hasActiveServiceRequests, setHasActiveServiceRequests] = useState(false);
   const [resetPasswordToken, setResetPasswordToken] = useState('');
   const [resetPasswordFromUrl, setResetPasswordFromUrl] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -429,6 +436,11 @@ export default function App() {
         
         await loadAvailablePatients(data.user, data.token);
         await initializeSignalR(data.token);
+        
+        // Check for active service requests if user is a patient
+        if (data.user.roleId === 1) {
+          await checkActiveServiceRequestsForAiChat(data.user.id, data.token);
+        }
 
         setCurrentView('main');
         currentViewRef.current = 'main';
@@ -1048,6 +1060,104 @@ export default function App() {
     setSelectedContactDetail(contact);
     setCurrentView('contact-detail');
     currentViewRef.current = 'contact-detail';
+  };
+
+  // Check for active service requests for AI chat mode availability
+  const checkActiveServiceRequestsForAiChat = async (userId, token) => {
+    try {
+      const resp = await fetch(`${API_BASE_URL}/servicerequests?clientId=${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (resp.ok) {
+        const serviceRequests = await resp.json();
+        const hasActive = serviceRequests.some(sr => sr.status === 'Active' || sr.status === 'Pending');
+        setHasActiveServiceRequests(hasActive);
+      }
+    } catch (error) {
+      console.error('Error checking service requests for AI chat:', error);
+      setHasActiveServiceRequests(false);
+    }
+  };
+
+  // Update AI chat welcome message based on mode
+  const updateAiChatWelcomeMessage = () => {
+    const welcomeMessages = {
+      ServiceRequest: "Hello! I'm here to help with your service requests. I'll learn your preferences and provide personalized guidance for your needs (plumbing, car repair, legal, etc.). What can I help you with?",
+      Generic: "Hello! I'm your generic AI assistant. I can help you with any topic - medical research, general knowledge, or any questions you have. How can I assist you today?",
+      Medical: "Hello! I'm your medical AI assistant. I can help you with health questions, symptoms, medications, and medical concerns. How can I help you today?"
+    };
+    setAiChatMessages([{ id: 'welcome', text: welcomeMessages[aiChatMode], isMe: false, timestamp: new Date() }]);
+  };
+
+  // Send AI chat message
+  const sendAiChatMessage = async () => {
+    if (!aiChatInput.trim() || aiChatLoading || !user) return;
+
+    const userMessage = aiChatInput.trim();
+    setAiChatInput('');
+    setAiChatLoading(true);
+
+    // Add user message to chat
+    const userMsg = { id: Date.now().toString(), text: userMessage, isMe: true, timestamp: new Date() };
+    setAiChatMessages(prev => [...prev, userMsg]);
+
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const forceServiceRequestMode = aiChatMode === 'ServiceRequest';
+      const isGenericMode = aiChatMode === 'Generic';
+
+      // Generate a simple conversation ID
+      const conversationId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      const requestBody = {
+        prompt: userMessage,
+        conversationId: conversationId,
+        provider: 3, // HuggingFace
+        patientId: user.roleId === 1 ? user.id : 0,
+        userId: user.id,
+        userRoleId: user.roleId,
+        isGenericMode: isGenericMode,
+        forceServiceRequestMode: forceServiceRequestMode
+      };
+
+      const resp = await fetch(`${API_BASE_URL}/chat/send`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+      }
+
+      const data = await resp.json();
+      
+      // Add AI response to chat
+      const aiMsg = { 
+        id: (Date.now() + 1).toString(), 
+        text: data.message || 'Sorry, I could not process your request.', 
+        isMe: false, 
+        timestamp: new Date() 
+      };
+      setAiChatMessages(prev => [...prev, aiMsg]);
+    } catch (error) {
+      console.error('Error sending AI chat message:', error);
+      const errorMsg = { 
+        id: (Date.now() + 1).toString(), 
+        text: 'Sorry, there was an error processing your message. Please try again.', 
+        isMe: false, 
+        timestamp: new Date() 
+      };
+      setAiChatMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setAiChatLoading(false);
+    }
   };
 
   const loadChatHistory = async (targetUserId) => {
@@ -2263,7 +2373,31 @@ export default function App() {
       </View>
 
       <ScrollView style={styles.contactsList}>
-        {/* Service Requests Button - First item in scroll view */}
+        {/* AI Chat Button - For clients/patients only */}
+        {user?.roleId === 1 && (
+          <View style={{ padding: 16, paddingBottom: 12 }}>
+            <TouchableOpacity 
+              style={[styles.serviceRequestButton, { backgroundColor: '#007bff' }]}
+              onPress={() => {
+                setCurrentView('ai-chat');
+                currentViewRef.current = 'ai-chat';
+                // Initialize AI chat messages if empty
+                if (aiChatMessages.length === 0) {
+                  updateAiChatWelcomeMessage();
+                }
+              }}
+            >
+              <Text style={styles.serviceRequestButtonIcon}>🤖</Text>
+              <Text style={[styles.serviceRequestButtonText, { color: '#fff' }]}>AI Chat Assistant</Text>
+              <Text style={[styles.serviceRequestButtonArrow, { color: '#fff' }]}>›</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 12, color: '#666', marginTop: 4, textAlign: 'center' }}>
+              Chat with AI for service requests, questions, or medical help
+            </Text>
+          </View>
+        )}
+        
+        {/* Service Requests Button */}
         <View style={{ padding: 16, paddingBottom: 12 }}>
           <TouchableOpacity 
             style={styles.serviceRequestButton}
@@ -2389,6 +2523,143 @@ export default function App() {
     </SafeAreaView>
   );
 
+  // Render AI Chat view
+  const renderAiChat = () => (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.chatHeader}>
+        <TouchableOpacity style={styles.backButton} onPress={() => {
+          setCurrentView('main');
+          currentViewRef.current = 'main';
+        }}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.chatTitle}>🤖 AI Chat Assistant</Text>
+        <View style={styles.chatActions}>
+          {/* Empty to maintain layout */}
+        </View>
+      </View>
+
+      {/* Mode Selector */}
+      <View style={{ padding: 12, backgroundColor: '#f5f5f5', borderBottomWidth: 1, borderBottomColor: '#ddd' }}>
+        <Text style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: '600' }}>Chat Mode:</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            style={[
+              { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center', borderWidth: 2 },
+              aiChatMode === 'ServiceRequest' 
+                ? { backgroundColor: '#007bff', borderColor: '#007bff' }
+                : { backgroundColor: '#fff', borderColor: '#ddd' }
+            ]}
+            onPress={() => {
+              setAiChatMode('ServiceRequest');
+              setAiChatMessages([]);
+              updateAiChatWelcomeMessage();
+            }}
+            disabled={!hasActiveServiceRequests}
+          >
+            <Text style={{ 
+              fontSize: 12, 
+              fontWeight: '600',
+              color: aiChatMode === 'ServiceRequest' ? '#fff' : '#666'
+            }}>
+              🔧 Service Request
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center', borderWidth: 2 },
+              aiChatMode === 'Generic' 
+                ? { backgroundColor: '#007bff', borderColor: '#007bff' }
+                : { backgroundColor: '#fff', borderColor: '#ddd' }
+            ]}
+            onPress={() => {
+              setAiChatMode('Generic');
+              setAiChatMessages([]);
+              updateAiChatWelcomeMessage();
+            }}
+          >
+            <Text style={{ 
+              fontSize: 12, 
+              fontWeight: '600',
+              color: aiChatMode === 'Generic' ? '#fff' : '#666'
+            }}>
+              🌐 Generic AI
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center', borderWidth: 2 },
+              aiChatMode === 'Medical' 
+                ? { backgroundColor: '#007bff', borderColor: '#007bff' }
+                : { backgroundColor: '#fff', borderColor: '#ddd' }
+            ]}
+            onPress={() => {
+              setAiChatMode('Medical');
+              setAiChatMessages([]);
+              updateAiChatWelcomeMessage();
+            }}
+          >
+            <Text style={{ 
+              fontSize: 12, 
+              fontWeight: '600',
+              color: aiChatMode === 'Medical' ? '#fff' : '#666'
+            }}>
+              🏥 Medical
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {aiChatMode === 'ServiceRequest' && !hasActiveServiceRequests && (
+          <Text style={{ fontSize: 11, color: '#856404', marginTop: 8, textAlign: 'center' }}>
+            ℹ️ No active service requests. This mode is for chatting about your service requests.
+          </Text>
+        )}
+        <Text style={{ fontSize: 11, color: '#666', marginTop: 8, textAlign: 'center', fontStyle: 'italic' }}>
+          💬 This is AI Chat - for live chat with your coordinator/SME, use the contacts list
+        </Text>
+      </View>
+
+      <KeyboardAvoidingView style={styles.chatContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+        <ScrollView 
+          style={styles.messagesContainer} 
+          contentContainerStyle={styles.messagesContent}
+        >
+          {aiChatMessages.map((m) => (
+            <View key={m.id} style={[styles.messageItem, m.isMe ? styles.myMessage : styles.otherMessage]}>
+              <Text style={[styles.messageText, m.isMe ? styles.myMessageText : styles.otherMessageText]}>{m.text}</Text>
+              <Text style={[styles.messageTime, m.isMe ? styles.myMessageTime : styles.otherMessageTime]}>
+                {m.timestamp?.toLocaleTimeString() || 'Now'}
+              </Text>
+            </View>
+          ))}
+          {aiChatLoading && (
+            <View style={[styles.messageItem, styles.otherMessage]}>
+              <Text style={styles.messageText}>Thinking...</Text>
+            </View>
+          )}
+        </ScrollView>
+
+        <View style={styles.messageInput}>
+          <TextInput
+            style={styles.textInput}
+            value={aiChatInput}
+            onChangeText={setAiChatInput}
+            placeholder={aiChatMode === 'ServiceRequest' ? 'Ask about your service requests...' : aiChatMode === 'Medical' ? 'Ask about your health...' : 'Ask me anything...'}
+            multiline
+            maxLength={1000}
+            editable={!aiChatLoading}
+          />
+          <TouchableOpacity
+            style={[styles.sendButton, (!aiChatInput.trim() || aiChatLoading) && styles.sendButtonDisabled]}
+            onPress={sendAiChatMessage}
+            disabled={!aiChatInput.trim() || aiChatLoading}
+          >
+            <Text style={styles.sendButtonText}>Send</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+
   const renderChat = () => (
     <SafeAreaView style={styles.container}>
       <View style={styles.chatHeader}>
@@ -2400,7 +2671,10 @@ export default function App() {
         }}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.chatTitle}>{selectedContact?.firstName} {selectedContact?.lastName}</Text>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={styles.chatTitle}>{selectedContact?.firstName} {selectedContact?.lastName}</Text>
+          <Text style={{ fontSize: 11, color: '#666', marginTop: 2 }}>💬 Live Chat</Text>
+        </View>
         <View style={styles.chatActions}>
           <TouchableOpacity style={styles.chatActionButton} onPress={() => startCall(selectedContact, 'Audio')}>
             <Text style={styles.chatActionText}>📞</Text>

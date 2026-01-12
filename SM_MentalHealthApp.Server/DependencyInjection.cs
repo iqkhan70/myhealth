@@ -136,7 +136,26 @@ public static class DependencyInjection
         // Core Services
         services.AddScoped<UserService>();
         services.AddScoped<JournalService>();
-        services.AddScoped<ChatService>();
+        services.AddScoped<ChatService>(sp =>
+        {
+            // Inject agentic AI service if available (for service request chats)
+            var agenticAIService = sp.GetService<IServiceRequestAgenticAIService>();
+            // Inject Redis cache service if available (for conversation history caching)
+            var redisCache = sp.GetService<IRedisCacheService>();
+            return new ChatService(
+                sp.GetRequiredService<ConversationRepository>(),
+                sp.GetRequiredService<HuggingFaceService>(),
+                sp.GetRequiredService<JournalService>(),
+                sp.GetRequiredService<UserService>(),
+                sp.GetRequiredService<IContentAnalysisService>(),
+                sp.GetRequiredService<IIntelligentContextService>(),
+                sp.GetRequiredService<IChatHistoryService>(),
+                sp.GetRequiredService<IServiceRequestService>(),
+                sp.GetRequiredService<JournalDbContext>(),
+                sp.GetRequiredService<ILogger<ChatService>>(),
+                agenticAIService,
+                redisCache);
+        });
 
         // HTTP Context Accessor (needed for AuthService to get base URL from request)
         services.AddHttpContextAccessor();
@@ -209,6 +228,10 @@ public static class DependencyInjection
         services.AddScoped<ConversationRepository>();
         services.AddScoped<LlmClient>();
         services.AddScoped<IChainedAIService, ChainedAIService>();
+        
+        // Client Profile System for Agentic AI
+        services.AddScoped<IClientProfileService, ClientProfileService>();
+        services.AddScoped<IServiceRequestAgenticAIService, ServiceRequestAgenticAIService>();
 
         // External Service Integrations
         services.AddScoped<S3Service>();
@@ -285,7 +308,7 @@ public static class DependencyInjection
             {
                 options.SwaggerDoc(description.GroupName, new Microsoft.OpenApi.Models.OpenApiInfo
                 {
-                    Title = "Health App API",
+                    Title = "Customer App API",
                     Version = description.ApiVersion.ToString(),
                     Description = description.IsDeprecated
                         ? "This API version has been deprecated."

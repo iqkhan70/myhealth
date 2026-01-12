@@ -129,53 +129,89 @@ namespace SM_MentalHealthApp.Server.Services
 
         public async Task<ChatMessage> AddMessageAsync(int sessionId, MessageRole role, string content, MessageType messageType = MessageType.Question, bool isMedicalData = false, string? metadata = null)
         {
-            try
+            const int maxRetries = 3;
+            int retryCount = 0;
+            ChatSession? session = null;
+            
+            while (retryCount < maxRetries)
             {
-                // Verify session exists
-                var session = await _context.ChatSessions.FindAsync(sessionId);
-                if (session == null)
+                try
                 {
-                    _logger.LogError("Session {SessionId} not found when trying to add message", sessionId);
-                    throw new Exception($"Chat session {sessionId} not found");
+                    // Verify session exists
+                    session = await _context.ChatSessions.FindAsync(sessionId);
+                    if (session == null)
+                    {
+                        _logger.LogError("Session {SessionId} not found when trying to add message", sessionId);
+                        throw new Exception($"Chat session {sessionId} not found");
+                    }
+
+                    // Check if session is still active
+                    if (!session.IsActive)
+                    {
+                        _logger.LogWarning("Session {SessionId} is not active, cannot add message", sessionId);
+                        throw new Exception($"Chat session {sessionId} is not active");
+                    }
+
+                    var message = new ChatMessage
+                    {
+                        SessionId = sessionId,
+                        Role = role,
+                        Content = content,
+                        MessageType = messageType,
+                        IsMedicalData = isMedicalData,
+                        Metadata = metadata,
+                        Timestamp = DateTime.UtcNow,
+                        IsActive = true
+                    };
+
+                    _context.ChatMessages.Add(message);
+
+                    // Update session activity and message count
+                    // Use a direct SQL update to avoid concurrency issues
+                    session.LastActivityAt = DateTime.UtcNow;
+                    session.MessageCount++;
+
+                    await _context.SaveChangesAsync();
+
+                    // Generate summary if session has enough messages and no summary exists
+                    if (session.MessageCount >= 4 && string.IsNullOrEmpty(session.Summary))
+                    {
+                        // Generate summary asynchronously to avoid blocking the response
+                        _ = Task.Run(async () => await GenerateSessionSummaryAsync(sessionId));
+                    }
+
+                    _logger.LogInformation("Added message to session {SessionId}, role: {Role}, type: {MessageType}, medical: {IsMedicalData}",
+                        sessionId, role, messageType, isMedicalData);
+
+                    return message;
                 }
-
-                var message = new ChatMessage
+                catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException ex)
                 {
-                    SessionId = sessionId,
-                    Role = role,
-                    Content = content,
-                    MessageType = messageType,
-                    IsMedicalData = isMedicalData,
-                    Metadata = metadata,
-                    Timestamp = DateTime.UtcNow,
-                    IsActive = true // Ensure IsActive is set
-                };
-
-                _context.ChatMessages.Add(message);
-
-                // Update session activity and message count
-                session.LastActivityAt = DateTime.UtcNow;
-                session.MessageCount++;
-
-                await _context.SaveChangesAsync();
-
-                // Generate summary if session has enough messages and no summary exists
-                if (session.MessageCount >= 4 && string.IsNullOrEmpty(session.Summary))
-                {
-                    // Generate summary asynchronously to avoid blocking the response
-                    _ = Task.Run(async () => await GenerateSessionSummaryAsync(sessionId));
+                    retryCount++;
+                    _logger.LogWarning(ex, "Concurrency exception adding message to session {SessionId}, retry {RetryCount}/{MaxRetries}", 
+                        sessionId, retryCount, maxRetries);
+                    
+                    if (retryCount >= maxRetries)
+                    {
+                        _logger.LogError(ex, "Max retries reached for adding message to session {SessionId}", sessionId);
+                        throw;
+                    }
+                    
+                    // Reload the session and retry
+                    if (session != null)
+                    {
+                        _context.Entry(session).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+                    }
+                    await Task.Delay(100 * retryCount); // Exponential backoff
                 }
-
-                _logger.LogInformation("Added message to session {SessionId}, role: {Role}, type: {MessageType}, medical: {IsMedicalData}",
-                    sessionId, role, messageType, isMedicalData);
-
-                return message;
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error adding message to session {SessionId}", sessionId);
+                    throw;
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error adding message to session {SessionId}", sessionId);
-                throw;
-            }
+            
+            throw new Exception($"Failed to add message to session {sessionId} after {maxRetries} retries");
         }
 
         public async Task<List<ChatMessage>> GetRecentMessagesAsync(int sessionId, int maxMessages = 20, JournalDbContext? dbContext = null)
