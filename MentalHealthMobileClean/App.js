@@ -178,6 +178,8 @@ export default function App() {
   const [aiChatInput, setAiChatInput] = useState('');
   const [aiChatLoading, setAiChatLoading] = useState(false);
   const [hasActiveServiceRequests, setHasActiveServiceRequests] = useState(false);
+  const [activeServiceRequests, setActiveServiceRequests] = useState([]);
+  const [selectedServiceRequestId, setSelectedServiceRequestId] = useState(null);
   const [resetPasswordToken, setResetPasswordToken] = useState('');
   const [resetPasswordFromUrl, setResetPasswordFromUrl] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -1073,12 +1075,75 @@ export default function App() {
       });
       if (resp.ok) {
         const serviceRequests = await resp.json();
-        const hasActive = serviceRequests.some(sr => sr.status === 'Active' || sr.status === 'Pending');
+        const active = serviceRequests.filter(sr => 
+          (sr.status === 'Active' || sr.status === 'Pending' || sr.status === 'OnHold') ||
+          (sr.Status === 'Active' || sr.Status === 'Pending' || sr.Status === 'OnHold')
+        );
+        setActiveServiceRequests(active);
+        const hasActive = active.length > 0;
         setHasActiveServiceRequests(hasActive);
+        
+        // Auto-select if only one active SR
+        if (hasActive && active.length === 1 && !selectedServiceRequestId) {
+          const srId = active[0].id || active[0].Id;
+          if (srId) {
+            setSelectedServiceRequestId(srId);
+            await setActiveServiceRequestOnBackend(srId);
+          }
+        }
       }
     } catch (error) {
       console.error('Error checking service requests for AI chat:', error);
       setHasActiveServiceRequests(false);
+      setActiveServiceRequests([]);
+    }
+  };
+  
+  // Set active SR on backend
+  const setActiveServiceRequestOnBackend = async (serviceRequestId) => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token || !user) return;
+      
+      const resp = await fetch(`${API_BASE_URL}/agenticai/set-active-sr`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          clientId: user.id,
+          serviceRequestId: serviceRequestId
+        })
+      });
+      
+      if (!resp.ok) {
+        console.error('Failed to set active SR on backend:', resp.status);
+      }
+    } catch (error) {
+      console.error('Error setting active SR on backend:', error);
+    }
+  };
+  
+  // Clear active SR on backend
+  const clearActiveServiceRequestOnBackend = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) return;
+      
+      const resp = await fetch(`${API_BASE_URL}/agenticai/clear-active-sr`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!resp.ok) {
+        console.error('Failed to clear active SR on backend:', resp.status);
+      }
+    } catch (error) {
+      console.error('Error clearing active SR on backend:', error);
     }
   };
 
@@ -1120,7 +1185,8 @@ export default function App() {
         userId: user.id,
         userRoleId: user.roleId,
         isGenericMode: isGenericMode,
-        forceServiceRequestMode: forceServiceRequestMode
+        forceServiceRequestMode: forceServiceRequestMode,
+        selectedServiceRequestId: (forceServiceRequestMode && user.roleId === 1) ? selectedServiceRequestId : null // Pass selected SR from UI
       };
 
       const resp = await fetch(`${API_BASE_URL}/chat/send`, {
@@ -2550,9 +2616,16 @@ export default function App() {
                 ? { backgroundColor: '#007bff', borderColor: '#007bff' }
                 : { backgroundColor: '#fff', borderColor: '#ddd' }
             ]}
-            onPress={() => {
+            onPress={async () => {
               setAiChatMode('ServiceRequest');
               setAiChatMessages([]);
+              // Load service requests when switching to Service Request mode
+              if (user && user.roleId === 1) {
+                const token = await AsyncStorage.getItem('userToken');
+                if (token) {
+                  await checkActiveServiceRequestsForAiChat(user.id, token);
+                }
+              }
               updateAiChatWelcomeMessage();
             }}
             disabled={!hasActiveServiceRequests}
@@ -2612,6 +2685,97 @@ export default function App() {
           <Text style={{ fontSize: 11, color: '#856404', marginTop: 8, textAlign: 'center' }}>
             ℹ️ No active service requests. This mode is for chatting about your service requests.
           </Text>
+        )}
+        {aiChatMode === 'ServiceRequest' && hasActiveServiceRequests && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: '600' }}>📋 Select Service Request:</Text>
+            <View style={{ 
+              backgroundColor: '#fff', 
+              borderRadius: 8, 
+              borderWidth: 1, 
+              borderColor: '#ddd',
+              padding: 8
+            }}>
+              <TouchableOpacity
+                onPress={() => {
+                  // Show picker
+                  Alert.alert(
+                    'Select Service Request',
+                    'Choose a service request or create new',
+                    [
+                      ...activeServiceRequests.map((sr, idx) => ({
+                        text: `${sr.title || sr.Title} (${sr.status || sr.Status})`,
+                        onPress: () => {
+                          const srId = sr.id || sr.Id;
+                          setSelectedServiceRequestId(srId);
+                          setActiveServiceRequestOnBackend(srId);
+                          setAiChatMessages([]);
+                          updateAiChatWelcomeMessage();
+                        }
+                      })),
+                      {
+                        text: 'Create New',
+                        onPress: () => {
+                          setCurrentView('create-service-request');
+                          currentViewRef.current = 'create-service-request';
+                        },
+                        style: 'default'
+                      },
+                      {
+                        text: 'Clear Selection',
+                        onPress: () => {
+                          setSelectedServiceRequestId(null);
+                          clearActiveServiceRequestOnBackend();
+                        },
+                        style: 'destructive'
+                      },
+                      { text: 'Cancel', style: 'cancel' }
+                    ],
+                    { cancelable: true }
+                  );
+                }}
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingVertical: 8
+                }}
+              >
+                <Text style={{ 
+                  fontSize: 14, 
+                  color: selectedServiceRequestId ? '#333' : '#999',
+                  flex: 1
+                }}>
+                  {selectedServiceRequestId 
+                    ? (() => {
+                        const selected = activeServiceRequests.find(sr => (sr.id || sr.Id) === selectedServiceRequestId);
+                        return selected ? `${selected.title || selected.Title} (${selected.status || selected.Status})` : 'Select...';
+                      })()
+                    : 'Select a service request or create new...'}
+                </Text>
+                <Text style={{ fontSize: 18, color: '#666' }}>▼</Text>
+              </TouchableOpacity>
+            </View>
+            {selectedServiceRequestId && (
+              <TouchableOpacity
+                onPress={() => {
+                  setCurrentView('service-requests');
+                  currentViewRef.current = 'service-requests';
+                }}
+                style={{
+                  marginTop: 8,
+                  padding: 8,
+                  backgroundColor: '#e7f3ff',
+                  borderRadius: 6,
+                  alignItems: 'center'
+                }}
+              >
+                <Text style={{ fontSize: 12, color: '#007bff', fontWeight: '600' }}>
+                  📋 View Service Request Details
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
         <Text style={{ fontSize: 11, color: '#666', marginTop: 8, textAlign: 'center', fontStyle: 'italic' }}>
           💬 This is AI Chat - for live chat with your coordinator/SME, use the contacts list

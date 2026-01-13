@@ -12,6 +12,7 @@ namespace SM_MentalHealthApp.Server.Services
     public class ServiceRequestAgenticAIService : IServiceRequestAgenticAIService
     {
         private readonly IClientProfileService _profileService;
+        private readonly IClientAgentSessionService _agentSessionService;
         private readonly HuggingFaceService _huggingFaceService;
         private readonly LlmClient _llmClient;
         private readonly ILogger<ServiceRequestAgenticAIService> _logger;
@@ -20,6 +21,7 @@ namespace SM_MentalHealthApp.Server.Services
 
         public ServiceRequestAgenticAIService(
             IClientProfileService profileService,
+            IClientAgentSessionService agentSessionService,
             HuggingFaceService huggingFaceService,
             LlmClient llmClient,
             ILogger<ServiceRequestAgenticAIService> logger,
@@ -27,6 +29,7 @@ namespace SM_MentalHealthApp.Server.Services
             IServiceScopeFactory serviceScopeFactory)
         {
             _profileService = profileService;
+            _agentSessionService = agentSessionService;
             _huggingFaceService = huggingFaceService;
             _llmClient = llmClient;
             _logger = logger;
@@ -40,19 +43,159 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 _logger.LogInformation("Processing service request for client {ClientId}, SR: {ServiceRequestId}", clientId, serviceRequestId);
 
-                // Step 1: Load or create client profile
+                // Step 1: Get or create client agent session (SR-first approach)
+                var agentSession = await _agentSessionService.GetOrCreateSessionAsync(clientId);
+                var sessionState = Enum.Parse<ClientAgentSessionState>(agentSession.State);
+                
+                // Step 2: Check if user is asking about which SR is active FIRST
+                // This handles cases where user wants to know/confirm the current SR context
+                if (IsAskingAboutSRContext(clientMessage))
+                {
+                    if (sessionState == ClientAgentSessionState.InSRContext && agentSession.CurrentServiceRequestId.HasValue)
+                    {
+                        // User is asking which SR - tell them and offer to switch
+                        var sr = await _serviceRequestService.GetServiceRequestByIdAsync(agentSession.CurrentServiceRequestId.Value);
+                        if (sr != null)
+                        {
+                            return new AgenticResponse
+                            {
+                                Message = $"We're currently working on Service Request #{sr.Id}: \"{sr.Title}\" (Status: {sr.Status}). Is this the correct request, or would you like to switch to a different one?",
+                                Confidence = 0.9m,
+                                SuggestedActions = new List<string> { "Continue with this SR", "Switch to different SR", "Create new SR" }
+                            };
+                        }
+                    }
+                    else
+                    {
+                        // No active SR - prompt for selection
+                        return await PromptForSRContextAsync(clientId, clientMessage, agentSession);
+                    }
+                }
+                
+                // Step 3: Determine active SR context
+                // Priority: 1) Selected SR from UI dropdown (serviceRequestId parameter), 2) Agent session's CurrentServiceRequestId (persistent context)
+                // CRITICAL: If user selected an SR from UI dropdown, use it and set it as active
+                int? activeServiceRequestId = null;
+                
+                if (serviceRequestId.HasValue)
+                {
+                    // User selected an SR from UI dropdown - use it and set it as active
+                    activeServiceRequestId = serviceRequestId;
+                    // Set it as active in ClientAgentSession
+                    await _agentSessionService.SetActiveServiceRequestAsync(clientId, serviceRequestId.Value);
+                    _logger.LogInformation("Using selected SR {ServiceRequestId} from UI dropdown for client {ClientId}", activeServiceRequestId, clientId);
+                }
+                else if (sessionState == ClientAgentSessionState.InSRContext && agentSession.CurrentServiceRequestId.HasValue)
+                {
+                    // Agent session has an active SR context - use it (user has already selected/created it)
+                    activeServiceRequestId = agentSession.CurrentServiceRequestId;
+                    _logger.LogInformation("Using active SR {ServiceRequestId} from ClientAgentSession for client {ClientId}", activeServiceRequestId, clientId);
+                }
+                else
+                {
+                    // CRITICAL SR-FIRST ENFORCEMENT: If session state is InSRContext but CurrentServiceRequestId is null, 
+                    // this is a data inconsistency - clear it and force SR selection
+                    if (sessionState == ClientAgentSessionState.InSRContext && !agentSession.CurrentServiceRequestId.HasValue)
+                    {
+                        _logger.LogWarning("Data inconsistency detected: Session state is InSRContext but CurrentServiceRequestId is null for client {ClientId}. Clearing state.", clientId);
+                        await _agentSessionService.ClearActiveServiceRequestAsync(clientId);
+                        sessionState = ClientAgentSessionState.NoActiveSRContext;
+                    }
+                }
+
+                // Step 4: Check if we need SR context (SR-first enforcement)
+                // CRITICAL: If no active SR, we MUST prompt for SR context - this is the SR-first approach
+                if (!activeServiceRequestId.HasValue)
+                {
+                    // Check if we're in a selection/creation state and user is responding
+                    if (sessionState == ClientAgentSessionState.SelectingExistingSR)
+                    {
+                        // User is selecting an SR - try to match their response
+                        var selectedSR = await MatchSelectedSRAsync(clientId, clientMessage);
+                        if (selectedSR.HasValue)
+                        {
+                            await _agentSessionService.SetActiveServiceRequestAsync(clientId, selectedSR.Value);
+                            activeServiceRequestId = selectedSR.Value;
+                            // Continue with normal flow below
+                        }
+                        else
+                        {
+                            // Couldn't match - ask again
+                            return await HandleSRSelectionRequestAsync(clientId, clientMessage, agentSession);
+                        }
+                    }
+                    else if (sessionState == ClientAgentSessionState.CreatingNewSR)
+                    {
+                        // User is creating an SR - handle creation
+                        return await HandleSRCreationRequestAsync(clientId, clientMessage, agentSession);
+                    }
+                    else
+                    {
+                        // CRITICAL SR-FIRST ENFORCEMENT: No SR context - we MUST prompt for SR selection/creation
+                        // Check if user is trying to reference/create one, but ALWAYS prompt if no clear intent
+                        var srIntent = DetectServiceRequestIntent(clientMessage, clientId);
+                        
+                        _logger.LogInformation("No active SR for client {ClientId}. Intent detection: ReferencedSRId={ReferencedSRId}, RequiresSRSelection={RequiresSRSelection}, RequiresSRCreation={RequiresSRCreation}", 
+                            clientId, srIntent.ReferencedSRId, srIntent.RequiresSRSelection, srIntent.RequiresSRCreation);
+                        
+                        if (srIntent.ReferencedSRId.HasValue)
+                        {
+                            // User referenced a specific SR - set it as active
+                            await _agentSessionService.SetActiveServiceRequestAsync(clientId, srIntent.ReferencedSRId.Value);
+                            activeServiceRequestId = srIntent.ReferencedSRId.Value;
+                            _logger.LogInformation("User referenced SR {ServiceRequestId} - setting as active", activeServiceRequestId);
+                            // Continue with normal flow below
+                        }
+                        else if (srIntent.RequiresSRSelection)
+                        {
+                            // User needs to select an existing SR
+                            _logger.LogInformation("Intent requires SR selection - prompting user");
+                            return await HandleSRSelectionRequestAsync(clientId, clientMessage, agentSession);
+                        }
+                        else if (srIntent.RequiresSRCreation)
+                        {
+                            // User wants to create a new SR
+                            _logger.LogInformation("Intent requires SR creation - prompting user");
+                            return await HandleSRCreationRequestAsync(clientId, clientMessage, agentSession);
+                        }
+                        else
+                        {
+                            // CRITICAL: User is chatting but no SR context - ALWAYS ask them to select/create
+                            // This is the SR-first enforcement - we never proceed without an SR context
+                            _logger.LogInformation("No clear SR intent detected - prompting user for SR context (SR-first enforcement)");
+                            return await PromptForSRContextAsync(clientId, clientMessage, agentSession);
+                        }
+                    }
+                }
+
+                // Step 5: CRITICAL SR-FIRST ENFORCEMENT CHECK
+                // We should NEVER reach here without an active SR - if we do, it's a bug
+                if (!activeServiceRequestId.HasValue)
+                {
+                    _logger.LogError("CRITICAL: Reached normal flow without active SR for client {ClientId}. This should never happen. Forcing SR prompt.", clientId);
+                    return await PromptForSRContextAsync(clientId, clientMessage, agentSession);
+                }
+
+                // Step 6: We have SR context - proceed with normal agentic AI flow
+                // Update session state if needed
+                if (sessionState != ClientAgentSessionState.InSRContext)
+                {
+                    await _agentSessionService.SetActiveServiceRequestAsync(clientId, activeServiceRequestId.Value);
+                }
+
+                // Step 5: Load or create client profile
                 var profile = await _profileService.GetOrCreateProfileAsync(clientId);
 
-                // Step 2: Analyze client message
+                // Step 6: Analyze client message
                 var analysis = await AnalyzeClientMessageAsync(clientMessage, profile);
 
-                // Step 3: Determine response strategy
-                var strategy = await DetermineResponseStrategyAsync(analysis, profile, serviceRequestId);
+                // Step 7: Determine response strategy
+                var strategy = await DetermineResponseStrategyAsync(analysis, profile, activeServiceRequestId);
 
-                // Step 4: Generate adaptive response
-                var response = await GenerateAdaptiveResponseAsync(clientMessage, analysis, strategy, profile, serviceRequestId, conversationHistory);
+                // Step 8: Generate adaptive response
+                var response = await GenerateAdaptiveResponseAsync(clientMessage, analysis, strategy, profile, activeServiceRequestId, conversationHistory);
 
-                // Step 5: Learn from interaction (async, don't block)
+                // Step 9: Learn from interaction (async, don't block)
                 // CRITICAL: Create a new scope for background task to avoid DbContext disposal issues
                 _ = Task.Run(async () =>
                 {
@@ -63,7 +206,7 @@ namespace SM_MentalHealthApp.Server.Services
                         using var scope = _serviceScopeFactory.CreateScope();
                         var profileService = scope.ServiceProvider.GetRequiredService<IClientProfileService>();
                         
-                        await LearnFromInteractionAsync(clientId, clientMessage, response, analysis, serviceRequestId, profileService);
+                        await LearnFromInteractionAsync(clientId, clientMessage, response, analysis, activeServiceRequestId, profileService);
                     }
                     catch (Exception ex)
                     {
@@ -595,6 +738,372 @@ Generate a helpful, personalized response that makes the client feel supported a
             }
 
             return keywords.Distinct().Take(10).ToList(); // Limit to 10 keywords
+        }
+
+        /// <summary>
+        /// Detects if the client message indicates they want to reference an existing SR or create a new one
+        /// </summary>
+        private (bool RequiresSRSelection, bool RequiresSRCreation, int? ReferencedSRId) DetectServiceRequestIntent(string message, int clientId)
+        {
+            var lowerMessage = message.ToLowerInvariant();
+            
+            // Check for SR number references (e.g., "SR-123", "request 123", "#123")
+            var srNumberMatch = Regex.Match(lowerMessage, @"(?:sr-?|request|#)\s*(\d+)", RegexOptions.IgnoreCase);
+            if (srNumberMatch.Success && int.TryParse(srNumberMatch.Groups[1].Value, out int srId))
+            {
+                return (true, false, srId);
+            }
+
+            // Check for status check intent
+            if (Regex.IsMatch(lowerMessage, @"\b(status|update|progress|how.*going|what.*happening)\b", RegexOptions.IgnoreCase))
+            {
+                return (true, false, null); // Need to select which SR to check
+            }
+
+            // Check for new request intent
+            if (Regex.IsMatch(lowerMessage, @"\b(new|create|start|another|different|also)\s+(request|issue|problem|service)", RegexOptions.IgnoreCase))
+            {
+                return (false, true, null);
+            }
+
+            // Check for explicit "existing" or "my request" references
+            if (Regex.IsMatch(lowerMessage, @"\b(existing|my|previous|earlier|current)\s+(request|issue|problem|service)", RegexOptions.IgnoreCase))
+            {
+                return (true, false, null);
+            }
+
+            // Check for service-related keywords that indicate a new issue (car, plumbing, repair, etc.)
+            // These suggest the user is reporting a new problem that needs an SR
+            var serviceKeywords = new[] { 
+                "issue", "problem", "broken", "not working", "leaking", "repair", "fix", 
+                "car", "vehicle", "plumbing", "faucet", "sink", "toilet", "heater", "ac", "air conditioning",
+                "appliance", "refrigerator", "washer", "dryer", "dishwasher", "oven", "stove",
+                "electrical", "wiring", "outlet", "light", "brake", "engine", "transmission",
+                "legal", "attorney", "lawyer", "lawsuit", "accident", "injury"
+            };
+            
+            if (serviceKeywords.Any(keyword => lowerMessage.Contains(keyword)))
+            {
+                // This looks like a service request - but we'll let PromptForSRContextAsync handle it
+                // by asking if it's existing or new
+                return (false, false, null);
+            }
+
+            return (false, false, null);
+        }
+
+        /// <summary>
+        /// Handles when user needs to select an existing SR
+        /// </summary>
+        private async Task<AgenticResponse> HandleSRSelectionRequestAsync(int clientId, string clientMessage, ClientAgentSession agentSession)
+        {
+            // Get client's service requests
+            var serviceRequests = await _serviceRequestService.GetServiceRequestsAsync(clientId: clientId);
+            var activeSRs = serviceRequests
+                .Where(sr => sr.Status == "Active" || sr.Status == "Pending")
+                .OrderByDescending(sr => sr.CreatedAt)
+                .Take(5)
+                .ToList();
+
+            if (!activeSRs.Any())
+            {
+                // No existing SRs - suggest creating one
+                await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.CreatingNewSR);
+                return new AgenticResponse
+                {
+                    Message = "I don't see any existing service requests for you. Would you like me to create a new one? Just tell me what you need help with, and I'll set it up for you.",
+                    Confidence = 0.8m,
+                    SuggestedActions = new List<string> { "Create new service request" }
+                };
+            }
+
+            // Update session state
+            await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.SelectingExistingSR);
+
+            // Build SR list for user
+            var srList = string.Join("\n", activeSRs.Select((sr, idx) => 
+                $"{idx + 1}. {sr.Title} (Status: {sr.Status}, Created: {sr.CreatedAt:MM/dd/yyyy})"));
+
+            return new AgenticResponse
+            {
+                Message = $"I see you have {activeSRs.Count} active service request(s). Which one would you like to discuss?\n\n{srList}\n\nYou can tell me the number (1-{activeSRs.Count}), the title, or say \"new\" to create a new request.",
+                Confidence = 0.8m,
+                SuggestedActions = activeSRs.Select(sr => $"Select: {sr.Title}").ToList()
+            };
+        }
+
+        /// <summary>
+        /// Handles when user wants to create a new SR
+        /// </summary>
+        private async Task<AgenticResponse> HandleSRCreationRequestAsync(int clientId, string clientMessage, ClientAgentSession agentSession)
+        {
+            // Check if we're already in creation mode and have pending SR
+            if (agentSession.PendingCreatedServiceRequestId.HasValue)
+            {
+                // Confirm the created SR
+                await _agentSessionService.ConfirmCreatedServiceRequestAsync(clientId, agentSession.PendingCreatedServiceRequestId.Value);
+                var sr = await _serviceRequestService.GetServiceRequestByIdAsync(agentSession.PendingCreatedServiceRequestId.Value);
+                
+                return new AgenticResponse
+                {
+                    Message = $"Great! I've created Service Request #{sr?.Id}: \"{sr?.Title}\". We're now working under this request. How can I help you with it?",
+                    Confidence = 0.9m,
+                    SuggestedActions = new List<string> { "Continue with service request" }
+                };
+            }
+
+            // Extract SR details from message
+            var title = ExtractSRTitle(clientMessage);
+            var description = ExtractSRDescription(clientMessage);
+            var type = ExtractSRType(clientMessage);
+
+            // If we have enough info, create the SR
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                try
+                {
+                    var createRequest = new CreateServiceRequestRequest
+                    {
+                        ClientId = clientId,
+                        Title = title,
+                        Description = description,
+                        Type = type ?? "General",
+                        Status = "Active"
+                    };
+
+                    var createdSR = await _serviceRequestService.CreateServiceRequestAsync(createRequest, clientId);
+                    
+                    // Set as pending for confirmation
+                    await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.CreatingNewSR, createdSR.Id);
+                    
+                    return new AgenticResponse
+                    {
+                        Message = $"I've created Service Request #{createdSR.Id}: \"{createdSR.Title}\". We're now working under this request. How can I help you with it?",
+                        Confidence = 0.9m,
+                        SuggestedActions = new List<string> { "Continue with service request" }
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error creating service request for client {ClientId}", clientId);
+                    return new AgenticResponse
+                    {
+                        Message = "I had trouble creating your service request. Could you try again with a clear title? For example: \"Plumbing leak in kitchen\" or \"Car repair needed\".",
+                        Confidence = 0.5m,
+                        SuggestedActions = new List<string> { "Retry creating service request" }
+                    };
+                }
+            }
+
+            // Need more info
+            await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.CreatingNewSR);
+            
+            return new AgenticResponse
+            {
+                Message = "I'd be happy to create a new service request for you! What would you like the title to be? For example: \"Plumbing leak in kitchen\" or \"Car repair needed\".",
+                Confidence = 0.7m,
+                SuggestedActions = new List<string> { "Provide service request title" }
+            };
+        }
+
+        /// <summary>
+        /// Prompts user to select or create an SR when no context exists
+        /// </summary>
+        private async Task<AgenticResponse> PromptForSRContextAsync(int clientId, string clientMessage, ClientAgentSession agentSession)
+        {
+            // Get client's service requests to see if they have any
+            var serviceRequests = await _serviceRequestService.GetServiceRequestsAsync(clientId: clientId);
+            var activeSRs = serviceRequests
+                .Where(sr => sr.Status == "Active" || sr.Status == "Pending")
+                .OrderByDescending(sr => sr.CreatedAt)
+                .Take(3)
+                .ToList();
+
+            if (activeSRs.Any())
+            {
+                // Client has existing SRs - ask if this is about one of them or a new one
+                await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.SelectingExistingSR);
+                
+                var srList = string.Join("\n", activeSRs.Select((sr, idx) => 
+                    $"{idx + 1}. {sr.Title}"));
+                
+                return new AgenticResponse
+                {
+                    Message = $"I'd like to help you! Is this about one of your existing service requests, or is this a new issue?\n\nYour active requests:\n{srList}\n\nYou can:\n- Tell me the number or title of an existing request\n- Say \"new\" to create a new service request",
+                    Confidence = 0.8m,
+                    SuggestedActions = activeSRs.Select(sr => $"Select: {sr.Title}").Concat(new[] { "Create new request" }).ToList()
+                };
+            }
+            else
+            {
+                // No existing SRs - suggest creating one
+                await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.CreatingNewSR);
+                
+                return new AgenticResponse
+                {
+                    Message = "I'd be happy to help you! To get started, I need to create a service request for you. What would you like the title to be? For example: \"Plumbing leak in kitchen\" or \"Car repair needed\".",
+                    Confidence = 0.8m,
+                    SuggestedActions = new List<string> { "Provide service request title" }
+                };
+            }
+        }
+
+        /// <summary>
+        /// Extracts a potential SR title from the client message
+        /// </summary>
+        private string? ExtractSRTitle(string message)
+        {
+            // Look for quoted text
+            var quotedMatch = Regex.Match(message, @"""([^""]+)""");
+            if (quotedMatch.Success)
+            {
+                return quotedMatch.Groups[1].Value.Trim();
+            }
+
+            // Look for "title: ..." pattern
+            var titleMatch = Regex.Match(message, @"title\s*:?\s*(.+?)(?:\.|$)", RegexOptions.IgnoreCase);
+            if (titleMatch.Success)
+            {
+                return titleMatch.Groups[1].Value.Trim();
+            }
+
+            // If message is short and descriptive, use it as title
+            if (message.Length > 10 && message.Length < 100 && !message.Contains('?'))
+            {
+                return message.Trim();
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Extracts SR description from the client message
+        /// </summary>
+        private string? ExtractSRDescription(string message)
+        {
+            // If message is longer, use it as description
+            if (message.Length > 50)
+            {
+                return message;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Matches user's response to an existing SR (by number, title, or index)
+        /// </summary>
+        private async Task<int?> MatchSelectedSRAsync(int clientId, string userResponse)
+        {
+            var serviceRequests = await _serviceRequestService.GetServiceRequestsAsync(clientId: clientId);
+            var activeSRs = serviceRequests
+                .Where(sr => sr.Status == "Active" || sr.Status == "Pending")
+                .OrderByDescending(sr => sr.CreatedAt)
+                .Take(5)
+                .ToList();
+
+            if (!activeSRs.Any())
+                return null;
+
+            var lowerResponse = userResponse.ToLowerInvariant().Trim();
+
+            // Check for numeric index (1-5)
+            if (int.TryParse(lowerResponse, out int index) && index >= 1 && index <= activeSRs.Count)
+            {
+                return activeSRs[index - 1].Id;
+            }
+
+            // Check for SR number reference
+            var srNumberMatch = Regex.Match(lowerResponse, @"(?:sr-?|request|#)\s*(\d+)", RegexOptions.IgnoreCase);
+            if (srNumberMatch.Success && int.TryParse(srNumberMatch.Groups[1].Value, out int srId))
+            {
+                var matchedSR = activeSRs.FirstOrDefault(sr => sr.Id == srId);
+                if (matchedSR != null)
+                    return matchedSR.Id;
+            }
+
+            // Check for title match (fuzzy)
+            foreach (var sr in activeSRs)
+            {
+                var srTitleLower = sr.Title?.ToLowerInvariant() ?? "";
+                if (srTitleLower.Contains(lowerResponse) || lowerResponse.Contains(srTitleLower))
+                {
+                    return sr.Id;
+                }
+            }
+
+            // Check for keywords in title
+            var responseWords = lowerResponse.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var sr in activeSRs)
+            {
+                var srTitleLower = sr.Title?.ToLowerInvariant() ?? "";
+                var matchCount = responseWords.Count(word => srTitleLower.Contains(word));
+                if (matchCount >= 2) // At least 2 words match
+                {
+                    return sr.Id;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Checks if the user is asking about which SR is currently active
+        /// </summary>
+        private bool IsAskingAboutSRContext(string message)
+        {
+            var lowerMessage = message.ToLowerInvariant();
+            
+            // Patterns that indicate user is asking about SR context
+            var contextPatterns = new[]
+            {
+                @"\b(which|what)\s+(service\s+)?request",
+                @"\b(which|what)\s+sr",
+                @"\bdo\s+you\s+know\s+which",
+                @"\bwhat\s+are\s+we\s+talking\s+about",
+                @"\bwhich\s+one\s+(are\s+we\s+)?(working\s+on|discussing)",
+                @"\bwhat\s+request\s+(are\s+we\s+)?(working\s+on|discussing)",
+                @"\bis\s+this\s+about",
+                @"\bwhich\s+issue",
+                @"\bwhat\s+issue"
+            };
+            
+            foreach (var pattern in contextPatterns)
+            {
+                if (Regex.IsMatch(lowerMessage, pattern, RegexOptions.IgnoreCase))
+                {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        /// <summary>
+        /// Extracts SR type from the client message
+        /// </summary>
+        private string? ExtractSRType(string message)
+        {
+            var lowerMessage = message.ToLowerInvariant();
+            
+            var typePatterns = new Dictionary<string, string>
+            {
+                { @"\b(plumb|pipe|water|leak|faucet|sink|toilet|drain)\b", "Plumbing" },
+                { @"\b(car|vehicle|auto|automobile|tire|engine|brake)\b", "Car Repair" },
+                { @"\b(legal|lawyer|attorney|law|case|lawsuit)\b", "Legal" },
+                { @"\b(lawn|yard|grass|mow|landscap)\b", "Lawn Care" },
+                { @"\b(electric|electrical|wiring|outlet|circuit)\b", "Electrical" },
+                { @"\b(hvac|heating|cooling|ac|furnace|air)\b", "HVAC" }
+            };
+
+            foreach (var pattern in typePatterns)
+            {
+                if (Regex.IsMatch(lowerMessage, pattern.Key, RegexOptions.IgnoreCase))
+                {
+                    return pattern.Value;
+                }
+            }
+
+            return null;
         }
     }
 }

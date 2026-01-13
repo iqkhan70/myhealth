@@ -38,7 +38,7 @@ namespace SM_MentalHealthApp.Server.Services
             _logger = logger;
         }
 
-        public async Task<ChatResponse> SendMessageAsync(string prompt, string conversationId, AiProvider provider, int patientId = 0, int userId = 0, int userRoleId = 0, bool isGenericMode = false, bool forceServiceRequestMode = false)
+        public async Task<ChatResponse> SendMessageAsync(string prompt, string conversationId, AiProvider provider, int patientId = 0, int userId = 0, int userRoleId = 0, bool isGenericMode = false, bool forceServiceRequestMode = false, int? selectedServiceRequestId = null)
         {
             try
             {
@@ -65,19 +65,9 @@ namespace SM_MentalHealthApp.Server.Services
                         }
                     }
                 }
-                // NEW: Also detect service request for patients chatting about their service requests
-                else if (!isGenericMode && userRoleId == Shared.Constants.Roles.Patient && patientId == userId)
-                {
-                    // Get patient's active service requests
-                    var activeServiceRequests = await _serviceRequestService.GetServiceRequestsAsync(clientId: patientId);
-                    var activeSr = activeServiceRequests.FirstOrDefault(sr => 
-                        sr.Status == "Active" || sr.Status == "Pending");
-                    if (activeSr != null)
-                    {
-                        serviceRequestId = activeSr.Id;
-                        _logger.LogInformation("Patient {PatientId} chatting about ServiceRequest {ServiceRequestId}", patientId, serviceRequestId);
-                    }
-                }
+                // NOTE: We do NOT auto-select an SR here for patients in Service Request mode
+                // The agentic AI will handle SR selection/creation via ClientAgentSession (SR-first approach)
+                // Only use explicit serviceRequestId if it's already set (e.g., from a previous message in the same session)
 
                 // Get or create chat session
                 // IMPORTANT: Respect the client's mode choice
@@ -91,6 +81,8 @@ namespace SM_MentalHealthApp.Server.Services
                     if (forceServiceRequestMode)
                     {
                         // User is in Service Request Chat mode - look for service request sessions
+                        // NOTE: We find the session, but don't auto-use its ServiceRequestId
+                        // The agentic AI will check ClientAgentSession to determine the active SR (SR-first approach)
                         var todaySession = existingSessions
                             .Where(s => s.IsActive && s.CreatedAt.Date == DateTime.UtcNow.Date && s.ServiceRequestId.HasValue)
                             .OrderByDescending(s => s.LastActivityAt)
@@ -99,12 +91,10 @@ namespace SM_MentalHealthApp.Server.Services
                         if (todaySession != null)
                         {
                             session = todaySession;
-                            if (!serviceRequestId.HasValue)
-                            {
-                                serviceRequestId = todaySession.ServiceRequestId;
-                            }
-                            _logger.LogInformation("Found existing service request session {SessionId} with ServiceRequestId {ServiceRequestId}", 
-                                session.Id, serviceRequestId);
+                            // Don't auto-set serviceRequestId - let agentic AI determine from ClientAgentSession
+                            // Only use it if ClientAgentSession confirms it's the active SR
+                            _logger.LogInformation("Found existing service request session {SessionId} with ServiceRequestId {ServiceRequestId}. Agentic AI will determine active SR from ClientAgentSession.", 
+                                session.Id, todaySession.ServiceRequestId);
                         }
                     }
                     else
@@ -196,10 +186,20 @@ namespace SM_MentalHealthApp.Server.Services
                 {
                     try
                     {
-                        // Use session's ServiceRequestId if available, otherwise use detected one
-                        var srIdToUse = session.ServiceRequestId ?? serviceRequestId;
-                        _logger.LogInformation("Using agentic AI for service request chat: SR {ServiceRequestId} (from session: {FromSession})", 
-                            srIdToUse, sessionHasServiceRequest);
+                        // Priority: 1) Selected SR from UI dropdown, 2) Let agentic AI determine from ClientAgentSession
+                        // If user selected an SR from UI, use it and set it as active in ClientAgentSession
+                        int? srIdToUse = selectedServiceRequestId;
+                        if (selectedServiceRequestId.HasValue)
+                        {
+                            _logger.LogInformation("Using selected SR {ServiceRequestId} from UI dropdown for client {ClientId}", selectedServiceRequestId, patientId);
+                            // Set it as active in ClientAgentSession (via agentic AI - it will handle this)
+                        }
+                        else
+                        {
+                            // No SR selected in UI - let agentic AI determine from ClientAgentSession (SR-first enforcement)
+                            srIdToUse = null;
+                            _logger.LogInformation("No SR selected in UI. Agentic AI will determine active SR from ClientAgentSession (SR-first enforcement).");
+                        }
                         
                         // Get conversation history for context (with Redis caching)
                         string historyContext;

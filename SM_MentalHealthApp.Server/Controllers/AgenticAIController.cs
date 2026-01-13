@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using SM_MentalHealthApp.Server.Services;
 using SM_MentalHealthApp.Shared;
 using SM_MentalHealthApp.Shared.Constants;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SM_MentalHealthApp.Server.Controllers
 {
@@ -75,6 +76,86 @@ namespace SM_MentalHealthApp.Server.Controllers
             var roleIdClaim = User.FindFirst("roleId");
             return roleIdClaim != null && int.TryParse(roleIdClaim.Value, out var roleId) ? roleId : null;
         }
+
+        /// <summary>
+        /// Set the active Service Request for the current client's agent session
+        /// </summary>
+        [HttpPost("set-active-sr")]
+        [Authorize(Roles = "Patient")]
+        public async Task<ActionResult> SetActiveServiceRequest([FromBody] SetActiveServiceRequestRequest request)
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                {
+                    return Unauthorized("User not authenticated");
+                }
+
+                // Verify client access
+                if (request.ClientId != currentUserId.Value)
+                {
+                    return BadRequest("You can only set active SR for yourself.");
+                }
+
+                var sessionService = HttpContext.RequestServices.GetRequiredService<IClientAgentSessionService>();
+                var success = await sessionService.SetActiveServiceRequestAsync(request.ClientId, request.ServiceRequestId);
+
+                if (success)
+                {
+                    return Ok(new { success = true, message = "Active service request set successfully" });
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Failed to set active service request" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error setting active service request");
+                return StatusCode(500, new { success = false, message = "An error occurred" });
+            }
+        }
+
+        /// <summary>
+        /// Clear the active Service Request for the current client's agent session
+        /// </summary>
+        [HttpPost("clear-active-sr")]
+        [Authorize(Roles = "Patient")]
+        public async Task<ActionResult> ClearActiveServiceRequest()
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                {
+                    return Unauthorized("User not authenticated");
+                }
+
+                var sessionService = HttpContext.RequestServices.GetRequiredService<IClientAgentSessionService>();
+                var success = await sessionService.ClearActiveServiceRequestAsync(currentUserId.Value);
+
+                if (success)
+                {
+                    return Ok(new { success = true, message = "Active service request cleared successfully" });
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Failed to clear active service request" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error clearing active service request");
+                return StatusCode(500, new { success = false, message = "An error occurred" });
+            }
+        }
+    }
+
+    public class SetActiveServiceRequestRequest
+    {
+        public int ClientId { get; set; }
+        public int ServiceRequestId { get; set; }
     }
 }
 

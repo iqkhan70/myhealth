@@ -4,11 +4,15 @@
 @using Microsoft.JSInterop
 @using SM_MentalHealthApp.Client.Services
 @using SM_MentalHealthApp.Shared
+@using Radzen
+@using Radzen.Blazor
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject IAuthService AuthService
 @inject IPatientService PatientService
 @inject IServiceRequestService ServiceRequestService
+@inject DialogService DialogService
+@inject NavigationManager Navigation
 
 <div class="chat-container">
     <!-- Chat Mode Header (Only for Doctors and Admins) -->
@@ -79,25 +83,61 @@
                         🏥 Medical Chat
                     </button>
                 </div>
-                @if (ClientChatMode == ClientChatModeType.ServiceRequest && !HasActiveServiceRequests)
-                {
-                    <div style="margin-top: 8px; padding: 8px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; font-size: 12px; color: #856404;">
-                        ℹ️ No active service requests. This mode is for chatting about your service requests (plumbing, car repair, etc.).
+            </div>
+            
+            @if (ClientChatMode == ClientChatModeType.ServiceRequest && !HasActiveServiceRequests)
+            {
+                <div style="margin-top: 8px; padding: 8px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; font-size: 12px; color: #856404;">
+                    ℹ️ No active service requests. This mode is for chatting about your service requests (plumbing, car repair, etc.).
+                </div>
+            }
+            else if (ClientChatMode == ClientChatModeType.ServiceRequest)
+            {
+                <div class="patient-selector" style="margin-top: 12px; display: flex; flex-direction: column;">
+                    <label style="white-space: nowrap; margin-bottom: 8px; display: block;">📋 Select Service Request:</label>
+                    <div style="display: flex; gap: 8px; align-items: flex-end; margin-bottom: 12px;">
+                        <RadzenDropDown @bind-Value="SelectedServiceRequestId" 
+                                       Data="@ActiveServiceRequests" 
+                                       ValueProperty="Id" 
+                                       TextProperty="Title"
+                                       Placeholder="Select a service request..." 
+                                       AllowClear="true"
+                                       AllowFiltering="true"
+                                       FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                       Change="@OnServiceRequestChanged"
+                                       Style="flex: 1; min-width: 300px; max-width: 500px;"
+                                       TValue="int?">
+                            <Template Context="sr">
+                                <div style="padding: 6px 8px; line-height: 1.3;">
+                                    <div style="font-weight: 500; font-size: 14px; margin-bottom: 2px;">@sr.Title</div>
+                                    <div style="font-size: 12px; color: #666;">
+                                        <span class="badge @GetStatusClass(sr.Status)">@sr.Status</span>
+                                        <span style="margin-left: 8px;">@sr.Type</span>
+                                    </div>
+                                </div>
+                            </Template>
+                        </RadzenDropDown>
+                        <button class="btn btn-sm btn-success" @onclick="ShowCreateServiceRequestDialog" style="font-size: 12px; padding: 6px 12px; white-space: nowrap;">
+                            <i class="fas fa-plus"></i> New
+                        </button>
+                        @if (SelectedServiceRequestId.HasValue)
+                        {
+                            <button class="btn btn-sm btn-info" @onclick="NavigateToServiceRequestsList" style="font-size: 12px; padding: 6px 12px; white-space: nowrap;">
+                                <i class="fas fa-info-circle"></i> Details
+                            </button>
+                        }
                     </div>
-                }
-                else if (ClientChatMode == ClientChatModeType.ServiceRequest)
-                {
-                    <div style="margin-top: 8px; padding: 8px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; font-size: 12px; color: #0c5460;">
+                    <div style="margin-top: 0; padding: 8px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; font-size: 12px; color: #0c5460; width: 100%;">
                         ℹ️ Service Request Chat: Get help with your service requests (plumbing, car repair, legal, etc.). The AI will learn your preferences and personalize responses.
                     </div>
-                }
-                else if (ClientChatMode == ClientChatModeType.Medical)
-                {
-                    <div style="margin-top: 8px; padding: 8px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; font-size: 12px; color: #0c5460;">
-                        ℹ️ Medical Chat: Ask questions about your health, symptoms, medications, or medical concerns.
-                    </div>
-                }
-            </div>
+                </div>
+            }
+            else if (ClientChatMode == ClientChatModeType.Medical)
+            {
+                <div style="margin-top: 8px; padding: 8px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; font-size: 12px; color: #0c5460;">
+                    ℹ️ Medical Chat: Ask questions about your health, symptoms, medications, or medical concerns.
+                </div>
+            }
         </div>
     }
     else
@@ -263,6 +303,20 @@
     }
     private ClientChatModeType ClientChatMode = ClientChatModeType.ServiceRequest; // Default to service request
     private bool HasActiveServiceRequests = false;
+    
+    // Service Request management for clients
+    private List<ServiceRequestDto> ActiveServiceRequests = new();
+    private int? SelectedServiceRequestId = null;
+    
+    // Helper class for dropdown display
+    private class ServiceRequestDisplayItem
+    {
+        public int Id { get; set; }
+        public string DisplayText { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -289,6 +343,10 @@
             SelectedUserId = AuthService.CurrentUser.Id;
             await LoadSelectedUser();
             await CheckActiveServiceRequests();
+            if (ClientChatMode == ClientChatModeType.ServiceRequest)
+            {
+                await LoadServiceRequests();
+            }
         }
         
         // Add welcome message based on mode
@@ -315,13 +373,127 @@
         }
     }
     
-    private void SetClientMode(ClientChatModeType mode)
+    private async Task SetClientMode(ClientChatModeType mode)
     {
         ClientChatMode = mode;
         IsGenericMode = (mode == ClientChatModeType.Generic);
         Messages.Clear();
+        
+        // Load service requests when switching to Service Request mode
+        if (mode == ClientChatModeType.ServiceRequest && AuthService.CurrentUser?.RoleId == 1)
+        {
+            await LoadServiceRequests();
+        }
+        else
+        {
+            SelectedServiceRequestId = null;
+            ActiveServiceRequests.Clear();
+        }
+        
         UpdateWelcomeMessage();
         StateHasChanged();
+    }
+    
+    private async Task LoadServiceRequests()
+    {
+        try
+        {
+            if (AuthService.CurrentUser?.RoleId == 1 && AuthService.CurrentUser?.Id > 0)
+            {
+                var serviceRequests = await ServiceRequestService.GetServiceRequestsAsync(clientId: AuthService.CurrentUser.Id);
+                ActiveServiceRequests = serviceRequests
+                    .Where(sr => sr.Status == "Active" || sr.Status == "Pending" || sr.Status == "OnHold")
+                    .OrderByDescending(sr => sr.CreatedAt)
+                    .ToList();
+                
+                // If no SR is selected but there's only one active, auto-select it
+                if (!SelectedServiceRequestId.HasValue && ActiveServiceRequests.Count == 1)
+                {
+                    SelectedServiceRequestId = ActiveServiceRequests[0].Id;
+                    // Update ClientAgentSession on backend
+                    await SetActiveServiceRequestOnBackend(SelectedServiceRequestId.Value);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading service requests: {ex.Message}");
+        }
+    }
+    
+    private async Task OnServiceRequestChanged()
+    {
+        if (SelectedServiceRequestId.HasValue)
+        {
+            // Update ClientAgentSession on backend
+            await SetActiveServiceRequestOnBackend(SelectedServiceRequestId.Value);
+            Messages.Clear();
+            UpdateWelcomeMessage();
+            StateHasChanged();
+        }
+        else
+        {
+            // Clear SR context
+            await ClearActiveServiceRequestOnBackend();
+        }
+    }
+    
+    private async Task SetActiveServiceRequestOnBackend(int serviceRequestId)
+    {
+        try
+        {
+            var request = new { serviceRequestId };
+            var response = await Http.PostAsJsonAsync("api/agenticai/set-active-sr", request);
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"Failed to set active SR on backend: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error setting active SR on backend: {ex.Message}");
+        }
+    }
+    
+    private async Task ClearActiveServiceRequestOnBackend()
+    {
+        try
+        {
+            var response = await Http.PostAsync("api/agenticai/clear-active-sr", null);
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"Failed to clear active SR on backend: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error clearing active SR on backend: {ex.Message}");
+        }
+    }
+    
+    private async Task ShowCreateServiceRequestDialog()
+    {
+        // Navigate to service requests page in the same tab
+        Navigation.NavigateTo("/service-requests");
+    }
+    
+    private void NavigateToServiceRequestsList()
+    {
+        // Navigate to service requests list page in the same tab
+        Navigation.NavigateTo("/service-requests");
+    }
+    
+    private string GetStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "active" => "badge-success",
+            "pending" => "badge-warning",
+            "completed" => "badge-secondary",
+            "cancelled" => "badge-danger",
+            "onhold" => "badge-info",
+            _ => "badge-secondary"
+        };
     }
     
     private void UpdateWelcomeMessage()
@@ -522,7 +694,8 @@
                 userId = AuthService.CurrentUser?.Id ?? 0,
                 userRoleId = AuthService.CurrentUser?.RoleId ?? 0,
                 isGenericMode = IsGenericMode,
-                forceServiceRequestMode = forceServiceRequestMode // New flag to explicitly use agentic AI
+                forceServiceRequestMode = forceServiceRequestMode, // New flag to explicitly use agentic AI
+                selectedServiceRequestId = (forceServiceRequestMode && AuthService.CurrentUser?.RoleId == 1) ? SelectedServiceRequestId : null // Pass selected SR from UI
             };
             var response = await Http.PostAsJsonAsync("api/chat/send", request);
             var data = await response.Content.ReadFromJsonAsync<ChatResponse>();

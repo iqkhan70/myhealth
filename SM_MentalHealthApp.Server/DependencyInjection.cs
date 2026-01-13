@@ -231,6 +231,7 @@ public static class DependencyInjection
         
         // Client Profile System for Agentic AI
         services.AddScoped<IClientProfileService, ClientProfileService>();
+        services.AddScoped<IClientAgentSessionService, ClientAgentSessionService>();
         services.AddScoped<IServiceRequestAgenticAIService, ServiceRequestAgenticAIService>();
 
         // External Service Integrations

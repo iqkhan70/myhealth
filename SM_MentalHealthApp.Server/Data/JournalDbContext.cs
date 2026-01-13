@@ -83,6 +83,9 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<ClientKeywordReaction> ClientKeywordReactions { get; set; }
             public DbSet<ClientServicePreference> ClientServicePreferences { get; set; }
             public DbSet<ClientInteractionHistory> ClientInteractionHistories { get; set; }
+            
+            // Client Agent Session for SR-First Agentic AI
+            public DbSet<ClientAgentSession> ClientAgentSessions { get; set; }
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -1357,6 +1360,35 @@ namespace SM_MentalHealthApp.Server.Data
 
                         entity.HasIndex(e => new { e.ClientId, e.CreatedAt });
                         entity.HasIndex(e => e.ServiceRequestId);
+                  });
+
+                  // Configure ClientAgentSession entity
+                  modelBuilder.Entity<ClientAgentSession>(entity =>
+                  {
+                        entity.ToTable("ClientAgentSessions");
+                        entity.HasKey(e => e.Id);
+                        entity.Property(e => e.State).IsRequired().HasMaxLength(50).HasDefaultValue("NoActiveSRContext");
+                        entity.Property(e => e.LastUpdatedUtc).IsRequired().HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+                        entity.Property(e => e.CreatedAt).IsRequired().HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        entity.HasOne(e => e.Client)
+                              .WithMany()
+                              .HasForeignKey(e => e.ClientId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.CurrentServiceRequest)
+                              .WithMany()
+                              .HasForeignKey(e => e.CurrentServiceRequestId)
+                              .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasOne(e => e.PendingCreatedServiceRequest)
+                              .WithMany()
+                              .HasForeignKey(e => e.PendingCreatedServiceRequestId)
+                              .OnDelete(DeleteBehavior.SetNull);
+
+                        entity.HasIndex(e => e.ClientId).IsUnique();
+                        entity.HasIndex(e => e.State);
+                        entity.HasIndex(e => e.LastUpdatedUtc);
                   });
             }
       }
