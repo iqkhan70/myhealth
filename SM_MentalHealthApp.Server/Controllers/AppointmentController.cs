@@ -33,11 +33,11 @@ namespace SM_MentalHealthApp.Server.Controllers
         /// </summary>
         [HttpPost("validate")]
         [Authorize(Roles = "Admin,Doctor,Coordinator")] // Admin, Doctor, and Coordinator can create appointments
-        public async Task<ActionResult<AppointmentValidationResult>> ValidateAppointment([FromBody] CreateAppointmentRequest request)
+        public async Task<ActionResult<AppointmentValidationResult>> ValidateAppointment([FromBody] CreateAppointmentRequest request, [FromQuery] int? excludeAppointmentId = null)
         {
             try
             {
-                var result = await _appointmentService.ValidateAppointmentAsync(request);
+                var result = await _appointmentService.ValidateAppointmentAsync(request, excludeAppointmentId);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -98,7 +98,7 @@ namespace SM_MentalHealthApp.Server.Controllers
                     }
                 }
 
-                var appointment = await _appointmentService.CreateAppointmentAsync(request, userId.Value, serviceRequestId);
+                var appointment = await _appointmentService.CreateAppointmentAsync(request, userId.Value, serviceRequestId, request.ServiceRequestIds);
                 return CreatedAtAction(nameof(GetAppointment), new { id = appointment.Id }, appointment);
             }
             catch (InvalidOperationException ex)

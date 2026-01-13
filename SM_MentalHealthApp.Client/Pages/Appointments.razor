@@ -11,6 +11,7 @@
 @inject HttpClient Http
 @inject IAuthService AuthService
 @inject IAppointmentService AppointmentService
+@inject IServiceRequestService ServiceRequestService
 @inject ODataService ODataService
 @inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
@@ -338,7 +339,7 @@
         <SMModal IsVisible="@showDialog" 
                  Title="@(editingAppointment == null ? "New Appointment" : "Edit Appointment")" 
                  OnClose="CloseDialog"
-                 Size="Large">
+                 Size="UltraLarge">
             <Body>
                 @if (!string.IsNullOrEmpty(validationError))
                 {
@@ -372,7 +373,7 @@
                         <div class="form-group">
                             <label class="form-label">Provider (SME) <span class="required-asterisk">*</span></label>
                             <RadzenDropDown Data="@doctors" TextProperty="FullName" ValueProperty="Id"
-                                @bind-value="appointmentForm.DoctorId" Change="@OnDoctorChanged"
+                                @bind-value="appointmentForm.DoctorId" Change="@(async args => await OnDoctorChanged(args))"
                                 AllowFiltering="true" Placeholder="Select Provider"
                                 Style="width: 100%" />
                         </div>
@@ -380,7 +381,7 @@
                     <div class="form-group">
                         <label class="form-label">Client <span class="required-asterisk">*</span></label>
                         <RadzenDropDown Data="@availablePatients" TextProperty="FullName" ValueProperty="Id"
-                            @bind-value="appointmentForm.PatientId" AllowFiltering="true" Placeholder="Select Client"
+                            @bind-value="appointmentForm.PatientId" Change="@(async args => await OnPatientChanged(args))" AllowFiltering="true" Placeholder="Select Client"
                             Style="width: 100%" />
                     </div>
                     <div class="form-group">
@@ -476,6 +477,56 @@
                             Style="width: 100%" />
                     </div>
                 </div>
+                <div class="form-row form-row-full">
+                    <div class="form-group" style="width: 100%;">
+                        <label class="form-label">Service Requests (Optional)</label>
+                        <RadzenDropDown Data="@availableServiceRequestsForSelection"
+                                        TextProperty="Title"
+                                        ValueProperty="Id"
+                                        @bind-Value="selectedServiceRequestToAdd"
+                                        AllowFiltering="true"
+                                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                        Placeholder="Select a service request to add..."
+                                        Style="width: 100%"
+                                        TValue="int?"
+                                        Change="@(async args => await OnServiceRequestToAddChanged(args))">
+                            <Template Context="sr">
+                                <div style="padding: 4px 8px;">
+                                    <div style="font-weight: 500; font-size: 14px;">@sr.Title</div>
+                                    <div style="font-size: 12px; color: #666;">
+                                        <span class="badge @GetServiceRequestStatusClass(sr.Status)">@sr.Status</span>
+                                        <span style="margin-left: 8px;">@sr.Type</span>
+                                    </div>
+                                </div>
+                            </Template>
+                        </RadzenDropDown>
+                        <small class="form-text text-muted">Select a service request and it will be added to the list below</small>
+                    </div>
+                </div>
+                @if (selectedServiceRequestIds.Any())
+                {
+                    <div class="form-row form-row-full">
+                        <div class="form-group" style="width: 100%;">
+                            <label class="form-label"><strong>Selected Service Requests:</strong></label>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; min-height: 50px;">
+                                @foreach (var srId in selectedServiceRequestIds)
+                                {
+                                    var sr = availableServiceRequests.FirstOrDefault(s => s.Id == srId);
+                                    if (sr != null)
+                                    {
+                                        <span class="badge bg-primary" style="font-size: 13px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;">
+                                            <span>@sr.Title</span>
+                                            <span class="badge @GetServiceRequestStatusClass(sr.Status)" style="font-size: 11px;">@sr.Status</span>
+                                            <button class="btn-close btn-close-white" style="font-size: 0.7em; opacity: 0.8;" 
+                                                @onclick="@(() => RemoveServiceRequest(srId))" 
+                                                title="Remove @sr.Title"></button>
+                                        </span>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
                 <div class="form-row form-row-full">
                     <div class="form-group" style="width: 100%;">
                         <label class="form-label">Reason</label>
@@ -762,6 +813,9 @@
     private List<string> validationWarnings = new();
     private string selectedTimezone = "America/New_York"; // Default timezone
     private string currentDoctorName = ""; // For doctor read-only display
+    private List<ServiceRequestDto> availableServiceRequests = new();
+    private IEnumerable<int> selectedServiceRequestIds = new List<int>();
+    private int? selectedServiceRequestToAdd = null;
 
     private class AppointmentTypeOption
     {
@@ -1540,6 +1594,9 @@
         selectedTimezone = "America/New_York";
         validationError = "";
         validationWarnings = new();
+        selectedServiceRequestIds = new List<int>();
+        selectedServiceRequestToAdd = null;
+        availableServiceRequests = new();
 
         // Load patients based on role
         if (isDoctor)
@@ -1599,31 +1656,42 @@
             return;
         }
 
-        editingAppointment = appointment;
+        // Fetch the full appointment from the API to ensure ServiceRequestIds are loaded
+        var fullAppointment = await AppointmentService.GetAsync(appointment.Id, ct);
+        if (fullAppointment == null)
+        {
+            NotificationService.ShowError("Failed to load appointment details");
+            return;
+        }
+
+        editingAppointment = fullAppointment;
         appointmentForm = new CreateAppointmentRequest
         {
-            DoctorId = appointment.DoctorId,
-            PatientId = appointment.PatientId,
-            AppointmentDateTime = appointment.AppointmentDateTime,
-            Duration = appointment.Duration,
-            AppointmentType = appointment.AppointmentType,
-            Reason = appointment.Reason,
-            Notes = appointment.Notes,
-            TimeZoneId = !string.IsNullOrEmpty(appointment.TimeZoneId) ? appointment.TimeZoneId : "America/New_York"
+            DoctorId = fullAppointment.DoctorId,
+            PatientId = fullAppointment.PatientId,
+            AppointmentDateTime = fullAppointment.AppointmentDateTime,
+            Duration = fullAppointment.Duration,
+            AppointmentType = fullAppointment.AppointmentType,
+            Reason = fullAppointment.Reason,
+            Notes = fullAppointment.Notes,
+            TimeZoneId = !string.IsNullOrEmpty(fullAppointment.TimeZoneId) ? fullAppointment.TimeZoneId : "America/New_York"
         };
-        appointmentDateTime = appointment.AppointmentDateTime.Date;
+        appointmentDateTime = fullAppointment.AppointmentDateTime.Date;
         
         // Convert 24-hour to 12-hour format
-        var hour24 = appointment.AppointmentDateTime.Hour;
+        var hour24 = fullAppointment.AppointmentDateTime.Hour;
         appointmentHour = hour24 == 0 ? 12 : (hour24 > 12 ? hour24 - 12 : hour24);
-        appointmentMinute = appointment.AppointmentDateTime.Minute;
+        appointmentMinute = fullAppointment.AppointmentDateTime.Minute;
         appointmentAmPm = hour24 >= 12 ? "PM" : "AM";
         
-        durationMinutes = (int)appointment.Duration.TotalMinutes;
-        selectedTimezone = !string.IsNullOrEmpty(appointment.TimeZoneId) ? appointment.TimeZoneId : "America/New_York";
+        durationMinutes = (int)fullAppointment.Duration.TotalMinutes;
+        selectedTimezone = !string.IsNullOrEmpty(fullAppointment.TimeZoneId) ? fullAppointment.TimeZoneId : "America/New_York";
         validationError = "";
         validationWarnings = new();
         showDialog = true;
+        
+        // Load existing service request IDs from the full appointment
+        selectedServiceRequestIds = fullAppointment.ServiceRequestIds?.ToList() ?? new List<int>();
         
         if (isDoctor)
         {
@@ -1632,6 +1700,12 @@
         else
         {
             await LoadAvailablePatients(appointment.DoctorId);
+        }
+        
+        // Load service requests for the patient
+        if (fullAppointment.PatientId > 0)
+        {
+            await LoadServiceRequestsForPatient(fullAppointment.PatientId);
         }
         
         // Load OOO periods for the doctor
@@ -1702,8 +1776,11 @@
             appointmentForm.Duration = TimeSpan.FromMinutes(durationMinutes);
             appointmentForm.TimeZoneId = selectedTimezone;
 
-            // Validate before creating
-            var validationResponse = await Http.PostAsJsonAsync("api/appointment/validate", appointmentForm);
+            // Validate before creating/updating
+            var validationUrl = editingAppointment != null 
+                ? $"api/appointment/validate?excludeAppointmentId={editingAppointment.Id}"
+                : "api/appointment/validate";
+            var validationResponse = await Http.PostAsJsonAsync(validationUrl, appointmentForm);
             if (validationResponse.IsSuccessStatusCode)
             {
                 var validationResult = await validationResponse.Content.ReadFromJsonAsync<AppointmentValidationResult>();
@@ -1718,6 +1795,11 @@
                     validationWarnings = validationResult.Warnings;
                 }
             }
+
+            // Set ServiceRequestIds in the request
+            appointmentForm.ServiceRequestIds = selectedServiceRequestIds.Any()
+                ? selectedServiceRequestIds.ToList()
+                : null;
 
             HttpResponseMessage response;
             if (editingAppointment == null)
@@ -1734,7 +1816,10 @@
                     AppointmentType = appointmentForm.AppointmentType,
                     Reason = appointmentForm.Reason,
                     Notes = appointmentForm.Notes,
-                    TimeZoneId = appointmentForm.TimeZoneId
+                    TimeZoneId = appointmentForm.TimeZoneId,
+                    ServiceRequestIds = selectedServiceRequestIds.Any()
+                        ? selectedServiceRequestIds.ToList()
+                        : null
                 };
                 response = await Http.PutAsJsonAsync($"api/appointment/{editingAppointment.Id}", updateRequest);
             }
@@ -2023,8 +2108,9 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnDoctorChanged()
+    private async Task OnDoctorChanged(object? args)
     {
+        // appointmentForm.DoctorId is already updated because you use @bind-value
         if (appointmentForm.DoctorId > 0 && showDialog)
         {
             await LoadAvailablePatients(appointmentForm.DoctorId);
@@ -2032,7 +2118,7 @@
             {
                 appointmentForm.PatientId = 0;
             }
-            // Load OOO periods for the selected doctor
+
             await LoadDoctorOOOPeriods(appointmentForm.DoctorId);
         }
         else
@@ -2041,7 +2127,83 @@
             appointmentForm.PatientId = 0;
             doctorOOOPeriods = new();
         }
-        StateHasChanged();
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnPatientChanged(object? args)
+    {
+        // appointmentForm.PatientId is already updated because you use @bind-value
+        if (appointmentForm.PatientId > 0 && showDialog)
+        {
+            await LoadServiceRequestsForPatient(appointmentForm.PatientId);
+        }
+        else
+        {
+            availableServiceRequests = new();
+            selectedServiceRequestIds = new List<int>();
+            selectedServiceRequestToAdd = null;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadServiceRequestsForPatient(int patientId)
+    {
+        try
+        {
+            availableServiceRequests = await ServiceRequestService.GetServiceRequestsAsync(patientId);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading service requests for patient {patientId}: {ex.Message}");
+            availableServiceRequests = new();
+        }
+    }
+
+    private string GetServiceRequestStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "active" => "badge-success",
+            "pending" => "badge-warning",
+            "completed" => "badge-secondary",
+            "cancelled" => "badge-danger",
+            "onhold" => "badge-info",
+            _ => "badge-secondary"
+        };
+    }
+
+    private List<ServiceRequestDto> availableServiceRequestsForSelection
+    {
+        get
+        {
+            // Filter out already selected SRs
+            var selectedIds = selectedServiceRequestIds.ToList();
+            return availableServiceRequests.Where(sr => !selectedIds.Contains(sr.Id)).ToList();
+        }
+    }
+
+    private async Task OnServiceRequestToAddChanged(object? args)
+    {
+        // selectedServiceRequestToAdd is already updated because we use @bind-Value
+        if (selectedServiceRequestToAdd.HasValue && !selectedServiceRequestIds.Contains(selectedServiceRequestToAdd.Value))
+        {
+            var currentList = selectedServiceRequestIds.ToList();
+            currentList.Add(selectedServiceRequestToAdd.Value);
+            selectedServiceRequestIds = currentList;
+            selectedServiceRequestToAdd = null; // Reset dropdown
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RemoveServiceRequest(int srId)
+    {
+        var currentList = selectedServiceRequestIds.ToList();
+        currentList.Remove(srId);
+        selectedServiceRequestIds = currentList;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadDoctorOOOPeriods(int doctorId)

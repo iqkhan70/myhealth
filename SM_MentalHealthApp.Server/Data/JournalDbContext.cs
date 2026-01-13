@@ -41,6 +41,7 @@ namespace SM_MentalHealthApp.Server.Data
             // Appointment system entities
             public DbSet<Appointment> Appointments { get; set; }
             public DbSet<DoctorAvailability> DoctorAvailabilities { get; set; }
+            public DbSet<AppointmentServiceRequest> AppointmentServiceRequests { get; set; }
 
             // Critical value pattern system entities
             public DbSet<CriticalValueCategory> CriticalValueCategories { get; set; }
@@ -1091,6 +1092,30 @@ namespace SM_MentalHealthApp.Server.Data
                         .OnDelete(DeleteBehavior.SetNull);
 
                         entity.HasIndex(e => e.ServiceRequestId);
+                  });
+
+                  // Configure AppointmentServiceRequest junction table (many-to-many)
+                  modelBuilder.Entity<AppointmentServiceRequest>(entity =>
+                  {
+                        entity.HasKey(e => e.Id);
+                        entity.HasIndex(e => new { e.AppointmentId, e.ServiceRequestId }).IsUnique();
+                        entity.HasIndex(e => e.AppointmentId);
+                        entity.HasIndex(e => e.ServiceRequestId);
+                        entity.HasIndex(e => e.CreatedAt);
+
+                        entity.Property(e => e.Notes).HasMaxLength(500);
+                        entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
+
+                        // Foreign key relationships
+                        entity.HasOne(e => e.Appointment)
+                              .WithMany(a => a.AppointmentServiceRequests)
+                              .HasForeignKey(e => e.AppointmentId)
+                              .OnDelete(DeleteBehavior.Cascade);
+
+                        entity.HasOne(e => e.ServiceRequest)
+                              .WithMany()
+                              .HasForeignKey(e => e.ServiceRequestId)
+                              .OnDelete(DeleteBehavior.Cascade);
                   });
 
                   // ContentAlert

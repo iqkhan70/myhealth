@@ -6,8 +6,8 @@ namespace SM_MentalHealthApp.Server.Services
 {
     public interface IAppointmentService
     {
-        Task<AppointmentValidationResult> ValidateAppointmentAsync(CreateAppointmentRequest request);
-        Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentRequest request, int createdByUserId, int? serviceRequestId = null);
+        Task<AppointmentValidationResult> ValidateAppointmentAsync(CreateAppointmentRequest request, int? excludeAppointmentId = null);
+        Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentRequest request, int createdByUserId, int? serviceRequestId = null, List<int>? serviceRequestIds = null);
         Task<AppointmentDto?> UpdateAppointmentAsync(UpdateAppointmentRequest request);
         Task<bool> CancelAppointmentAsync(int appointmentId);
         Task<List<AppointmentDto>> GetAppointmentsAsync(int? doctorId = null, int? patientId = null, DateTime? startDate = null, DateTime? endDate = null);
@@ -36,7 +36,7 @@ namespace SM_MentalHealthApp.Server.Services
             _businessHours = new BusinessHours(); // Default: 9 AM - 5 PM, Mon-Fri
         }
 
-        public async Task<AppointmentValidationResult> ValidateAppointmentAsync(CreateAppointmentRequest request)
+        public async Task<AppointmentValidationResult> ValidateAppointmentAsync(CreateAppointmentRequest request, int? excludeAppointmentId = null)
         {
             var result = new AppointmentValidationResult { IsValid = true };
 
@@ -45,19 +45,22 @@ namespace SM_MentalHealthApp.Server.Services
             if (!isAssigned)
             {
                 result.IsValid = false;
-                result.ErrorMessage = "Patient must be assigned to this doctor before scheduling an appointment.";
+                result.ErrorMessage = "Client must be assigned to this SME before scheduling an appointment.";
                 return result;
             }
 
-            // Check if doctor exists and is active
+            // Check if doctor/SME exists and is active (can be Doctor, Attorney, or SME)
             var doctor = await _context.Users
                 .Include(u => u.Role)
                 .FirstOrDefaultAsync(u => u.Id == request.DoctorId && u.IsActive);
 
-            if (doctor == null || doctor.RoleId != Shared.Constants.Roles.Doctor)
+            if (doctor == null || 
+                (doctor.RoleId != Shared.Constants.Roles.Doctor && 
+                 doctor.RoleId != Shared.Constants.Roles.Attorney && 
+                 doctor.RoleId != Shared.Constants.Roles.Sme))
             {
                 result.IsValid = false;
-                result.ErrorMessage = "Invalid or inactive doctor.";
+                result.ErrorMessage = "Invalid or inactive doctor/SME.";
                 return result;
             }
 
@@ -151,8 +154,8 @@ namespace SM_MentalHealthApp.Server.Services
                 }
             }
 
-            // Check for overlapping appointments
-            var conflictCheck = await CheckConflictsAsync(request.DoctorId, request.AppointmentDateTime, endDateTime);
+            // Check for overlapping appointments (exclude the current appointment if updating)
+            var conflictCheck = await CheckConflictsAsync(request.DoctorId, request.AppointmentDateTime, endDateTime, excludeAppointmentId);
             if (conflictCheck.HasConflict)
             {
                 result.IsValid = false;
@@ -170,7 +173,7 @@ namespace SM_MentalHealthApp.Server.Services
             return result;
         }
 
-        public async Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentRequest request, int createdByUserId, int? serviceRequestId = null)
+        public async Task<AppointmentDto> CreateAppointmentAsync(CreateAppointmentRequest request, int createdByUserId, int? serviceRequestId = null, List<int>? serviceRequestIds = null)
         {
             // Validate first
             var validation = await ValidateAppointmentAsync(request);
@@ -181,11 +184,24 @@ namespace SM_MentalHealthApp.Server.Services
 
             var isBusinessHours = await IsBusinessHoursAsync(request.AppointmentDateTime);
 
+            // Combine serviceRequestId (backward compatibility) and serviceRequestIds
+            var allServiceRequestIds = new List<int>();
+            if (serviceRequestId.HasValue)
+            {
+                allServiceRequestIds.Add(serviceRequestId.Value);
+            }
+            if (serviceRequestIds != null && serviceRequestIds.Any())
+            {
+                allServiceRequestIds.AddRange(serviceRequestIds);
+            }
+            // Remove duplicates
+            allServiceRequestIds = allServiceRequestIds.Distinct().ToList();
+
             var appointment = new Appointment
             {
                 DoctorId = request.DoctorId,
                 PatientId = request.PatientId,
-                ServiceRequestId = serviceRequestId,
+                ServiceRequestId = serviceRequestId, // Keep for backward compatibility
                 AppointmentDateTime = request.AppointmentDateTime,
                 Duration = request.Duration,
                 AppointmentType = request.AppointmentType,
@@ -200,6 +216,31 @@ namespace SM_MentalHealthApp.Server.Services
 
             _context.Appointments.Add(appointment);
             await _context.SaveChangesAsync();
+
+            // Link multiple Service Requests to the appointment
+            if (allServiceRequestIds.Any())
+            {
+                foreach (var srId in allServiceRequestIds)
+                {
+                    // Verify the ServiceRequest exists
+                    var srExists = await _context.ServiceRequests.AnyAsync(sr => sr.Id == srId);
+                    if (srExists)
+                    {
+                        var appointmentSr = new AppointmentServiceRequest
+                        {
+                            AppointmentId = appointment.Id,
+                            ServiceRequestId = srId,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _context.AppointmentServiceRequests.Add(appointmentSr);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("ServiceRequest {ServiceRequestId} does not exist. Skipping link to appointment {AppointmentId}", srId, appointment.Id);
+                    }
+                }
+                await _context.SaveChangesAsync();
+            }
 
             // Send SMS notification to patient
             await SendAppointmentConfirmationSmsAsync(appointment);
@@ -260,6 +301,7 @@ namespace SM_MentalHealthApp.Server.Services
                 .Include(a => a.Doctor)
                 .Include(a => a.Patient)
                 .Include(a => a.CreatedByUser)
+                .Include(a => a.AppointmentServiceRequests)
                 .FirstOrDefaultAsync(a => a.Id == request.Id && a.IsActive);
 
             if (appointment == null)
@@ -279,7 +321,7 @@ namespace SM_MentalHealthApp.Server.Services
                     Notes = request.Notes ?? appointment.Notes
                 };
 
-                var validation = await ValidateAppointmentAsync(createRequest);
+                var validation = await ValidateAppointmentAsync(createRequest, request.Id);
                 if (!validation.IsValid)
                 {
                     throw new InvalidOperationException(validation.ErrorMessage);
@@ -306,6 +348,38 @@ namespace SM_MentalHealthApp.Server.Services
 
             if (request.TimeZoneId != null)
                 appointment.TimeZoneId = request.TimeZoneId;
+
+            // Update Service Request associations (junction table)
+            if (request.ServiceRequestIds != null)
+            {
+                // Remove existing associations
+                var existingAssociations = await _context.AppointmentServiceRequests
+                    .Where(ar => ar.AppointmentId == appointment.Id)
+                    .ToListAsync();
+                _context.AppointmentServiceRequests.RemoveRange(existingAssociations);
+
+                // Add new associations
+                var allServiceRequestIds = request.ServiceRequestIds.Distinct().ToList();
+                foreach (var srId in allServiceRequestIds)
+                {
+                    // Verify the ServiceRequest exists
+                    var srExists = await _context.ServiceRequests.AnyAsync(sr => sr.Id == srId);
+                    if (srExists)
+                    {
+                        var appointmentSr = new AppointmentServiceRequest
+                        {
+                            AppointmentId = appointment.Id,
+                            ServiceRequestId = srId,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _context.AppointmentServiceRequests.Add(appointmentSr);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("ServiceRequest {ServiceRequestId} does not exist. Skipping link to appointment {AppointmentId}", srId, appointment.Id);
+                    }
+                }
+            }
 
             appointment.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
@@ -336,6 +410,7 @@ namespace SM_MentalHealthApp.Server.Services
                     .Include(a => a.Doctor)
                     .Include(a => a.Patient)
                     .Include(a => a.CreatedByUser)
+                    .Include(a => a.AppointmentServiceRequests)
                     .Where(a => a.IsActive);
 
                 if (doctorId.HasValue)
@@ -375,6 +450,7 @@ namespace SM_MentalHealthApp.Server.Services
                 .Include(a => a.Doctor)
                 .Include(a => a.Patient)
                 .Include(a => a.CreatedByUser)
+                .Include(a => a.AppointmentServiceRequests)
                 .FirstOrDefaultAsync(a => a.Id == appointmentId && a.IsActive);
 
             return appointment == null ? null : MapToDto(appointment);
@@ -431,10 +507,33 @@ namespace SM_MentalHealthApp.Server.Services
 
         public async Task<bool> IsPatientAssignedToDoctorAsync(int patientId, int doctorId)
         {
-            return await _context.UserAssignments
+            // Check direct UserAssignment
+            var hasDirectAssignment = await _context.UserAssignments
                 .AnyAsync(ua => ua.AssignerId == doctorId
                     && ua.AssigneeId == patientId
                     && ua.IsActive);
+
+            if (hasDirectAssignment)
+                return true;
+
+            // Also check if doctor is assigned to any of the patient's ServiceRequests
+            var serviceRequestIds = await _context.ServiceRequests
+                .Where(sr => sr.ClientId == patientId && sr.IsActive)
+                .Select(sr => sr.Id)
+                .ToListAsync();
+
+            if (serviceRequestIds.Any())
+            {
+                var hasServiceRequestAssignment = await _context.ServiceRequestAssignments
+                    .AnyAsync(sra => serviceRequestIds.Contains(sra.ServiceRequestId)
+                        && sra.SmeUserId == doctorId
+                        && sra.IsActive);
+
+                if (hasServiceRequestAssignment)
+                    return true;
+            }
+
+            return false;
         }
 
         public async Task<DoctorAvailability?> GetDoctorAvailabilityAsync(int doctorId, DateTime date)
@@ -446,8 +545,8 @@ namespace SM_MentalHealthApp.Server.Services
         public async Task<List<DoctorAvailability>> GetDoctorAvailabilitiesAsync(int doctorId, DateTime startDate, DateTime endDate)
         {
             return await _context.DoctorAvailabilities
-                .Where(da => da.DoctorId == doctorId 
-                    && da.Date.Date >= startDate.Date 
+                .Where(da => da.DoctorId == doctorId
+                    && da.Date.Date >= startDate.Date
                     && da.Date.Date <= endDate.Date
                     && da.IsOutOfOffice)
                 .OrderBy(da => da.Date)
@@ -551,7 +650,8 @@ namespace SM_MentalHealthApp.Server.Services
                         ? $"{appointment.CreatedByUser.FirstName} {appointment.CreatedByUser.LastName}"
                         : "Unknown",
                     CreatedAt = appointment.CreatedAt,
-                    ServiceRequestId = appointment.ServiceRequestId
+                    ServiceRequestId = appointment.ServiceRequestId, // Backward compatibility
+                    ServiceRequestIds = appointment.AppointmentServiceRequests?.Select(ar => ar.ServiceRequestId).ToList() ?? new List<int>()
                 };
             }
             catch (Exception ex)
@@ -585,7 +685,8 @@ namespace SM_MentalHealthApp.Server.Services
                         ? $"{appointment.CreatedByUser.FirstName} {appointment.CreatedByUser.LastName}"
                         : "Unknown",
                     CreatedAt = appointment.CreatedAt,
-                    ServiceRequestId = appointment.ServiceRequestId
+                    ServiceRequestId = appointment.ServiceRequestId, // Backward compatibility
+                    ServiceRequestIds = appointment.AppointmentServiceRequests?.Select(ar => ar.ServiceRequestId).ToList() ?? new List<int>()
                 };
             }
         }

@@ -48,6 +48,7 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                     .Include(a => a.Doctor)
                     .Include(a => a.Patient)
                     .Include(a => a.CreatedByUser)
+                    .Include(a => a.AppointmentServiceRequests)
                     .Where(a => a.IsActive)
                     .AsQueryable();
 
@@ -128,6 +129,7 @@ namespace SM_MentalHealthApp.Server.Controllers.OData
                 .Include(a => a.Doctor)
                 .Include(a => a.Patient)
                 .Include(a => a.CreatedByUser)
+                .Include(a => a.AppointmentServiceRequests)
                 .Where(a => a.Id == key && a.IsActive);
 
             // Role-based filtering
