@@ -227,6 +227,34 @@ export default function App() {
     }
   }, [user, signalRConnected]);
 
+  // Load service requests when AI chat view is opened in Service Request mode
+  useEffect(() => {
+    const loadServiceRequestsIfNeeded = async () => {
+      // Only load if:
+      // 1. We're in the AI chat view
+      // 2. We're in Service Request mode
+      // 3. User is a patient (roleId === 1)
+      // 4. User is logged in
+      if (currentView === 'ai-chat' && 
+          aiChatMode === 'ServiceRequest' && 
+          user && 
+          user.roleId === 1 && 
+          user.id) {
+        try {
+          const token = await AsyncStorage.getItem('userToken');
+          if (token) {
+            console.log('Loading service requests on AI chat view open (Service Request mode)');
+            await checkActiveServiceRequestsForAiChat(user.id, token);
+          }
+        } catch (error) {
+          console.error('Error loading service requests on AI chat view open:', error);
+        }
+      }
+    };
+
+    loadServiceRequestsIfNeeded();
+  }, [currentView, aiChatMode, user]);
+
   useEffect(() => {
     if (user && user.id && !userInitializedRef.current) {
       userInitializedRef.current = true;
@@ -1067,31 +1095,63 @@ export default function App() {
   // Check for active service requests for AI chat mode availability
   const checkActiveServiceRequestsForAiChat = async (userId, token) => {
     try {
-      const resp = await fetch(`${API_BASE_URL}/servicerequests?clientId=${userId}`, {
+      console.log('Checking active service requests for user:', userId);
+      // Use correct endpoint: /api/ServiceRequest (PascalCase, not lowercase plural)
+      const resp = await fetch(`${API_BASE_URL}/ServiceRequest?clientId=${userId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
-      if (resp.ok) {
-        const serviceRequests = await resp.json();
-        const active = serviceRequests.filter(sr => 
-          (sr.status === 'Active' || sr.status === 'Pending' || sr.status === 'OnHold') ||
-          (sr.Status === 'Active' || sr.Status === 'Pending' || sr.Status === 'OnHold')
-        );
-        setActiveServiceRequests(active);
-        const hasActive = active.length > 0;
-        setHasActiveServiceRequests(hasActive);
+      
+      if (!resp.ok) {
+        console.error('Failed to fetch service requests:', resp.status, resp.statusText);
+        const errorText = await resp.text();
+        console.error('Error response:', errorText);
+        setHasActiveServiceRequests(false);
+        setActiveServiceRequests([]);
+        return;
+      }
+      
+      const serviceRequests = await resp.json();
+      console.log('Fetched service requests:', serviceRequests.length, serviceRequests);
+      
+      // Filter for active service requests
+      // Backend already filters by IsActive, so we just need to filter by Status
+      // Active statuses: Active, OnHold (Completed and Cancelled are not active)
+      const active = serviceRequests.filter(sr => {
+        const status = (sr.status || sr.Status || '').toString();
+        const statusLower = status.toLowerCase().trim();
         
-        // Auto-select if only one active SR
-        if (hasActive && active.length === 1 && !selectedServiceRequestId) {
-          const srId = active[0].id || active[0].Id;
-          if (srId) {
-            setSelectedServiceRequestId(srId);
-            await setActiveServiceRequestOnBackend(srId);
-          }
+        // Active statuses: Active, OnHold (case-insensitive)
+        // Note: "Pending" is not a valid ServiceRequest status - only Active, Completed, Cancelled, OnHold exist
+        const isActiveStatus = statusLower === 'active' || statusLower === 'onhold' || statusLower === 'on hold';
+        
+        console.log(`SR ${sr.id || sr.Id}: status="${status}" (${statusLower}) -> isActiveStatus=${isActiveStatus}`);
+        return isActiveStatus;
+      });
+      
+      console.log('Active service requests:', active.length, active);
+      setActiveServiceRequests(active);
+      const hasActive = active.length > 0;
+      setHasActiveServiceRequests(hasActive);
+      console.log('hasActiveServiceRequests set to:', hasActive);
+      
+      // Auto-select if only one active SR
+      if (hasActive && active.length === 1 && !selectedServiceRequestId) {
+        const srId = active[0].id || active[0].Id;
+        if (srId) {
+          console.log('Auto-selecting single SR:', srId);
+          setSelectedServiceRequestId(srId);
+          await setActiveServiceRequestOnBackend(srId);
         }
       }
+      
+      // Update welcome message after loading service requests
+      // Use setTimeout to ensure state updates have been applied
+      setTimeout(() => {
+        updateAiChatWelcomeMessage();
+      }, 100);
     } catch (error) {
       console.error('Error checking service requests for AI chat:', error);
       setHasActiveServiceRequests(false);
@@ -1149,12 +1209,26 @@ export default function App() {
 
   // Update AI chat welcome message based on mode
   const updateAiChatWelcomeMessage = () => {
-    const welcomeMessages = {
-      ServiceRequest: "Hello! I'm here to help with your service requests. I'll learn your preferences and provide personalized guidance for your needs (plumbing, car repair, legal, etc.). What can I help you with?",
-      Generic: "Hello! I'm your generic AI assistant. I can help you with any topic - medical research, general knowledge, or any questions you have. How can I assist you today?",
-      Medical: "Hello! I'm your medical AI assistant. I can help you with health questions, symptoms, medications, and medical concerns. How can I help you today?"
-    };
-    setAiChatMessages([{ id: 'welcome', text: welcomeMessages[aiChatMode], isMe: false, timestamp: new Date() }]);
+    let welcomeMessage = '';
+    
+    if (aiChatMode === 'ServiceRequest') {
+      if (selectedServiceRequestId) {
+        const selected = activeServiceRequests.find(sr => (sr.id || sr.Id) === selectedServiceRequestId);
+        if (selected) {
+          welcomeMessage = `Hello! I'm here to help with your service request: "${selected.title || selected.Title}" (Status: ${selected.status || selected.Status}). What would you like to know or discuss about this request?`;
+        } else {
+          welcomeMessage = "Hello! I'm here to help with your service requests. I'll learn your preferences and provide personalized guidance for your needs (plumbing, car repair, legal, etc.). What can I help you with?";
+        }
+      } else {
+        welcomeMessage = "Hello! I'm here to help with your service requests. I'll learn your preferences and provide personalized guidance for your needs (plumbing, car repair, legal, etc.). Please select a service request above to get started.";
+      }
+    } else if (aiChatMode === 'Generic') {
+      welcomeMessage = "Hello! I'm your generic AI assistant. I can help you with any topic - medical research, general knowledge, or any questions you have. How can I assist you today?";
+    } else if (aiChatMode === 'Medical') {
+      welcomeMessage = "Hello! I'm your medical AI assistant. I can help you with health questions, symptoms, medications, and medical concerns. How can I help you today?";
+    }
+    
+    setAiChatMessages([{ id: 'welcome', text: welcomeMessage, isMe: false, timestamp: new Date() }]);
   };
 
   // Send AI chat message
@@ -2614,7 +2688,8 @@ export default function App() {
               { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center', borderWidth: 2 },
               aiChatMode === 'ServiceRequest' 
                 ? { backgroundColor: '#007bff', borderColor: '#007bff' }
-                : { backgroundColor: '#fff', borderColor: '#ddd' }
+                : { backgroundColor: '#fff', borderColor: '#ddd' },
+              !hasActiveServiceRequests && aiChatMode !== 'ServiceRequest' ? { opacity: 0.5 } : {}
             ]}
             onPress={async () => {
               setAiChatMode('ServiceRequest');
@@ -2628,7 +2703,6 @@ export default function App() {
               }
               updateAiChatWelcomeMessage();
             }}
-            disabled={!hasActiveServiceRequests}
           >
             <Text style={{ 
               fontSize: 12, 
@@ -2645,9 +2719,14 @@ export default function App() {
                 ? { backgroundColor: '#007bff', borderColor: '#007bff' }
                 : { backgroundColor: '#fff', borderColor: '#ddd' }
             ]}
-            onPress={() => {
+            onPress={async () => {
               setAiChatMode('Generic');
               setAiChatMessages([]);
+              // Clear service request context when switching to Generic mode
+              setSelectedServiceRequestId(null);
+              setActiveServiceRequests([]);
+              // Clear active SR from backend ClientAgentSession
+              await clearActiveServiceRequestOnBackend();
               updateAiChatWelcomeMessage();
             }}
           >
@@ -2666,9 +2745,15 @@ export default function App() {
                 ? { backgroundColor: '#007bff', borderColor: '#007bff' }
                 : { backgroundColor: '#fff', borderColor: '#ddd' }
             ]}
-            onPress={() => {
+            onPress={async () => {
               setAiChatMode('Medical');
               setAiChatMessages([]);
+              // Clear service request context when switching to Medical mode
+              // CRITICAL: This prevents service request chat from crossing over with medical chat
+              setSelectedServiceRequestId(null);
+              setActiveServiceRequests([]);
+              // Clear active SR from backend ClientAgentSession
+              await clearActiveServiceRequestOnBackend();
               updateAiChatWelcomeMessage();
             }}
           >
@@ -2682,13 +2767,38 @@ export default function App() {
           </TouchableOpacity>
         </View>
         {aiChatMode === 'ServiceRequest' && !hasActiveServiceRequests && (
-          <Text style={{ fontSize: 11, color: '#856404', marginTop: 8, textAlign: 'center' }}>
-            ℹ️ No active service requests. This mode is for chatting about your service requests.
-          </Text>
+          <View style={{ marginTop: 8, padding: 12, backgroundColor: '#fff3cd', borderRadius: 6, borderWidth: 1, borderColor: '#ffc107' }}>
+            <Text style={{ fontSize: 12, color: '#856404', textAlign: 'center', marginBottom: 8 }}>
+              ℹ️ No active service requests. This mode is for chatting about your service requests.
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setCurrentView('create-service-request');
+                currentViewRef.current = 'create-service-request';
+              }}
+              style={{
+                padding: 8,
+                backgroundColor: '#ffc107',
+                borderRadius: 6,
+                alignItems: 'center'
+              }}
+            >
+              <Text style={{ fontSize: 12, color: '#856404', fontWeight: '600' }}>
+                ➕ Create New Service Request
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
         {aiChatMode === 'ServiceRequest' && hasActiveServiceRequests && (
           <View style={{ marginTop: 12 }}>
-            <Text style={{ fontSize: 12, color: '#666', marginBottom: 8, fontWeight: '600' }}>📋 Select Service Request:</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={{ fontSize: 13, color: '#333', fontWeight: '700' }}>📋 Select Service Request:</Text>
+              {!selectedServiceRequestId && (
+                <Text style={{ fontSize: 11, color: '#dc3545', fontStyle: 'italic' }}>
+                  ⚠️ Please select an SR to continue
+                </Text>
+              )}
+            </View>
             <View style={{ 
               backgroundColor: '#fff', 
               borderRadius: 8, 
@@ -2701,20 +2811,20 @@ export default function App() {
                   // Show picker
                   Alert.alert(
                     'Select Service Request',
-                    'Choose a service request or create new',
+                    'Choose a service request to tie this chat to, or create a new one',
                     [
                       ...activeServiceRequests.map((sr, idx) => ({
                         text: `${sr.title || sr.Title} (${sr.status || sr.Status})`,
-                        onPress: () => {
+                        onPress: async () => {
                           const srId = sr.id || sr.Id;
                           setSelectedServiceRequestId(srId);
-                          setActiveServiceRequestOnBackend(srId);
+                          await setActiveServiceRequestOnBackend(srId);
                           setAiChatMessages([]);
                           updateAiChatWelcomeMessage();
                         }
                       })),
                       {
-                        text: 'Create New',
+                        text: '➕ Create New',
                         onPress: () => {
                           setCurrentView('create-service-request');
                           currentViewRef.current = 'create-service-request';
@@ -2723,9 +2833,11 @@ export default function App() {
                       },
                       {
                         text: 'Clear Selection',
-                        onPress: () => {
+                        onPress: async () => {
                           setSelectedServiceRequestId(null);
-                          clearActiveServiceRequestOnBackend();
+                          await clearActiveServiceRequestOnBackend();
+                          setAiChatMessages([]);
+                          updateAiChatWelcomeMessage();
                         },
                         style: 'destructive'
                       },
@@ -2738,42 +2850,96 @@ export default function App() {
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  paddingVertical: 8
+                  paddingVertical: 12,
+                  paddingHorizontal: 12,
+                  backgroundColor: selectedServiceRequestId ? '#e7f3ff' : '#fff',
+                  borderWidth: selectedServiceRequestId ? 2 : 1,
+                  borderColor: selectedServiceRequestId ? '#007bff' : '#ddd',
+                  borderRadius: 8
                 }}
               >
                 <Text style={{ 
                   fontSize: 14, 
-                  color: selectedServiceRequestId ? '#333' : '#999',
-                  flex: 1
+                  color: selectedServiceRequestId ? '#007bff' : '#999',
+                  flex: 1,
+                  fontWeight: selectedServiceRequestId ? '600' : '400'
                 }}>
                   {selectedServiceRequestId 
                     ? (() => {
                         const selected = activeServiceRequests.find(sr => (sr.id || sr.Id) === selectedServiceRequestId);
-                        return selected ? `${selected.title || selected.Title} (${selected.status || selected.Status})` : 'Select...';
+                        return selected ? `✓ ${selected.title || selected.Title} (${selected.status || selected.Status})` : 'Select...';
                       })()
-                    : 'Select a service request or create new...'}
+                    : 'Tap to select a service request...'}
                 </Text>
-                <Text style={{ fontSize: 18, color: '#666' }}>▼</Text>
+                <Text style={{ fontSize: 18, color: selectedServiceRequestId ? '#007bff' : '#666', marginLeft: 8 }}>▼</Text>
               </TouchableOpacity>
             </View>
             {selectedServiceRequestId && (
-              <TouchableOpacity
-                onPress={() => {
-                  setCurrentView('service-requests');
-                  currentViewRef.current = 'service-requests';
-                }}
-                style={{
-                  marginTop: 8,
-                  padding: 8,
+              <View style={{ marginTop: 8 }}>
+                <View style={{
+                  padding: 10,
                   backgroundColor: '#e7f3ff',
                   borderRadius: 6,
-                  alignItems: 'center'
-                }}
-              >
-                <Text style={{ fontSize: 12, color: '#007bff', fontWeight: '600' }}>
-                  📋 View Service Request Details
-                </Text>
-              </TouchableOpacity>
+                  borderWidth: 1,
+                  borderColor: '#b3d9ff'
+                }}>
+                  {(() => {
+                    const selected = activeServiceRequests.find(sr => (sr.id || sr.Id) === selectedServiceRequestId);
+                    if (!selected) return null;
+                    return (
+                      <View>
+                        <Text style={{ fontSize: 12, color: '#007bff', fontWeight: '600', marginBottom: 4 }}>
+                          ✓ Active Service Request:
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#333', fontWeight: '500', marginBottom: 2 }}>
+                          {selected.title || selected.Title}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                          {(() => {
+                            const status = selected.status || selected.Status || 'Active';
+                            const statusColor = status === 'Active' ? '#28a745' : 
+                                               status === 'Pending' ? '#ffc107' : 
+                                               status === 'Completed' ? '#6c757d' : '#17a2b8';
+                            return (
+                              <View style={{
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 4,
+                                backgroundColor: statusColor,
+                                marginRight: 8
+                              }}>
+                                <Text style={{ fontSize: 10, color: '#fff', fontWeight: '600' }}>
+                                  {status}
+                                </Text>
+                              </View>
+                            );
+                          })()}
+                          <Text style={{ fontSize: 11, color: '#666' }}>
+                            {selected.type || selected.Type || 'General'}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })()}
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setCurrentView('service-requests');
+                    currentViewRef.current = 'service-requests';
+                  }}
+                  style={{
+                    marginTop: 8,
+                    padding: 8,
+                    backgroundColor: '#007bff',
+                    borderRadius: 6,
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: '#fff', fontWeight: '600' }}>
+                    📋 View Full Details
+                  </Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         )}

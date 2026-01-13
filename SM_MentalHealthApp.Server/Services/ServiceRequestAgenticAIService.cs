@@ -17,6 +17,7 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly LlmClient _llmClient;
         private readonly ILogger<ServiceRequestAgenticAIService> _logger;
         private readonly IServiceRequestService _serviceRequestService;
+        private readonly IAppointmentService _appointmentService;
         private readonly IServiceScopeFactory _serviceScopeFactory;
 
         public ServiceRequestAgenticAIService(
@@ -26,6 +27,7 @@ namespace SM_MentalHealthApp.Server.Services
             LlmClient llmClient,
             ILogger<ServiceRequestAgenticAIService> logger,
             IServiceRequestService serviceRequestService,
+            IAppointmentService appointmentService,
             IServiceScopeFactory serviceScopeFactory)
         {
             _profileService = profileService;
@@ -34,6 +36,7 @@ namespace SM_MentalHealthApp.Server.Services
             _llmClient = llmClient;
             _logger = logger;
             _serviceRequestService = serviceRequestService;
+            _appointmentService = appointmentService;
             _serviceScopeFactory = serviceScopeFactory;
         }
 
@@ -541,12 +544,62 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 // Get service request context if available
                 string? serviceRequestContext = null;
+                string? appointmentsContext = null;
                 if (serviceRequestId.HasValue)
                 {
                     var sr = await _serviceRequestService.GetServiceRequestByIdAsync(serviceRequestId.Value);
                     if (sr != null)
                     {
                         serviceRequestContext = $"Service Request: {sr.Title} - {sr.Description}";
+                        
+                        // Get appointments for this service request
+                        var allAppointments = await _appointmentService.GetAppointmentsAsync(patientId: profile.ClientId);
+                        var srAppointments = allAppointments
+                            .Where(a => a.ServiceRequestIds != null && a.ServiceRequestIds.Contains(serviceRequestId.Value))
+                            .OrderBy(a => a.AppointmentDateTime)
+                            .ToList();
+                        
+                        if (srAppointments.Any())
+                        {
+                            var upcomingAppointments = srAppointments
+                                .Where(a => a.AppointmentDateTime >= DateTime.UtcNow && 
+                                       a.Status != AppointmentStatus.Cancelled && 
+                                       a.Status != AppointmentStatus.Completed)
+                                .ToList();
+                            
+                            var pastAppointments = srAppointments
+                                .Where(a => a.AppointmentDateTime < DateTime.UtcNow || 
+                                       a.Status == AppointmentStatus.Completed)
+                                .ToList();
+                            
+                            var appointmentsInfo = new List<string>();
+                            
+                            if (upcomingAppointments.Any())
+                            {
+                                appointmentsInfo.Add($"UPCOMING APPOINTMENTS ({upcomingAppointments.Count}):");
+                                foreach (var apt in upcomingAppointments.Take(3))
+                                {
+                                    var doctorName = apt.DoctorName ?? "Provider";
+                                    var dateTime = apt.AppointmentDateTime.ToString("MM/dd/yyyy HH:mm");
+                                    var status = apt.Status;
+                                    appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status})");
+                                }
+                            }
+                            
+                            if (pastAppointments.Any())
+                            {
+                                appointmentsInfo.Add($"RECENT APPOINTMENTS ({pastAppointments.Count}):");
+                                foreach (var apt in pastAppointments.OrderByDescending(a => a.AppointmentDateTime).Take(2))
+                                {
+                                    var doctorName = apt.DoctorName ?? "Provider";
+                                    var dateTime = apt.AppointmentDateTime.ToString("MM/dd/yyyy HH:mm");
+                                    var status = apt.Status;
+                                    appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status})");
+                                }
+                            }
+                            
+                            appointmentsContext = string.Join("\n", appointmentsInfo);
+                        }
                     }
                 }
 
@@ -584,6 +637,7 @@ CURRENT SITUATION:
 - Client Reaction: {analysis.ClientReaction}
 
 {(!string.IsNullOrEmpty(serviceRequestContext) ? $"SERVICE REQUEST CONTEXT:\n{serviceRequestContext}\n" : "")}
+{(!string.IsNullOrEmpty(appointmentsContext) ? $"APPOINTMENTS FOR THIS SERVICE REQUEST:\n{appointmentsContext}\n\nIMPORTANT: If appointments exist, acknowledge them in your response. Do NOT say you're 'looking for' or 'reaching out to' service providers if appointments are already scheduled. Instead, reference the existing appointments and provide updates based on what's already scheduled.\n" : "")}
 {conversationContext}
 
 PROFILE INTERACTION HISTORY:
@@ -607,6 +661,7 @@ CRITICAL INSTRUCTIONS:
 10. Reference successful past resolutions if relevant (client has {profile.SuccessfulResolutions} successful resolutions)
 11. Balance being helpful with not overwhelming the client
 12. **CRITICAL**: If conversation history is provided above, use it to understand context. For example, if the client says ""Yes please"", ""That sounds good"", ""10-12 AM is good"", or ""thank you, that is all"", refer back to what was discussed in the conversation history and continue from there.
+13. **CRITICAL**: If appointments are listed above, you MUST acknowledge them. Do NOT say you're ""gathering information"" or ""reaching out to shops"" if appointments already exist. Instead, reference the existing appointments (e.g., ""I see you have an appointment scheduled for [date/time] with [provider]""). If the client asks about status, provide information about the scheduled appointments.
 13. **CRITICAL**: Maintain conversation continuity - if the client is responding to a previous question or suggestion, acknowledge that and continue from where you left off. Don't start a new topic.
 14. **CRITICAL**: If the client says ""thank you, that is all I need for now"" or similar closing statements, acknowledge their service request is complete and offer to help if they need anything else with their SERVICE REQUEST. Do NOT mention health or medical topics.
 15. **CRITICAL**: If the client says ""nope"" or ""no"" in response to a question, acknowledge their answer and continue with the service request conversation. Do NOT switch topics or mention medical/health topics.
