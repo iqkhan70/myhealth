@@ -157,19 +157,21 @@ namespace SM_MentalHealthApp.Server.Services
                 
                 // CRITICAL: Respect the client's mode choice FIRST
                 // - If forceServiceRequestMode=false (Medical Chat), NEVER use agentic AI, regardless of session state
-                // - If forceServiceRequestMode=true (Service Request Chat), use agentic AI
+                // - If forceServiceRequestMode=true (Service Request Chat), ALWAYS use agentic AI (it will handle SR-first prompt if needed)
                 bool shouldUseAgenticAI = false;
                 
-                // ONLY consider agentic AI if user explicitly chose Service Request Chat mode
+                // CRITICAL FIX: If user explicitly chose Service Request Chat mode, ALWAYS use agentic AI
+                // The agentic AI service will handle the SR-first prompt if there's no active SR
+                // This prevents falling through to medical chat when user is in Service Request mode
                 if (forceServiceRequestMode && 
-                    (serviceRequestId.HasValue || sessionHasServiceRequest) && 
                     userRoleId == Shared.Constants.Roles.Patient && 
                     patientId == userId && 
                     _agenticAIService != null)
                 {
-                    // User is in Service Request Chat mode - use agentic AI
+                    // User is in Service Request Chat mode - ALWAYS use agentic AI
+                    // Agentic AI will handle SR-first enforcement (prompt for SR if needed)
                     shouldUseAgenticAI = true;
-                    _logger.LogInformation("Using agentic AI: forceServiceRequestMode=true for session {SessionId} with ServiceRequestId={ServiceRequestId}", 
+                    _logger.LogInformation("Using agentic AI: forceServiceRequestMode=true for session {SessionId} with ServiceRequestId={ServiceRequestId}. Agentic AI will handle SR-first enforcement.", 
                         session.Id, session.ServiceRequestId);
                 }
                 else if (!forceServiceRequestMode && (serviceRequestId.HasValue || sessionHasServiceRequest))
