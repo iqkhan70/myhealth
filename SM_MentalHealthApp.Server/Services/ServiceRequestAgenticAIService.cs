@@ -561,13 +561,18 @@ namespace SM_MentalHealthApp.Server.Services
                         
                         if (srAppointments.Any())
                         {
-                            var upcomingAppointments = srAppointments
+                            // Filter out cancelled appointments - they shouldn't be shown to the agentic AI
+                            // Deleted appointments (IsActive=false) are already filtered by GetAppointmentsAsync
+                            var activeAppointments = srAppointments
+                                .Where(a => a.Status != AppointmentStatus.Cancelled)
+                                .ToList();
+                            
+                            var upcomingAppointments = activeAppointments
                                 .Where(a => a.AppointmentDateTime >= DateTime.UtcNow && 
-                                       a.Status != AppointmentStatus.Cancelled && 
                                        a.Status != AppointmentStatus.Completed)
                                 .ToList();
                             
-                            var pastAppointments = srAppointments
+                            var pastAppointments = activeAppointments
                                 .Where(a => a.AppointmentDateTime < DateTime.UtcNow || 
                                        a.Status == AppointmentStatus.Completed)
                                 .ToList();
