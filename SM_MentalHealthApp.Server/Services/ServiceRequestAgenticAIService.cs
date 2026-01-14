@@ -49,7 +49,7 @@ namespace SM_MentalHealthApp.Server.Services
                 // Step 1: Get or create client agent session (SR-first approach)
                 var agentSession = await _agentSessionService.GetOrCreateSessionAsync(clientId);
                 var sessionState = Enum.Parse<ClientAgentSessionState>(agentSession.State);
-                
+
                 // Step 2: Check if user is asking about which SR is active FIRST
                 // This handles cases where user wants to know/confirm the current SR context
                 if (IsAskingAboutSRContext(clientMessage))
@@ -74,12 +74,12 @@ namespace SM_MentalHealthApp.Server.Services
                         return await PromptForSRContextAsync(clientId, clientMessage, agentSession);
                     }
                 }
-                
+
                 // Step 3: Determine active SR context
                 // Priority: 1) Selected SR from UI dropdown (serviceRequestId parameter), 2) Agent session's CurrentServiceRequestId (persistent context)
                 // CRITICAL: If user selected an SR from UI dropdown, use it and set it as active
                 int? activeServiceRequestId = null;
-                
+
                 if (serviceRequestId.HasValue)
                 {
                     // User selected an SR from UI dropdown - use it and set it as active
@@ -137,10 +137,10 @@ namespace SM_MentalHealthApp.Server.Services
                         // CRITICAL SR-FIRST ENFORCEMENT: No SR context - we MUST prompt for SR selection/creation
                         // Check if user is trying to reference/create one, but ALWAYS prompt if no clear intent
                         var srIntent = DetectServiceRequestIntent(clientMessage, clientId);
-                        
-                        _logger.LogInformation("No active SR for client {ClientId}. Intent detection: ReferencedSRId={ReferencedSRId}, RequiresSRSelection={RequiresSRSelection}, RequiresSRCreation={RequiresSRCreation}", 
+
+                        _logger.LogInformation("No active SR for client {ClientId}. Intent detection: ReferencedSRId={ReferencedSRId}, RequiresSRSelection={RequiresSRSelection}, RequiresSRCreation={RequiresSRCreation}",
                             clientId, srIntent.ReferencedSRId, srIntent.RequiresSRSelection, srIntent.RequiresSRCreation);
-                        
+
                         if (srIntent.ReferencedSRId.HasValue)
                         {
                             // User referenced a specific SR - set it as active
@@ -208,7 +208,7 @@ namespace SM_MentalHealthApp.Server.Services
                         // This ensures we have a fresh DbContext that won't be disposed
                         using var scope = _serviceScopeFactory.CreateScope();
                         var profileService = scope.ServiceProvider.GetRequiredService<IClientProfileService>();
-                        
+
                         await LearnFromInteractionAsync(clientId, clientMessage, response, analysis, activeServiceRequestId, profileService);
                     }
                     catch (Exception ex)
@@ -222,7 +222,7 @@ namespace SM_MentalHealthApp.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing service request for client {ClientId}", clientId);
-                
+
                 // Fallback response
                 return new AgenticResponse
                 {
@@ -241,7 +241,7 @@ namespace SM_MentalHealthApp.Server.Services
             {
                 // Analyze sentiment using HuggingFace
                 var (sentimentText, mood) = await _huggingFaceService.AnalyzeEntry(message);
-                
+
                 // Map mood to sentiment enum
                 analysis.Sentiment = mood switch
                 {
@@ -287,19 +287,19 @@ namespace SM_MentalHealthApp.Server.Services
         private Urgency DetectUrgency(string message)
         {
             var lowerMessage = message.ToLowerInvariant();
-            
+
             // Critical urgency indicators
             if (Regex.IsMatch(lowerMessage, @"\b(emergency|urgent|critical|immediately|right now|asap|disaster|flooding|fire|dangerous)\b", RegexOptions.IgnoreCase))
                 return Urgency.Critical;
-            
+
             // High urgency indicators
             if (Regex.IsMatch(lowerMessage, @"\b(important|soon|quickly|broken|not working|stopped|leaking|overflowing)\b", RegexOptions.IgnoreCase))
                 return Urgency.High;
-            
+
             // Low urgency indicators
             if (Regex.IsMatch(lowerMessage, @"\b(whenever|eventually|sometime|no rush|not urgent|minor|small)\b", RegexOptions.IgnoreCase))
                 return Urgency.Low;
-            
+
             return Urgency.Medium;
         }
 
@@ -313,36 +313,36 @@ namespace SM_MentalHealthApp.Server.Services
             // If client asked specific questions, they need more information
             if (hasQuestions && wordCount > 20)
                 return InformationLevel.Detailed;
-            
+
             // If message is very brief, client might be overwhelmed
             if (wordCount < 10)
                 return InformationLevel.Minimal;
-            
+
             // Use profile's information tolerance
             if (profile.InformationTolerance < 0.3m)
                 return InformationLevel.Minimal;
             if (profile.InformationTolerance > 0.7m)
                 return InformationLevel.Detailed;
-            
+
             return InformationLevel.Moderate;
         }
 
         private Sentiment DetectEmotionalState(string message, ClientProfile profile)
         {
             var lowerMessage = message.ToLowerInvariant();
-            
+
             // Panic indicators
             if (Regex.IsMatch(lowerMessage, @"\b(panic|terrified|scared|afraid|worried|anxious|stressed|overwhelmed)\b", RegexOptions.IgnoreCase))
                 return Sentiment.Panic;
-            
+
             // Frustrated indicators
             if (Regex.IsMatch(lowerMessage, @"\b(frustrated|annoyed|angry|mad|upset|irritated|fed up)\b", RegexOptions.IgnoreCase))
                 return Sentiment.Frustrated;
-            
+
             // Positive indicators
             if (Regex.IsMatch(lowerMessage, @"\b(thanks|thank you|appreciate|great|good|happy|pleased)\b", RegexOptions.IgnoreCase))
                 return Sentiment.Positive;
-            
+
             return Sentiment.Neutral;
         }
 
@@ -350,7 +350,7 @@ namespace SM_MentalHealthApp.Server.Services
         {
             var concerns = new List<string>();
             var lowerMessage = message.ToLowerInvariant();
-            
+
             // Common service request concerns
             var concernPatterns = new Dictionary<string, string>
             {
@@ -361,7 +361,7 @@ namespace SM_MentalHealthApp.Server.Services
                 { @"\b(quality|good|bad|satisfied)\b", "Quality Concern" },
                 { @"\b(safety|safe|dangerous|hazard)\b", "Safety Concern" }
             };
-            
+
             foreach (var pattern in concernPatterns)
             {
                 if (Regex.IsMatch(lowerMessage, pattern.Key, RegexOptions.IgnoreCase))
@@ -369,7 +369,7 @@ namespace SM_MentalHealthApp.Server.Services
                     concerns.Add(pattern.Value);
                 }
             }
-            
+
             return concerns.Distinct().ToList();
         }
 
@@ -377,9 +377,9 @@ namespace SM_MentalHealthApp.Server.Services
         {
             var keywordScores = new Dictionary<string, double>();
             var keywords = await _profileService.GetKeywordReactionsAsync(profile.ClientId);
-            
+
             var lowerMessage = message.ToLowerInvariant();
-            
+
             foreach (var keyword in keywords)
             {
                 if (lowerMessage.Contains(keyword.Keyword))
@@ -389,7 +389,7 @@ namespace SM_MentalHealthApp.Server.Services
                     keywordScores[keyword.Keyword] = normalizedScore;
                 }
             }
-            
+
             return keywordScores;
         }
 
@@ -398,15 +398,15 @@ namespace SM_MentalHealthApp.Server.Services
             // If sentiment is very negative, likely frustrated
             if (analysis.Sentiment == Sentiment.Frustrated || analysis.Sentiment == Sentiment.Panic)
                 return ClientReaction.Frustrated;
-            
+
             // If information need is high but message is brief, might be confused
             if (analysis.InformationNeed == InformationLevel.Detailed && message.Length < 50)
                 return ClientReaction.Confused;
-            
+
             // If sentiment is positive, likely satisfied
             if (analysis.Sentiment == Sentiment.Positive)
                 return ClientReaction.Satisfied;
-            
+
             return ClientReaction.Neutral;
         }
 
@@ -437,11 +437,11 @@ namespace SM_MentalHealthApp.Server.Services
             // If client is in panic, use supportive tone
             if (analysis.EmotionalState == Sentiment.Panic || analysis.Urgency == Urgency.Critical)
                 return PreferredTone.Supportive;
-            
+
             // If client prefers professional tone and not in distress
             if (profile.PreferredTone == "Professional" && analysis.Sentiment != Sentiment.Negative)
                 return PreferredTone.Professional;
-            
+
             // Default to supportive
             return PreferredTone.Supportive;
         }
@@ -451,17 +451,17 @@ namespace SM_MentalHealthApp.Server.Services
             // If client is overwhelmed (high emotional sensitivity + negative sentiment), reduce info
             if (profile.EmotionalSensitivity > 0.7m && analysis.Sentiment == Sentiment.Negative)
                 return InformationLevel.Minimal;
-            
+
             // If client asked detailed questions, provide detailed info
             if (analysis.InformationNeed == InformationLevel.Detailed)
                 return InformationLevel.Detailed;
-            
+
             // Use profile's information tolerance
             if (profile.InformationTolerance < 0.4m)
                 return InformationLevel.Minimal;
             if (profile.InformationTolerance > 0.6m)
                 return InformationLevel.Detailed;
-            
+
             return InformationLevel.Moderate;
         }
 
@@ -470,65 +470,65 @@ namespace SM_MentalHealthApp.Server.Services
             // If urgent and panicked, reassure first
             if (analysis.Urgency == Urgency.Critical && analysis.EmotionalState == Sentiment.Panic)
                 return "Reassuring";
-            
+
             // If client is frustrated, be problem-solving
             if (analysis.Sentiment == Sentiment.Frustrated)
                 return "Problem-Solving";
-            
+
             // If client asked questions, be educational
             if (analysis.InformationNeed == InformationLevel.Detailed)
                 return "Educational";
-            
+
             return "Supportive";
         }
 
         private async Task<List<string>> GenerateSuggestedActionsAsync(MessageAnalysis analysis, ClientProfile profile, int? serviceRequestId)
         {
             var actions = new List<string>();
-            
+
             // If urgent, suggest immediate actions
             if (analysis.Urgency == Urgency.Critical)
             {
                 actions.Add("Assess immediate safety");
                 actions.Add("Contact emergency services if needed");
             }
-            
+
             // If service request exists, suggest checking status
             if (serviceRequestId.HasValue)
             {
                 actions.Add("Review service request details");
             }
-            
+
             // Based on concerns
             if (analysis.Concerns.Contains("Cost Concern"))
             {
                 actions.Add("Discuss pricing options");
             }
-            
+
             if (analysis.Concerns.Contains("Timing Concern"))
             {
                 actions.Add("Provide timeline estimate");
             }
-            
+
             return actions;
         }
 
         private decimal CalculateConfidence(MessageAnalysis analysis, ClientProfile profile)
         {
             decimal confidence = 0.5m;
-            
+
             // More interactions = higher confidence
             if (profile.TotalInteractions > 10)
                 confidence += 0.2m;
-            
+
             // Clear sentiment = higher confidence
             if (analysis.Sentiment != Sentiment.Neutral)
                 confidence += 0.1m;
-            
+
             // Clear urgency = higher confidence
             if (analysis.Urgency != Urgency.Medium)
                 confidence += 0.1m;
-            
+
             return Math.Min(1.0m, confidence);
         }
 
@@ -551,34 +551,35 @@ namespace SM_MentalHealthApp.Server.Services
                     if (sr != null)
                     {
                         serviceRequestContext = $"Service Request: {sr.Title} - {sr.Description}";
-                        
+
                         // Get appointments for this service request
                         var allAppointments = await _appointmentService.GetAppointmentsAsync(patientId: profile.ClientId);
                         var srAppointments = allAppointments
                             .Where(a => a.ServiceRequestIds != null && a.ServiceRequestIds.Contains(serviceRequestId.Value))
                             .OrderBy(a => a.AppointmentDateTime)
                             .ToList();
-                        
-                        if (srAppointments.Any())
+
+                        // Filter out cancelled and deleted appointments - they shouldn't be shown to the agentic AI
+                        // Deleted appointments (IsActive=false) are already filtered by GetAppointmentsAsync
+                        var activeAppointments = srAppointments
+                            .Where(a => a.Status != AppointmentStatus.Cancelled)
+                            .ToList();
+
+                        // Only build appointments context if there are active (non-cancelled) appointments
+                        if (activeAppointments.Any())
                         {
-                            // Filter out cancelled appointments - they shouldn't be shown to the agentic AI
-                            // Deleted appointments (IsActive=false) are already filtered by GetAppointmentsAsync
-                            var activeAppointments = srAppointments
-                                .Where(a => a.Status != AppointmentStatus.Cancelled)
-                                .ToList();
-                            
                             var upcomingAppointments = activeAppointments
-                                .Where(a => a.AppointmentDateTime >= DateTime.UtcNow && 
+                                .Where(a => a.AppointmentDateTime >= DateTime.UtcNow &&
                                        a.Status != AppointmentStatus.Completed)
                                 .ToList();
-                            
+
                             var pastAppointments = activeAppointments
-                                .Where(a => a.AppointmentDateTime < DateTime.UtcNow || 
+                                .Where(a => a.AppointmentDateTime < DateTime.UtcNow ||
                                        a.Status == AppointmentStatus.Completed)
                                 .ToList();
-                            
+
                             var appointmentsInfo = new List<string>();
-                            
+
                             if (upcomingAppointments.Any())
                             {
                                 appointmentsInfo.Add($"UPCOMING APPOINTMENTS ({upcomingAppointments.Count}):");
@@ -590,7 +591,7 @@ namespace SM_MentalHealthApp.Server.Services
                                     appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status})");
                                 }
                             }
-                            
+
                             if (pastAppointments.Any())
                             {
                                 appointmentsInfo.Add($"RECENT APPOINTMENTS ({pastAppointments.Count}):");
@@ -602,15 +603,19 @@ namespace SM_MentalHealthApp.Server.Services
                                     appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status})");
                                 }
                             }
-                            
-                            appointmentsContext = string.Join("\n", appointmentsInfo);
+
+                            // Only set appointmentsContext if there are actual appointments to show
+                            if (appointmentsInfo.Any())
+                            {
+                                appointmentsContext = string.Join("\n", appointmentsInfo);
+                            }
                         }
                     }
                 }
 
                 // Get recent interaction history for context (from profile)
                 var recentHistory = await _profileService.GetRecentInteractionHistoryAsync(profile.ClientId, 5);
-                var profileHistoryContext = recentHistory.Any() 
+                var profileHistoryContext = recentHistory.Any()
                     ? $"Recent interactions show: {string.Join(", ", recentHistory.Take(3).Select(h => h.ClientReaction ?? "Neutral"))}"
                     : "This is a new interaction";
 
@@ -642,7 +647,7 @@ CURRENT SITUATION:
 - Client Reaction: {analysis.ClientReaction}
 
 {(!string.IsNullOrEmpty(serviceRequestContext) ? $"SERVICE REQUEST CONTEXT:\n{serviceRequestContext}\n" : "")}
-{(!string.IsNullOrEmpty(appointmentsContext) ? $"APPOINTMENTS FOR THIS SERVICE REQUEST:\n{appointmentsContext}\n\nIMPORTANT: If appointments exist, acknowledge them in your response. Do NOT say you're 'looking for' or 'reaching out to' service providers if appointments are already scheduled. Instead, reference the existing appointments and provide updates based on what's already scheduled.\n" : "")}
+{(!string.IsNullOrEmpty(appointmentsContext) ? $"APPOINTMENTS FOR THIS SERVICE REQUEST:\n{appointmentsContext}\n\nIMPORTANT: The appointments listed above are the ONLY appointments for this service request. Acknowledge them in your response if relevant. Do NOT say you're 'looking for' or 'reaching out to' service providers if appointments are already scheduled. Instead, reference the existing appointments and provide updates based on what's already scheduled.\n" : "IMPORTANT: There are NO appointments scheduled for this service request. Do NOT mention or reference any appointments. Do NOT say things like 'your appointment is scheduled' or 'I see you have an appointment'. There are no appointments.\n")}
 {conversationContext}
 
 PROFILE INTERACTION HISTORY:
@@ -666,7 +671,7 @@ CRITICAL INSTRUCTIONS:
 10. Reference successful past resolutions if relevant (client has {profile.SuccessfulResolutions} successful resolutions)
 11. Balance being helpful with not overwhelming the client
 12. **CRITICAL**: If conversation history is provided above, use it to understand context. For example, if the client says ""Yes please"", ""That sounds good"", ""10-12 AM is good"", or ""thank you, that is all"", refer back to what was discussed in the conversation history and continue from there.
-13. **CRITICAL**: If appointments are listed above, you MUST acknowledge them. Do NOT say you're ""gathering information"" or ""reaching out to shops"" if appointments already exist. Instead, reference the existing appointments (e.g., ""I see you have an appointment scheduled for [date/time] with [provider]""). If the client asks about status, provide information about the scheduled appointments.
+13. **CRITICAL**: ONLY mention appointments if they are explicitly listed in the ""APPOINTMENTS FOR THIS SERVICE REQUEST"" section above. If that section says ""IMPORTANT: There are NO appointments scheduled"", then DO NOT mention appointments at all. If appointments ARE listed, acknowledge them and do NOT say you're ""gathering information"" or ""reaching out to shops"". Never make up or assume appointment information that isn't explicitly provided above.
 13. **CRITICAL**: Maintain conversation continuity - if the client is responding to a previous question or suggestion, acknowledge that and continue from where you left off. Don't start a new topic.
 14. **CRITICAL**: If the client says ""thank you, that is all I need for now"" or similar closing statements, acknowledge their service request is complete and offer to help if they need anything else with their SERVICE REQUEST. Do NOT mention health or medical topics.
 15. **CRITICAL**: If the client says ""nope"" or ""no"" in response to a question, acknowledge their answer and continue with the service request conversation. Do NOT switch topics or mention medical/health topics.
@@ -682,7 +687,7 @@ Generate a helpful, personalized response that makes the client feel supported a
                 };
 
                 var llmResponse = await _llmClient.GenerateTextAsync(llmRequest);
-                
+
                 return new AgenticResponse
                 {
                     Message = llmResponse.Text.Trim(),
@@ -695,7 +700,7 @@ Generate a helpful, personalized response that makes the client feel supported a
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error generating adaptive response");
-                
+
                 // Fallback response
                 return new AgenticResponse
                 {
@@ -749,7 +754,7 @@ Generate a helpful, personalized response that makes the client feel supported a
                 var keywords = ExtractKeywords(clientMessage);
                 foreach (var keyword in keywords)
                 {
-                    var scoreDelta = analysis.Sentiment == Sentiment.Positive ? 1 : 
+                    var scoreDelta = analysis.Sentiment == Sentiment.Positive ? 1 :
                                    (analysis.Sentiment == Sentiment.Negative ? -1 : 0);
                     await profileService.AddOrUpdateKeywordReactionAsync(clientId, keyword, scoreDelta);
                 }
@@ -788,7 +793,7 @@ Generate a helpful, personalized response that makes the client feel supported a
 
             // Common service-related keywords
             var serviceKeywords = new[] { "plumbing", "leak", "repair", "broken", "fix", "service", "issue", "problem", "help", "urgent", "emergency" };
-            
+
             foreach (var word in words)
             {
                 if (serviceKeywords.Contains(word) || word.Length > 5)
@@ -806,7 +811,7 @@ Generate a helpful, personalized response that makes the client feel supported a
         private (bool RequiresSRSelection, bool RequiresSRCreation, int? ReferencedSRId) DetectServiceRequestIntent(string message, int clientId)
         {
             var lowerMessage = message.ToLowerInvariant();
-            
+
             // Check for SR number references (e.g., "SR-123", "request 123", "#123")
             var srNumberMatch = Regex.Match(lowerMessage, @"(?:sr-?|request|#)\s*(\d+)", RegexOptions.IgnoreCase);
             if (srNumberMatch.Success && int.TryParse(srNumberMatch.Groups[1].Value, out int srId))
@@ -834,14 +839,14 @@ Generate a helpful, personalized response that makes the client feel supported a
 
             // Check for service-related keywords that indicate a new issue (car, plumbing, repair, etc.)
             // These suggest the user is reporting a new problem that needs an SR
-            var serviceKeywords = new[] { 
-                "issue", "problem", "broken", "not working", "leaking", "repair", "fix", 
+            var serviceKeywords = new[] {
+                "issue", "problem", "broken", "not working", "leaking", "repair", "fix",
                 "car", "vehicle", "plumbing", "faucet", "sink", "toilet", "heater", "ac", "air conditioning",
                 "appliance", "refrigerator", "washer", "dryer", "dishwasher", "oven", "stove",
                 "electrical", "wiring", "outlet", "light", "brake", "engine", "transmission",
                 "legal", "attorney", "lawyer", "lawsuit", "accident", "injury"
             };
-            
+
             if (serviceKeywords.Any(keyword => lowerMessage.Contains(keyword)))
             {
                 // This looks like a service request - but we'll let PromptForSRContextAsync handle it
@@ -881,7 +886,7 @@ Generate a helpful, personalized response that makes the client feel supported a
             await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.SelectingExistingSR);
 
             // Build SR list for user
-            var srList = string.Join("\n", activeSRs.Select((sr, idx) => 
+            var srList = string.Join("\n", activeSRs.Select((sr, idx) =>
                 $"{idx + 1}. {sr.Title} (Status: {sr.Status}, Created: {sr.CreatedAt:MM/dd/yyyy})"));
 
             return new AgenticResponse
@@ -903,7 +908,7 @@ Generate a helpful, personalized response that makes the client feel supported a
                 // Confirm the created SR
                 await _agentSessionService.ConfirmCreatedServiceRequestAsync(clientId, agentSession.PendingCreatedServiceRequestId.Value);
                 var sr = await _serviceRequestService.GetServiceRequestByIdAsync(agentSession.PendingCreatedServiceRequestId.Value);
-                
+
                 return new AgenticResponse
                 {
                     Message = $"Great! I've created Service Request #{sr?.Id}: \"{sr?.Title}\". We're now working under this request. How can I help you with it?",
@@ -932,10 +937,10 @@ Generate a helpful, personalized response that makes the client feel supported a
                     };
 
                     var createdSR = await _serviceRequestService.CreateServiceRequestAsync(createRequest, clientId);
-                    
+
                     // Set as pending for confirmation
                     await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.CreatingNewSR, createdSR.Id);
-                    
+
                     return new AgenticResponse
                     {
                         Message = $"I've created Service Request #{createdSR.Id}: \"{createdSR.Title}\". We're now working under this request. How can I help you with it?",
@@ -957,7 +962,7 @@ Generate a helpful, personalized response that makes the client feel supported a
 
             // Need more info
             await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.CreatingNewSR);
-            
+
             return new AgenticResponse
             {
                 Message = "I'd be happy to create a new service request for you! What would you like the title to be? For example: \"Plumbing leak in kitchen\" or \"Car repair needed\".",
@@ -983,10 +988,10 @@ Generate a helpful, personalized response that makes the client feel supported a
             {
                 // Client has existing SRs - ask if this is about one of them or a new one
                 await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.SelectingExistingSR);
-                
-                var srList = string.Join("\n", activeSRs.Select((sr, idx) => 
+
+                var srList = string.Join("\n", activeSRs.Select((sr, idx) =>
                     $"{idx + 1}. {sr.Title}"));
-                
+
                 return new AgenticResponse
                 {
                     Message = $"I'd like to help you! Is this about one of your existing service requests, or is this a new issue?\n\nYour active requests:\n{srList}\n\nYou can:\n- Tell me the number or title of an existing request\n- Say \"new\" to create a new service request",
@@ -998,7 +1003,7 @@ Generate a helpful, personalized response that makes the client feel supported a
             {
                 // No existing SRs - suggest creating one
                 await _agentSessionService.UpdateSessionStateAsync(clientId, ClientAgentSessionState.CreatingNewSR);
-                
+
                 return new AgenticResponse
                 {
                     Message = "I'd be happy to help you! To get started, I need to create a service request for you. What would you like the title to be? For example: \"Plumbing leak in kitchen\" or \"Car repair needed\".",
@@ -1112,7 +1117,7 @@ Generate a helpful, personalized response that makes the client feel supported a
         private bool IsAskingAboutSRContext(string message)
         {
             var lowerMessage = message.ToLowerInvariant();
-            
+
             // Patterns that indicate user is asking about SR context
             var contextPatterns = new[]
             {
@@ -1126,7 +1131,7 @@ Generate a helpful, personalized response that makes the client feel supported a
                 @"\bwhich\s+issue",
                 @"\bwhat\s+issue"
             };
-            
+
             foreach (var pattern in contextPatterns)
             {
                 if (Regex.IsMatch(lowerMessage, pattern, RegexOptions.IgnoreCase))
@@ -1134,7 +1139,7 @@ Generate a helpful, personalized response that makes the client feel supported a
                     return true;
                 }
             }
-            
+
             return false;
         }
 
@@ -1144,7 +1149,7 @@ Generate a helpful, personalized response that makes the client feel supported a
         private string? ExtractSRType(string message)
         {
             var lowerMessage = message.ToLowerInvariant();
-            
+
             var typePatterns = new Dictionary<string, string>
             {
                 { @"\b(plumb|pipe|water|leak|faucet|sink|toilet|drain)\b", "Plumbing" },
