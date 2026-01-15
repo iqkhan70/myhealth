@@ -194,11 +194,29 @@ namespace SM_MentalHealthApp.Server.Services
                 // Step 6: Analyze client message
                 var analysis = await AnalyzeClientMessageAsync(clientMessage, profile);
 
+                // Step 6.5: Detect confirmations and update metadata (expert system optimization)
+                var confirmation = DetectConfirmation(clientMessage, conversationHistory);
+                if (confirmation != null)
+                {
+                    var metadataJson = JsonSerializer.Serialize(new
+                    {
+                        appointmentConfirmed = confirmation.AppointmentConfirmed,
+                        timeWindow = confirmation.TimeWindow,
+                        lastConfirmedAt = confirmation.LastConfirmedAt
+                    });
+                    await _agentSessionService.UpdateMetadataAsync(clientId, metadataJson);
+                    _logger.LogInformation("Detected confirmation for client {ClientId}: {Metadata}", clientId, metadataJson);
+                }
+
+                // Get current metadata for token optimization
+                var currentMetadata = agentSession.Metadata;
+                var hasConfirmation = !string.IsNullOrEmpty(currentMetadata);
+
                 // Step 7: Determine response strategy
                 var strategy = await DetermineResponseStrategyAsync(analysis, profile, activeServiceRequestId);
 
-                // Step 8: Generate adaptive response
-                var response = await GenerateAdaptiveResponseAsync(clientMessage, analysis, strategy, profile, activeServiceRequestId, conversationHistory);
+                // Step 8: Generate adaptive response (with metadata for token optimization)
+                var response = await GenerateAdaptiveResponseAsync(clientMessage, analysis, strategy, profile, activeServiceRequestId, conversationHistory, hasConfirmation, currentMetadata);
 
                 // Step 9: Learn from interaction (async, don't block)
                 // CRITICAL: Create a new scope for background task to avoid DbContext disposal issues
@@ -540,7 +558,9 @@ namespace SM_MentalHealthApp.Server.Services
             ResponseStrategy strategy,
             ClientProfile profile,
             int? serviceRequestId,
-            string? conversationHistory = null)
+            string? conversationHistory = null,
+            bool hasConfirmation = false,
+            string? metadata = null)
         {
             try
             {
@@ -669,6 +689,18 @@ RESPONSE STRATEGY:
 - Information Level: {strategy.InformationLevel} (Minimal=brief/essential only, Moderate=balanced, Detailed=comprehensive)
 - Approach: {strategy.Approach} (Reassuring=calm/comfort, Problem-Solving=action-oriented, Educational=informative)
 
+{(hasConfirmation ? $@"EXPERT SYSTEM OPTIMIZATION - CONFIRMATION DETECTED:
+The client has already confirmed information. Metadata: {metadata}
+
+**TOKEN OPTIMIZATION RULES (CRITICAL FOR COST REDUCTION):**
+- Give SHORT, CONCISE answers (1-2 sentences max)
+- DO NOT re-explain already confirmed information
+- DO NOT restate old appointments or previously discussed details
+- DO NOT ask questions that have already been answered
+- Simply acknowledge and move forward
+- Example: Instead of ""Great! I've scheduled your appointment for tomorrow between 10 AM and 12 PM as you confirmed. You'll receive a reminder..."", just say ""Perfect! I've scheduled it for tomorrow 10-12 AM.""
+
+" : "")}
 CRITICAL INSTRUCTIONS:
 1. **ABSOLUTELY DO NOT mention health, medical topics, patients, medical care, or ask about health concerns. This is a SERVICE REQUEST conversation only.**
 2. Respond in a {strategy.Tone} tone that matches the client's emotional state
@@ -682,6 +714,7 @@ CRITICAL INSTRUCTIONS:
 10. Reference successful past resolutions if relevant (client has {profile.SuccessfulResolutions} successful resolutions)
 11. Balance being helpful with not overwhelming the client
 12. **CRITICAL**: If conversation history is provided above, use it to understand context. For example, if the client says ""Yes please"", ""That sounds good"", ""10-12 AM is good"", or ""thank you, that is all"", refer back to what was discussed in the conversation history and continue from there.
+{(hasConfirmation ? "13. **TOKEN OPTIMIZATION**: Since confirmations already exist, keep your response SHORT and avoid repeating information." : "")}
 13. **CRITICAL**: ONLY mention appointments if they are explicitly listed in the ""APPOINTMENTS FOR THIS SERVICE REQUEST"" section above. If that section says ""IMPORTANT: There are NO appointments scheduled"", then DO NOT mention appointments at all. If appointments ARE listed:
     - For appointments marked as ""PAST"" or ""COMPLETED"", you MUST clearly indicate they are outdated/already occurred (e.g., ""You had an appointment on [date] which has already passed"").
     - For ""UPCOMING"" appointments, you can reference them normally.
@@ -698,7 +731,8 @@ Generate a helpful, personalized response that makes the client feel supported a
                     prompt: prompt,
                     strategy: strategy,
                     analysis: analysis,
-                    maxRetries: 3
+                    maxRetries: 3,
+                    hasConfirmation: hasConfirmation
                 );
 
                 return structuredResponse;
@@ -725,7 +759,8 @@ Generate a helpful, personalized response that makes the client feel supported a
             string prompt,
             ResponseStrategy strategy,
             MessageAnalysis analysis,
-            int maxRetries = 3)
+            int maxRetries = 3,
+            bool hasConfirmation = false)
         {
             // JSON schema for the expected response
             var jsonSchema = @"{
@@ -762,12 +797,17 @@ Do NOT include any text before or after the JSON. Do NOT use markdown code block
                 {
                     _logger.LogInformation("Generating structured JSON response (attempt {Attempt}/{MaxRetries})", attempt, maxRetries);
 
+                    // Token optimization: Use fewer tokens when confirmations exist (expert system optimization)
+                    var maxTokens = hasConfirmation 
+                        ? (attempt == 1 ? 150 : 200)  // Short answers when confirmed
+                        : (attempt == 1 ? 300 : 400); // Normal length otherwise
+
                     var llmRequest = new LlmRequest
                     {
                         Prompt = enhancedPrompt,
                         Instructions = "You are a helpful AI assistant. You MUST respond with valid JSON only, no other text.",
                         Temperature = 0.7,
-                        MaxTokens = attempt == 1 ? 300 : 400, // Increase tokens on retry
+                        MaxTokens = maxTokens,
                         Provider = AiProvider.OpenAI,
                         ForceJsonMode = true // Enable OpenAI JSON mode
                     };
@@ -1202,6 +1242,81 @@ Return ONLY the raw JSON object, nothing else.";
                     SuggestedActions = new List<string> { "Provide service request title" }
                 };
             }
+        }
+
+        /// <summary>
+        /// Detects confirmations in the client message and extracts structured data.
+        /// Returns confirmation metadata if detected, null otherwise.
+        /// </summary>
+        private ConfirmationMetadata? DetectConfirmation(string clientMessage, string? conversationHistory)
+        {
+            var message = clientMessage.ToLowerInvariant().Trim();
+            var history = conversationHistory?.ToLowerInvariant() ?? "";
+
+            // Combine message and history for context
+            var fullContext = $"{history} {message}";
+
+            // Check for confirmation patterns
+            var confirmationPatterns = new[]
+            {
+                @"\b(yes|yeah|yep|yup|sure|ok|okay|confirmed|confirm|agreed|sounds good|that works|perfect|great)\b",
+                @"\b(10|11|12|1|2|3|4|5|6|7|8|9)\s*(am|pm|AM|PM)\s*(to|-|until)\s*(10|11|12|1|2|3|4|5|6|7|8|9)\s*(am|pm|AM|PM)\b",
+                @"\b(morning|afternoon|evening)\s*(works|is good|sounds good|fine)\b",
+                @"\b(tomorrow|today|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s*(works|is good|sounds good|fine)\b"
+            };
+
+            bool hasConfirmation = false;
+            string? timeWindow = null;
+
+            // Check for time window patterns
+            var timeWindowPattern = @"\b((?:10|11|12|1|2|3|4|5|6|7|8|9)\s*(?:am|pm|AM|PM)\s*(?:to|-|until)\s*(?:10|11|12|1|2|3|4|5|6|7|8|9)\s*(?:am|pm|AM|PM))\b";
+            var timeMatch = Regex.Match(fullContext, timeWindowPattern, RegexOptions.IgnoreCase);
+            if (timeMatch.Success)
+            {
+                timeWindow = timeMatch.Groups[1].Value.Trim();
+                hasConfirmation = true;
+            }
+
+            // Check for date + time patterns
+            var dateTimePattern = @"\b(\d{1,2}/\d{1,2}/\d{2,4})\s+((?:10|11|12|1|2|3|4|5|6|7|8|9)\s*(?:am|pm|AM|PM)\s*(?:to|-|until)?\s*(?:10|11|12|1|2|3|4|5|6|7|8|9)?\s*(?:am|pm|AM|PM)?)\b";
+            var dateTimeMatch = Regex.Match(fullContext, dateTimePattern, RegexOptions.IgnoreCase);
+            if (dateTimeMatch.Success)
+            {
+                timeWindow = $"{dateTimeMatch.Groups[1].Value} {dateTimeMatch.Groups[2].Value}".Trim();
+                hasConfirmation = true;
+            }
+
+            // Check for confirmation words
+            foreach (var pattern in confirmationPatterns)
+            {
+                if (Regex.IsMatch(fullContext, pattern, RegexOptions.IgnoreCase))
+                {
+                    hasConfirmation = true;
+                    break;
+                }
+            }
+
+            if (hasConfirmation)
+            {
+                return new ConfirmationMetadata
+                {
+                    AppointmentConfirmed = true,
+                    TimeWindow = timeWindow,
+                    LastConfirmedAt = DateTime.UtcNow
+                };
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Structured confirmation metadata
+        /// </summary>
+        private class ConfirmationMetadata
+        {
+            public bool AppointmentConfirmed { get; set; }
+            public string? TimeWindow { get; set; }
+            public DateTime LastConfirmedAt { get; set; }
         }
 
         /// <summary>

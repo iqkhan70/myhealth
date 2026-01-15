@@ -34,6 +34,13 @@ namespace SM_MentalHealthApp.Shared
         /// </summary>
         public int? PendingCreatedServiceRequestId { get; set; }
 
+        /// <summary>
+        /// Structured JSON metadata for confirmations and conversation context.
+        /// Stores expert system data like: {"appointmentConfirmed": true, "timeWindow": "2026-01-16 10:00-12:00", "lastConfirmedAt": "2026-01-15T10:30:00Z"}
+        /// This enables: detect confirmations, avoid re-asking, optimize token costs with short answers
+        /// </summary>
+        public string? Metadata { get; set; }
+
         public DateTime LastUpdatedUtc { get; set; } = DateTime.UtcNow;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
