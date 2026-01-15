@@ -160,9 +160,6 @@ public static class DependencyInjection
         // HTTP Context Accessor (needed for AuthService to get base URL from request)
         services.AddHttpContextAccessor();
 
-        // HTTP Context Accessor (needed for AuthService to get base URL from request)
-        services.AddHttpContextAccessor();
-
         // Interface-based Services
         services.AddScoped<IAuthService, AuthService>(sp =>
             new AuthService(
