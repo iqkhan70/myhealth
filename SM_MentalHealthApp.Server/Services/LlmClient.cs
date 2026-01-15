@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -21,6 +22,7 @@ namespace SM_MentalHealthApp.Server.Services
         public int MaxTokens { get; set; }
         public string PreviousResponseId { get; set; }
         public AiProvider Provider { get; set; } = AiProvider.OpenAI;
+        public bool ForceJsonMode { get; set; } = false; // When true, forces JSON response format
     }
 
     public class LlmResponse
@@ -111,19 +113,27 @@ namespace SM_MentalHealthApp.Server.Services
                 throw new InvalidOperationException("OpenAI API key is not configured. Please add a valid OpenAI API key to use this provider.");
             }
 
-            var openAiRequest = new
+            // Build request object
+            var openAiRequestObj = new Dictionary<string, object>
             {
-                model = request.Model ?? "gpt-4o-mini",
-                messages = new[]
-                {
-                    new { role = "system", content = request.Instructions ?? "You are a helpful AI assistant." },
-                    new { role = "user", content = request.Prompt }
+                { "model", request.Model ?? "gpt-4o-mini" },
+                { "messages", new[]
+                    {
+                        new { role = "system", content = request.Instructions ?? "You are a helpful AI assistant." },
+                        new { role = "user", content = request.Prompt }
+                    }
                 },
-                temperature = request.Temperature,
-                max_tokens = request.MaxTokens
+                { "temperature", request.Temperature },
+                { "max_tokens", request.MaxTokens }
             };
 
-            var json = JsonSerializer.Serialize(openAiRequest);
+            // Add JSON mode if requested (OpenAI feature for structured outputs)
+            if (request.ForceJsonMode)
+            {
+                openAiRequestObj["response_format"] = new { type = "json_object" };
+            }
+
+            var json = JsonSerializer.Serialize(openAiRequestObj);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync($"{_openAiBaseUrl}/chat/completions", content);

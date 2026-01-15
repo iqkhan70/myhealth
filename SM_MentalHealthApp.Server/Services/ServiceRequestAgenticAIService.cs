@@ -1,6 +1,8 @@
 using SM_MentalHealthApp.Shared;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -579,28 +581,37 @@ namespace SM_MentalHealthApp.Server.Services
                                 .ToList();
 
                             var appointmentsInfo = new List<string>();
+                            var currentDateTime = DateTime.UtcNow;
 
                             if (upcomingAppointments.Any())
                             {
-                                appointmentsInfo.Add($"UPCOMING APPOINTMENTS ({upcomingAppointments.Count}):");
+                                appointmentsInfo.Add($"UPCOMING APPOINTMENTS ({upcomingAppointments.Count}) - These are scheduled for the future:");
                                 foreach (var apt in upcomingAppointments.Take(3))
                                 {
                                     var doctorName = apt.DoctorName ?? "Provider";
                                     var dateTime = apt.AppointmentDateTime.ToString("MM/dd/yyyy HH:mm");
                                     var status = apt.Status;
-                                    appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status})");
+                                    var daysUntil = (apt.AppointmentDateTime - currentDateTime).Days;
+                                    var timeUntil = apt.AppointmentDateTime > currentDateTime 
+                                        ? $"({daysUntil} day{(daysUntil != 1 ? "s" : "")} from now)" 
+                                        : "";
+                                    appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status}) {timeUntil}");
                                 }
                             }
 
                             if (pastAppointments.Any())
                             {
-                                appointmentsInfo.Add($"RECENT APPOINTMENTS ({pastAppointments.Count}):");
+                                appointmentsInfo.Add($"PAST/COMPLETED APPOINTMENTS ({pastAppointments.Count}) - These are outdated and already occurred:");
                                 foreach (var apt in pastAppointments.OrderByDescending(a => a.AppointmentDateTime).Take(2))
                                 {
                                     var doctorName = apt.DoctorName ?? "Provider";
                                     var dateTime = apt.AppointmentDateTime.ToString("MM/dd/yyyy HH:mm");
                                     var status = apt.Status;
-                                    appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status})");
+                                    var daysAgo = (currentDateTime - apt.AppointmentDateTime).Days;
+                                    var timeAgo = apt.AppointmentDateTime < currentDateTime 
+                                        ? $"(PAST - {daysAgo} day{(daysAgo != 1 ? "s" : "")} ago)" 
+                                        : "";
+                                    appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status}) {timeAgo}");
                                 }
                             }
 
@@ -647,7 +658,7 @@ CURRENT SITUATION:
 - Client Reaction: {analysis.ClientReaction}
 
 {(!string.IsNullOrEmpty(serviceRequestContext) ? $"SERVICE REQUEST CONTEXT:\n{serviceRequestContext}\n" : "")}
-{(!string.IsNullOrEmpty(appointmentsContext) ? $"APPOINTMENTS FOR THIS SERVICE REQUEST:\n{appointmentsContext}\n\nIMPORTANT: The appointments listed above are the ONLY appointments for this service request. Acknowledge them in your response if relevant. Do NOT say you're 'looking for' or 'reaching out to' service providers if appointments are already scheduled. Instead, reference the existing appointments and provide updates based on what's already scheduled.\n" : "IMPORTANT: There are NO appointments scheduled for this service request. Do NOT mention or reference any appointments. Do NOT say things like 'your appointment is scheduled' or 'I see you have an appointment'. There are no appointments.\n")}
+{(!string.IsNullOrEmpty(appointmentsContext) ? $"APPOINTMENTS FOR THIS SERVICE REQUEST:\n{appointmentsContext}\n\nIMPORTANT APPOINTMENT INSTRUCTIONS:\n- The appointments listed above are the ONLY appointments for this service request.\n- If an appointment is marked as 'PAST' or 'COMPLETED', you MUST clearly indicate in your response that it is outdated/already occurred. For example: 'You had an appointment on [date] (which has already passed)' or 'Your previous appointment on [date] has already occurred'.\n- For UPCOMING appointments, you can reference them normally (e.g., 'You have an appointment scheduled for [date]').\n- Do NOT say you're 'looking for' or 'reaching out to' service providers if appointments are already scheduled.\n- When mentioning past appointments, always clarify they are outdated/have already occurred.\n" : "IMPORTANT: There are NO appointments scheduled for this service request. Do NOT mention or reference any appointments. Do NOT say things like 'your appointment is scheduled' or 'I see you have an appointment'. There are no appointments.\n")}
 {conversationContext}
 
 PROFILE INTERACTION HISTORY:
@@ -671,31 +682,26 @@ CRITICAL INSTRUCTIONS:
 10. Reference successful past resolutions if relevant (client has {profile.SuccessfulResolutions} successful resolutions)
 11. Balance being helpful with not overwhelming the client
 12. **CRITICAL**: If conversation history is provided above, use it to understand context. For example, if the client says ""Yes please"", ""That sounds good"", ""10-12 AM is good"", or ""thank you, that is all"", refer back to what was discussed in the conversation history and continue from there.
-13. **CRITICAL**: ONLY mention appointments if they are explicitly listed in the ""APPOINTMENTS FOR THIS SERVICE REQUEST"" section above. If that section says ""IMPORTANT: There are NO appointments scheduled"", then DO NOT mention appointments at all. If appointments ARE listed, acknowledge them and do NOT say you're ""gathering information"" or ""reaching out to shops"". Never make up or assume appointment information that isn't explicitly provided above.
+13. **CRITICAL**: ONLY mention appointments if they are explicitly listed in the ""APPOINTMENTS FOR THIS SERVICE REQUEST"" section above. If that section says ""IMPORTANT: There are NO appointments scheduled"", then DO NOT mention appointments at all. If appointments ARE listed:
+    - For appointments marked as ""PAST"" or ""COMPLETED"", you MUST clearly indicate they are outdated/already occurred (e.g., ""You had an appointment on [date] which has already passed"").
+    - For ""UPCOMING"" appointments, you can reference them normally.
+    - Do NOT say you're ""gathering information"" or ""reaching out to shops"" if appointments are already scheduled.
+    - Never make up or assume appointment information that isn't explicitly provided above.
 13. **CRITICAL**: Maintain conversation continuity - if the client is responding to a previous question or suggestion, acknowledge that and continue from where you left off. Don't start a new topic.
 14. **CRITICAL**: If the client says ""thank you, that is all I need for now"" or similar closing statements, acknowledge their service request is complete and offer to help if they need anything else with their SERVICE REQUEST. Do NOT mention health or medical topics.
 15. **CRITICAL**: If the client says ""nope"" or ""no"" in response to a question, acknowledge their answer and continue with the service request conversation. Do NOT switch topics or mention medical/health topics.
 
 Generate a helpful, personalized response that makes the client feel supported and guides them appropriately. Remember: This is ONLY about service requests, NOT medical or health topics:";
 
-                var llmRequest = new LlmRequest
-                {
-                    Prompt = prompt,
-                    Temperature = 0.7, // Creative but consistent
-                    MaxTokens = 300,
-                    Provider = AiProvider.OpenAI
-                };
+                // Use structured JSON generation with validation and retry
+                var structuredResponse = await GenerateStructuredJsonResponseAsync(
+                    prompt: prompt,
+                    strategy: strategy,
+                    analysis: analysis,
+                    maxRetries: 3
+                );
 
-                var llmResponse = await _llmClient.GenerateTextAsync(llmRequest);
-
-                return new AgenticResponse
-                {
-                    Message = llmResponse.Text.Trim(),
-                    SuggestedActions = strategy.SuggestedActions,
-                    Confidence = strategy.Confidence,
-                    Analysis = analysis,
-                    Strategy = strategy
-                };
+                return structuredResponse;
             }
             catch (Exception ex)
             {
@@ -709,6 +715,191 @@ Generate a helpful, personalized response that makes the client feel supported a
                     SuggestedActions = new List<string> { "Provide more details" }
                 };
             }
+        }
+
+        /// <summary>
+        /// Generates a structured JSON response with validation and retry logic.
+        /// This ensures we always get valid, parseable JSON from the LLM.
+        /// </summary>
+        private async Task<AgenticResponse> GenerateStructuredJsonResponseAsync(
+            string prompt,
+            ResponseStrategy strategy,
+            MessageAnalysis analysis,
+            int maxRetries = 3)
+        {
+            // JSON schema for the expected response
+            var jsonSchema = @"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""message"": {
+      ""type"": ""string"",
+      ""description"": ""The main response message to the client""
+    },
+    ""confidence"": {
+      ""type"": ""number"",
+      ""minimum"": 0,
+      ""maximum"": 1,
+      ""description"": ""Confidence score between 0 and 1""
+    }
+  },
+  ""required"": [""message"", ""confidence""]
+}";
+
+            // Enhanced prompt with JSON format instructions
+            var enhancedPrompt = $@"{prompt}
+
+CRITICAL: You MUST respond with valid JSON only, in this exact format:
+{{
+  ""message"": ""Your response message here"",
+  ""confidence"": 0.85
+}}
+
+Do NOT include any text before or after the JSON. Do NOT use markdown code blocks. Return ONLY the raw JSON object.";
+
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    _logger.LogInformation("Generating structured JSON response (attempt {Attempt}/{MaxRetries})", attempt, maxRetries);
+
+                    var llmRequest = new LlmRequest
+                    {
+                        Prompt = enhancedPrompt,
+                        Instructions = "You are a helpful AI assistant. You MUST respond with valid JSON only, no other text.",
+                        Temperature = 0.7,
+                        MaxTokens = attempt == 1 ? 300 : 400, // Increase tokens on retry
+                        Provider = AiProvider.OpenAI,
+                        ForceJsonMode = true // Enable OpenAI JSON mode
+                    };
+
+                    var llmResponse = await _llmClient.GenerateTextAsync(llmRequest);
+                    var responseText = llmResponse.Text.Trim();
+
+                    // Clean up the response - remove markdown code blocks if present
+                    responseText = CleanJsonResponse(responseText);
+
+                    // Try to parse as JSON
+                    AgenticResponse? parsedResponse = null;
+                    try
+                    {
+                        var jsonDoc = JsonDocument.Parse(responseText);
+                        var root = jsonDoc.RootElement;
+
+                        // Validate required fields
+                        if (!root.TryGetProperty("message", out var messageElement) || 
+                            messageElement.ValueKind != JsonValueKind.String ||
+                            string.IsNullOrWhiteSpace(messageElement.GetString()))
+                        {
+                            throw new JsonException("Missing or invalid 'message' field");
+                        }
+
+                        var message = messageElement.GetString() ?? string.Empty;
+
+                        // Confidence is optional but should be validated if present
+                        decimal confidence = strategy.Confidence; // Default to strategy confidence
+                        if (root.TryGetProperty("confidence", out var confidenceElement))
+                        {
+                            if (confidenceElement.ValueKind == JsonValueKind.Number)
+                            {
+                                var confValue = confidenceElement.GetDecimal();
+                                if (confValue < 0 || confValue > 1)
+                                {
+                                    _logger.LogWarning("Confidence value {Confidence} out of range, using strategy confidence", confValue);
+                                }
+                                else
+                                {
+                                    confidence = confValue;
+                                }
+                            }
+                        }
+
+                        parsedResponse = new AgenticResponse
+                        {
+                            Message = message,
+                            Confidence = confidence,
+                            SuggestedActions = strategy.SuggestedActions,
+                            Analysis = analysis,
+                            Strategy = strategy
+                        };
+
+                        _logger.LogInformation("Successfully parsed structured JSON response on attempt {Attempt}", attempt);
+                        return parsedResponse;
+                    }
+                    catch (JsonException jsonEx)
+                    {
+                        _logger.LogWarning(jsonEx, "Failed to parse JSON on attempt {Attempt}: {Response}", attempt, responseText.Substring(0, Math.Min(200, responseText.Length)));
+
+                        if (attempt == maxRetries)
+                        {
+                            // Last attempt failed - use fallback
+                            _logger.LogError("All {MaxRetries} attempts failed to get valid JSON. Using fallback response.", maxRetries);
+                            break;
+                        }
+
+                        // Retry with more explicit instructions
+                        enhancedPrompt = $@"{prompt}
+
+CRITICAL: You MUST respond with valid JSON only. Previous attempt failed validation.
+The JSON must be in this exact format (no markdown, no code blocks, no extra text):
+{{
+  ""message"": ""Your response message here"",
+  ""confidence"": 0.85
+}}
+
+Return ONLY the raw JSON object, nothing else.";
+                        continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error generating structured JSON response on attempt {Attempt}", attempt);
+
+                    if (attempt == maxRetries)
+                    {
+                        // Last attempt - use fallback
+                        break;
+                    }
+
+                    // Wait a bit before retrying (exponential backoff)
+                    await Task.Delay(attempt * 200);
+                }
+            }
+
+            // Fallback response if all retries failed
+            _logger.LogWarning("Using fallback response after {MaxRetries} failed attempts", maxRetries);
+            return new AgenticResponse
+            {
+                Message = "I understand you need help with your service request. Let me assist you. Could you provide a bit more detail about what you're experiencing?",
+                Confidence = strategy.Confidence,
+                SuggestedActions = strategy.SuggestedActions,
+                Analysis = analysis,
+                Strategy = strategy
+            };
+        }
+
+        /// <summary>
+        /// Cleans JSON response by removing markdown code blocks and extra whitespace
+        /// </summary>
+        private string CleanJsonResponse(string response)
+        {
+            if (string.IsNullOrWhiteSpace(response))
+                return "{}";
+
+            // Remove markdown code blocks (```json ... ``` or ``` ... ```)
+            response = Regex.Replace(response, @"^```(?:json)?\s*\n?", "", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+            response = Regex.Replace(response, @"\n?```\s*$", "", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
+            // Find JSON object boundaries
+            var jsonStart = response.IndexOf('{');
+            var jsonEnd = response.LastIndexOf('}');
+
+            if (jsonStart >= 0 && jsonEnd > jsonStart)
+            {
+                // Extract just the JSON object
+                response = response.Substring(jsonStart, jsonEnd - jsonStart + 1);
+            }
+
+            return response.Trim();
         }
 
         private async Task LearnFromInteractionAsync(
