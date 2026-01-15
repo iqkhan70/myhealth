@@ -162,18 +162,37 @@ CREATE TABLE IF NOT EXISTS `SmeInvoiceLines` (
 -- Step 4: Initialize existing billable assignments
 -- ============================================================================
 
+-- Check if IsBillable column exists before using it
+-- The column is created by AddAssignmentLifecycleAndSmeScoring.sql (Step 8.7)
+-- If column doesn't exist, these UPDATE statements will be skipped gracefully
+
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'ServiceRequestAssignments' 
+    AND COLUMN_NAME = 'IsBillable');
+
 -- Set BillingStatus = 'Ready' for assignments that are billable but not yet invoiced
-UPDATE `ServiceRequestAssignments`
-SET `BillingStatus` = 'Ready'
-WHERE `IsBillable` = 1
-    AND (`Status` = 'InProgress' OR `Status` = 'Completed')
-    AND (`BillingStatus` IS NULL OR `BillingStatus` = 'NotBillable' OR `BillingStatus` = '');
+SET @sql = IF(@col_exists > 0,
+    'UPDATE `ServiceRequestAssignments`
+     SET `BillingStatus` = ''Ready''
+     WHERE `IsBillable` = 1
+         AND (`Status` = ''InProgress'' OR `Status` = ''Completed'')
+         AND (`BillingStatus` IS NULL OR `BillingStatus` = ''NotBillable'' OR `BillingStatus` = '''');',
+    'SELECT "IsBillable column does not exist - skipping Ready status update. Please run AddAssignmentLifecycleAndSmeScoring.sql first." AS message;');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- Set BillingStatus = 'NotBillable' for assignments that are not billable
-UPDATE `ServiceRequestAssignments`
-SET `BillingStatus` = 'NotBillable'
-WHERE `IsBillable` = 0
-    AND (`BillingStatus` IS NULL OR `BillingStatus` = '');
+SET @sql = IF(@col_exists > 0,
+    'UPDATE `ServiceRequestAssignments`
+     SET `BillingStatus` = ''NotBillable''
+     WHERE `IsBillable` = 0
+         AND (`BillingStatus` IS NULL OR `BillingStatus` = '''');',
+    'SELECT "IsBillable column does not exist - skipping NotBillable status update. Please run AddAssignmentLifecycleAndSmeScoring.sql first." AS message;');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- ============================================================================
 -- Step 5: Verification queries

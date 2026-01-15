@@ -21,7 +21,14 @@
             <SMPageHeader Title="Service Requests" Icon="fas fa-tasks">
             </SMPageHeader>
 
-            @if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) // Doctor, Attorney, or SME
+            @if (AuthService.CurrentUser?.RoleId == 1) // Patient
+            {
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>My Service Requests:</strong> Below are your service requests. You can create new requests, view status, and track progress.
+                </div>
+            }
+            else if (AuthService.CurrentUser?.RoleId == 2 || AuthService.CurrentUser?.RoleId == 5 || AuthService.CurrentUser?.RoleId == 6) // Doctor, Attorney, or SME
             {
                 <div class="alert alert-info">
                     <i class="fas fa-info-circle"></i>
@@ -313,10 +320,16 @@
             // Decode URL-encoded filter from Radzen
             var decodedFilter = args.Filter != null ? System.Net.WebUtility.UrlDecode(args.Filter) : null;
             
+            // For patients (RoleId == 1), automatically filter to show only their own service requests
+            string? odataFilter = null;
+            if (AuthService.CurrentUser?.RoleId == 1 && AuthService.CurrentUser?.Id > 0)
+            {
+                odataFilter = $"ClientId eq {AuthService.CurrentUser.Id}";
+            }
+            
             // Handle ClientName and AssignedSmeNames filters (DTO-only properties, need special handling)
             var hasClientName = !string.IsNullOrEmpty(decodedFilter) && decodedFilter.Contains("ClientName", StringComparison.OrdinalIgnoreCase);
             var hasAssignedSmeNames = !string.IsNullOrEmpty(decodedFilter) && decodedFilter.Contains("AssignedSmeNames", StringComparison.OrdinalIgnoreCase);
-            string? odataFilter = null;
             
             if (hasClientName)
             {

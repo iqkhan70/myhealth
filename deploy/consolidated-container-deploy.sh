@@ -587,11 +587,11 @@ HUGGINGFACE_MEDITRON_MODEL_URL=$HUGGINGFACE_MEDITRON_MODEL_URL
 OPENAI_API_KEY=$OPENAI_API_KEY
 
 # Email - Mailgun API (recommended for production)
-EMAIL_PROVIDER=$EMAIL_PROVIDER
-EMAIL_MAILGUN_API_KEY=$EMAIL_MAILGUN_API_KEY
-EMAIL_MAILGUN_DOMAIN=$EMAIL_MAILGUN_DOMAIN
-EMAIL_FROMEMAIL=$EMAIL_FROMEMAIL
-EMAIL_FROMNAME=$EMAIL_FROMNAME
+EMAIL_PROVIDER=\"$EMAIL_PROVIDER\"
+EMAIL_MAILGUN_API_KEY=\"$EMAIL_MAILGUN_API_KEY\"
+EMAIL_MAILGUN_DOMAIN=\"$EMAIL_MAILGUN_DOMAIN\"
+EMAIL_FROMEMAIL=\"$EMAIL_FROMEMAIL\"
+EMAIL_FROMNAME=\"$EMAIL_FROMNAME\"
 EMAIL_ENABLED=true
 # SMTP fallback (optional, for local dev)
 EMAIL_SMTPHOST=\${EMAIL_SMTPHOST:-}
@@ -764,8 +764,28 @@ ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" <
     grep "^WEB_IMAGE=" .env || echo "⚠️  WEB_IMAGE not found in .env"
     
     # Export .env variables to current shell
+    # Use a safer method to load .env file that handles unquoted values with spaces
     set -a
-    source .env
+    # Read .env file line by line and export variables, skipping comments and empty lines
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${line// }" ]] && continue
+        # Export the variable (handles both quoted and unquoted values)
+        if [[ "$line" =~ ^[[:space:]]*([^=]+)=(.*)$ ]]; then
+            var_name="${BASH_REMATCH[1]}"
+            var_value="${BASH_REMATCH[2]}"
+            # Remove leading/trailing whitespace
+            var_name="${var_name// /}"
+            var_value="${var_value# }"
+            # Remove quotes if present
+            var_value="${var_value#\"}"
+            var_value="${var_value%\"}"
+            var_value="${var_value#\'}"
+            var_value="${var_value%\'}"
+            export "$var_name=$var_value"
+        fi
+    done < .env
     set +a
     
     echo "API_IMAGE value: $API_IMAGE"
@@ -1421,27 +1441,41 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestMigration
                 MYSQL_PWD_TO_USE="UthmanBasima70"
             fi
             
-            # Apply migration SQL
+            # Apply migration SQL - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/service_request_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/service_request_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/service_request_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/service_request_migration.sql
+            
+            # Apply migration
             if [ -z "$MYSQL_PWD_TO_USE" ]; then
-                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    if docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ ServiceRequest migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ ServiceRequest migration failed"
+                        echo "❌ ServiceRequest migration failed with errors:"
+                        echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ ServiceRequest migration applied successfully"
+                fi
             else
-                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    if docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_migration.sql 2>&1 | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ ServiceRequest migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ ServiceRequest migration failed"
+                        echo "❌ ServiceRequest migration failed with errors:"
+                        echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ ServiceRequest migration applied successfully"
+                fi
             fi
             
             echo "✅ ServiceRequest migration applied successfully"
@@ -1503,31 +1537,41 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddExpertiseSystem.sql" ];
             else
                 echo "Applying Expertise System migration SQL..."
                 
-                # Apply migration SQL
+                # Apply migration SQL - first replace hardcoded database name if present
+                sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/expertise_system_migration.sql
+                sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/expertise_system_migration.sql
+                sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/expertise_system_migration.sql
+                sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/expertise_system_migration.sql
+                
+                # Apply migration
                 if [ -z "$MYSQL_PWD_TO_USE" ]; then
-                    docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 | grep -v "Warning" || {
-                        # Check if errors are just "already exists" - that's OK for idempotent script
-                        ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 || true)
-                        if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                    ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 || true)
+                    ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                    if [ -n "$ERROR_ONLY" ]; then
+                        if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                             echo "✅ Expertise System migration completed (some items already exist - this is expected)"
                         else
-                            echo "❌ Expertise System migration failed"
+                            echo "❌ Expertise System migration failed with errors:"
                             echo "$ERROR_OUTPUT"
                             exit 1
                         fi
-                    }
+                    else
+                        echo "✅ Expertise System migration applied successfully"
+                    fi
                 else
-                    docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 | grep -v "Warning" || {
-                        # Check if errors are just "already exists" - that's OK for idempotent script
-                        ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 || true)
-                        if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                    ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/expertise_system_migration.sql 2>&1 || true)
+                    ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                    if [ -n "$ERROR_ONLY" ]; then
+                        if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                             echo "✅ Expertise System migration completed (some items already exist - this is expected)"
                         else
-                            echo "❌ Expertise System migration failed"
+                            echo "❌ Expertise System migration failed with errors:"
                             echo "$ERROR_OUTPUT"
                             exit 1
                         fi
-                    }
+                    else
+                        echo "✅ Expertise System migration applied successfully"
+                    fi
                 fi
                 
                 echo "✅ Expertise System migration applied successfully"
@@ -1581,31 +1625,41 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddAssignmentLifecycleAndS
                 MYSQL_PWD_TO_USE="UthmanBasima70"
             fi
             
+            # Apply migration - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/assignment_lifecycle_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/assignment_lifecycle_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/assignment_lifecycle_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/assignment_lifecycle_migration.sql
+            
             # Apply migration
             if [ -z "$MYSQL_PWD_TO_USE" ]; then
-                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/assignment_lifecycle_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/assignment_lifecycle_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/assignment_lifecycle_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Assignment Lifecycle migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Assignment Lifecycle migration failed"
+                        echo "❌ Assignment Lifecycle migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Assignment Lifecycle migration applied successfully"
+                fi
             else
-                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/assignment_lifecycle_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/assignment_lifecycle_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/assignment_lifecycle_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Assignment Lifecycle migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Assignment Lifecycle migration failed"
+                        echo "❌ Assignment Lifecycle migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Assignment Lifecycle migration applied successfully"
+                fi
             fi
             
             echo "✅ Assignment Lifecycle migration applied successfully"
@@ -1658,31 +1712,41 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddBillingStatusAndInvoici
                 MYSQL_PWD_TO_USE="UthmanBasima70"
             fi
             
+            # Apply migration - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/billing_status_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/billing_status_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/billing_status_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/billing_status_migration.sql
+            
             # Apply migration
             if [ -z "$MYSQL_PWD_TO_USE" ]; then
-                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_status_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_status_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_status_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Billing Status migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Billing Status migration failed"
+                        echo "❌ Billing Status migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Billing Status migration applied successfully"
+                fi
             else
-                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_status_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_status_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_status_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Billing Status migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Billing Status migration failed"
+                        echo "❌ Billing Status migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Billing Status migration applied successfully"
+                fi
             fi
             
             echo "✅ Billing Status migration applied successfully"
@@ -1735,31 +1799,41 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddServiceRequestChargesAn
                 MYSQL_PWD_TO_USE="UthmanBasima70"
             fi
             
+            # Apply migration - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/service_request_charges_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/service_request_charges_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/service_request_charges_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/service_request_charges_migration.sql
+            
             # Apply migration
             if [ -z "$MYSQL_PWD_TO_USE" ]; then
-                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Service Request Charges migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Service Request Charges migration failed"
+                        echo "❌ Service Request Charges migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Service Request Charges migration applied successfully"
+                fi
             else
-                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/service_request_charges_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Service Request Charges migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Service Request Charges migration failed"
+                        echo "❌ Service Request Charges migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Service Request Charges migration applied successfully"
+                fi
             fi
             
             echo "✅ Service Request Charges migration applied successfully"
@@ -1814,31 +1888,41 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddSmeRole.sql" ]; then
                 MYSQL_PWD_TO_USE="UthmanBasima70"
             fi
             
-            # Apply migration SQL
+            # Apply migration SQL - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/sme_role_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/sme_role_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/sme_role_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/sme_role_migration.sql
+            
+            # Apply migration
             if [ -z "$MYSQL_PWD_TO_USE" ]; then
-                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/sme_role_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/sme_role_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/sme_role_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ SME role migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ SME role migration failed"
+                        echo "❌ SME role migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ SME role migration applied successfully"
+                fi
             else
-                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/sme_role_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/sme_role_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/sme_role_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ SME role migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ SME role migration failed"
+                        echo "❌ SME role migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ SME role migration applied successfully"
+                fi
             fi
             
             echo "✅ SME role migration applied successfully"
@@ -1893,31 +1977,41 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddCompaniesTable.sql" ]; 
                 MYSQL_PWD_TO_USE="UthmanBasima70"
             fi
             
+            # Apply migration - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/companies_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/companies_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/companies_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/companies_migration.sql
+            
             # Apply migration
             if [ -z "$MYSQL_PWD_TO_USE" ]; then
-                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Companies table migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Companies table migration failed"
+                        echo "❌ Companies table migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Companies table migration applied successfully"
+                fi
             else
-                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/companies_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Companies table migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Companies table migration failed"
+                        echo "❌ Companies table migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Companies table migration applied successfully"
+                fi
             fi
             
             echo "✅ Companies table migration applied successfully"
@@ -1976,31 +2070,41 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddBillingAccountsAndRates
                 MYSQL_PWD_TO_USE="UthmanBasima70"
             fi
             
+            # Apply migration - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/billing_accounts_rates_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/billing_accounts_rates_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/billing_accounts_rates_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/billing_accounts_rates_migration.sql
+            
             # Apply migration
             if [ -z "$MYSQL_PWD_TO_USE" ]; then
-                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_accounts_rates_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_accounts_rates_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_accounts_rates_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Billing Accounts and Rates migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Billing Accounts and Rates migration failed"
+                        echo "❌ Billing Accounts and Rates migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Billing Accounts and Rates migration applied successfully"
+                fi
             else
-                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_accounts_rates_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_accounts_rates_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/billing_accounts_rates_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Billing Accounts and Rates migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Billing Accounts and Rates migration failed"
+                        echo "❌ Billing Accounts and Rates migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Billing Accounts and Rates migration applied successfully"
+                fi
             fi
         else
             echo "Managed DB mode - skipping local migration (run manually on managed DB)"
@@ -2053,31 +2157,41 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddPasswordResetFields.sql
                 MYSQL_PWD_TO_USE="UthmanBasima70"
             fi
             
+            # Apply migration - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/password_reset_fields_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/password_reset_fields_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/password_reset_fields_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/password_reset_fields_migration.sql
+            
             # Apply migration
             if [ -z "$MYSQL_PWD_TO_USE" ]; then
-                docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/password_reset_fields_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/password_reset_fields_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/password_reset_fields_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Password Reset Fields migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Password Reset Fields migration failed"
+                        echo "❌ Password Reset Fields migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Password Reset Fields migration applied successfully"
+                fi
             else
-                docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/password_reset_fields_migration.sql 2>&1 | grep -v "Warning" || {
-                    # Check if errors are just "already exists" - that's OK for idempotent script
-                    ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/password_reset_fields_migration.sql 2>&1 || true)
-                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate"; then
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/password_reset_fields_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
                         echo "✅ Password Reset Fields migration completed (some items already exist - this is expected)"
                     else
-                        echo "❌ Password Reset Fields migration failed"
+                        echo "❌ Password Reset Fields migration failed with errors:"
                         echo "$ERROR_OUTPUT"
                         exit 1
                     fi
-                }
+                else
+                    echo "✅ Password Reset Fields migration applied successfully"
+                fi
             fi
             
             echo "✅ Password Reset Fields migration applied successfully"
@@ -2092,6 +2206,284 @@ ENDSSH
     echo -e "${GREEN}✅ Password Reset Fields migration completed${NC}"
 else
     echo -e "${YELLOW}⚠️  Password Reset Fields migration script not found, skipping...${NC}"
+fi
+
+echo ""
+
+# ============================================================================
+# Step 8.14: Run Client Profile System Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.14: Running Client Profile System Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddClientProfileSystem.sql" ]; then
+    echo "Copying Client Profile System migration script to server..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddClientProfileSystem.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/client_profile_system_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Client Profile System migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using .env password"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "Using fallback password"
+                MYSQL_PWD_TO_USE="UthmanBasima70"
+            fi
+            
+            # Apply migration - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/client_profile_system_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/client_profile_system_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/client_profile_system_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/client_profile_system_migration.sql
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/client_profile_system_migration.sql 2>&1 || true)
+                # Filter out warnings but keep errors
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
+                        echo "✅ Client Profile System migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Client Profile System migration failed with errors:"
+                        echo "$ERROR_OUTPUT"
+                        exit 1
+                    fi
+                else
+                    echo "✅ Client Profile System migration applied successfully"
+                fi
+            else
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/client_profile_system_migration.sql 2>&1 || true)
+                # Filter out warnings but keep errors
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
+                        echo "✅ Client Profile System migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Client Profile System migration failed with errors:"
+                        echo "$ERROR_OUTPUT"
+                        exit 1
+                    fi
+                else
+                    echo "✅ Client Profile System migration applied successfully"
+                fi
+            fi
+            
+            echo "✅ Client Profile System migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Client Profile System migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/client_profile_system_migration.sql"
+        fi
+        
+        rm -f /tmp/client_profile_system_migration.sql
+ENDSSH
+    
+    echo -e "${GREEN}✅ Client Profile System migration completed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Client Profile System migration script not found, skipping...${NC}"
+fi
+
+echo ""
+
+# ============================================================================
+# Step 8.15: Run Client Agent Session Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.15: Running Client Agent Session Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddClientAgentSession.sql" ]; then
+    echo "Copying Client Agent Session migration script to server..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddClientAgentSession.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/client_agent_session_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Client Agent Session migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using .env password"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "Using fallback password"
+                MYSQL_PWD_TO_USE="UthmanBasima70"
+            fi
+            
+            # Apply migration - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/client_agent_session_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/client_agent_session_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/client_agent_session_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/client_agent_session_migration.sql
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/client_agent_session_migration.sql 2>&1 || true)
+                # Filter out warnings but keep errors
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
+                        echo "✅ Client Agent Session migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Client Agent Session migration failed with errors:"
+                        echo "$ERROR_OUTPUT"
+                        exit 1
+                    fi
+                else
+                    echo "✅ Client Agent Session migration applied successfully"
+                fi
+            else
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/client_agent_session_migration.sql 2>&1 || true)
+                # Filter out warnings but keep errors
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
+                        echo "✅ Client Agent Session migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Client Agent Session migration failed with errors:"
+                        echo "$ERROR_OUTPUT"
+                        exit 1
+                    fi
+                else
+                    echo "✅ Client Agent Session migration applied successfully"
+                fi
+            fi
+            
+            echo "✅ Client Agent Session migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Client Agent Session migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/client_agent_session_migration.sql"
+        fi
+        
+        rm -f /tmp/client_agent_session_migration.sql
+ENDSSH
+    
+    echo -e "${GREEN}✅ Client Agent Session migration completed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Client Agent Session migration script not found, skipping...${NC}"
+fi
+
+# ============================================================================
+# Step 8.16: Run Appointment-ServiceRequest Junction Table Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.16: Running Appointment-ServiceRequest Junction Table Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddAppointmentServiceRequestsJunction.sql" ]; then
+    echo "Copying Appointment-ServiceRequest junction table migration script to server..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddAppointmentServiceRequestsJunction.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/appointment_sr_junction_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying Appointment-ServiceRequest junction table migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using .env password"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "Using fallback password"
+                MYSQL_PWD_TO_USE="UthmanBasima70"
+            fi
+            
+            # Apply migration - first replace hardcoded database name if present
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" /tmp/appointment_sr_junction_migration.sql
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" /tmp/appointment_sr_junction_migration.sql
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" /tmp/appointment_sr_junction_migration.sql
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" /tmp/appointment_sr_junction_migration.sql
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/appointment_sr_junction_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
+                        echo "✅ Appointment-ServiceRequest junction table migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Appointment-ServiceRequest junction table migration failed with errors:"
+                        echo "$ERROR_OUTPUT"
+                        exit 1
+                    fi
+                else
+                    echo "✅ Appointment-ServiceRequest junction table migration applied successfully"
+                fi
+            else
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < /tmp/appointment_sr_junction_migration.sql 2>&1 || true)
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
+                        echo "✅ Appointment-ServiceRequest junction table migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ Appointment-ServiceRequest junction table migration failed with errors:"
+                        echo "$ERROR_OUTPUT"
+                        exit 1
+                    fi
+                else
+                    echo "✅ Appointment-ServiceRequest junction table migration applied successfully"
+                fi
+            fi
+            
+            echo "✅ Appointment-ServiceRequest junction table migration applied successfully"
+        else
+            echo "⚠️  For managed DB, Appointment-ServiceRequest junction table migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/appointment_sr_junction_migration.sql"
+        fi
+        
+        rm -f /tmp/appointment_sr_junction_migration.sql
+ENDSSH
+    
+    echo -e "${GREEN}✅ Appointment-ServiceRequest junction table migration completed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Appointment-ServiceRequest junction table migration script not found, skipping...${NC}"
 fi
 
 echo ""

@@ -29,7 +29,9 @@ namespace SM_MentalHealthApp.Server.Controllers
                     request.PatientId,
                     request.UserId,
                     request.UserRoleId,
-                    request.IsGenericMode);
+                    request.IsGenericMode,
+                    request.ForceServiceRequestMode,
+                    request.SelectedServiceRequestId);
 
                 return Ok(response);
             }
@@ -90,5 +92,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         public int UserId { get; set; } = 0;
         public int UserRoleId { get; set; } = 0;
         public bool IsGenericMode { get; set; } = false;
+        public bool ForceServiceRequestMode { get; set; } = false; // Explicitly use agentic AI for service requests
+        public int? SelectedServiceRequestId { get; set; } = null; // SR selected from UI dropdown
     }
 }

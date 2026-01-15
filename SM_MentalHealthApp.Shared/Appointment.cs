@@ -46,7 +46,15 @@ namespace SM_MentalHealthApp.Shared
         [JsonIgnore]
         public User CreatedByUser { get; set; } = null!;
         [JsonIgnore]
-        public ServiceRequest? ServiceRequest { get; set; } // Navigation to service request
+        public ServiceRequest? ServiceRequest { get; set; } // Navigation to service request (backward compatibility - single SR)
+        
+        // Many-to-many relationship: Appointment can be linked to multiple Service Requests
+        [JsonIgnore]
+        public ICollection<AppointmentServiceRequest> AppointmentServiceRequests { get; set; } = new List<AppointmentServiceRequest>();
+        
+        // Helper property to get ServiceRequest IDs (for easier access)
+        [JsonIgnore]
+        public IEnumerable<int> ServiceRequestIds => AppointmentServiceRequests.Select(ar => ar.ServiceRequestId);
 
         // Computed properties
         public DateTime EndDateTime => AppointmentDateTime.Add(Duration);
@@ -98,6 +106,7 @@ namespace SM_MentalHealthApp.Shared
         public string? Reason { get; set; }
         public string? Notes { get; set; }
         public string TimeZoneId { get; set; } = "UTC"; // Timezone for the appointment
+        public List<int>? ServiceRequestIds { get; set; } // Multiple Service Requests to link to this appointment
     }
 
     public class UpdateAppointmentRequest
@@ -110,6 +119,7 @@ namespace SM_MentalHealthApp.Shared
         public string? Reason { get; set; }
         public string? Notes { get; set; }
         public string? TimeZoneId { get; set; }
+        public List<int>? ServiceRequestIds { get; set; } // Multiple Service Requests to link to this appointment
     }
 
     public class AppointmentDto
@@ -133,7 +143,8 @@ namespace SM_MentalHealthApp.Shared
         public string TimeZoneId { get; set; } = "UTC";
         public string CreatedBy { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
-        public int? ServiceRequestId { get; set; }
+        public int? ServiceRequestId { get; set; } // Backward compatibility - single SR
+        public List<int> ServiceRequestIds { get; set; } = new List<int>(); // Multiple SRs
     }
 
     public class DoctorAvailabilityRequest
