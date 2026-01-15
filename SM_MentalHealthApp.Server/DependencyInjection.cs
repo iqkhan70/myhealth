@@ -228,7 +228,7 @@ public static class DependencyInjection
         services.AddScoped<ConversationRepository>();
         services.AddScoped<LlmClient>();
         services.AddScoped<IChainedAIService, ChainedAIService>();
-        
+
         // Client Profile System for Agentic AI
         services.AddScoped<IClientProfileService, ClientProfileService>();
         services.AddScoped<IClientAgentSessionService, ClientAgentSessionService>();
