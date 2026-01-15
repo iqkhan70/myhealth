@@ -160,9 +160,6 @@ public static class DependencyInjection
         // HTTP Context Accessor (needed for AuthService to get base URL from request)
         services.AddHttpContextAccessor();
 
-        // HTTP Context Accessor (needed for AuthService to get base URL from request)
-        services.AddHttpContextAccessor();
-
         // Interface-based Services
         services.AddScoped<IAuthService, AuthService>(sp =>
             new AuthService(
@@ -231,7 +228,7 @@ public static class DependencyInjection
         services.AddScoped<ConversationRepository>();
         services.AddScoped<LlmClient>();
         services.AddScoped<IChainedAIService, ChainedAIService>();
-        
+
         // Client Profile System for Agentic AI
         services.AddScoped<IClientProfileService, ClientProfileService>();
         services.AddScoped<IClientAgentSessionService, ClientAgentSessionService>();
