@@ -255,6 +255,16 @@ export default function App() {
     loadServiceRequestsIfNeeded();
   }, [currentView, aiChatMode, user]);
 
+  // Auto-scroll AI chat when loading indicator appears
+  useEffect(() => {
+    if (aiChatLoading && aiChatScrollViewRef.current) {
+      // Small delay to ensure the loading indicator is rendered
+      setTimeout(() => {
+        aiChatScrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 150);
+    }
+  }, [aiChatLoading]);
+
   useEffect(() => {
     if (user && user.id && !userInitializedRef.current) {
       userInitializedRef.current = true;
@@ -922,6 +932,8 @@ export default function App() {
   const selectedContactRef = useRef(null);
   const currentViewRef = useRef('login');
   const userRef = useRef(null); // Ref to track current user for SignalR callbacks
+  const aiChatInputRef = useRef(null); // Ref for AI chat TextInput
+  const aiChatScrollViewRef = useRef(null); // Ref for AI chat ScrollView
   
   const loadContactsForUser = useCallback(async (userData, token) => {
     const callId = Math.random().toString(36).substring(7);
@@ -1242,6 +1254,11 @@ export default function App() {
     // Add user message to chat
     const userMsg = { id: Date.now().toString(), text: userMessage, isMe: true, timestamp: new Date() };
     setAiChatMessages(prev => [...prev, userMsg]);
+    
+    // Scroll to bottom to show loading indicator immediately
+    setTimeout(() => {
+      aiChatScrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
 
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -1297,6 +1314,10 @@ export default function App() {
       setAiChatMessages(prev => [...prev, errorMsg]);
     } finally {
       setAiChatLoading(false);
+      // Focus the input field after response is received
+      setTimeout(() => {
+        aiChatInputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -2950,8 +2971,13 @@ export default function App() {
 
       <KeyboardAvoidingView style={styles.chatContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
         <ScrollView 
+          ref={aiChatScrollViewRef}
           style={styles.messagesContainer} 
           contentContainerStyle={styles.messagesContent}
+          onContentSizeChange={() => {
+            // Auto-scroll to bottom when content size changes (new message or loading indicator added)
+            aiChatScrollViewRef.current?.scrollToEnd({ animated: true });
+          }}
         >
           {aiChatMessages.map((m) => (
             <View key={m.id} style={[styles.messageItem, m.isMe ? styles.myMessage : styles.otherMessage]}>
@@ -2970,6 +2996,7 @@ export default function App() {
 
         <View style={styles.messageInput}>
           <TextInput
+            ref={aiChatInputRef}
             style={styles.textInput}
             value={aiChatInput}
             onChangeText={setAiChatInput}

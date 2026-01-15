@@ -173,7 +173,24 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
-                // Step 5: CRITICAL SR-FIRST ENFORCEMENT CHECK
+                // Step 5: Check if user is trying to switch to a different SR (even if one is already active)
+                // This handles cases like: "how about work13" when work17 is currently active
+                if (activeServiceRequestId.HasValue)
+                {
+                    // Check if user is referencing a different SR by name/title/number
+                    var switchIntent = await DetectSRSwitchIntentAsync(clientId, clientMessage, activeServiceRequestId.Value);
+                    if (switchIntent.HasValue && switchIntent.Value != activeServiceRequestId.Value)
+                    {
+                        // User wants to switch to a different SR
+                        _logger.LogInformation("User switching from SR {OldSRId} to SR {NewSRId} for client {ClientId}",
+                            activeServiceRequestId.Value, switchIntent.Value, clientId);
+                        await _agentSessionService.SetActiveServiceRequestAsync(clientId, switchIntent.Value);
+                        activeServiceRequestId = switchIntent.Value;
+                        // Continue with normal flow using the new SR
+                    }
+                }
+
+                // Step 5.5: CRITICAL SR-FIRST ENFORCEMENT CHECK
                 // We should NEVER reach here without an active SR - if we do, it's a bug
                 if (!activeServiceRequestId.HasValue)
                 {
@@ -572,7 +589,45 @@ namespace SM_MentalHealthApp.Server.Services
                     var sr = await _serviceRequestService.GetServiceRequestByIdAsync(serviceRequestId.Value);
                     if (sr != null)
                     {
-                        serviceRequestContext = $"Service Request: {sr.Title} - {sr.Description}";
+                        // Build service request context with assignment information
+                        var srInfo = new List<string>
+                        {
+                            $"Service Request: {sr.Title}",
+                            $"Description: {sr.Description ?? "No description"}",
+                            $"Status: {sr.Status}",
+                            $"Type: {sr.Type ?? "General"}"
+                        };
+
+                        // Add assignment information
+                        if (sr.Assignments != null && sr.Assignments.Any(a => a.IsActive))
+                        {
+                            var activeAssignments = sr.Assignments.Where(a => a.IsActive).ToList();
+                            srInfo.Add($"\nASSIGNED SERVICE PROVIDERS ({activeAssignments.Count}):");
+                            foreach (var assignment in activeAssignments)
+                            {
+                                var assignmentInfo = $"- {assignment.SmeUserName ?? "Unknown Provider"}";
+                                if (!string.IsNullOrEmpty(assignment.Status))
+                                {
+                                    assignmentInfo += $" (Status: {assignment.Status}";
+                                    if (assignment.AcceptedAt.HasValue)
+                                    {
+                                        assignmentInfo += $", Accepted: {assignment.AcceptedAt.Value:MM/dd/yyyy}";
+                                    }
+                                    if (assignment.StartedAt.HasValue)
+                                    {
+                                        assignmentInfo += $", Started: {assignment.StartedAt.Value:MM/dd/yyyy}";
+                                    }
+                                    assignmentInfo += ")";
+                                }
+                                srInfo.Add(assignmentInfo);
+                            }
+                        }
+                        else
+                        {
+                            srInfo.Add("\nASSIGNED SERVICE PROVIDERS: None - No service provider has been assigned yet.");
+                        }
+
+                        serviceRequestContext = string.Join("\n", srInfo);
 
                         // Get appointments for this service request
                         var allAppointments = await _appointmentService.GetAppointmentsAsync(patientId: profile.ClientId);
@@ -612,8 +667,8 @@ namespace SM_MentalHealthApp.Server.Services
                                     var dateTime = apt.AppointmentDateTime.ToString("MM/dd/yyyy HH:mm");
                                     var status = apt.Status;
                                     var daysUntil = (apt.AppointmentDateTime - currentDateTime).Days;
-                                    var timeUntil = apt.AppointmentDateTime > currentDateTime 
-                                        ? $"({daysUntil} day{(daysUntil != 1 ? "s" : "")} from now)" 
+                                    var timeUntil = apt.AppointmentDateTime > currentDateTime
+                                        ? $"({daysUntil} day{(daysUntil != 1 ? "s" : "")} from now)"
                                         : "";
                                     appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status}) {timeUntil}");
                                 }
@@ -628,8 +683,8 @@ namespace SM_MentalHealthApp.Server.Services
                                     var dateTime = apt.AppointmentDateTime.ToString("MM/dd/yyyy HH:mm");
                                     var status = apt.Status;
                                     var daysAgo = (currentDateTime - apt.AppointmentDateTime).Days;
-                                    var timeAgo = apt.AppointmentDateTime < currentDateTime 
-                                        ? $"(PAST - {daysAgo} day{(daysAgo != 1 ? "s" : "")} ago)" 
+                                    var timeAgo = apt.AppointmentDateTime < currentDateTime
+                                        ? $"(PAST - {daysAgo} day{(daysAgo != 1 ? "s" : "")} ago)"
                                         : "";
                                     appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status}) {timeAgo}");
                                 }
@@ -677,7 +732,7 @@ CURRENT SITUATION:
 - Main Concerns: {string.Join(", ", analysis.Concerns.Take(3))}
 - Client Reaction: {analysis.ClientReaction}
 
-{(!string.IsNullOrEmpty(serviceRequestContext) ? $"SERVICE REQUEST CONTEXT:\n{serviceRequestContext}\n" : "")}
+{(!string.IsNullOrEmpty(serviceRequestContext) ? $"SERVICE REQUEST CONTEXT:\n{serviceRequestContext}\n\nIMPORTANT ASSIGNMENT INSTRUCTIONS:\n- If the SERVICE REQUEST CONTEXT shows 'ASSIGNED SERVICE PROVIDERS' with names listed, then service providers HAVE been assigned. DO NOT say 'no one has been assigned' or 'I'm still looking for providers'.\n- If it shows 'ASSIGNED SERVICE PROVIDERS: None', then NO providers have been assigned yet, and you can mention that you're working on finding suitable options.\n- Always check the assignment information in the SERVICE REQUEST CONTEXT before making claims about assignment status.\n" : "")}
 {(!string.IsNullOrEmpty(appointmentsContext) ? $"APPOINTMENTS FOR THIS SERVICE REQUEST:\n{appointmentsContext}\n\nIMPORTANT APPOINTMENT INSTRUCTIONS:\n- The appointments listed above are the ONLY appointments for this service request.\n- If an appointment is marked as 'PAST' or 'COMPLETED', you MUST clearly indicate in your response that it is outdated/already occurred. For example: 'You had an appointment on [date] (which has already passed)' or 'Your previous appointment on [date] has already occurred'.\n- For UPCOMING appointments, you can reference them normally (e.g., 'You have an appointment scheduled for [date]').\n- Do NOT say you're 'looking for' or 'reaching out to' service providers if appointments are already scheduled.\n- When mentioning past appointments, always clarify they are outdated/have already occurred.\n" : "IMPORTANT: There are NO appointments scheduled for this service request. Do NOT mention or reference any appointments. Do NOT say things like 'your appointment is scheduled' or 'I see you have an appointment'. There are no appointments.\n")}
 {conversationContext}
 
@@ -715,13 +770,14 @@ CRITICAL INSTRUCTIONS:
 11. Balance being helpful with not overwhelming the client
 12. **CRITICAL**: If conversation history is provided above, use it to understand context. For example, if the client says ""Yes please"", ""That sounds good"", ""10-12 AM is good"", or ""thank you, that is all"", refer back to what was discussed in the conversation history and continue from there.
 {(hasConfirmation ? "13. **TOKEN OPTIMIZATION**: Since confirmations already exist, keep your response SHORT and avoid repeating information." : "")}
-13. **CRITICAL**: ONLY mention appointments if they are explicitly listed in the ""APPOINTMENTS FOR THIS SERVICE REQUEST"" section above. If that section says ""IMPORTANT: There are NO appointments scheduled"", then DO NOT mention appointments at all. If appointments ARE listed:
+13. **CRITICAL**: Check the SERVICE REQUEST CONTEXT above for assignment information. If it shows assigned service providers with names listed, DO NOT say ""no one has been assigned"" or ""I'm still looking for providers"". Only say you're looking for providers if the context explicitly says ""None - No service provider has been assigned yet"". Always verify assignment status from the SERVICE REQUEST CONTEXT before making claims.
+14. **CRITICAL**: ONLY mention appointments if they are explicitly listed in the ""APPOINTMENTS FOR THIS SERVICE REQUEST"" section above. If that section says ""IMPORTANT: There are NO appointments scheduled"", then DO NOT mention appointments at all. If appointments ARE listed:
     - For appointments marked as ""PAST"" or ""COMPLETED"", you MUST clearly indicate they are outdated/already occurred (e.g., ""You had an appointment on [date] which has already passed"").
     - For ""UPCOMING"" appointments, you can reference them normally.
     - Do NOT say you're ""gathering information"" or ""reaching out to shops"" if appointments are already scheduled.
     - Never make up or assume appointment information that isn't explicitly provided above.
-13. **CRITICAL**: Maintain conversation continuity - if the client is responding to a previous question or suggestion, acknowledge that and continue from where you left off. Don't start a new topic.
-14. **CRITICAL**: If the client says ""thank you, that is all I need for now"" or similar closing statements, acknowledge their service request is complete and offer to help if they need anything else with their SERVICE REQUEST. Do NOT mention health or medical topics.
+15. **CRITICAL**: Maintain conversation continuity - if the client is responding to a previous question or suggestion, acknowledge that and continue from where you left off. Don't start a new topic.
+16. **CRITICAL**: If the client says ""thank you, that is all I need for now"" or similar closing statements, acknowledge their service request is complete and offer to help if they need anything else with their SERVICE REQUEST. Do NOT mention health or medical topics.
 15. **CRITICAL**: If the client says ""nope"" or ""no"" in response to a question, acknowledge their answer and continue with the service request conversation. Do NOT switch topics or mention medical/health topics.
 
 Generate a helpful, personalized response that makes the client feel supported and guides them appropriately. Remember: This is ONLY about service requests, NOT medical or health topics:";
@@ -798,7 +854,7 @@ Do NOT include any text before or after the JSON. Do NOT use markdown code block
                     _logger.LogInformation("Generating structured JSON response (attempt {Attempt}/{MaxRetries})", attempt, maxRetries);
 
                     // Token optimization: Use fewer tokens when confirmations exist (expert system optimization)
-                    var maxTokens = hasConfirmation 
+                    var maxTokens = hasConfirmation
                         ? (attempt == 1 ? 150 : 200)  // Short answers when confirmed
                         : (attempt == 1 ? 300 : 400); // Normal length otherwise
 
@@ -826,7 +882,7 @@ Do NOT include any text before or after the JSON. Do NOT use markdown code block
                         var root = jsonDoc.RootElement;
 
                         // Validate required fields
-                        if (!root.TryGetProperty("message", out var messageElement) || 
+                        if (!root.TryGetProperty("message", out var messageElement) ||
                             messageElement.ValueKind != JsonValueKind.String ||
                             string.IsNullOrWhiteSpace(messageElement.GetString()))
                         {
@@ -1361,6 +1417,73 @@ Return ONLY the raw JSON object, nothing else.";
         }
 
         /// <summary>
+        /// Detects if user is trying to switch to a different SR (even when one is already active)
+        /// Handles cases like "how about work13" when work17 is currently active
+        /// </summary>
+        private async Task<int?> DetectSRSwitchIntentAsync(int clientId, string clientMessage, int currentActiveSRId)
+        {
+            var lowerMessage = clientMessage.ToLowerInvariant().Trim();
+
+            // Check for switch phrases like "how about", "what about", "switch to", "change to"
+            var switchPhrases = new[] { "how about", "what about", "switch to", "change to", "let's try", "try", "use" };
+            bool hasSwitchPhrase = switchPhrases.Any(phrase => lowerMessage.Contains(phrase));
+
+            // Extract SR reference from the message (remove switch phrases)
+            string srReference = lowerMessage;
+            if (hasSwitchPhrase)
+            {
+                // Remove switch phrases to get just the SR reference
+                foreach (var phrase in switchPhrases)
+                {
+                    if (lowerMessage.Contains(phrase))
+                    {
+                        // Extract text after the switch phrase
+                        var index = lowerMessage.IndexOf(phrase);
+                        srReference = lowerMessage.Substring(index + phrase.Length).Trim();
+                        break;
+                    }
+                }
+            }
+
+            // Always remove trailing punctuation (question marks, exclamation marks, etc.)
+            // This handles cases like "work3?" or "work13!" even without switch phrases
+            srReference = srReference.TrimEnd('.', '!', '?', ',', ';', ':');
+
+            // If srReference is empty or just whitespace after extraction, use the original message
+            if (string.IsNullOrWhiteSpace(srReference))
+            {
+                srReference = lowerMessage.TrimEnd('.', '!', '?', ',', ';', ':');
+            }
+
+            // If message contains a switch phrase, is a short message, or is just a number, try to match it
+            if (hasSwitchPhrase || lowerMessage.Length < 50 || int.TryParse(lowerMessage.Trim(), out _))
+            {
+                _logger.LogInformation("Checking SR switch intent for client {ClientId}. Message: '{Message}', Extracted reference: '{SRReference}', Has switch phrase: {HasSwitchPhrase}",
+                    clientId, clientMessage, srReference, hasSwitchPhrase);
+
+                // Use the extracted SR reference (or full message if no switch phrase)
+                var matchedSR = await MatchSelectedSRAsync(clientId, srReference);
+
+                _logger.LogInformation("SR switch match result for client {ClientId}: MatchedSR={MatchedSR}, CurrentSR={CurrentSR}",
+                    clientId, matchedSR, currentActiveSRId);
+
+                // Only return if it's different from the current active SR
+                if (matchedSR.HasValue && matchedSR.Value != currentActiveSRId)
+                {
+                    _logger.LogInformation("Detected SR switch intent: user wants to switch from SR {CurrentSRId} to SR {NewSRId}",
+                        currentActiveSRId, matchedSR.Value);
+                    return matchedSR.Value;
+                }
+                else if (matchedSR.HasValue && matchedSR.Value == currentActiveSRId)
+                {
+                    _logger.LogInformation("User referenced current active SR {SRId}, no switch needed", currentActiveSRId);
+                }
+            }
+
+            return null; // No switch intent detected
+        }
+
+        /// <summary>
         /// Matches user's response to an existing SR (by number, title, or index)
         /// </summary>
         private async Task<int?> MatchSelectedSRAsync(int clientId, string userResponse)
@@ -1377,14 +1500,18 @@ Return ONLY the raw JSON object, nothing else.";
 
             var lowerResponse = userResponse.ToLowerInvariant().Trim();
 
-            // Check for numeric index (1-5)
-            if (int.TryParse(lowerResponse, out int index) && index >= 1 && index <= activeSRs.Count)
+            // Remove trailing punctuation (question marks, exclamation marks, etc.)
+            // This handles cases like "work3?" or "work13!" 
+            var cleanResponse = lowerResponse.TrimEnd('.', '!', '?', ',', ';', ':');
+
+            // Check for numeric index (1-5) - use clean response without punctuation
+            if (int.TryParse(cleanResponse, out int index) && index >= 1 && index <= activeSRs.Count)
             {
                 return activeSRs[index - 1].Id;
             }
 
             // Check for SR number reference
-            var srNumberMatch = Regex.Match(lowerResponse, @"(?:sr-?|request|#)\s*(\d+)", RegexOptions.IgnoreCase);
+            var srNumberMatch = Regex.Match(cleanResponse, @"(?:sr-?|request|#)\s*(\d+)", RegexOptions.IgnoreCase);
             if (srNumberMatch.Success && int.TryParse(srNumberMatch.Groups[1].Value, out int srId))
             {
                 var matchedSR = activeSRs.FirstOrDefault(sr => sr.Id == srId);
@@ -1392,23 +1519,40 @@ Return ONLY the raw JSON object, nothing else.";
                     return matchedSR.Id;
             }
 
-            // Check for title match (fuzzy)
+            // Check for title match (fuzzy) - normalize spaces for better matching
+            // Use cleanResponse (without punctuation) for matching
+            var normalizedResponse = cleanResponse.Replace(" ", "").Replace("-", "").Replace("_", "");
             foreach (var sr in activeSRs)
             {
                 var srTitleLower = sr.Title?.ToLowerInvariant() ?? "";
-                if (srTitleLower.Contains(lowerResponse) || lowerResponse.Contains(srTitleLower))
+                var normalizedTitle = srTitleLower.Replace(" ", "").Replace("-", "").Replace("_", "");
+
+                // Exact match (normalized)
+                if (normalizedTitle == normalizedResponse || normalizedResponse == normalizedTitle)
+                {
+                    return sr.Id;
+                }
+
+                // Contains match (original) - use cleanResponse (without punctuation)
+                if (srTitleLower.Contains(cleanResponse) || cleanResponse.Contains(srTitleLower))
+                {
+                    return sr.Id;
+                }
+
+                // Contains match (normalized)
+                if (normalizedTitle.Contains(normalizedResponse) || normalizedResponse.Contains(normalizedTitle))
                 {
                     return sr.Id;
                 }
             }
 
-            // Check for keywords in title
-            var responseWords = lowerResponse.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            // Check for keywords in title - use cleanResponse (without punctuation)
+            var responseWords = cleanResponse.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (var sr in activeSRs)
             {
                 var srTitleLower = sr.Title?.ToLowerInvariant() ?? "";
                 var matchCount = responseWords.Count(word => srTitleLower.Contains(word));
-                if (matchCount >= 2) // At least 2 words match
+                if (matchCount >= 1 && responseWords.Length <= 3) // At least 1 word matches for short responses
                 {
                     return sr.Id;
                 }

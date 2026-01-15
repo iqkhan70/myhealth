@@ -14,11 +14,13 @@ namespace SM_MentalHealthApp.Server.Controllers
     {
         private readonly IAuthService _authService;
         private readonly IRedisCacheService _redisCache;
+        private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IAuthService authService, IRedisCacheService redisCache)
+        public AuthController(IAuthService authService, IRedisCacheService redisCache, ILogger<AuthController> logger)
         {
             _authService = authService;
             _redisCache = redisCache;
+            _logger = logger;
         }
 
         [HttpPost("login")]
@@ -52,6 +54,21 @@ namespace SM_MentalHealthApp.Server.Controllers
                     expiresAt = DateTime.UtcNow.AddMinutes(30)
                 });
                 await _redisCache.SetAsync(sessionKey, sessionData, TimeSpan.FromMinutes(30));
+
+                // ✅ Clear ClientAgentSession on login to ensure fresh start
+                // This ensures users don't inherit SR context from previous sessions
+                // (Even if logout wasn't called, we start fresh on login)
+                try
+                {
+                    var agentSessionService = HttpContext.RequestServices.GetRequiredService<IClientAgentSessionService>();
+                    await agentSessionService.ClearActiveServiceRequestAsync(result.User.Id);
+                    _logger.LogInformation("Cleared ClientAgentSession for user {UserId} on login to ensure fresh start", result.User.Id);
+                }
+                catch (Exception ex)
+                {
+                    // Log but don't fail login if clearing agent session fails
+                    _logger.LogWarning(ex, "Failed to clear ClientAgentSession for user {UserId} on login", result.User.Id);
+                }
             }
 
             return Ok(result);
@@ -220,7 +237,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
-        /// Logout - invalidates session in Redis
+        /// Logout - invalidates session in Redis and clears ClientAgentSession
         /// </summary>
         [HttpPost("logout")]
         [Microsoft.AspNetCore.Authorization.Authorize]
@@ -240,6 +257,20 @@ namespace SM_MentalHealthApp.Server.Controllers
                 // ✅ Remove all sessions for this user from Redis
                 var sessionKey = $"session:{user.Id}:{token}";
                 await _redisCache.RemoveAsync(sessionKey);
+
+                // ✅ Clear ClientAgentSession to reset SR context on logout
+                // This ensures users start fresh when they log back in
+                try
+                {
+                    var agentSessionService = HttpContext.RequestServices.GetRequiredService<IClientAgentSessionService>();
+                    await agentSessionService.ClearActiveServiceRequestAsync(user.Id);
+                    _logger.LogInformation("Cleared ClientAgentSession for user {UserId} on logout", user.Id);
+                }
+                catch (Exception ex)
+                {
+                    // Log but don't fail logout if clearing agent session fails
+                    _logger.LogWarning(ex, "Failed to clear ClientAgentSession for user {UserId} on logout", user.Id);
+                }
 
                 // Also remove any other sessions for this user (optional - for security)
                 // This would require scanning Redis keys, which is expensive, so we'll just remove the current session

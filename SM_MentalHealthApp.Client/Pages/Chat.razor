@@ -235,6 +235,7 @@
                 </div>
             }
             <input 
+                @ref="chatInputRef"
                 @bind="UserInput" 
                 @bind:event="oninput" 
                 @onkeydown="HandleKeyDown" 
@@ -285,6 +286,7 @@
     private List<string> Messages = new();
     private bool IsLoading = false;
     private bool SoundEnabled { get; set; } = true;
+    private ElementReference chatInputRef;
     
     // User management
     private List<User> Users = new();
@@ -673,6 +675,10 @@
             IsLoading = true;
             StateHasChanged();
             
+            // Scroll to bottom to show loading indicator immediately
+            await Task.Delay(50); // Small delay to ensure DOM is updated
+            await JS.InvokeVoidAsync("scrollToBottom");
+            
             // Play send sound
             if (SoundEnabled)
             {
@@ -742,6 +748,16 @@
             // Scroll to bottom after sending message
             await Task.Delay(100);
             await JS.InvokeVoidAsync("scrollToBottom");
+            
+            // Focus the input field after response is received
+            try
+            {
+                await chatInputRef.FocusAsync();
+            }
+            catch
+            {
+                // Ignore focus errors (e.g., if input is disabled)
+            }
         }
     }
 
