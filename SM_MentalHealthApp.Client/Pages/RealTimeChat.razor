@@ -1056,13 +1056,40 @@
         }
     }
 
+    private bool _isInitialized = false;
+
     protected override async Task OnInitializedAsync()
     {
-        RealtimeService.OnNewMessage += HandleNewMessage;
-        RealtimeService.OnIncomingCall += HandleIncomingCall;
-        
-        // Also listen to SignalRService for messages sent via SignalR (e.g., from mobile app)
-        SignalRService.OnNewMessage += HandleNewMessage;
+        // Only subscribe to events once
+        if (!_isInitialized)
+        {
+            RealtimeService.OnNewMessage += HandleNewMessage;
+            RealtimeService.OnIncomingCall += HandleIncomingCall;
+            
+            // Also listen to SignalRService for messages sent via SignalR (e.g., from mobile app)
+            SignalRService.OnNewMessage += HandleNewMessage;
+            _isInitialized = true;
+        }
+
+        await LoadUsersForCurrentNavigation();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Reload users when navigating to this page
+        await LoadUsersForCurrentNavigation();
+        await base.OnParametersSetAsync();
+    }
+
+    private async Task LoadUsersForCurrentNavigation()
+    {
+        // Reset state to ensure clean initialization on every navigation
+        isServiceRequestMode = false;
+        serviceRequestClientId = null;
+        users.Clear(); // Clear any stale users from previous navigation
+        selectedUser = null; // Clear selected user
+        _messages.Clear(); // Clear messages
+        isHistoryLoaded = false; // Reset history flag
 
         // Check for clientId query parameter - if present, we're coming from service request
         int? targetClientId = null;
@@ -1089,24 +1116,17 @@
             }
         }
 
-        // If no query parameter but we have sessionStorage value, we're returning from a call
-        // Restore the clientId from sessionStorage
+        // If no query parameter, clear sessionStorage to prevent stale data
+        // This ensures normal navigation always shows all clients
         if (!targetClientId.HasValue)
         {
             try
             {
-                var storedClientId = await JS.InvokeAsync<string>("sessionStorage.getItem", "serviceRequestClientId");
-                if (!string.IsNullOrEmpty(storedClientId) && int.TryParse(storedClientId, out int clientId))
-                {
-                    targetClientId = clientId;
-                    serviceRequestClientId = clientId;
-                    isServiceRequestMode = true;
-                    Console.WriteLine($"✅ Restored serviceRequestClientId from sessionStorage: {clientId}");
-                }
+                await JS.InvokeVoidAsync("sessionStorage.removeItem", "serviceRequestClientId");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ Error reading sessionStorage: {ex.Message}");
+                Console.WriteLine($"⚠️ Error clearing sessionStorage: {ex.Message}");
             }
         }
 
@@ -1118,24 +1138,12 @@
         }
         else
         {
-            // If not in service request mode, clear the stored clientId from sessionStorage
-            if (!isServiceRequestMode)
-            {
-                serviceRequestClientId = null;
-                try
-                {
-                    await JS.InvokeVoidAsync("sessionStorage.removeItem", "serviceRequestClientId");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"⚠️ Error clearing sessionStorage: {ex.Message}");
-                }
-            }
-        await LoadUsers();
+            // Always load all users when not in service request mode
+            await LoadUsers();
         }
 
-        // Auto-select client if clientId was provided in query string or stored
-        if (targetClientId.HasValue)
+        // Auto-select client if clientId was provided in query string
+        if (targetClientId.HasValue && isServiceRequestMode)
         {
             var client = users.FirstOrDefault(u => u.Id == targetClientId.Value);
             if (client != null)
@@ -1192,9 +1200,46 @@
             ? "/api/mobile/doctor/patients"
             : "/api/mobile/patient/doctors";
 
-            var response = await Http.GetAsync(endpoint);
+            // Add cache-busting query parameter to prevent HTTP caching
+            var cacheBustingEndpoint = $"{endpoint}?_t={DateTime.UtcNow.Ticks}";
+            
+            // Create a request with cache-busting headers
+            var request = new HttpRequestMessage(HttpMethod.Get, cacheBustingEndpoint);
+            request.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue
+            {
+                NoCache = true,
+                NoStore = true,
+                MustRevalidate = true
+            };
+            request.Headers.Pragma.ParseAdd("no-cache");
+            
+            var response = await Http.SendAsync(request);
+            
             if (response.IsSuccessStatusCode)
-                users = await response.Content.ReadFromJsonAsync<List<User>>() ?? new();
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                
+                // Parse from the string we already read
+                if (!string.IsNullOrEmpty(content) && content != "[]")
+                {
+                    users = System.Text.Json.JsonSerializer.Deserialize<List<User>>(content, new System.Text.Json.JsonSerializerOptions 
+                    { 
+                        PropertyNameCaseInsensitive = true 
+                    }) ?? new();
+                }
+                else
+                {
+                    users = new();
+                }
+            }
+            else
+            {
+                users = new(); // Ensure empty list on failure
+            }
+        }
+        catch (Exception ex)
+        {
+            users = new(); // Ensure empty list on exception
         }
         finally
         {

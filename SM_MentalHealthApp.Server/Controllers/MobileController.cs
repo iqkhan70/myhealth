@@ -107,8 +107,8 @@ namespace SM_MentalHealthApp.Server.Controllers
             }
         }
 
-        // Rate limiting: track last request time per user
-        private static readonly Dictionary<int, DateTime> _lastRequestTime = new();
+        // Rate limiting: track last request time and cached result per user
+        private static readonly Dictionary<int, (DateTime LastRequestTime, List<object>? CachedResult)> _requestCache = new();
         private static readonly object _lockObject = new();
 
         /// <summary>
@@ -126,19 +126,20 @@ namespace SM_MentalHealthApp.Server.Controllers
                     return Unauthorized("Invalid user token");
                 }
 
-                // Rate limiting: prevent requests more than once per 5 seconds
+                // Rate limiting: return cached result if request is within 5 seconds
+                // This prevents database queries on rapid navigation while still returning data
                 lock (_lockObject)
                 {
-                    if (_lastRequestTime.TryGetValue(patientId, out var lastTime))
+                    if (_requestCache.TryGetValue(patientId, out var cacheEntry))
                     {
-                        var timeSinceLastRequest = DateTime.UtcNow - lastTime;
-                        if (timeSinceLastRequest.TotalSeconds < 5)
+                        var timeSinceLastRequest = DateTime.UtcNow - cacheEntry.LastRequestTime;
+                        if (timeSinceLastRequest.TotalSeconds < 5 && cacheEntry.CachedResult != null)
                         {
-                            // Silently return empty - don't log every blocked request to reduce spam
-                            return Ok(new List<User>());
+                            // Return cached result instead of empty array
+                            _logger.LogInformation("Returning cached doctors list for patient {PatientId} (request within 5 seconds)", patientId);
+                            return Ok(cacheEntry.CachedResult);
                         }
                     }
-                    _lastRequestTime[patientId] = DateTime.UtcNow;
                 }
 
                 _logger.LogInformation("Getting doctors and coordinators for patient {PatientId}", patientId);
@@ -186,6 +187,12 @@ namespace SM_MentalHealthApp.Server.Controllers
                     RoleName = a.Role != null ? a.Role.Name : "Unknown",
                     IsActive = a.IsActive
                 }).ToList();
+
+                // Cache the result for rate limiting (return cached data instead of empty on rapid requests)
+                lock (_lockObject)
+                {
+                    _requestCache[patientId] = (DateTime.UtcNow, response.Cast<object>().ToList());
+                }
 
                 return Ok(response);
             }
