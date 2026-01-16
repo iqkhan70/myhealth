@@ -358,6 +358,26 @@
         await InitializeSound();
     }
     
+    protected override async Task OnParametersSetAsync()
+    {
+        // Reload active SR when navigating back to the page
+        // This ensures the dropdown reflects the persistent state
+        if (AuthService.CurrentUser?.RoleId == 1 && ClientChatMode == ClientChatModeType.ServiceRequest)
+        {
+            if (ActiveServiceRequests.Any())
+            {
+                await LoadActiveServiceRequestFromBackend();
+            }
+            else
+            {
+                // Reload service requests if list is empty
+                await LoadServiceRequests();
+            }
+        }
+        
+        await base.OnParametersSetAsync();
+    }
+    
     private async Task CheckActiveServiceRequests()
     {
         try
@@ -385,6 +405,8 @@
         if (mode == ClientChatModeType.ServiceRequest && AuthService.CurrentUser?.RoleId == 1)
         {
             await LoadServiceRequests();
+            // Load active SR from backend to restore persistent state
+            await LoadActiveServiceRequestFromBackend();
         }
         else
         {
@@ -408,6 +430,9 @@
                     .OrderByDescending(sr => sr.CreatedAt)
                     .ToList();
                 
+                // Load active SR from backend (persistent state)
+                await LoadActiveServiceRequestFromBackend();
+                
                 // If no SR is selected but there's only one active, auto-select it
                 if (!SelectedServiceRequestId.HasValue && ActiveServiceRequests.Count == 1)
                 {
@@ -420,6 +445,37 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error loading service requests: {ex.Message}");
+        }
+    }
+    
+    private async Task LoadActiveServiceRequestFromBackend()
+    {
+        try
+        {
+            if (AuthService.CurrentUser?.RoleId == 1 && AuthService.CurrentUser?.Id > 0)
+            {
+                var response = await Http.GetFromJsonAsync<GetActiveServiceRequestResponse>("api/agenticai/get-active-sr");
+                if (response?.Success == true && response.ServiceRequestId.HasValue)
+                {
+                    // Verify the SR exists in the active list
+                    if (ActiveServiceRequests.Any(sr => sr.Id == response.ServiceRequestId.Value))
+                    {
+                        SelectedServiceRequestId = response.ServiceRequestId.Value;
+                        Console.WriteLine($"Loaded active SR {SelectedServiceRequestId} from backend");
+                    }
+                    else
+                    {
+                        // SR from backend doesn't exist in active list - clear it
+                        Console.WriteLine($"Active SR {response.ServiceRequestId} from backend not found in active list, clearing");
+                        await ClearActiveServiceRequestOnBackend();
+                        SelectedServiceRequestId = null;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading active SR from backend: {ex.Message}");
         }
     }
     
@@ -444,11 +500,17 @@
     {
         try
         {
-            var request = new { serviceRequestId };
-            var response = await Http.PostAsJsonAsync("api/agenticai/set-active-sr", request);
-            if (!response.IsSuccessStatusCode)
+            if (AuthService.CurrentUser?.RoleId == 1 && AuthService.CurrentUser?.Id > 0)
             {
-                Console.WriteLine($"Failed to set active SR on backend: {response.StatusCode}");
+                var request = new { 
+                    clientId = AuthService.CurrentUser.Id, 
+                    serviceRequestId = serviceRequestId 
+                };
+                var response = await Http.PostAsJsonAsync("api/agenticai/set-active-sr", request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"Failed to set active SR on backend: {response.StatusCode}");
+                }
             }
         }
         catch (Exception ex)
@@ -720,6 +782,14 @@
                 {
                     await JS.InvokeVoidAsync("playSound", "receive");
                 }
+                
+                // Sync active SR from backend after agentic AI response
+                // This ensures dropdown reflects if agentic AI switched SRs
+                if (forceServiceRequestMode && AuthService.CurrentUser?.RoleId == 1)
+                {
+                    await LoadActiveServiceRequestFromBackend();
+                    StateHasChanged();
+                }
             }
             else
             {
@@ -773,5 +843,12 @@
     private async Task InitializeSound()
     {
         await JS.InvokeVoidAsync("setSoundEnabled", SoundEnabled);
+    }
+    
+    // Response class for getting active SR
+    private class GetActiveServiceRequestResponse
+    {
+        public bool Success { get; set; }
+        public int? ServiceRequestId { get; set; }
     }
 }

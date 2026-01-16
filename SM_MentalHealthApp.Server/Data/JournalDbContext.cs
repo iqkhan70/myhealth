@@ -999,6 +999,12 @@ namespace SM_MentalHealthApp.Server.Data
                         .HasForeignKey(e => e.CreatedByUserId)
                         .OnDelete(DeleteBehavior.SetNull);
 
+                        // Foreign key relationship to PreferredSmeUser (client's preferred SME)
+                        entity.HasOne(e => e.PreferredSmeUser)
+                              .WithMany()
+                              .HasForeignKey(e => e.PreferredSmeUserId)
+                              .OnDelete(DeleteBehavior.SetNull);
+
                         // Indexes for performance
                         entity.HasIndex(e => e.ClientId);
                         entity.HasIndex(e => e.Status);

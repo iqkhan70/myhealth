@@ -17,6 +17,7 @@ namespace SM_MentalHealthApp.Server.Services
         Task<bool> IsSmeAssignedToServiceRequestAsync(int serviceRequestId, int smeUserId);
         Task<ServiceRequestDto?> GetDefaultServiceRequestForClientAsync(int clientId);
         Task<Shared.AutoCompleteServiceRequestsResult> AutoCompleteServiceRequestsAsync();
+        Task<bool> SetPreferredSmeAsync(int serviceRequestId, int? smeUserId);
     }
 
     public class ServiceRequestService : IServiceRequestService
@@ -42,6 +43,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var query = _context.ServiceRequests
                     .Include(sr => sr.Client)
                     .Include(sr => sr.PrimaryExpertise)
+                    .Include(sr => sr.PreferredSmeUser)
                     .Include(sr => sr.Assignments)
                         .ThenInclude(a => a.SmeUser)
                     .Include(sr => sr.Expertises)
@@ -87,6 +89,7 @@ namespace SM_MentalHealthApp.Server.Services
                 var serviceRequest = await _context.ServiceRequests
                     .Include(sr => sr.Client)
                     .Include(sr => sr.PrimaryExpertise)
+                    .Include(sr => sr.PreferredSmeUser)
                     .Include(sr => sr.Assignments)
                         .ThenInclude(a => a.SmeUser)
                     .Include(sr => sr.Expertises)
@@ -488,6 +491,10 @@ namespace SM_MentalHealthApp.Server.Services
                 MaxDistanceMiles = sr.MaxDistanceMiles,
                 PrimaryExpertiseId = sr.PrimaryExpertiseId,
                 PrimaryExpertiseName = sr.PrimaryExpertise?.Name,
+                PreferredSmeUserId = sr.PreferredSmeUserId,
+                PreferredSmeUserName = sr.PreferredSmeUser != null 
+                    ? $"{sr.PreferredSmeUser.FirstName} {sr.PreferredSmeUser.LastName}"
+                    : null,
                 ExpertiseIds = sr.Expertises?.Select(e => e.ExpertiseId).ToList() ?? new List<int>(),
                 ExpertiseNames = sr.Expertises?.Select(e => e.Expertise.Name).ToList() ?? new List<string>(),
                 Assignments = sr.Assignments
@@ -613,6 +620,54 @@ namespace SM_MentalHealthApp.Server.Services
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Set client's preferred SME for a service request
+        /// </summary>
+        public async Task<bool> SetPreferredSmeAsync(int serviceRequestId, int? smeUserId)
+        {
+            try
+            {
+                var serviceRequest = await _context.ServiceRequests
+                    .FirstOrDefaultAsync(sr => sr.Id == serviceRequestId && sr.IsActive);
+
+                if (serviceRequest == null)
+                {
+                    _logger.LogWarning("Service request {ServiceRequestId} not found or inactive", serviceRequestId);
+                    return false;
+                }
+
+                // If smeUserId is provided, verify the SME exists and is active
+                if (smeUserId.HasValue)
+                {
+                    var sme = await _context.Users
+                        .FirstOrDefaultAsync(u => u.Id == smeUserId.Value && 
+                            u.IsActive && 
+                            (u.RoleId == Shared.Constants.Roles.Doctor || 
+                             u.RoleId == Shared.Constants.Roles.Attorney || 
+                             u.RoleId == Shared.Constants.Roles.Sme));
+                    
+                    if (sme == null)
+                    {
+                        _logger.LogWarning("SME {SmeUserId} not found or inactive", smeUserId.Value);
+                        return false;
+                    }
+                }
+
+                serviceRequest.PreferredSmeUserId = smeUserId;
+                serviceRequest.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Set preferred SME {SmeUserId} for service request {ServiceRequestId}", 
+                    smeUserId, serviceRequestId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error setting preferred SME for service request {ServiceRequestId}", serviceRequestId);
+                return false;
+            }
         }
     }
 }

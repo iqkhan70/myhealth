@@ -2575,6 +2575,97 @@ else
     echo -e "${YELLOW}⚠️  Appointment-ServiceRequest junction table migration script not found, skipping...${NC}"
 fi
 
+# ============================================================================
+# Step 8.18: Run PreferredSmeUserId Migration (if needed)
+# ============================================================================
+echo -e "\n${GREEN}========================================${NC}"
+echo -e "${GREEN}Step 8.18: Running PreferredSmeUserId Migration${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo ""
+
+if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddPreferredSmeUserId.sql" ]; then
+    echo "Copying PreferredSmeUserId migration script to server..."
+    scp -i "$SSH_KEY_PATH" "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddPreferredSmeUserId.sql" "$DROPLET_USER@$DROPLET_IP:/tmp/preferred_sme_user_id_migration.sql"
+    
+    ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$DROPLET_USER@$DROPLET_IP" "DB_NAME=$DB_NAME DEPLOYMENT_MODE=$DEPLOYMENT_MODE SCRIPT_NAME=preferred_sme_user_id_migration.sql bash -s" << 'ENDSSH'
+        set -e
+        
+        # Read MySQL root password from .env file
+        if [ -f /opt/mental-health-app/.env ]; then
+            DB_ROOT_PASSWORD=$(grep "^MYSQL_ROOT_PASSWORD=" /opt/mental-health-app/.env | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        else
+            echo "❌ ERROR: .env file not found"
+            exit 1
+        fi
+        
+        if [ "$DEPLOYMENT_MODE" = "local-db" ]; then
+            echo "Applying PreferredSmeUserId migration SQL..."
+            
+            # Determine which password to use for MySQL connection
+            MYSQL_PWD_TO_USE=""
+            if docker exec mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using no-password connection"
+                MYSQL_PWD_TO_USE=""
+            elif docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" mental-health-mysql mysql -uroot -e "SELECT 1;" 2>/dev/null > /dev/null; then
+                echo "Using .env password"
+                MYSQL_PWD_TO_USE="$DB_ROOT_PASSWORD"
+            else
+                echo "Using fallback password"
+                MYSQL_PWD_TO_USE="UthmanBasima70"
+            fi
+            
+            # Apply migration - first try to replace hardcoded database name if present
+            SCRIPT_PATH="/tmp/$SCRIPT_NAME"
+            sed -i "s/USE \`customerhealthdb\`;/USE \`$DB_NAME\`;/g" "$SCRIPT_PATH"
+            sed -i "s/USE customerhealthdb;/USE \`$DB_NAME\`;/g" "$SCRIPT_PATH"
+            sed -i "s/TABLE_SCHEMA = 'customerhealthdb'/TABLE_SCHEMA = '$DB_NAME'/g" "$SCRIPT_PATH"
+            sed -i "s/TABLE_SCHEMA = \"customerhealthdb\"/TABLE_SCHEMA = \"$DB_NAME\"/g" "$SCRIPT_PATH"
+            
+            # Apply migration
+            if [ -z "$MYSQL_PWD_TO_USE" ]; then
+                ERROR_OUTPUT=$(docker exec -i mental-health-mysql mysql -uroot "$DB_NAME" < "$SCRIPT_PATH" 2>&1 || true)
+                # Filter out warnings but keep errors
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
+                        echo "✅ PreferredSmeUserId migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ PreferredSmeUserId migration failed with errors:"
+                        echo "$ERROR_OUTPUT"
+                        exit 1
+                    fi
+                else
+                    echo "✅ PreferredSmeUserId migration applied successfully"
+                fi
+            else
+                ERROR_OUTPUT=$(docker exec -i -e MYSQL_PWD="$MYSQL_PWD_TO_USE" mental-health-mysql mysql -uroot "$DB_NAME" < "$SCRIPT_PATH" 2>&1 || true)
+                # Filter out warnings but keep errors
+                ERROR_ONLY=$(echo "$ERROR_OUTPUT" | grep -i "error" || true)
+                if [ -n "$ERROR_ONLY" ]; then
+                    if echo "$ERROR_OUTPUT" | grep -qi "already exists\|duplicate\|already exist"; then
+                        echo "✅ PreferredSmeUserId migration completed (some items already exist - this is expected)"
+                    else
+                        echo "❌ PreferredSmeUserId migration failed with errors:"
+                        echo "$ERROR_OUTPUT"
+                        exit 1
+                    fi
+                else
+                    echo "✅ PreferredSmeUserId migration applied successfully"
+                fi
+            fi
+        else
+            echo "⚠️  For managed DB, PreferredSmeUserId migration should be run manually or from API container"
+            echo "   You can run: mysql -h <host> -u <user> -p < /tmp/preferred_sme_user_id_migration.sql"
+        fi
+        
+        rm -f "$SCRIPT_PATH"
+    ENDSSH
+    
+    echo -e "${GREEN}✅ PreferredSmeUserId migration completed${NC}"
+else
+    echo -e "${YELLOW}⚠️  PreferredSmeUserId migration script not found, skipping...${NC}"
+fi
+
 echo ""
 
 # ============================================================================

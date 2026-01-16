@@ -78,6 +78,85 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
+        /// Get SME recommendations for a service request (for clients via Agentic AI)
+        /// </summary>
+        [HttpGet("sme-recommendations/{serviceRequestId}")]
+        [Authorize(Roles = "Patient")]
+        public async Task<ActionResult<List<SmeRecommendationDto>>> GetSmeRecommendations(int serviceRequestId)
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                {
+                    return Unauthorized("User not authenticated");
+                }
+
+                // Verify the service request belongs to the current user
+                var serviceRequestService = HttpContext.RequestServices.GetRequiredService<IServiceRequestService>();
+                var sr = await serviceRequestService.GetServiceRequestByIdAsync(serviceRequestId);
+                
+                if (sr == null || sr.ClientId != currentUserId.Value)
+                {
+                    return BadRequest("Service request not found or access denied");
+                }
+
+                var assignmentService = HttpContext.RequestServices.GetRequiredService<IAssignmentLifecycleService>();
+                var recommendations = await assignmentService.GetSmeRecommendationsAsync(serviceRequestId);
+
+                return Ok(recommendations);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting SME recommendations for service request {ServiceRequestId}", serviceRequestId);
+                return StatusCode(500, "An error occurred while getting SME recommendations");
+            }
+        }
+
+        /// <summary>
+        /// Set client's preferred SME for a service request
+        /// </summary>
+        [HttpPost("set-preferred-sme")]
+        [Authorize(Roles = "Patient")]
+        public async Task<ActionResult> SetPreferredSme([FromBody] SetPreferredSmeRequest request)
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                {
+                    return Unauthorized("User not authenticated");
+                }
+
+                // Verify the service request belongs to the current user
+                var serviceRequestService = HttpContext.RequestServices.GetRequiredService<IServiceRequestService>();
+                var sr = await serviceRequestService.GetServiceRequestByIdAsync(request.ServiceRequestId);
+                
+                if (sr == null || sr.ClientId != currentUserId.Value)
+                {
+                    return BadRequest("Service request not found or access denied");
+                }
+
+                // Update preferred SME
+                var success = await serviceRequestService.SetPreferredSmeAsync(request.ServiceRequestId, request.SmeUserId);
+
+                if (success)
+                {
+                    return Ok(new { success = true, message = "Preferred SME set successfully" });
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Failed to set preferred SME" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error setting preferred SME");
+                return StatusCode(500, new { success = false, message = "An error occurred" });
+            }
+        }
+
+        /// <summary>
         /// Set the active Service Request for the current client's agent session
         /// </summary>
         [HttpPost("set-active-sr")]
@@ -118,6 +197,50 @@ namespace SM_MentalHealthApp.Server.Controllers
         }
 
         /// <summary>
+        /// Get the active Service Request for the current client's agent session
+        /// </summary>
+        [HttpGet("get-active-sr")]
+        [Authorize(Roles = "Patient")]
+        public async Task<ActionResult<GetActiveServiceRequestResponse>> GetActiveServiceRequest()
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                {
+                    return Unauthorized("User not authenticated");
+                }
+
+                var sessionService = HttpContext.RequestServices.GetRequiredService<IClientAgentSessionService>();
+                var session = await sessionService.GetSessionAsync(currentUserId.Value);
+
+                if (session == null || !session.CurrentServiceRequestId.HasValue)
+                {
+                    return Ok(new GetActiveServiceRequestResponse
+                    {
+                        Success = true,
+                        ServiceRequestId = null
+                    });
+                }
+
+                return Ok(new GetActiveServiceRequestResponse
+                {
+                    Success = true,
+                    ServiceRequestId = session.CurrentServiceRequestId.Value
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting active service request");
+                return StatusCode(500, new GetActiveServiceRequestResponse
+                {
+                    Success = false,
+                    ServiceRequestId = null
+                });
+            }
+        }
+
+        /// <summary>
         /// Clear the active Service Request for the current client's agent session
         /// </summary>
         [HttpPost("clear-active-sr")]
@@ -150,6 +273,12 @@ namespace SM_MentalHealthApp.Server.Controllers
                 return StatusCode(500, new { success = false, message = "An error occurred" });
             }
         }
+    }
+
+    public class GetActiveServiceRequestResponse
+    {
+        public bool Success { get; set; }
+        public int? ServiceRequestId { get; set; }
     }
 
     public class SetActiveServiceRequestRequest

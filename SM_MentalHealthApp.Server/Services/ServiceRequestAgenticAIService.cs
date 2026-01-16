@@ -21,6 +21,7 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly IServiceRequestService _serviceRequestService;
         private readonly IAppointmentService _appointmentService;
         private readonly IServiceScopeFactory _serviceScopeFactory;
+        private readonly IAssignmentLifecycleService _assignmentService;
 
         public ServiceRequestAgenticAIService(
             IClientProfileService profileService,
@@ -30,7 +31,8 @@ namespace SM_MentalHealthApp.Server.Services
             ILogger<ServiceRequestAgenticAIService> logger,
             IServiceRequestService serviceRequestService,
             IAppointmentService appointmentService,
-            IServiceScopeFactory serviceScopeFactory)
+            IServiceScopeFactory serviceScopeFactory,
+            IAssignmentLifecycleService assignmentService)
         {
             _profileService = profileService;
             _agentSessionService = agentSessionService;
@@ -40,6 +42,7 @@ namespace SM_MentalHealthApp.Server.Services
             _serviceRequestService = serviceRequestService;
             _appointmentService = appointmentService;
             _serviceScopeFactory = serviceScopeFactory;
+            _assignmentService = assignmentService;
         }
 
         public async Task<AgenticResponse> ProcessServiceRequestAsync(int clientId, string clientMessage, int? serviceRequestId = null, string? conversationHistory = null)
@@ -203,6 +206,49 @@ namespace SM_MentalHealthApp.Server.Services
                 if (sessionState != ClientAgentSessionState.InSRContext)
                 {
                     await _agentSessionService.SetActiveServiceRequestAsync(clientId, activeServiceRequestId.Value);
+                }
+
+                // Step 6.1: Check if client is asking about available SMEs or expressing preference
+                if (IsAskingAboutSMEs(clientMessage))
+                {
+                    return await HandleSMERecommendationRequestAsync(clientId, activeServiceRequestId.Value, clientMessage);
+                }
+
+                // Step 6.2: Check if client is expressing a preference for a specific SME (or changing an existing preference)
+                var preferenceIntent = await DetectSMEPreferenceIntent(clientMessage, activeServiceRequestId.Value);
+                if (preferenceIntent.HasValue)
+                {
+                    // Check if there's an existing preference to detect if this is a change
+                    var currentSr = await _serviceRequestService.GetServiceRequestByIdAsync(activeServiceRequestId.Value);
+                    var hadPreviousPreference = currentSr?.PreferredSmeUserId.HasValue == true;
+                    var previousPreferredName = currentSr?.PreferredSmeUserName;
+                    var isChangingPreference = hadPreviousPreference && currentSr.PreferredSmeUserId.Value != preferenceIntent.Value;
+                    
+                    // Update the preference
+                    await _serviceRequestService.SetPreferredSmeAsync(activeServiceRequestId.Value, preferenceIntent.Value);
+                    var updatedSr = await _serviceRequestService.GetServiceRequestByIdAsync(activeServiceRequestId.Value);
+                    var newPreferredName = updatedSr?.PreferredSmeUserName ?? "the selected provider";
+                    
+                    string responseMessage;
+                    if (isChangingPreference)
+                    {
+                        responseMessage = $"Perfect! I've updated your preference from {previousPreferredName} to {newPreferredName}. Your new preference has been noted, and coordinators will take this into account when assigning a service provider to your request.";
+                    }
+                    else if (hadPreviousPreference)
+                    {
+                        responseMessage = $"I've confirmed your preference for {newPreferredName}. When a coordinator assigns a service provider to your request, they'll take your preference into account.";
+                    }
+                    else
+                    {
+                        responseMessage = $"Perfect! I've noted your preference for {newPreferredName}. When a coordinator assigns a service provider to your request, they'll take your preference into account.";
+                    }
+                    
+                    return new AgenticResponse
+                    {
+                        Message = responseMessage,
+                        Confidence = 0.9m,
+                        SuggestedActions = new List<string> { "Continue with service request", "Ask about status" }
+                    };
                 }
 
                 // Step 5: Load or create client profile
@@ -1559,6 +1605,124 @@ Return ONLY the raw JSON object, nothing else.";
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Checks if the user is asking about available SMEs
+        /// </summary>
+        private bool IsAskingAboutSMEs(string message)
+        {
+            var lowerMessage = message.ToLowerInvariant();
+            var smeKeywords = new[] { "available", "sme", "provider", "service provider", "expert", "specialist", "who can help", "recommend", "suggest", "options", "list", "show me", "see", "find" };
+            var contextKeywords = new[] { "for this", "for my", "for me", "available", "near me", "close", "local" };
+
+            // Check if message contains SME-related keywords AND context keywords
+            bool hasSmeKeyword = smeKeywords.Any(keyword => lowerMessage.Contains(keyword));
+            bool hasContextKeyword = contextKeywords.Any(keyword => lowerMessage.Contains(keyword)) ||
+                                    lowerMessage.Contains("service request") ||
+                                    lowerMessage.Contains("request");
+
+            return hasSmeKeyword && hasContextKeyword;
+        }
+
+        /// <summary>
+        /// Detects if client is expressing preference for a specific SME (including changing an existing preference)
+        /// </summary>
+        private async Task<int?> DetectSMEPreferenceIntent(string message, int serviceRequestId)
+        {
+            var lowerMessage = message.ToLowerInvariant();
+            // Include keywords for changing preferences: "change", "update", "switch", "instead", "different", "rather", "instead of"
+            var preferenceKeywords = new[] { 
+                "prefer", "preference", "like", "want", "choose", "select", "pick", "would like", "interested in",
+                "change", "update", "switch", "instead", "different", "rather", "instead of", "change to", "switch to"
+            };
+
+            if (!preferenceKeywords.Any(keyword => lowerMessage.Contains(keyword)))
+                return null;
+
+            // Get SME recommendations to match against
+            var recommendations = await _assignmentService.GetSmeRecommendationsAsync(serviceRequestId);
+
+            // Try to match SME name from message
+            foreach (var rec in recommendations)
+            {
+                var smeNameLower = rec.SmeUserName.ToLowerInvariant();
+                var nameParts = smeNameLower.Split(' ');
+
+                // Check if any part of the SME name appears in the message
+                if (nameParts.Any(part => part.Length > 2 && lowerMessage.Contains(part)))
+                {
+                    return rec.SmeUserId;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Handles request to show SME recommendations
+        /// </summary>
+        private async Task<AgenticResponse> HandleSMERecommendationRequestAsync(int clientId, int serviceRequestId, string clientMessage)
+        {
+            try
+            {
+                var recommendations = await _assignmentService.GetSmeRecommendationsAsync(serviceRequestId);
+
+                if (!recommendations.Any())
+                {
+                    return new AgenticResponse
+                    {
+                        Message = "I couldn't find any available service providers matching your service request requirements at this time. A coordinator will help assign someone suitable for you.",
+                        Confidence = 0.8m,
+                        SuggestedActions = new List<string> { "Ask about status", "Contact coordinator" }
+                    };
+                }
+
+                // Format recommendations for display (top 5)
+                var topRecommendations = recommendations.Take(5).ToList();
+                var recommendationsText = new List<string>();
+
+                for (int i = 0; i < topRecommendations.Count; i++)
+                {
+                    var rec = topRecommendations[i];
+                    var info = $"{i + 1}. **{rec.SmeUserName}**";
+
+                    if (rec.SmeScore > 0)
+                        info += $" (Rating: {rec.SmeScore}/100)";
+
+                    if (rec.DistanceMiles.HasValue)
+                        info += $" - {rec.DistanceMiles.Value:F1} miles away";
+
+                    if (rec.ExpertiseMatchCount > 0)
+                        info += $" - Matches {rec.ExpertiseMatchCount} of {rec.TotalExpertiseRequired} required expertise areas";
+
+                    if (rec.CompletionRate > 0)
+                        info += $" - {rec.CompletionRate:P0} completion rate";
+
+                    recommendationsText.Add(info);
+                }
+
+                var message = $"Here are the available service providers for your request:\n\n{string.Join("\n", recommendationsText)}\n\n" +
+                             $"You can let me know if you have a preference (e.g., \"I prefer [provider name]\" or \"I'd like the one closest to me\"), " +
+                             $"and I'll note it for when a coordinator assigns someone to your request.";
+
+                return new AgenticResponse
+                {
+                    Message = message,
+                    Confidence = 0.9m,
+                    SuggestedActions = new List<string> { "Express preference", "Ask about status", "Continue" }
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling SME recommendation request for client {ClientId}, SR {ServiceRequestId}", clientId, serviceRequestId);
+                return new AgenticResponse
+                {
+                    Message = "I'm having trouble finding available service providers right now. A coordinator will help assign someone suitable for you.",
+                    Confidence = 0.5m,
+                    SuggestedActions = new List<string> { "Contact coordinator" }
+                };
+            }
         }
 
         /// <summary>
