@@ -2478,7 +2478,7 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddClientAgentSessionMetad
         fi
         
         rm -f "$SCRIPT_PATH"
-    ENDSSH
+ENDSSH
     
     echo -e "${GREEN}✅ Client Agent Session Metadata migration completed${NC}"
 else
@@ -2659,7 +2659,7 @@ if [ -f "$REPO_ROOT/SM_MentalHealthApp.Server/Scripts/AddPreferredSmeUserId.sql"
         fi
         
         rm -f "$SCRIPT_PATH"
-    ENDSSH
+ENDSSH
     
     echo -e "${GREEN}✅ PreferredSmeUserId migration completed${NC}"
 else

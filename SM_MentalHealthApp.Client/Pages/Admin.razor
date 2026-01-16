@@ -136,7 +136,7 @@
 
                     <div class="form-group">
                         <label class="form-label" style="user-select: none;">Select SME:</label>
-                        <RadzenDropDown Data="@doctors.Where(d => d.RoleId == 2 || d.RoleId == 5)" TextProperty="FullName" ValueProperty="Id"
+                        <RadzenDropDown Data="@doctors.Where(d => d.RoleId == 2 || d.RoleId == 5 || d.RoleId == 6)" TextProperty="FullName" ValueProperty="Id"
                             @bind-Value="selectedDoctorId" AllowFiltering="true"
                             FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Placeholder="Choose an SME..."
                             Style="width: 380px" TValue="int?" AllowClear="true" />
@@ -607,9 +607,18 @@
             var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/patients");
             patients = patientsResponse ?? new();
 
-            // Load doctors (users with role = Doctor)
+            // Load doctors, attorneys, and SMEs
             var doctorsResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/doctors");
-            doctors = doctorsResponse ?? new();
+            var doctorsList = doctorsResponse ?? new();
+            
+            var attorneysResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys");
+            var attorneysList = attorneysResponse ?? new();
+            
+            var smesResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/smes");
+            var smesList = smesResponse ?? new();
+            
+            // Combine all: doctors (RoleId 2), attorneys (RoleId 5), and SMEs (RoleId 6)
+            doctors = doctorsList.Concat(attorneysList).Concat(smesList).ToList();
 
             // Load assignments
             var assignmentsResponse = await Http.GetFromJsonAsync<List<UserAssignment>>("api/admin/assignments");
