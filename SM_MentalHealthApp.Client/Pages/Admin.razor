@@ -612,13 +612,18 @@
             var doctorsList = doctorsResponse ?? new();
             
             var attorneysResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/attorneys");
-            var attorneysList = attorneysResponse ?? new();
+            // Filter attorneys to only include RoleId 5 (exclude SMEs which are RoleId 6)
+            var attorneysList = attorneysResponse?.Where(a => a.RoleId == 5).ToList() ?? new();
             
             var smesResponse = await Http.GetFromJsonAsync<List<User>>("api/admin/smes");
             var smesList = smesResponse ?? new();
             
             // Combine all: doctors (RoleId 2), attorneys (RoleId 5), and SMEs (RoleId 6)
-            doctors = doctorsList.Concat(attorneysList).Concat(smesList).ToList();
+            // Use DistinctBy to ensure no duplicates (in case of any overlap)
+            doctors = doctorsList.Concat(attorneysList).Concat(smesList)
+                .GroupBy(d => d.Id)
+                .Select(g => g.First())
+                .ToList();
 
             // Load assignments
             var assignmentsResponse = await Http.GetFromJsonAsync<List<UserAssignment>>("api/admin/assignments");

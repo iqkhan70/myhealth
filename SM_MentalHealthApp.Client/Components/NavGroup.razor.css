@@ -1,0 +1,71 @@
+/* NavGroup Component Styles - Scoped to this component */
+.nav-group {
+    margin: 0 12px 4px 12px;
+}
+
+.nav-group-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 16px 20px !important;
+    color: #ffffff !important;
+    text-decoration: none !important;
+    border-radius: 12px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    height: auto !important;
+    line-height: 1.4 !important;
+    min-height: 56px !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 2px solid rgba(255, 255, 255, 0.4) !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+    text-shadow: 0 3px 6px rgba(0, 0, 0, 0.8) !important;
+    letter-spacing: 0.5px !important;
+    cursor: pointer !important;
+    user-select: none !important;
+    margin-bottom: 4px !important;
+}
+
+.nav-group-header:hover {
+    background: #f8f9fa !important;
+    color: #333333 !important;
+    transform: translateX(8px) scale(1.02) !important;
+    border-color: #2196F3 !important;
+    box-shadow: 0 6px 20px rgba(33, 150, 243, 0.3) !important;
+    text-shadow: none !important;
+}
+
+.nav-group-title {
+    flex: 1 !important;
+    color: inherit !important;
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.5px !important;
+}
+
+.nav-group-header:hover .nav-group-title {
+    color: #333333 !important;
+}
+
+.nav-group-toggle {
+    font-size: 16px !important;
+    color: inherit !important;
+    opacity: 0.9 !important;
+    transition: transform 0.3s ease !important;
+    margin-left: 12px !important;
+    font-weight: 800 !important;
+}
+
+.nav-group-header:hover .nav-group-toggle {
+    color: #333333 !important;
+}
+
+.nav-group-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-left: 8px;
+    margin-top: 4px;
+}

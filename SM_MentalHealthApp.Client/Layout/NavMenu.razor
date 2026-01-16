@@ -12,245 +12,316 @@
         @* Patient-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 1) // Patient
         {
-            <a href="/journal" class="nav-item @(GetActiveClass("/journal"))">
-                <i class="nav-icon">📝</i>
-                <span>Journal</span>
-            </a>
-            <a href="/trends" class="nav-item @(GetActiveClass("/trends"))">
-                <i class="nav-icon">📊</i>
-                <span>Trends</span>
-            </a>
-            <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
-                <i class="nav-icon">📋</i>
-                <span>My Service Requests</span>
-            </a>
-            <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
-                <i class="nav-icon">💬</i>
-                <span>SME Chat</span>
-                <div class="nav-badge">Live</div>
-            </a>
-            <a href="/chat" class="nav-item @(GetActiveClass("/chat"))">
-                <i class="nav-icon">🤖</i>
-                <span>AI Assistant</span>
-            </a>
-            <a href="/chat-history" class="nav-item @(GetActiveClass("/chat-history"))">
-                <i class="nav-icon">📜</i>
-                <span>AI Chat History</span>
-            </a>
-            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
-                <i class="nav-icon">📁</i>
-                <span>My Content</span>
-            </a>
+            <NavGroup Title="My Journal" IsExpanded="@patientGroupsExpanded["journal"]" OnToggle="@(() => ToggleGroup("journal"))">
+                <a href="/journal" class="nav-item @(GetActiveClass("/journal"))">
+                    <i class="nav-icon">📝</i>
+                    <span>Journal</span>
+                </a>
+                <a href="/trends" class="nav-item @(GetActiveClass("/trends"))">
+                    <i class="nav-icon">📊</i>
+                    <span>Trends</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Services" IsExpanded="@patientGroupsExpanded["services"]" OnToggle="@(() => ToggleGroup("services"))">
+                <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
+                    <i class="nav-icon">📋</i>
+                    <span>My Service Requests</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Communication" IsExpanded="@patientGroupsExpanded["communication"]" OnToggle="@(() => ToggleGroup("communication"))">
+                <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
+                    <i class="nav-icon">💬</i>
+                    <span>SME Chat</span>
+                    <div class="nav-badge">Live</div>
+                </a>
+                <a href="/chat" class="nav-item @(GetActiveClass("/chat"))">
+                    <i class="nav-icon">🤖</i>
+                    <span>AI Assistant</span>
+                </a>
+                <a href="/chat-history" class="nav-item @(GetActiveClass("/chat-history"))">
+                    <i class="nav-icon">📜</i>
+                    <span>AI Chat History</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Content" IsExpanded="@patientGroupsExpanded["content"]" OnToggle="@(() => ToggleGroup("content"))">
+                <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                    <i class="nav-icon">📁</i>
+                    <span>My Content</span>
+                </a>
+            </NavGroup>
         }
 
         @* Doctor-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 2) // Doctor
         {
-            <a href="/emergency-dashboard" class="nav-item @(GetActiveClass("/emergency-dashboard"))">
-                <i class="nav-icon">🚨</i>
-                <span>Emergency Dashboard</span>
-            </a>
-            <a href="/users" class="nav-item @(GetActiveClass("/users"))">
-                <i class="nav-icon">👥</i>
-                <span>My Clients</span>
-            </a>
-            <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
-                <i class="nav-icon">💬</i>
-                <span>Client Chat</span>
-                <div class="nav-badge">Live</div>
-            </a>
-            <a href="/journal" class="nav-item @(GetActiveClass("/journal"))">
-                <i class="nav-icon">📝</i>
-                <span>Client Journal</span>
-            </a>
-            <a href="/chat" class="nav-item @(GetActiveClass("/chat"))">
-                <i class="nav-icon">🤖</i>
-                <span>AI Assistant</span>
-            </a>
-            <a href="/chat-history" class="nav-item @(GetActiveClass("/chat-history"))">
-                <i class="nav-icon">📜</i>
-                <span>AI Chat History</span>
-            </a>
-            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
-                <i class="nav-icon">📁</i>
-                <span>Client Content</span>
-            </a>
-            <a href="/clinical-notes" class="nav-item @(GetActiveClass("/clinical-notes"))">
-                <i class="nav-icon">📋</i>
-                <span>Service Notes</span>
-            </a>
-            <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
-                <i class="nav-icon">📋</i>
-                <span>Service Requests</span>
-            </a>
-            <a href="/clinical-decision-support" class="nav-item @(GetActiveClass("/clinical-decision-support"))">
-                <i class="nav-icon">🧠</i>
-                <span>AI Decision Support</span>
-            </a>
-            <a href="/appointments" class="nav-item @(GetActiveClass("/appointments"))">
-                <i class="nav-icon">📅</i>
-                <span>My Appointments</span>
-            </a>
+            <NavGroup Title="Dashboard" IsExpanded="@doctorGroupsExpanded["dashboard"]" OnToggle="@(() => ToggleGroup("dashboard"))">
+                <a href="/emergency-dashboard" class="nav-item @(GetActiveClass("/emergency-dashboard"))">
+                    <i class="nav-icon">🚨</i>
+                    <span>Emergency Dashboard</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Clients" IsExpanded="@doctorGroupsExpanded["clients"]" OnToggle="@(() => ToggleGroup("clients"))">
+                <a href="/users" class="nav-item @(GetActiveClass("/users"))">
+                    <i class="nav-icon">👥</i>
+                    <span>My Clients</span>
+                </a>
+                <a href="/journal" class="nav-item @(GetActiveClass("/journal"))">
+                    <i class="nav-icon">📝</i>
+                    <span>Client Journal</span>
+                </a>
+                <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                    <i class="nav-icon">📁</i>
+                    <span>Client Content</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Communication" IsExpanded="@doctorGroupsExpanded["communication"]" OnToggle="@(() => ToggleGroup("communication"))">
+                <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
+                    <i class="nav-icon">💬</i>
+                    <span>Client Chat</span>
+                    <div class="nav-badge">Live</div>
+                </a>
+                <a href="/chat" class="nav-item @(GetActiveClass("/chat"))">
+                    <i class="nav-icon">🤖</i>
+                    <span>AI Assistant</span>
+                </a>
+                <a href="/chat-history" class="nav-item @(GetActiveClass("/chat-history"))">
+                    <i class="nav-icon">📜</i>
+                    <span>AI Chat History</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Services" IsExpanded="@doctorGroupsExpanded["services"]" OnToggle="@(() => ToggleGroup("services"))">
+                <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
+                    <i class="nav-icon">📋</i>
+                    <span>Service Requests</span>
+                </a>
+                <a href="/clinical-notes" class="nav-item @(GetActiveClass("/clinical-notes"))">
+                    <i class="nav-icon">📋</i>
+                    <span>Service Notes</span>
+                </a>
+                <a href="/appointments" class="nav-item @(GetActiveClass("/appointments"))">
+                    <i class="nav-icon">📅</i>
+                    <span>My Appointments</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="AI Tools" IsExpanded="@doctorGroupsExpanded["ai"]" OnToggle="@(() => ToggleGroup("ai"))">
+                <a href="/clinical-decision-support" class="nav-item @(GetActiveClass("/clinical-decision-support"))">
+                    <i class="nav-icon">🧠</i>
+                    <span>AI Decision Support</span>
+                </a>
+            </NavGroup>
         }
 
         @* Admin-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 3) // Admin
         {
-            <a href="/emergency-dashboard" class="nav-item @(GetActiveClass("/emergency-dashboard"))">
-                <i class="nav-icon">🚨</i>
-                <span>Emergency Dashboard</span>
-            </a>
-            <a href="/admin" class="nav-item @(GetActiveClass("/admin"))">
-                <i class="nav-icon">⚙️</i>
-                <span>Assignments</span>
-            </a>
-            <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
-                <i class="nav-icon">📋</i>
-                <span>Service Requests</span>
-            </a>
-            <a href="/billing" class="nav-item @(GetActiveClass("/billing"))">
-                <i class="nav-icon">💰</i>
-                <span>SME Billing</span>
-            </a>
-            <a href="/invoices" class="nav-item @(GetActiveClass("/invoices"))">
-                <i class="nav-icon">📄</i>
-                <span>Invoices</span>
-            </a>
-            <a href="/appointments" class="nav-item @(GetActiveClass("/appointments"))">
-                <i class="nav-icon">📅</i>
-                <span>Appointments</span>
-            </a>
-            <a href="/users" class="nav-item @(GetActiveClass("/users"))">
-                <i class="nav-icon">👥</i>
-                <span>All Clients</span>
-            </a>
-            <a href="/doctors" class="nav-item @(GetActiveClass("/doctors"))">
-                <i class="nav-icon">👨‍⚕️</i>
-                <span>All Doctors</span>
-            </a>
-            <a href="/coordinators" class="nav-item @(GetActiveClass("/coordinators"))">
-                <i class="nav-icon">👥</i>
-                <span>Coordinators</span>
-            </a>
-            <a href="/attorneys" class="nav-item @(GetActiveClass("/attorneys"))">
-                <i class="nav-icon">⚖️</i>
-                <span>Attorneys</span>
-            </a>
-            <a href="/smes" class="nav-item @(GetActiveClass("/smes"))">
-                <i class="nav-icon">👨‍💼</i>
-                <span>SMEs</span>
-            </a>
-            <a href="/companies" class="nav-item @(GetActiveClass("/companies"))">
-                <i class="nav-icon">🏢</i>
-                <span>Companies</span>
-            </a>
-            <a href="/expertise" class="nav-item @(GetActiveClass("/expertise"))">
-                <i class="nav-icon">🏷️</i>
-                <span>Expertise</span>
-            </a>
-            <a href="/billing-rates" class="nav-item @(GetActiveClass("/billing-rates"))">
-                <i class="nav-icon">💰</i>
-                <span>Billing Rates</span>
-            </a>
-            <a href="/user-requests" class="nav-item @(GetActiveClass("/user-requests"))">
-                <i class="nav-icon">📋</i>
-                <span>User Requests</span>
-            </a>
-            <a href="/chat" class="nav-item @(GetActiveClass("/chat"))">
-                <i class="nav-icon">💬</i>
-                <span>AI Assistant</span>
-            </a>
-            <a href="/chat-history" class="nav-item @(GetActiveClass("/chat-history"))">
-                <i class="nav-icon">📜</i>
-                <span>AI Chat History</span>
-            </a>
-            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
-                <i class="nav-icon">📁</i>
-                <span>All Content</span>
-            </a>
-            @* Service Notes removed for admin - doesn't make functional sense *@
+            <NavGroup Title="Dashboard" IsExpanded="@adminGroupsExpanded["dashboard"]" OnToggle="@(() => ToggleGroup("dashboard"))">
+                <a href="/emergency-dashboard" class="nav-item @(GetActiveClass("/emergency-dashboard"))">
+                    <i class="nav-icon">🚨</i>
+                    <span>Emergency Dashboard</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Service Management" IsExpanded="@adminGroupsExpanded["services"]" OnToggle="@(() => ToggleGroup("services"))">
+                <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
+                    <i class="nav-icon">📋</i>
+                    <span>Service Requests</span>
+                </a>
+                <a href="/appointments" class="nav-item @(GetActiveClass("/appointments"))">
+                    <i class="nav-icon">📅</i>
+                    <span>Appointments</span>
+                </a>
+                <a href="/admin" class="nav-item @(GetActiveClass("/admin"))">
+                    <i class="nav-icon">⚙️</i>
+                    <span>Assignments</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="User Management" IsExpanded="@adminGroupsExpanded["users"]" OnToggle="@(() => ToggleGroup("users"))">
+                <a href="/users" class="nav-item @(GetActiveClass("/users"))">
+                    <i class="nav-icon">👥</i>
+                    <span>All Clients</span>
+                </a>
+                <a href="/doctors" class="nav-item @(GetActiveClass("/doctors"))">
+                    <i class="nav-icon">👨‍⚕️</i>
+                    <span>All Doctors</span>
+                </a>
+                <a href="/coordinators" class="nav-item @(GetActiveClass("/coordinators"))">
+                    <i class="nav-icon">👥</i>
+                    <span>Coordinators</span>
+                </a>
+                <a href="/attorneys" class="nav-item @(GetActiveClass("/attorneys"))">
+                    <i class="nav-icon">⚖️</i>
+                    <span>Attorneys</span>
+                </a>
+                <a href="/smes" class="nav-item @(GetActiveClass("/smes"))">
+                    <i class="nav-icon">👨‍💼</i>
+                    <span>SMEs</span>
+                </a>
+                <a href="/companies" class="nav-item @(GetActiveClass("/companies"))">
+                    <i class="nav-icon">🏢</i>
+                    <span>Companies</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Communication" IsExpanded="@adminGroupsExpanded["communication"]" OnToggle="@(() => ToggleGroup("communication"))">
+                <a href="/chat" class="nav-item @(GetActiveClass("/chat"))">
+                    <i class="nav-icon">💬</i>
+                    <span>AI Assistant</span>
+                </a>
+                <a href="/chat-history" class="nav-item @(GetActiveClass("/chat-history"))">
+                    <i class="nav-icon">📜</i>
+                    <span>AI Chat History</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Content" IsExpanded="@adminGroupsExpanded["content"]" OnToggle="@(() => ToggleGroup("content"))">
+                <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                    <i class="nav-icon">📁</i>
+                    <span>All Content</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Billing & Financial" IsExpanded="@adminGroupsExpanded["billing"]" OnToggle="@(() => ToggleGroup("billing"))">
+                <a href="/billing" class="nav-item @(GetActiveClass("/billing"))">
+                    <i class="nav-icon">💰</i>
+                    <span>SME Billing</span>
+                </a>
+                <a href="/invoices" class="nav-item @(GetActiveClass("/invoices"))">
+                    <i class="nav-icon">📄</i>
+                    <span>Invoices</span>
+                </a>
+                <a href="/billing-rates" class="nav-item @(GetActiveClass("/billing-rates"))">
+                    <i class="nav-icon">💰</i>
+                    <span>Billing Rates</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="System Administration" IsExpanded="@adminGroupsExpanded["admin"]" OnToggle="@(() => ToggleGroup("admin"))">
+                <a href="/expertise" class="nav-item @(GetActiveClass("/expertise"))">
+                    <i class="nav-icon">🏷️</i>
+                    <span>Expertise</span>
+                </a>
+                <a href="/user-requests" class="nav-item @(GetActiveClass("/user-requests"))">
+                    <i class="nav-icon">📋</i>
+                    <span>User Requests</span>
+                </a>
+            </NavGroup>
         }
 
         @* Coordinator-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 4) // Coordinator
         {
-            <a href="/appointments" class="nav-item @(GetActiveClass("/appointments"))">
-                <i class="nav-icon">📅</i>
-                <span>Appointments</span>
-            </a>
-            <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
-                <i class="nav-icon">📋</i>
-                <span>Service Requests</span>
-            </a>
-            <a href="/users" class="nav-item @(GetActiveClass("/users"))">
-                <i class="nav-icon">👥</i>
-                <span>My Clients</span>
-            </a>
-            <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
-                <i class="nav-icon">💬</i>
-                <span>Client Chat</span>
-                <div class="nav-badge">Live</div>
-            </a>
-            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
-                <i class="nav-icon">📁</i>
-                <span>Client Content</span>
-            </a>
-            <a href="/user-requests" class="nav-item @(GetActiveClass("/user-requests"))">
-                <i class="nav-icon">📋</i>
-                <span>User Requests</span>
-            </a>
+            <NavGroup Title="Services" IsExpanded="@coordinatorGroupsExpanded["services"]" OnToggle="@(() => ToggleGroup("services"))">
+                <a href="/appointments" class="nav-item @(GetActiveClass("/appointments"))">
+                    <i class="nav-icon">📅</i>
+                    <span>Appointments</span>
+                </a>
+                <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
+                    <i class="nav-icon">📋</i>
+                    <span>Service Requests</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Clients" IsExpanded="@coordinatorGroupsExpanded["clients"]" OnToggle="@(() => ToggleGroup("clients"))">
+                <a href="/users" class="nav-item @(GetActiveClass("/users"))">
+                    <i class="nav-icon">👥</i>
+                    <span>My Clients</span>
+                </a>
+                <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                    <i class="nav-icon">📁</i>
+                    <span>Client Content</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Communication" IsExpanded="@coordinatorGroupsExpanded["communication"]" OnToggle="@(() => ToggleGroup("communication"))">
+                <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
+                    <i class="nav-icon">💬</i>
+                    <span>Client Chat</span>
+                    <div class="nav-badge">Live</div>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Administration" IsExpanded="@coordinatorGroupsExpanded["admin"]" OnToggle="@(() => ToggleGroup("admin"))">
+                <a href="/user-requests" class="nav-item @(GetActiveClass("/user-requests"))">
+                    <i class="nav-icon">📋</i>
+                    <span>User Requests</span>
+                </a>
+            </NavGroup>
         }
 
         @* Attorney-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 5) // Attorney
         {
-            <a href="/users" class="nav-item @(GetActiveClass("/users"))">
-                <i class="nav-icon">👥</i>
-                <span>My Clients</span>
-            </a>
-            <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
-                <i class="nav-icon">💬</i>
-                <span>Client Chat</span>
-                <div class="nav-badge">Live</div>
-            </a>
-            <a href="/clinical-notes" class="nav-item @(GetActiveClass("/clinical-notes"))">
-                <i class="nav-icon">📋</i>
-                <span>Service Notes</span>
-            </a>
-            <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
-                <i class="nav-icon">📋</i>
-                <span>Service Requests</span>
-            </a>
-            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
-                <i class="nav-icon">📁</i>
-                <span>Client Content</span>
-            </a>
+            <NavGroup Title="Clients" IsExpanded="@attorneyGroupsExpanded["clients"]" OnToggle="@(() => ToggleGroup("clients"))">
+                <a href="/users" class="nav-item @(GetActiveClass("/users"))">
+                    <i class="nav-icon">👥</i>
+                    <span>My Clients</span>
+                </a>
+                <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                    <i class="nav-icon">📁</i>
+                    <span>Client Content</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Communication" IsExpanded="@attorneyGroupsExpanded["communication"]" OnToggle="@(() => ToggleGroup("communication"))">
+                <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
+                    <i class="nav-icon">💬</i>
+                    <span>Client Chat</span>
+                    <div class="nav-badge">Live</div>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Services" IsExpanded="@attorneyGroupsExpanded["services"]" OnToggle="@(() => ToggleGroup("services"))">
+                <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
+                    <i class="nav-icon">📋</i>
+                    <span>Service Requests</span>
+                </a>
+                <a href="/clinical-notes" class="nav-item @(GetActiveClass("/clinical-notes"))">
+                    <i class="nav-icon">📋</i>
+                    <span>Service Notes</span>
+                </a>
+            </NavGroup>
         }
 
-        @* SME-specific pages (same as Attorney, but can create content) *@
+        @* SME-specific pages *@
         @if (AuthService.CurrentUser?.RoleId == 6) // SME
         {
-            <a href="/users" class="nav-item @(GetActiveClass("/users"))">
-                <i class="nav-icon">👥</i>
-                <span>My Clients</span>
-            </a>
-            <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
-                <i class="nav-icon">💬</i>
-                <span>Client Chat</span>
-                <div class="nav-badge">Live</div>
-            </a>
-            <a href="/clinical-notes" class="nav-item @(GetActiveClass("/clinical-notes"))">
-                <i class="nav-icon">📋</i>
-                <span>Service Notes</span>
-            </a>
-            <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
-                <i class="nav-icon">📋</i>
-                <span>Service Requests</span>
-            </a>
-            <a href="/content" class="nav-item @(GetActiveClass("/content"))">
-                <i class="nav-icon">📁</i>
-                <span>Client Content</span>
-            </a>
+            <NavGroup Title="Clients" IsExpanded="@smeGroupsExpanded["clients"]" OnToggle="@(() => ToggleGroup("clients"))">
+                <a href="/users" class="nav-item @(GetActiveClass("/users"))">
+                    <i class="nav-icon">👥</i>
+                    <span>My Clients</span>
+                </a>
+                <a href="/content" class="nav-item @(GetActiveClass("/content"))">
+                    <i class="nav-icon">📁</i>
+                    <span>Client Content</span>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Communication" IsExpanded="@smeGroupsExpanded["communication"]" OnToggle="@(() => ToggleGroup("communication"))">
+                <a href="/real-time-chat" class="nav-item chat-nav-item @(GetActiveClass("/real-time-chat"))">
+                    <i class="nav-icon">💬</i>
+                    <span>Client Chat</span>
+                    <div class="nav-badge">Live</div>
+                </a>
+            </NavGroup>
+
+            <NavGroup Title="Services" IsExpanded="@smeGroupsExpanded["services"]" OnToggle="@(() => ToggleGroup("services"))">
+                <a href="/service-requests" class="nav-item @(GetActiveClass("/service-requests"))">
+                    <i class="nav-icon">📋</i>
+                    <span>Service Requests</span>
+                </a>
+                <a href="/clinical-notes" class="nav-item @(GetActiveClass("/clinical-notes"))">
+                    <i class="nav-icon">📋</i>
+                    <span>Service Notes</span>
+                </a>
+            </NavGroup>
         }
     </nav>
 
@@ -269,6 +340,78 @@
 @inject IJSRuntime JSRuntime
 
 @code {
+    // Track expanded state for each role's groups
+    private Dictionary<string, bool> patientGroupsExpanded = new() 
+    { 
+        { "journal", true }, 
+        { "services", true }, 
+        { "communication", true }, 
+        { "content", true } 
+    };
+    
+    private Dictionary<string, bool> doctorGroupsExpanded = new() 
+    { 
+        { "dashboard", true }, 
+        { "clients", true }, 
+        { "communication", true }, 
+        { "services", true }, 
+        { "ai", true } 
+    };
+    
+    private Dictionary<string, bool> adminGroupsExpanded = new() 
+    { 
+        { "dashboard", true }, 
+        { "services", true }, 
+        { "users", true }, 
+        { "communication", false }, 
+        { "content", false }, 
+        { "billing", true }, 
+        { "admin", false } 
+    };
+    
+    private Dictionary<string, bool> coordinatorGroupsExpanded = new() 
+    { 
+        { "services", true }, 
+        { "clients", true }, 
+        { "communication", true }, 
+        { "admin", true } 
+    };
+    
+    private Dictionary<string, bool> attorneyGroupsExpanded = new() 
+    { 
+        { "clients", true }, 
+        { "communication", true }, 
+        { "services", true } 
+    };
+    
+    private Dictionary<string, bool> smeGroupsExpanded = new() 
+    { 
+        { "clients", true }, 
+        { "communication", true }, 
+        { "services", true } 
+    };
+
+    private void ToggleGroup(string groupKey)
+    {
+        var roleId = AuthService.CurrentUser?.RoleId ?? 0;
+        Dictionary<string, bool> groupsDict = roleId switch
+        {
+            1 => patientGroupsExpanded,
+            2 => doctorGroupsExpanded,
+            3 => adminGroupsExpanded,
+            4 => coordinatorGroupsExpanded,
+            5 => attorneyGroupsExpanded,
+            6 => smeGroupsExpanded,
+            _ => new Dictionary<string, bool>()
+        };
+        
+        if (groupsDict.ContainsKey(groupKey))
+        {
+            groupsDict[groupKey] = !groupsDict[groupKey];
+            StateHasChanged();
+        }
+    }
+
     private string GetActiveClass(string path)
     {
         // This would need to be implemented with proper routing detection
@@ -310,3 +453,4 @@
         }
     }
 }
+
