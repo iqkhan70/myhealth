@@ -31,7 +31,7 @@
 .nav-group-header:hover {
     background: #f8f9fa !important;
     color: #333333 !important;
-    transform: translateX(8px) scale(1.02) !important;
+    transform: translateX(2px) !important;
     border-color: #2196F3 !important;
     box-shadow: 0 6px 20px rgba(33, 150, 243, 0.3) !important;
     text-shadow: none !important;
