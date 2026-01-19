@@ -23,6 +23,7 @@ namespace SM_MentalHealthApp.Server.Controllers
         private readonly AgoraTokenService _agoraTokenService;
         private readonly IHubContext<MobileHub> _hubContext;
         private readonly bool _useTokens;
+        private readonly IConfiguration _configuration;
 
         private static readonly Dictionary<string, RealtimeConnection> _connections = new();
         private static readonly Dictionary<int, string> _userConnections = new();
@@ -47,6 +48,7 @@ namespace SM_MentalHealthApp.Server.Controllers
             _agoraTokenService = agoraTokenService;
             _hubContext = hubContext;
             _useTokens = configuration.GetValue<bool>("Agora:UseTokens", true);
+            _configuration = configuration;
         }
 
         // ===================== AGORA TOKEN ENDPOINTS ==========================
@@ -793,13 +795,17 @@ namespace SM_MentalHealthApp.Server.Controllers
                 if (string.IsNullOrEmpty(token))
                     return null;
 
+                // Use the same JWT key from configuration as the main authentication
+                var jwtKey = _configuration["Jwt:Key"] ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong!";
+                
                 var tokenHandler = new JwtSecurityTokenHandler();
                 var validationParameters = new TokenValidationParameters
                 {
                     ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes("YourSuperSecretKeyThatIsAtLeast32CharactersLong!")),
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(jwtKey)),
                     ValidateIssuer = false,
                     ValidateAudience = false,
+                    ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
                 };
 
