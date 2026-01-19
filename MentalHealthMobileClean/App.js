@@ -2969,14 +2969,24 @@ export default function App() {
         </Text>
       </View>
 
-      <KeyboardAvoidingView style={styles.chatContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        enabled={true}
+      >
         <ScrollView 
           ref={aiChatScrollViewRef}
-          style={styles.messagesContainer} 
-          contentContainerStyle={styles.messagesContent}
+          style={{ flex: 1 }} 
+          contentContainerStyle={{ padding: 10, paddingBottom: 10 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={true}
           onContentSizeChange={() => {
             // Auto-scroll to bottom when content size changes (new message or loading indicator added)
-            aiChatScrollViewRef.current?.scrollToEnd({ animated: true });
+            setTimeout(() => {
+              aiChatScrollViewRef.current?.scrollToEnd({ animated: true });
+            }, 100);
           }}
         >
           {aiChatMessages.map((m) => (
@@ -3004,6 +3014,7 @@ export default function App() {
             multiline
             maxLength={1000}
             editable={!aiChatLoading}
+            blurOnSubmit={false}
           />
           <TouchableOpacity
             style={[styles.sendButton, (!aiChatInput.trim() || aiChatLoading) && styles.sendButtonDisabled]}
@@ -4043,6 +4054,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#eee',
     alignItems: 'flex-end',
+    ...(Platform.OS === 'android' && {
+      paddingBottom: 10,
+    }),
   },
   textInput: {
     flex: 1,
