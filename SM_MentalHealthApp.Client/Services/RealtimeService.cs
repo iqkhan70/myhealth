@@ -90,10 +90,15 @@ namespace SM_MentalHealthApp.Client.Services
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-                _httpClient.DefaultRequestHeaders.Authorization =
+                // Set Authorization header on the request itself (more reliable in Blazor WebAssembly)
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/realtime/connect")
+                {
+                    Content = content
+                };
+                httpRequest.Headers.Authorization = 
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-                var response = await _httpClient.PostAsync("/api/realtime/connect", content);
+                var response = await _httpClient.SendAsync(httpRequest);
 
                 if (response.IsSuccessStatusCode)
                 {
