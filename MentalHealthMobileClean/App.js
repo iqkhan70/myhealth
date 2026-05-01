@@ -2583,7 +2583,7 @@ export default function App() {
             editable={!resetPasswordLoading}
           />
           
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.button, resetPasswordLoading && styles.buttonDisabled]} 
             onPress={handleResetPassword} 
             disabled={resetPasswordLoading}
@@ -2758,37 +2758,26 @@ export default function App() {
         </View>
       </GradientHeader>
 
-      <View style={styles.contactsHeader}>
-        <Text style={styles.contactsTitle}>
-          {user?.roleId === 2 ? 'Your Clients' : 'Your Coordinators & SMEs'}
-        </Text>
-        <Text style={styles.contactsCount}>({filteredContacts.length})</Text>
-      </View>
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search contacts..."
-          value={contactSearchQuery}
-          onChangeText={setContactSearchQuery}
-          placeholderTextColor="#999"
-        />
-        {contactSearchQuery.length > 0 && (
-          <TouchableOpacity
-            style={styles.clearButton}
-            onPress={() => setContactSearchQuery('')}
-          >
-            <Text style={styles.clearButtonText}>✕</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
       <ScrollView style={styles.contactsList}>
+        {/* Service Requests Button */}
+        <View style={{ padding: 16, paddingBottom: 12 }}>
+          <TouchableOpacity
+            style={styles.serviceRequestButton}
+            onPress={() => {
+              setCurrentView('service-requests');
+              currentViewRef.current = 'service-requests';
+            }}
+          >
+            <Text style={styles.serviceRequestButtonIcon}>📋</Text>
+            <Text style={styles.serviceRequestButtonText}>Service Requests</Text>
+            <Text style={styles.serviceRequestButtonArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* AI Chat Button - For clients/patients only */}
         {user?.roleId === 1 && (
           <View style={{ padding: 16, paddingBottom: 12 }}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.serviceRequestButton, { backgroundColor: EATS_ORANGE }]}
               onPress={() => {
                 setCurrentView('ai-chat');
@@ -2808,20 +2797,31 @@ export default function App() {
             </Text>
           </View>
         )}
-        
-        {/* Service Requests Button */}
-        <View style={{ padding: 16, paddingBottom: 12 }}>
-          <TouchableOpacity 
-            style={styles.serviceRequestButton}
-            onPress={() => {
-              setCurrentView('service-requests');
-              currentViewRef.current = 'service-requests';
-            }}
-          >
-            <Text style={styles.serviceRequestButtonIcon}>📋</Text>
-            <Text style={styles.serviceRequestButtonText}>Service Requests</Text>
-            <Text style={styles.serviceRequestButtonArrow}>›</Text>
-          </TouchableOpacity>
+
+        <View style={styles.contactsHeader}>
+          <Text style={styles.contactsTitle}>
+            {user?.roleId === 2 ? 'Your Clients' : 'Your Coordinators & SMEs'}
+          </Text>
+          <Text style={styles.contactsCount}>({filteredContacts.length})</Text>
+        </View>
+
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search contacts..."
+            value={contactSearchQuery}
+            onChangeText={setContactSearchQuery}
+            placeholderTextColor="#999"
+          />
+          {contactSearchQuery.length > 0 && (
+            <TouchableOpacity
+              style={styles.clearButton}
+              onPress={() => setContactSearchQuery('')}
+            >
+              <Text style={styles.clearButtonText}>✕</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {filteredContacts.length === 0 && contactSearchQuery.trim() ? (
