@@ -2804,7 +2804,7 @@ export default function App() {
               <Text style={[styles.serviceRequestButtonArrow, { color: '#fff' }]}>›</Text>
             </TouchableOpacity>
             <Text style={{ fontSize: 12, color: '#666', marginTop: 4, textAlign: 'center' }}>
-              Chat with AI for service requests, questions, or medical help
+              Chat with AI for service requests, questions or any help
             </Text>
           </View>
         )}
