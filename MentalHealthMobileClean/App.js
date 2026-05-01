@@ -2759,26 +2759,31 @@ export default function App() {
       </GradientHeader>
 
       <ScrollView style={styles.contactsList}>
-        {/* Service Requests Button */}
-        <View style={{ padding: 16, paddingBottom: 12 }}>
+        <View style={styles.quickActionsSection}>
           <TouchableOpacity
-            style={styles.serviceRequestButton}
+            style={[
+              styles.quickActionCard,
+              styles.quickActionCardPrimary,
+              user?.roleId !== 1 && styles.quickActionCardFull
+            ]}
             onPress={() => {
               setCurrentView('service-requests');
               currentViewRef.current = 'service-requests';
             }}
+            activeOpacity={0.88}
           >
-            <Text style={styles.serviceRequestButtonIcon}>📋</Text>
-            <Text style={styles.serviceRequestButtonText}>Service Requests</Text>
-            <Text style={styles.serviceRequestButtonArrow}>›</Text>
+            <View style={styles.quickActionIconWrap}>
+              <Text style={styles.quickActionIcon}>📋</Text>
+            </View>
+            <View style={styles.quickActionCopy}>
+              <Text style={styles.quickActionTitle}>Service Requests</Text>
+              <Text style={styles.quickActionSubtitle}>Track and manage requests</Text>
+            </View>
           </TouchableOpacity>
-        </View>
 
-        {/* AI Chat Button - For clients/patients only */}
-        {user?.roleId === 1 && (
-          <View style={{ padding: 16, paddingBottom: 12 }}>
+          {user?.roleId === 1 && (
             <TouchableOpacity
-              style={[styles.serviceRequestButton, { backgroundColor: EATS_ORANGE }]}
+              style={[styles.quickActionCard, styles.quickActionCardAccent]}
               onPress={() => {
                 setCurrentView('ai-chat');
                 currentViewRef.current = 'ai-chat';
@@ -2787,16 +2792,18 @@ export default function App() {
                   updateAiChatWelcomeMessage();
                 }
               }}
+              activeOpacity={0.88}
             >
-              <Text style={styles.serviceRequestButtonIcon}>🤖</Text>
-              <Text style={[styles.serviceRequestButtonText, { color: '#fff' }]}>AI Chat Assistant</Text>
-              <Text style={[styles.serviceRequestButtonArrow, { color: '#fff' }]}>›</Text>
+              <View style={[styles.quickActionIconWrap, styles.quickActionIconWrapAccent]}>
+                <Text style={styles.quickActionIcon}>🤖</Text>
+              </View>
+              <View style={styles.quickActionCopy}>
+                <Text style={[styles.quickActionTitle, styles.quickActionTitleAccent]}>AI Chat</Text>
+                <Text style={[styles.quickActionSubtitle, styles.quickActionSubtitleAccent]}>Ask for help or guidance</Text>
+              </View>
             </TouchableOpacity>
-            <Text style={{ fontSize: 12, color: '#666', marginTop: 4, textAlign: 'center' }}>
-              Chat with AI for service requests, questions or any help
-            </Text>
-          </View>
-        )}
+          )}
+        </View>
 
         <View style={styles.contactsHeader}>
           <Text style={styles.contactsTitle}>
@@ -4689,33 +4696,73 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  serviceRequestButton: {
-    backgroundColor: EATS_ORANGE,
-    borderRadius: 18,
+  quickActionsSection: {
+    flexDirection: 'row',
+    gap: 12,
     padding: 16,
+    paddingBottom: 10,
+  },
+  quickActionCard: {
+    flex: 1,
+    minHeight: 96,
+    borderRadius: 18,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
     elevation: 4,
-    borderWidth: 0,
-    marginHorizontal: 0,
   },
-  serviceRequestButtonIcon: {
-    fontSize: 24,
-    marginRight: 12,
+  quickActionCardFull: {
+    maxWidth: '100%',
   },
-  serviceRequestButtonText: {
+  quickActionCardPrimary: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    shadowColor: EATS_ORANGE,
+  },
+  quickActionCardAccent: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fdba74',
+    shadowColor: EATS_ORANGE,
+  },
+  quickActionIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#fff7ed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  quickActionIconWrapAccent: {
+    backgroundColor: '#fff',
+  },
+  quickActionIcon: {
+    fontSize: 20,
+  },
+  quickActionCopy: {
     flex: 1,
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
   },
-  serviceRequestButtonArrow: {
-    fontSize: 24,
-    color: '#fff',
-    opacity: 0.9,
+  quickActionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: EATS_TEXT,
+    marginBottom: 4,
+  },
+  quickActionTitleAccent: {
+    color: '#9a3412',
+  },
+  quickActionSubtitle: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: EATS_MUTED,
+    fontWeight: '600',
+  },
+  quickActionSubtitleAccent: {
+    color: '#9a3412',
   },
 });
