@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ScrollView,
-  Platform, KeyboardAvoidingView, Modal, Linking
+  Platform, KeyboardAvoidingView, Modal, Linking, Image
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -2373,7 +2373,7 @@ export default function App() {
             <View style={styles.authBrandSection}>
               <View style={styles.authBrandRow}>
                 <View style={styles.brandBadge}>
-                  <Text style={styles.brandBadgeText}>CC</Text>
+                  <Image source={require('./assets/logo.png')} style={styles.brandLogo} resizeMode="contain" />
                 </View>
                 <Text style={styles.authBrandTitle}>Customer Care</Text>
               </View>
@@ -3808,7 +3808,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 22,
-    backgroundColor: EATS_ORANGE,
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 0,
@@ -3818,10 +3818,10 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 5,
   },
-  brandBadgeText: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '800',
+  brandLogo: {
+    width: 58,
+    height: 58,
+    borderRadius: 16,
   },
   authTabBar: {
     flexDirection: 'row',
