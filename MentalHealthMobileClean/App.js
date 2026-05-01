@@ -2583,7 +2583,7 @@ export default function App() {
             editable={!resetPasswordLoading}
           />
           
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.button, resetPasswordLoading && styles.buttonDisabled]} 
             onPress={handleResetPassword} 
             disabled={resetPasswordLoading}
@@ -2758,38 +2758,32 @@ export default function App() {
         </View>
       </GradientHeader>
 
-      <View style={styles.contactsHeader}>
-        <Text style={styles.contactsTitle}>
-          {user?.roleId === 2 ? 'Your Clients' : 'Your Coordinators & SMEs'}
-        </Text>
-        <Text style={styles.contactsCount}>({filteredContacts.length})</Text>
-      </View>
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search contacts..."
-          value={contactSearchQuery}
-          onChangeText={setContactSearchQuery}
-          placeholderTextColor="#999"
-        />
-        {contactSearchQuery.length > 0 && (
-          <TouchableOpacity
-            style={styles.clearButton}
-            onPress={() => setContactSearchQuery('')}
-          >
-            <Text style={styles.clearButtonText}>✕</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
       <ScrollView style={styles.contactsList}>
-        {/* AI Chat Button - For clients/patients only */}
-        {user?.roleId === 1 && (
-          <View style={{ padding: 16, paddingBottom: 12 }}>
-            <TouchableOpacity 
-              style={[styles.serviceRequestButton, { backgroundColor: EATS_ORANGE }]}
+        <View style={styles.quickActionsSection}>
+          <TouchableOpacity
+            style={[
+              styles.quickActionCard,
+              styles.quickActionCardPrimary,
+              user?.roleId !== 1 && styles.quickActionCardFull
+            ]}
+            onPress={() => {
+              setCurrentView('service-requests');
+              currentViewRef.current = 'service-requests';
+            }}
+            activeOpacity={0.88}
+          >
+            <View style={styles.quickActionIconWrap}>
+              <Text style={styles.quickActionIcon}>📋</Text>
+            </View>
+            <View style={styles.quickActionCopy}>
+              <Text style={styles.quickActionTitle}>Service Requests</Text>
+              <Text style={styles.quickActionSubtitle}>Track and manage requests</Text>
+            </View>
+          </TouchableOpacity>
+
+          {user?.roleId === 1 && (
+            <TouchableOpacity
+              style={[styles.quickActionCard, styles.quickActionCardAccent]}
               onPress={() => {
                 setCurrentView('ai-chat');
                 currentViewRef.current = 'ai-chat';
@@ -2798,30 +2792,43 @@ export default function App() {
                   updateAiChatWelcomeMessage();
                 }
               }}
+              activeOpacity={0.88}
             >
-              <Text style={styles.serviceRequestButtonIcon}>🤖</Text>
-              <Text style={[styles.serviceRequestButtonText, { color: '#fff' }]}>AI Chat Assistant</Text>
-              <Text style={[styles.serviceRequestButtonArrow, { color: '#fff' }]}>›</Text>
+              <View style={[styles.quickActionIconWrap, styles.quickActionIconWrapAccent]}>
+                <Text style={styles.quickActionIcon}>🤖</Text>
+              </View>
+              <View style={styles.quickActionCopy}>
+                <Text style={[styles.quickActionTitle, styles.quickActionTitleAccent]}>AI Chat</Text>
+                <Text style={[styles.quickActionSubtitle, styles.quickActionSubtitleAccent]}>Ask for help or guidance</Text>
+              </View>
             </TouchableOpacity>
-            <Text style={{ fontSize: 12, color: '#666', marginTop: 4, textAlign: 'center' }}>
-              Chat with AI for service requests, questions or any help
-            </Text>
-          </View>
-        )}
-        
-        {/* Service Requests Button */}
-        <View style={{ padding: 16, paddingBottom: 12 }}>
-          <TouchableOpacity 
-            style={styles.serviceRequestButton}
-            onPress={() => {
-              setCurrentView('service-requests');
-              currentViewRef.current = 'service-requests';
-            }}
-          >
-            <Text style={styles.serviceRequestButtonIcon}>📋</Text>
-            <Text style={styles.serviceRequestButtonText}>Service Requests</Text>
-            <Text style={styles.serviceRequestButtonArrow}>›</Text>
-          </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.contactsHeader}>
+          <Text style={styles.contactsTitle}>
+            {user?.roleId === 2 ? 'Your Clients' : 'Your Coordinators & SMEs'}
+          </Text>
+          <Text style={styles.contactsCount}>({filteredContacts.length})</Text>
+        </View>
+
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search contacts..."
+            value={contactSearchQuery}
+            onChangeText={setContactSearchQuery}
+            placeholderTextColor="#999"
+          />
+          {contactSearchQuery.length > 0 && (
+            <TouchableOpacity
+              style={styles.clearButton}
+              onPress={() => setContactSearchQuery('')}
+            >
+              <Text style={styles.clearButtonText}>✕</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {filteredContacts.length === 0 && contactSearchQuery.trim() ? (
@@ -2881,51 +2888,87 @@ export default function App() {
           </View>
 
           <View style={styles.contactDetailActions}>
-            <TouchableOpacity 
-              style={styles.contactDetailButton} 
-              onPress={() => openChat(selectedContactDetail)}
-            >
-              <Text style={styles.contactDetailButtonIcon}>💬</Text>
-              <Text style={styles.contactDetailButtonText}>Chat</Text>
-            </TouchableOpacity>
+            <View style={styles.contactDetailActionRow}>
+              <TouchableOpacity
+                style={[styles.contactDetailButton, user?.roleId !== 1 && styles.contactDetailButtonFull]}
+                onPress={() => openChat(selectedContactDetail)}
+                activeOpacity={0.88}
+              >
+                <View style={styles.contactDetailButtonIconWrap}>
+                  <Text style={styles.contactDetailButtonIcon}>💬</Text>
+                </View>
+                <View style={styles.contactDetailButtonCopy}>
+                  <Text style={styles.contactDetailButtonText}>Chat</Text>
+                  <Text style={styles.contactDetailButtonSubText}>Message</Text>
+                </View>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.contactDetailButton} 
-              onPress={() => startCall(selectedContactDetail, 'Audio')}
-            >
-              <Text style={styles.contactDetailButtonIcon}>📞</Text>
-              <Text style={styles.contactDetailButtonText}>Audio Call</Text>
-            </TouchableOpacity>
+              {user?.roleId === 1 && (
+                <TouchableOpacity
+                  style={styles.contactDetailButton}
+                  onPress={() => setSmsModalVisible(true)}
+                  activeOpacity={0.88}
+                >
+                  <View style={styles.contactDetailButtonIconWrap}>
+                    <Text style={styles.contactDetailButtonIcon}>📱</Text>
+                  </View>
+                  <View style={styles.contactDetailButtonCopy}>
+                    <Text style={styles.contactDetailButtonText}>SMS</Text>
+                    <Text style={styles.contactDetailButtonSubText}>Text</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </View>
 
-            <TouchableOpacity 
-              style={styles.contactDetailButton} 
-              onPress={() => startCall(selectedContactDetail, 'Video')}
-            >
-              <Text style={styles.contactDetailButtonIcon}>📹</Text>
-              <Text style={styles.contactDetailButtonText}>Video Call</Text>
-            </TouchableOpacity>
+            <View style={styles.contactDetailActionRow}>
+              <TouchableOpacity
+                style={styles.contactDetailButton}
+                onPress={() => startCall(selectedContactDetail, 'Audio')}
+                activeOpacity={0.88}
+              >
+                <View style={styles.contactDetailButtonIconWrap}>
+                  <Text style={styles.contactDetailButtonIcon}>📞</Text>
+                </View>
+                <View style={styles.contactDetailButtonCopy}>
+                  <Text style={styles.contactDetailButtonText}>Audio</Text>
+                  <Text style={styles.contactDetailButtonSubText}>Call</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.contactDetailButton}
+                onPress={() => startCall(selectedContactDetail, 'Video')}
+                activeOpacity={0.88}
+              >
+                <View style={styles.contactDetailButtonIconWrap}>
+                  <Text style={styles.contactDetailButtonIcon}>📹</Text>
+                </View>
+                <View style={styles.contactDetailButtonCopy}>
+                  <Text style={styles.contactDetailButtonText}>Video</Text>
+                  <Text style={styles.contactDetailButtonSubText}>Meet</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
 
             {user?.roleId === 1 && (
-              <TouchableOpacity 
-                style={styles.contactDetailButton} 
-                onPress={() => setSmsModalVisible(true)}
-              >
-                <Text style={styles.contactDetailButtonIcon}>📱</Text>
-                <Text style={styles.contactDetailButtonText}>SMS</Text>
-              </TouchableOpacity>
-            )}
-
-            {user?.roleId === 1 && (
-              <TouchableOpacity 
-                style={[styles.contactDetailButton, styles.emergencyButton]} 
-                onPress={() => setEmergencyModalVisible(true)}
-                disabled={sendingEmergency}
-              >
-                <Text style={styles.contactDetailButtonIcon}>🚨</Text>
-                <Text style={styles.contactDetailButtonText}>
-                  {sendingEmergency ? 'Sending...' : 'Emergency'}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.contactDetailActionRow}>
+                <TouchableOpacity
+                  style={[styles.contactDetailButton, styles.emergencyButton]}
+                  onPress={() => setEmergencyModalVisible(true)}
+                  disabled={sendingEmergency}
+                  activeOpacity={0.88}
+                >
+                  <View style={[styles.contactDetailButtonIconWrap, styles.emergencyButtonIconWrap]}>
+                    <Text style={styles.contactDetailButtonIcon}>🚨</Text>
+                  </View>
+                  <View style={styles.contactDetailButtonCopy}>
+                    <Text style={[styles.contactDetailButtonText, styles.emergencyButtonText]}>
+                      {sendingEmergency ? 'Sending...' : 'Emergency'}
+                    </Text>
+                    <Text style={[styles.contactDetailButtonSubText, styles.emergencyButtonSubText]}>Send alert</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
             )}
 
             {/* Documents button removed - documents should be uploaded through Service Requests */}
@@ -3575,23 +3618,19 @@ export default function App() {
             {/* Empty actions to maintain layout */}
           </View>
         </GradientHeader>
-        <View style={{ flex: 1 }}>
+        <View style={styles.serviceRequestDetailPage}>
           {selectedServiceRequest && (
-            <View style={{ padding: 16, paddingBottom: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' }}>
-              <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>
+            <View style={styles.serviceRequestDetailSummary}>
+              <Text style={styles.serviceRequestDetailTitle}>
                 {selectedServiceRequest.title || selectedServiceRequest.Title}
               </Text>
-              <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-                Client: {selectedServiceRequest.clientName || selectedServiceRequest.ClientName}
-              </Text>
-              <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-                Type: {selectedServiceRequest.type || selectedServiceRequest.Type || 'General'}
-              </Text>
-              <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-                Status: {selectedServiceRequest.status || selectedServiceRequest.Status || 'Active'}
-              </Text>
+              <View style={styles.serviceRequestMetaGrid}>
+                <Text style={styles.serviceRequestMetaText}>Client: {selectedServiceRequest.clientName || selectedServiceRequest.ClientName}</Text>
+                <Text style={styles.serviceRequestMetaText}>Type: {selectedServiceRequest.type || selectedServiceRequest.Type || 'General'}</Text>
+                <Text style={styles.serviceRequestMetaText}>Status: {selectedServiceRequest.status || selectedServiceRequest.Status || 'Active'}</Text>
+              </View>
               {(selectedServiceRequest.description || selectedServiceRequest.Description) && (
-                <Text style={{ fontSize: 14, color: '#666', marginBottom: 0 }}>
+                <Text style={styles.serviceRequestDetailDescription}>
                   {selectedServiceRequest.description || selectedServiceRequest.Description}
                 </Text>
               )}
@@ -3599,18 +3638,10 @@ export default function App() {
               {/* Contact Client button for Coordinators and Admins */}
               {isCoordinatorOrAdmin && clientId && (
                 <TouchableOpacity
-                  style={{
-                    backgroundColor: EATS_ORANGE,
-                    paddingVertical: 12,
-                    paddingHorizontal: 16,
-                    borderRadius: 6,
-                    marginTop: 12,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  style={styles.serviceRequestContactButton}
                   onPress={contactClient}
                 >
-                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+                  <Text style={styles.serviceRequestContactButtonText}>
                     📞 Contact Client
                   </Text>
                 </TouchableOpacity>
@@ -4571,14 +4602,20 @@ const styles = StyleSheet.create({
   },
   contactDetailActions: {
     flex: 1,
-    gap: 15,
+    gap: 12,
+  },
+  contactDetailActionRow: {
+    flexDirection: 'row',
+    gap: 12,
   },
   contactDetailButton: {
+    flex: 1,
+    minHeight: 72,
     backgroundColor: '#fff7ed',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: '#fed7aa',
-    padding: 20,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
     shadowColor: EATS_ORANGE,
@@ -4587,19 +4624,49 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  contactDetailButtonFull: {
+    width: '100%',
+  },
+  contactDetailButtonIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
   contactDetailButtonIcon: {
-    fontSize: 24,
-    marginRight: 15,
+    fontSize: 20,
+  },
+  contactDetailButtonCopy: {
+    flex: 1,
+    flexShrink: 1,
   },
   contactDetailButtonText: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#9a3412',
+    marginBottom: 3,
+  },
+  contactDetailButtonSubText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
     color: '#9a3412',
   },
   emergencyButton: {
     backgroundColor: '#ffebee',
-    borderWidth: 2,
     borderColor: '#dc3545',
+  },
+  emergencyButtonIconWrap: {
+    backgroundColor: '#fff',
+  },
+  emergencyButtonText: {
+    color: '#b91c1c',
+  },
+  emergencyButtonSubText: {
+    color: '#b91c1c',
   },
   contactArrow: {
     justifyContent: 'center',
@@ -4609,6 +4676,59 @@ const styles = StyleSheet.create({
   contactArrowText: {
     fontSize: 20,
     color: '#ccc',
+  },
+  serviceRequestDetailPage: {
+    flex: 1,
+    backgroundColor: EATS_BG,
+  },
+  serviceRequestDetailSummary: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#eeeeee',
+    margin: 16,
+    padding: 16,
+    shadowColor: EATS_ORANGE,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  serviceRequestDetailTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: EATS_TEXT,
+    marginBottom: 12,
+  },
+  serviceRequestMetaGrid: {
+    gap: 6,
+  },
+  serviceRequestMetaText: {
+    fontSize: 14,
+    color: EATS_MUTED,
+    fontWeight: '700',
+  },
+  serviceRequestDetailDescription: {
+    fontSize: 14,
+    color: EATS_MUTED,
+    lineHeight: 20,
+    marginTop: 12,
+  },
+  serviceRequestContactButton: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    marginTop: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceRequestContactButtonText: {
+    color: '#9a3412',
+    fontSize: 16,
+    fontWeight: '800',
   },
   // Incoming call modal styles
   incomingCallOverlay: {
@@ -4689,33 +4809,73 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  serviceRequestButton: {
-    backgroundColor: EATS_ORANGE,
-    borderRadius: 18,
+  quickActionsSection: {
+    flexDirection: 'row',
+    gap: 12,
     padding: 16,
+    paddingBottom: 10,
+  },
+  quickActionCard: {
+    flex: 1,
+    minHeight: 96,
+    borderRadius: 18,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
     elevation: 4,
-    borderWidth: 0,
-    marginHorizontal: 0,
   },
-  serviceRequestButtonIcon: {
-    fontSize: 24,
-    marginRight: 12,
+  quickActionCardFull: {
+    maxWidth: '100%',
   },
-  serviceRequestButtonText: {
+  quickActionCardPrimary: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    shadowColor: EATS_ORANGE,
+  },
+  quickActionCardAccent: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fdba74',
+    shadowColor: EATS_ORANGE,
+  },
+  quickActionIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#fff7ed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  quickActionIconWrapAccent: {
+    backgroundColor: '#fff',
+  },
+  quickActionIcon: {
+    fontSize: 20,
+  },
+  quickActionCopy: {
     flex: 1,
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
   },
-  serviceRequestButtonArrow: {
-    fontSize: 24,
-    color: '#fff',
-    opacity: 0.9,
+  quickActionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: EATS_TEXT,
+    marginBottom: 4,
+  },
+  quickActionTitleAccent: {
+    color: '#9a3412',
+  },
+  quickActionSubtitle: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: EATS_MUTED,
+    fontWeight: '600',
+  },
+  quickActionSubtitleAccent: {
+    color: '#9a3412',
   },
 });

@@ -16,6 +16,8 @@ const EATS_ORANGE = '#f97316';
 const EATS_BG = '#f5f5f5';
 const EATS_TEXT = '#333';
 const EATS_MUTED = '#666';
+const EATS_SOFT = '#fff7ed';
+const EATS_BORDER = '#fed7aa';
 
 const ServiceRequestList = ({ 
   onServiceRequestSelect,
@@ -204,6 +206,21 @@ const ServiceRequestList = ({
 
   return (
     <View style={styles.container}>
+      {isPatient && (
+        <View style={styles.createButtonContainer}>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => {
+              if (onCreateRequest) {
+                onCreateRequest();
+              }
+            }}
+          >
+            <Text style={styles.createButtonText}>+ Create Service Request</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <TextInput
@@ -222,21 +239,6 @@ const ServiceRequestList = ({
           </TouchableOpacity>
         )}
       </View>
-
-      {isPatient && (
-        <View style={styles.createButtonContainer}>
-          <TouchableOpacity
-            style={styles.createButton}
-            onPress={() => {
-              if (onCreateRequest) {
-                onCreateRequest();
-              }
-            }}
-          >
-            <Text style={styles.createButtonText}>+ Create Service Request</Text>
-          </TouchableOpacity>
-        </View>
-      )}
       <FlatList
         data={filteredServiceRequests}
         renderItem={renderServiceRequest}
@@ -268,17 +270,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: EATS_BG,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
   searchInput: {
     flex: 1,
-    height: 40,
+    height: 46,
     backgroundColor: '#fff',
-    borderRadius: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#eeeeee',
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#333',
+    color: EATS_TEXT,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   clearButton: {
     marginLeft: 8,
@@ -299,31 +306,35 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   createButton: {
-    backgroundColor: EATS_ORANGE,
+    backgroundColor: EATS_SOFT,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 999,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: EATS_BORDER,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: EATS_ORANGE,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
     elevation: 4,
   },
   createButtonText: {
-    color: '#fff',
+    color: '#9a3412',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   serviceRequestCard: {
     backgroundColor: '#fff',
     borderRadius: 18,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: '#eeeeee',
+    shadowColor: EATS_ORANGE,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
     elevation: 3,
     overflow: 'hidden',
   },
@@ -351,7 +362,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: EATS_TEXT,
     flex: 1,
     marginRight: 8,
@@ -371,8 +382,8 @@ const styles = StyleSheet.create({
   },
   clientName: {
     fontSize: 16,
-    color: '#555',
-    fontWeight: '500',
+    color: EATS_TEXT,
+    fontWeight: '700',
   },
   type: {
     fontSize: 14,
@@ -380,13 +391,15 @@ const styles = StyleSheet.create({
   },
   description: {
     fontSize: 14,
-    color: '#777',
+    color: EATS_MUTED,
     marginTop: 4,
+    lineHeight: 19,
   },
   assignedSmes: {
     fontSize: 14,
     color: EATS_ORANGE,
     marginTop: 4,
+    fontWeight: '700',
   },
   date: {
     fontSize: 12,
@@ -410,15 +423,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   refreshButton: {
-    backgroundColor: EATS_ORANGE,
+    backgroundColor: EATS_SOFT,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 999,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: EATS_BORDER,
   },
   refreshButtonText: {
-    color: '#fff',
+    color: '#9a3412',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
   },
 });
 
