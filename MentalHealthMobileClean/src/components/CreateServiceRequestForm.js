@@ -11,6 +11,13 @@ import {
 } from 'react-native';
 import ServiceRequestService from '../services/ServiceRequestService';
 
+const EATS_ORANGE = '#f97316';
+const EATS_BG = '#f5f5f5';
+const EATS_TEXT = '#333';
+const EATS_MUTED = '#666';
+const EATS_SOFT = '#fff7ed';
+const EATS_BORDER = '#fed7aa';
+
 const CreateServiceRequestForm = ({ user, onSuccess, onCancel }) => {
   const [title, setTitle] = useState('');
   const [type, setType] = useState('General');
@@ -218,25 +225,27 @@ const CreateServiceRequestForm = ({ user, onSuccess, onCancel }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: EATS_BG,
   },
   contentContainer: {
     padding: 16,
   },
   form: {
     backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#eeeeee',
+    padding: 18,
+    shadowColor: EATS_ORANGE,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
     elevation: 3,
   },
   label: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '800',
+    color: EATS_TEXT,
     marginBottom: 8,
     marginTop: 12,
   },
@@ -245,11 +254,12 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
+    borderColor: '#e5e7eb',
+    borderRadius: 14,
     padding: 12,
     fontSize: 16,
     backgroundColor: '#fff',
+    color: EATS_TEXT,
   },
   textArea: {
     minHeight: 100,
@@ -266,16 +276,17 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#007bff',
+    borderColor: EATS_BORDER,
     backgroundColor: '#fff',
   },
   typeButtonActive: {
-    backgroundColor: '#007bff',
+    backgroundColor: EATS_ORANGE,
+    borderColor: EATS_ORANGE,
   },
   typeButtonText: {
-    color: '#007bff',
+    color: '#9a3412',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '700',
   },
   typeButtonTextActive: {
     color: '#fff',
@@ -288,46 +299,49 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 6,
+    paddingVertical: 14,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelButton: {
-    backgroundColor: '#6c757d',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: EATS_BORDER,
   },
   submitButton: {
-    backgroundColor: '#28a745',
+    backgroundColor: EATS_ORANGE,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   cancelButtonText: {
-    color: '#fff',
+    color: '#9a3412',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   submitButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   infoBox: {
     marginTop: 16,
     padding: 12,
-    backgroundColor: '#e7f3ff',
-    borderRadius: 6,
+    backgroundColor: EATS_SOFT,
+    borderRadius: 14,
     borderLeftWidth: 4,
-    borderLeftColor: '#007bff',
+    borderLeftColor: EATS_ORANGE,
   },
   infoText: {
     fontSize: 14,
-    color: '#004085',
+    color: '#9a3412',
     lineHeight: 20,
+    fontWeight: '600',
   },
   helpText: {
     fontSize: 12,
-    color: '#6c757d',
+    color: EATS_MUTED,
     marginTop: 4,
     marginBottom: 8,
     fontStyle: 'italic',
@@ -343,16 +357,17 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#28a745',
+    borderColor: EATS_BORDER,
     backgroundColor: '#fff',
   },
   distanceButtonActive: {
-    backgroundColor: '#28a745',
+    backgroundColor: EATS_ORANGE,
+    borderColor: EATS_ORANGE,
   },
   distanceButtonText: {
-    color: '#28a745',
+    color: '#9a3412',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '700',
   },
   distanceButtonTextActive: {
     color: '#fff',

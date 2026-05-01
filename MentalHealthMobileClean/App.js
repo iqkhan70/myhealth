@@ -3618,23 +3618,19 @@ export default function App() {
             {/* Empty actions to maintain layout */}
           </View>
         </GradientHeader>
-        <View style={{ flex: 1 }}>
+        <View style={styles.serviceRequestDetailPage}>
           {selectedServiceRequest && (
-            <View style={{ padding: 16, paddingBottom: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' }}>
-              <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>
+            <View style={styles.serviceRequestDetailSummary}>
+              <Text style={styles.serviceRequestDetailTitle}>
                 {selectedServiceRequest.title || selectedServiceRequest.Title}
               </Text>
-              <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-                Client: {selectedServiceRequest.clientName || selectedServiceRequest.ClientName}
-              </Text>
-              <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-                Type: {selectedServiceRequest.type || selectedServiceRequest.Type || 'General'}
-              </Text>
-              <Text style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-                Status: {selectedServiceRequest.status || selectedServiceRequest.Status || 'Active'}
-              </Text>
+              <View style={styles.serviceRequestMetaGrid}>
+                <Text style={styles.serviceRequestMetaText}>Client: {selectedServiceRequest.clientName || selectedServiceRequest.ClientName}</Text>
+                <Text style={styles.serviceRequestMetaText}>Type: {selectedServiceRequest.type || selectedServiceRequest.Type || 'General'}</Text>
+                <Text style={styles.serviceRequestMetaText}>Status: {selectedServiceRequest.status || selectedServiceRequest.Status || 'Active'}</Text>
+              </View>
               {(selectedServiceRequest.description || selectedServiceRequest.Description) && (
-                <Text style={{ fontSize: 14, color: '#666', marginBottom: 0 }}>
+                <Text style={styles.serviceRequestDetailDescription}>
                   {selectedServiceRequest.description || selectedServiceRequest.Description}
                 </Text>
               )}
@@ -3642,18 +3638,10 @@ export default function App() {
               {/* Contact Client button for Coordinators and Admins */}
               {isCoordinatorOrAdmin && clientId && (
                 <TouchableOpacity
-                  style={{
-                    backgroundColor: EATS_ORANGE,
-                    paddingVertical: 12,
-                    paddingHorizontal: 16,
-                    borderRadius: 6,
-                    marginTop: 12,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  style={styles.serviceRequestContactButton}
                   onPress={contactClient}
                 >
-                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+                  <Text style={styles.serviceRequestContactButtonText}>
                     📞 Contact Client
                   </Text>
                 </TouchableOpacity>
@@ -4688,6 +4676,59 @@ const styles = StyleSheet.create({
   contactArrowText: {
     fontSize: 20,
     color: '#ccc',
+  },
+  serviceRequestDetailPage: {
+    flex: 1,
+    backgroundColor: EATS_BG,
+  },
+  serviceRequestDetailSummary: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#eeeeee',
+    margin: 16,
+    padding: 16,
+    shadowColor: EATS_ORANGE,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  serviceRequestDetailTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: EATS_TEXT,
+    marginBottom: 12,
+  },
+  serviceRequestMetaGrid: {
+    gap: 6,
+  },
+  serviceRequestMetaText: {
+    fontSize: 14,
+    color: EATS_MUTED,
+    fontWeight: '700',
+  },
+  serviceRequestDetailDescription: {
+    fontSize: 14,
+    color: EATS_MUTED,
+    lineHeight: 20,
+    marginTop: 12,
+  },
+  serviceRequestContactButton: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    marginTop: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceRequestContactButtonText: {
+    color: '#9a3412',
+    fontSize: 16,
+    fontWeight: '800',
   },
   // Incoming call modal styles
   incomingCallOverlay: {
