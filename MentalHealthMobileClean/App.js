@@ -2888,51 +2888,87 @@ export default function App() {
           </View>
 
           <View style={styles.contactDetailActions}>
-            <TouchableOpacity 
-              style={styles.contactDetailButton} 
-              onPress={() => openChat(selectedContactDetail)}
-            >
-              <Text style={styles.contactDetailButtonIcon}>💬</Text>
-              <Text style={styles.contactDetailButtonText}>Chat</Text>
-            </TouchableOpacity>
+            <View style={styles.contactDetailActionRow}>
+              <TouchableOpacity
+                style={[styles.contactDetailButton, user?.roleId !== 1 && styles.contactDetailButtonFull]}
+                onPress={() => openChat(selectedContactDetail)}
+                activeOpacity={0.88}
+              >
+                <View style={styles.contactDetailButtonIconWrap}>
+                  <Text style={styles.contactDetailButtonIcon}>💬</Text>
+                </View>
+                <View style={styles.contactDetailButtonCopy}>
+                  <Text style={styles.contactDetailButtonText}>Chat</Text>
+                  <Text style={styles.contactDetailButtonSubText}>Message</Text>
+                </View>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.contactDetailButton} 
-              onPress={() => startCall(selectedContactDetail, 'Audio')}
-            >
-              <Text style={styles.contactDetailButtonIcon}>📞</Text>
-              <Text style={styles.contactDetailButtonText}>Audio Call</Text>
-            </TouchableOpacity>
+              {user?.roleId === 1 && (
+                <TouchableOpacity
+                  style={styles.contactDetailButton}
+                  onPress={() => setSmsModalVisible(true)}
+                  activeOpacity={0.88}
+                >
+                  <View style={styles.contactDetailButtonIconWrap}>
+                    <Text style={styles.contactDetailButtonIcon}>📱</Text>
+                  </View>
+                  <View style={styles.contactDetailButtonCopy}>
+                    <Text style={styles.contactDetailButtonText}>SMS</Text>
+                    <Text style={styles.contactDetailButtonSubText}>Text</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </View>
 
-            <TouchableOpacity 
-              style={styles.contactDetailButton} 
-              onPress={() => startCall(selectedContactDetail, 'Video')}
-            >
-              <Text style={styles.contactDetailButtonIcon}>📹</Text>
-              <Text style={styles.contactDetailButtonText}>Video Call</Text>
-            </TouchableOpacity>
+            <View style={styles.contactDetailActionRow}>
+              <TouchableOpacity
+                style={styles.contactDetailButton}
+                onPress={() => startCall(selectedContactDetail, 'Audio')}
+                activeOpacity={0.88}
+              >
+                <View style={styles.contactDetailButtonIconWrap}>
+                  <Text style={styles.contactDetailButtonIcon}>📞</Text>
+                </View>
+                <View style={styles.contactDetailButtonCopy}>
+                  <Text style={styles.contactDetailButtonText}>Audio</Text>
+                  <Text style={styles.contactDetailButtonSubText}>Call</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.contactDetailButton}
+                onPress={() => startCall(selectedContactDetail, 'Video')}
+                activeOpacity={0.88}
+              >
+                <View style={styles.contactDetailButtonIconWrap}>
+                  <Text style={styles.contactDetailButtonIcon}>📹</Text>
+                </View>
+                <View style={styles.contactDetailButtonCopy}>
+                  <Text style={styles.contactDetailButtonText}>Video</Text>
+                  <Text style={styles.contactDetailButtonSubText}>Meet</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
 
             {user?.roleId === 1 && (
-              <TouchableOpacity 
-                style={styles.contactDetailButton} 
-                onPress={() => setSmsModalVisible(true)}
-              >
-                <Text style={styles.contactDetailButtonIcon}>📱</Text>
-                <Text style={styles.contactDetailButtonText}>SMS</Text>
-              </TouchableOpacity>
-            )}
-
-            {user?.roleId === 1 && (
-              <TouchableOpacity 
-                style={[styles.contactDetailButton, styles.emergencyButton]} 
-                onPress={() => setEmergencyModalVisible(true)}
-                disabled={sendingEmergency}
-              >
-                <Text style={styles.contactDetailButtonIcon}>🚨</Text>
-                <Text style={styles.contactDetailButtonText}>
-                  {sendingEmergency ? 'Sending...' : 'Emergency'}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.contactDetailActionRow}>
+                <TouchableOpacity
+                  style={[styles.contactDetailButton, styles.emergencyButton]}
+                  onPress={() => setEmergencyModalVisible(true)}
+                  disabled={sendingEmergency}
+                  activeOpacity={0.88}
+                >
+                  <View style={[styles.contactDetailButtonIconWrap, styles.emergencyButtonIconWrap]}>
+                    <Text style={styles.contactDetailButtonIcon}>🚨</Text>
+                  </View>
+                  <View style={styles.contactDetailButtonCopy}>
+                    <Text style={[styles.contactDetailButtonText, styles.emergencyButtonText]}>
+                      {sendingEmergency ? 'Sending...' : 'Emergency'}
+                    </Text>
+                    <Text style={[styles.contactDetailButtonSubText, styles.emergencyButtonSubText]}>Send alert</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
             )}
 
             {/* Documents button removed - documents should be uploaded through Service Requests */}
@@ -4578,14 +4614,20 @@ const styles = StyleSheet.create({
   },
   contactDetailActions: {
     flex: 1,
-    gap: 15,
+    gap: 12,
+  },
+  contactDetailActionRow: {
+    flexDirection: 'row',
+    gap: 12,
   },
   contactDetailButton: {
+    flex: 1,
+    minHeight: 72,
     backgroundColor: '#fff7ed',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: '#fed7aa',
-    padding: 20,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
     shadowColor: EATS_ORANGE,
@@ -4594,19 +4636,49 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  contactDetailButtonFull: {
+    width: '100%',
+  },
+  contactDetailButtonIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
   contactDetailButtonIcon: {
-    fontSize: 24,
-    marginRight: 15,
+    fontSize: 20,
+  },
+  contactDetailButtonCopy: {
+    flex: 1,
+    flexShrink: 1,
   },
   contactDetailButtonText: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#9a3412',
+    marginBottom: 3,
+  },
+  contactDetailButtonSubText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
     color: '#9a3412',
   },
   emergencyButton: {
     backgroundColor: '#ffebee',
-    borderWidth: 2,
     borderColor: '#dc3545',
+  },
+  emergencyButtonIconWrap: {
+    backgroundColor: '#fff',
+  },
+  emergencyButtonText: {
+    color: '#b91c1c',
+  },
+  emergencyButtonSubText: {
+    color: '#b91c1c',
   },
   contactArrow: {
     justifyContent: 'center',
