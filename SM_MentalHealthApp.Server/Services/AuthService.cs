@@ -7,6 +7,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Http;
 
@@ -16,6 +17,8 @@ namespace SM_MentalHealthApp.Server.Services
     {
         Task<LoginResponse> LoginAsync(LoginRequest request);
         Task<LoginResponse> RegisterAsync(RegisterRequest request);
+        Task<LoginResponse> LoginWithGoogleAsync(ExternalLoginRequest request);
+        Task<LoginResponse> LoginWithAppleAsync(ExternalLoginRequest request);
         Task<bool> ValidateTokenAsync(string token);
         Task<AuthUser?> GetUserFromTokenAsync(string token);
         Task<ChangePasswordResponse> ChangePasswordAsync(int userId, ChangePasswordRequest request);
@@ -156,6 +159,206 @@ namespace SM_MentalHealthApp.Server.Services
                     Message = $"Registration failed: {ex.Message}"
                 };
             }
+        }
+
+        public async Task<LoginResponse> LoginWithGoogleAsync(ExternalLoginRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(request.IdToken))
+                {
+                    return new LoginResponse { Success = false, Message = "Google ID token is required" };
+                }
+
+                var validAudiences = GetConfiguredAudiences("Google", "WebClientId", "IosClientId", "AndroidClientId");
+                if (validAudiences.Count == 0)
+                {
+                    return new LoginResponse { Success = false, Message = "Google sign-in is not configured on the server" };
+                }
+
+                var tokenInfo = await ValidateGoogleTokenAsync(request.IdToken, validAudiences);
+                var email = tokenInfo.Email;
+                if (string.IsNullOrWhiteSpace(email))
+                {
+                    return new LoginResponse { Success = false, Message = "Google token did not include an email address" };
+                }
+
+                return await LoginOrCreateExternalUserAsync(email, tokenInfo.Name, "Google");
+            }
+            catch (Exception ex)
+            {
+                return new LoginResponse { Success = false, Message = $"Google sign-in failed: {ex.Message}" };
+            }
+        }
+
+        public async Task<LoginResponse> LoginWithAppleAsync(ExternalLoginRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(request.IdToken))
+                {
+                    return new LoginResponse { Success = false, Message = "Apple ID token is required" };
+                }
+
+                var validAudiences = GetConfiguredAudiences("Apple", "ClientId", "BundleId");
+                if (validAudiences.Count == 0)
+                {
+                    return new LoginResponse { Success = false, Message = "Apple sign-in is not configured on the server" };
+                }
+
+                var handler = new JwtSecurityTokenHandler();
+                var keysJson = await new HttpClient().GetStringAsync("https://appleid.apple.com/auth/keys");
+                var keySet = new JsonWebKeySet(keysJson);
+                handler.ValidateToken(request.IdToken, new TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKeys = keySet.GetSigningKeys(),
+                    ValidateIssuer = true,
+                    ValidIssuer = "https://appleid.apple.com",
+                    ValidateAudience = true,
+                    ValidAudiences = validAudiences,
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.FromMinutes(5)
+                }, out var validatedToken);
+
+                var jwt = (JwtSecurityToken)validatedToken;
+                var email = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Email)?.Value
+                    ?? jwt.Claims.FirstOrDefault(c => c.Type == "email")?.Value
+                    ?? request.Email;
+
+                if (string.IsNullOrWhiteSpace(email))
+                {
+                    return new LoginResponse
+                    {
+                        Success = false,
+                        Message = "Apple did not return an email address. Please remove this app from Apple ID sign-in settings and try again."
+                    };
+                }
+
+                return await LoginOrCreateExternalUserAsync(email, request.FullName, "Apple");
+            }
+            catch (Exception ex)
+            {
+                return new LoginResponse { Success = false, Message = $"Apple sign-in failed: {ex.Message}" };
+            }
+        }
+
+        private async Task<(string Email, string? Name)> ValidateGoogleTokenAsync(string idToken, IReadOnlyCollection<string> validAudiences)
+        {
+            using var httpClient = new HttpClient();
+            var response = await httpClient.GetAsync($"https://oauth2.googleapis.com/tokeninfo?id_token={Uri.EscapeDataString(idToken)}");
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new UnauthorizedAccessException("Invalid Google token");
+            }
+
+            using var stream = await response.Content.ReadAsStreamAsync();
+            using var json = await JsonDocument.ParseAsync(stream);
+            var root = json.RootElement;
+            var audience = root.TryGetProperty("aud", out var audElement) ? audElement.GetString() : null;
+            if (string.IsNullOrWhiteSpace(audience) || !validAudiences.Contains(audience))
+            {
+                throw new UnauthorizedAccessException("Google token audience is not allowed");
+            }
+
+            var email = root.TryGetProperty("email", out var emailElement) ? emailElement.GetString() : null;
+            var emailVerified = root.TryGetProperty("email_verified", out var verifiedElement) ? verifiedElement.GetString() : null;
+            if (string.Equals(emailVerified, "false", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new UnauthorizedAccessException("Google email address is not verified");
+            }
+
+            var name = root.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : null;
+            return (email ?? string.Empty, name);
+        }
+
+        private List<string> GetConfiguredAudiences(string sectionName, params string[] keys)
+        {
+            var values = new HashSet<string>(StringComparer.Ordinal);
+            var configured = _configuration[$"{sectionName}:ValidAudiences"];
+            if (!string.IsNullOrWhiteSpace(configured))
+            {
+                foreach (var value in configured.Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    values.Add(value.Trim());
+                }
+            }
+
+            foreach (var key in keys)
+            {
+                var value = _configuration[$"{sectionName}:{key}"];
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    values.Add(value.Trim());
+                }
+            }
+
+            return values.ToList();
+        }
+
+        private async Task<LoginResponse> LoginOrCreateExternalUserAsync(string email, string? fullName, string providerName)
+        {
+            var user = await _context.Users
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.Email == email && u.IsActive);
+
+            if (user == null)
+            {
+                var (firstName, lastName) = SplitExternalName(fullName, email);
+                user = new User
+                {
+                    FirstName = firstName,
+                    LastName = lastName,
+                    Email = email,
+                    PasswordHash = HashPassword(Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))),
+                    DateOfBirth = DateTime.UtcNow.AddYears(-30),
+                    RoleId = 1,
+                    CreatedAt = DateTime.UtcNow,
+                    LastLoginAt = DateTime.UtcNow,
+                    IsActive = true,
+                    IsFirstLogin = false,
+                    MustChangePassword = false
+                };
+
+                UserEncryptionHelper.EncryptUserData(user, _encryptionService);
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+                await _context.Entry(user).Reference(u => u.Role).LoadAsync();
+            }
+            else
+            {
+                user.LastLoginAt = DateTime.UtcNow;
+                user.IsFirstLogin = false;
+                user.MustChangePassword = false;
+                await _context.SaveChangesAsync();
+            }
+
+            UserEncryptionHelper.DecryptUserData(user, _encryptionService);
+
+            var roleName = user.Role?.Name ?? "Patient";
+            var token = GenerateJwtToken(user.Id, user.Email, user.FirstName, user.LastName, user.RoleId, roleName, user.IsFirstLogin, user.MustChangePassword);
+
+            return new LoginResponse
+            {
+                Success = true,
+                Token = token,
+                Message = $"{providerName} sign-in successful",
+                User = user
+            };
+        }
+
+        private static (string FirstName, string LastName) SplitExternalName(string? fullName, string email)
+        {
+            var name = string.IsNullOrWhiteSpace(fullName)
+                ? email.Split('@')[0].Replace('.', ' ').Replace('_', ' ')
+                : fullName.Trim();
+            var parts = name.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return parts.Length switch
+            {
+                0 => ("Patient", "User"),
+                1 => (parts[0], "User"),
+                _ => (parts[0], parts[1])
+            };
         }
 
         public async Task<bool> ValidateTokenAsync(string token)

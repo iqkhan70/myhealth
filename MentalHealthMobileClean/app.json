@@ -4,6 +4,7 @@
     "slug": "mental-health-mobile-clean",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "mentalhealthapp",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -14,6 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.mentalhealthapp.mobile.clean",
       "infoPlist": {
         "NSAppTransportSecurity": {

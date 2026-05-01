@@ -11,6 +11,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri, ResponseType } from 'expo-auth-session';
+import { useIdTokenAuthRequest } from 'expo-auth-session/providers/google';
 import SignalRService from './src/services/SignalRService';
 // ✅ Use Agora now (conditionally imported for development builds only)
 let AgoraService = null;
@@ -47,6 +52,8 @@ import ChangePassword from './src/components/ChangePassword';
 
 // Import app configuration
 import AppConfig from './src/config/app.config';
+
+WebBrowser.maybeCompleteAuthSession();
 
 // detect platform once
 const isIOS = Platform.OS === 'ios';
@@ -140,6 +147,7 @@ const EATS_BG = '#f5f5f5';
 const EATS_TEXT = '#333';
 const EATS_MUTED = '#666';
 const EATS_GRADIENT = [EATS_ORANGE, EATS_YELLOW];
+const AUTH_TOP_GRADIENT = [EATS_ORANGE, EATS_YELLOW];
 
 const GradientHeader = ({ children, style }) => (
   <LinearGradient
@@ -158,6 +166,7 @@ export default function App() {
   const [email, setEmail] = useState('john@doe.com');
   const [password, setPassword] = useState('demo123');
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState(false);
 
   const [contacts, setContacts] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -219,6 +228,24 @@ export default function App() {
   const userInitializedRef = useRef(false);
   const contactsLoadedRef = useRef(false);
   const lastLoadedUserIdRef = useRef(null);
+
+  const googleWebClientId = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '').trim();
+  const googleIosClientId = (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '').trim();
+  const googleAndroidClientId = (
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID_DEBUG ||
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+    ''
+  ).trim();
+  const googleClientFallback = googleWebClientId || googleIosClientId || googleAndroidClientId || '000000000000000000000000000000000000000000.apps.googleusercontent.com';
+  const googleRedirectUri = useMemo(() => makeRedirectUri({ scheme: 'mentalhealthapp' }), []);
+  const [googleAuthRequest, googleResponse, promptGoogleAsync] = useIdTokenAuthRequest({
+    webClientId: googleWebClientId || googleClientFallback,
+    iosClientId: googleIosClientId || googleClientFallback,
+    androidClientId: googleAndroidClientId || googleClientFallback,
+    clientId: googleWebClientId || googleClientFallback,
+    redirectUri: googleRedirectUri,
+    responseType: ResponseType.IdToken,
+  });
 
   // ---------- INIT ----------
   useEffect(() => {
@@ -448,6 +475,50 @@ export default function App() {
   };
 
   // ---------- AUTH ----------
+  const completeLogin = async (data, successMessage = 'Login successful!') => {
+    await AsyncStorage.setItem('userToken', data.token);
+    await AsyncStorage.setItem('currentUser', JSON.stringify(data.user));
+
+    // Reset flags for new login BEFORE setting user
+    contactsLoadedRef.current = false;
+    userInitializedRef.current = false;
+    lastLoadedUserIdRef.current = null;
+    loadingContactsRef.current = false;
+    lastCallTimeRef.current = 0; // Reset to allow first call
+    hasContactsRef.current = false; // Reset contacts flag
+
+    setUser(data.user);
+    userRef.current = data.user; // Update ref when user is set
+
+    // Check if user must change password on first login
+    if (data.user.mustChangePassword) {
+      setCurrentView('change-password');
+      currentViewRef.current = 'change-password';
+      Alert.alert('Password Change Required', 'Please change your password to continue.');
+      return;
+    }
+
+    // Load contacts after a small delay to ensure state is set
+    // and to avoid race conditions with useEffect
+    setTimeout(async () => {
+      if (!loadingContactsRef.current && lastLoadedUserIdRef.current !== data.user.id) {
+        await loadContactsForUser(data.user, data.token);
+      }
+    }, 300); // Slightly longer delay to ensure everything is ready
+
+    await loadAvailablePatients(data.user, data.token);
+    await initializeSignalR(data.token);
+
+    // Check for active service requests if user is a patient
+    if (data.user.roleId === 1) {
+      await checkActiveServiceRequestsForAiChat(data.user.id, data.token);
+    }
+
+    setCurrentView('main');
+    currentViewRef.current = 'main';
+    Alert.alert('Success', successMessage);
+  };
+
   const login = async () => {
     setLoading(true);
     try {
@@ -462,47 +533,7 @@ export default function App() {
       
       const data = await resp.json();
       if (resp.ok && data.success) {
-        await AsyncStorage.setItem('userToken', data.token);
-        await AsyncStorage.setItem('currentUser', JSON.stringify(data.user));
-        
-        // Reset flags for new login BEFORE setting user
-        contactsLoadedRef.current = false;
-        userInitializedRef.current = false;
-        lastLoadedUserIdRef.current = null;
-        loadingContactsRef.current = false;
-        lastCallTimeRef.current = 0; // Reset to allow first call
-        hasContactsRef.current = false; // Reset contacts flag
-        
-        setUser(data.user);
-        userRef.current = data.user; // Update ref when user is set
-        
-        // Check if user must change password on first login
-        if (data.user.mustChangePassword) {
-          setCurrentView('change-password');
-          currentViewRef.current = 'change-password';
-          Alert.alert('Password Change Required', 'Please change your password to continue.');
-          return;
-        }
-        
-        // Load contacts after a small delay to ensure state is set
-        // and to avoid race conditions with useEffect
-        setTimeout(async () => {
-          if (!loadingContactsRef.current && lastLoadedUserIdRef.current !== data.user.id) {
-            await loadContactsForUser(data.user, data.token);
-          }
-        }, 300); // Slightly longer delay to ensure everything is ready
-        
-        await loadAvailablePatients(data.user, data.token);
-        await initializeSignalR(data.token);
-        
-        // Check for active service requests if user is a patient
-        if (data.user.roleId === 1) {
-          await checkActiveServiceRequestsForAiChat(data.user.id, data.token);
-        }
-
-        setCurrentView('main');
-        currentViewRef.current = 'main';
-        Alert.alert('Success', 'Login successful!');
+        await completeLogin(data);
       } else {
         Alert.alert('Error', data.message || 'Login failed');
       }
@@ -532,6 +563,118 @@ export default function App() {
       Alert.alert('Connection Error', errorMsg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const exchangeExternalToken = async (provider, idToken, extra = {}) => {
+    const authUrl = ensureValidUrl(`${API_BASE_URL}/auth/${provider}`);
+    const resp = await fetch(authUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, ...extra })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.success) {
+      await completeLogin(data, `${provider === 'google' ? 'Google' : 'Apple'} sign-in successful!`);
+      return;
+    }
+    throw new Error(data.message || `${provider === 'google' ? 'Google' : 'Apple'} sign-in failed`);
+  };
+
+  useEffect(() => {
+    const finishGoogleLogin = async () => {
+      if (!googleResponse) return;
+      if (googleResponse.type === 'cancel' || googleResponse.type === 'dismiss' || googleResponse.type === 'locked') {
+        setSocialLoading(false);
+        return;
+      }
+      if (googleResponse.type !== 'success') {
+        setSocialLoading(false);
+        Alert.alert('Google Sign-In Failed', googleResponse.error?.message || 'Could not sign in with Google.');
+        return;
+      }
+
+      const idToken = googleResponse.params?.id_token || googleResponse.authentication?.idToken;
+      if (!idToken) {
+        setSocialLoading(false);
+        Alert.alert('Google Sign-In Failed', 'Google did not return an ID token.');
+        return;
+      }
+
+      try {
+        await exchangeExternalToken('google', idToken);
+      } catch (error) {
+        Alert.alert('Google Sign-In Failed', error.message || 'Could not sign in with Google.');
+      } finally {
+        setSocialLoading(false);
+      }
+    };
+
+    finishGoogleLogin();
+  }, [googleResponse]);
+
+  const handleContinueWithGoogle = async () => {
+    const hasGoogleConfig = Platform.OS === 'ios'
+      ? Boolean(googleIosClientId || googleWebClientId)
+      : Platform.OS === 'android'
+        ? Boolean(googleAndroidClientId || googleWebClientId)
+        : Boolean(googleWebClientId);
+
+    if (!hasGoogleConfig) {
+      Alert.alert(
+        'Google Sign-In Not Configured',
+        'Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID plus the platform client ID in your mobile environment.'
+      );
+      return;
+    }
+    if (!googleAuthRequest) {
+      Alert.alert('Google Sign-In Loading', 'Please try again in a moment.');
+      return;
+    }
+
+    try {
+      setSocialLoading(true);
+      await promptGoogleAsync();
+    } catch (error) {
+      setSocialLoading(false);
+      Alert.alert('Google Sign-In Failed', error.message || 'Could not start Google sign-in.');
+    }
+  };
+
+  const handleContinueWithApple = async () => {
+    if (Platform.OS !== 'ios') return;
+    try {
+      const isAvailable = await AppleAuthentication.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Apple Sign-In Unavailable', 'Apple Sign-In is not available on this device.');
+        return;
+      }
+
+      setSocialLoading(true);
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        throw new Error('Apple did not return an identity token.');
+      }
+
+      const fullName = credential.fullName
+        ? [credential.fullName.givenName, credential.fullName.familyName].filter(Boolean).join(' ')
+        : undefined;
+      await exchangeExternalToken('apple', credential.identityToken, {
+        email: credential.email || undefined,
+        fullName: fullName || undefined,
+      });
+    } catch (error) {
+      if (error.code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('Apple Sign-In Failed', error.message || 'Could not sign in with Apple.');
+      }
+    } finally {
+      setSocialLoading(false);
     }
   };
 
@@ -2218,51 +2361,127 @@ export default function App() {
 
   // ---------- RENDER ----------
   const renderLogin = () => (
-    <LinearGradient colors={EATS_GRADIENT} style={styles.authGradient}>
-    <SafeAreaView style={styles.authSafeArea}>
-      <View style={styles.loginContainer}>
-        <View style={styles.brandBadge}>
-          <Text style={styles.brandBadgeText}>CC</Text>
-        </View>
-        <Text style={styles.title}>Customer Care App</Text>
-        <Text style={styles.subtitle}>Fast help, live support, and service requests in one place.</Text>
-        <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" />
-        <TextInput style={styles.input} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
-        <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={login} disabled={loading}>
-          <Text style={styles.buttonText}>{loading ? 'Logging in…' : 'Login'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.linkButton}
-          onPress={() => {
-            setForgotPasswordEmail('');
-            setForgotPasswordMessage('');
-            setCurrentView('forgot-password');
-            currentViewRef.current = 'forgot-password';
-          }}
-        >
-          <Text style={styles.linkButtonText}>Forgot your password?</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.guestButton} 
-          onPress={() => {
-            setCurrentView('guest-registration');
-            currentViewRef.current = 'guest-registration';
-          }}
-        >
-          <Text style={styles.guestButtonText}>Continue as Guest</Text>
-        </TouchableOpacity>
-        <View style={styles.disclaimerContainer}>
-          <Text style={styles.disclaimerText}>
-            We help clients connect with qualified professionals. Services are provided independently by each party.
-          </Text>
-        </View>
-      </View>
-    </SafeAreaView>
-    </LinearGradient>
+    <View style={styles.authGradient}>
+      <LinearGradient colors={AUTH_TOP_GRADIENT} style={styles.authTopBand} />
+      <SafeAreaView style={styles.authSafeArea}>
+        <KeyboardAvoidingView behavior={isIOS ? 'padding' : 'height'} style={styles.authKeyboardView}>
+          <ScrollView
+            contentContainerStyle={styles.authScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.authBrandSection}>
+              <View style={styles.authBrandRow}>
+                <View style={styles.brandBadge}>
+                  <Text style={styles.brandBadgeText}>CC</Text>
+                </View>
+                <Text style={styles.authBrandTitle}>Customer Care</Text>
+              </View>
+              <Text style={styles.authBrandSubtitle}>Connect with support, providers, and service requests.</Text>
+            </View>
+
+            <View style={styles.loginContainer}>
+              <View style={styles.authTabBar}>
+                <View style={[styles.authTab, styles.authTabActive]}>
+                  <Text style={[styles.authTabText, styles.authTabTextActive]}>Sign in</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.authTab}
+                  onPress={() => {
+                    setCurrentView('guest-registration');
+                    currentViewRef.current = 'guest-registration';
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.authTabText}>Sign up</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.authInputContainer}>
+                <Ionicons name="mail-outline" size={20} color={EATS_MUTED} style={styles.authInputIcon} />
+                <TextInput
+                  style={styles.authInput}
+                  placeholder="Email"
+                  placeholderTextColor={EATS_MUTED}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                />
+              </View>
+
+              <View style={styles.authInputContainer}>
+                <Ionicons name="lock-closed-outline" size={20} color={EATS_MUTED} style={styles.authInputIcon} />
+                <TextInput
+                  style={styles.authInput}
+                  placeholder="Password"
+                  placeholderTextColor={EATS_MUTED}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoComplete="password"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.forgotLink}
+                onPress={() => {
+                  setForgotPasswordEmail('');
+                  setForgotPasswordMessage('');
+                  setCurrentView('forgot-password');
+                  currentViewRef.current = 'forgot-password';
+                }}
+              >
+                <Text style={styles.forgotLinkText}>Forgot password?</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={login} disabled={loading}>
+                <Text style={styles.buttonText}>{loading ? 'Signing in...' : 'Sign In'}</Text>
+              </TouchableOpacity>
+
+              <View style={styles.authDivider}>
+                <View style={styles.authDividerLine} />
+                <Text style={styles.authDividerText}>or</Text>
+                <View style={styles.authDividerLine} />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.socialButton, socialLoading && styles.socialButtonDisabled]}
+                onPress={handleContinueWithGoogle}
+                disabled={socialLoading}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="logo-google" size={20} color={EATS_TEXT} />
+                <Text style={styles.socialButtonText}>{socialLoading ? 'Connecting...' : 'Continue with Google'}</Text>
+              </TouchableOpacity>
+
+              {isIOS && (
+                <TouchableOpacity
+                  style={[styles.socialButton, socialLoading && styles.socialButtonDisabled]}
+                  onPress={handleContinueWithApple}
+                  disabled={socialLoading}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="logo-apple" size={22} color={EATS_TEXT} />
+                  <Text style={styles.socialButtonText}>Continue with Apple</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <Text style={styles.authFootnote}>
+              We help clients connect with qualified professionals. Services are provided independently by each party.
+            </Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 
   const renderForgotPassword = () => (
-    <LinearGradient colors={EATS_GRADIENT} style={styles.authGradient}>
+    <View style={styles.authGradient}>
+    <LinearGradient colors={AUTH_TOP_GRADIENT} style={styles.authTopBand} />
     <SafeAreaView style={styles.authSafeArea}>
       <View style={styles.loginContainer}>
         <Text style={styles.title}>Forgot Password</Text>
@@ -2305,11 +2524,12 @@ export default function App() {
         </TouchableOpacity>
       </View>
     </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 
   const renderResetPassword = () => (
-      <LinearGradient colors={EATS_GRADIENT} style={styles.authGradient}>
+      <View style={styles.authGradient}>
+      <LinearGradient colors={AUTH_TOP_GRADIENT} style={styles.authTopBand} />
       <SafeAreaView style={styles.authSafeArea}>
         <ScrollView contentContainerStyle={styles.loginContainer}>
           <Text style={styles.title}>Reset Password</Text>
@@ -2388,7 +2608,7 @@ export default function App() {
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
-      </LinearGradient>
+      </View>
     );
 
   // Filter contacts based on search query (must be at component level, not inside render function)
@@ -3527,19 +3747,59 @@ const styles = StyleSheet.create({
   },
   authGradient: {
     flex: 1,
+    backgroundColor: EATS_BG,
+  },
+  authTopBand: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 220,
   },
   authSafeArea: {
     flex: 1,
-    justifyContent: 'center',
-    padding: 20,
+  },
+  authKeyboardView: {
+    flex: 1,
+  },
+  authScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 36,
+  },
+  authBrandSection: {
+    alignItems: 'center',
+    marginBottom: 72,
+  },
+  authBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 10,
+  },
+  authBrandTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  authBrandSubtitle: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   loginContainer: {
     backgroundColor: '#fff',
-    borderRadius: 24,
+    borderRadius: 20,
     padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.16,
     shadowRadius: 24,
     elevation: 8,
   },
@@ -3551,7 +3811,7 @@ const styles = StyleSheet.create({
     backgroundColor: EATS_ORANGE,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
+    marginBottom: 0,
     shadowColor: EATS_ORANGE,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
@@ -3562,6 +3822,104 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 28,
     fontWeight: '800',
+  },
+  authTabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eeeeee',
+    marginBottom: 24,
+  },
+  authTab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  authTabActive: {
+    borderBottomColor: EATS_ORANGE,
+  },
+  authTabText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: EATS_MUTED,
+  },
+  authTabTextActive: {
+    color: EATS_ORANGE,
+    fontWeight: '800',
+  },
+  authInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 14,
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    backgroundColor: '#fff',
+  },
+  authInputIcon: {
+    marginRight: 12,
+  },
+  authInput: {
+    flex: 1,
+    height: 50,
+    fontSize: 16,
+    color: EATS_TEXT,
+  },
+  forgotLink: {
+    alignSelf: 'flex-end',
+    marginBottom: 18,
+  },
+  forgotLinkText: {
+    color: EATS_ORANGE,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  authDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginVertical: 20,
+  },
+  authDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#eeeeee',
+  },
+  authDividerText: {
+    color: EATS_MUTED,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  socialButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+    marginBottom: 12,
+  },
+  socialButtonDisabled: {
+    opacity: 0.6,
+  },
+  socialButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: EATS_TEXT,
+  },
+  authFootnote: {
+    color: EATS_MUTED,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginTop: 20,
+    paddingHorizontal: 12,
   },
   title: {
     fontSize: 28,
@@ -3598,20 +3956,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  guestButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: EATS_ORANGE,
-    borderRadius: 14,
-    padding: 12,
-    marginTop: 10,
-    alignItems: 'center',
-  },
-  guestButtonText: {
-    color: EATS_ORANGE,
-    fontSize: 16,
-    fontWeight: '600',
   },
   disclaimerContainer: {
     marginTop: 30,
@@ -4191,49 +4535,56 @@ const styles = StyleSheet.create({
   contactDetailInfo: {
     backgroundColor: '#fff',
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
     padding: 20,
     marginBottom: 20,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowColor: EATS_ORANGE,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
     elevation: 3,
   },
   contactDetailName: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '800',
+    color: EATS_TEXT,
     marginBottom: 8,
   },
   contactDetailRole: {
     fontSize: 16,
-    color: '#666',
+    color: EATS_MUTED,
+    fontWeight: '700',
     marginBottom: 12,
   },
   contactDetailPhone: {
     fontSize: 16,
     color: EATS_ORANGE,
+    fontWeight: '700',
     marginBottom: 8,
   },
   contactDetailEmail: {
     fontSize: 16,
     color: EATS_ORANGE,
+    fontWeight: '700',
   },
   contactDetailActions: {
     flex: 1,
     gap: 15,
   },
   contactDetailButton: {
-    backgroundColor: '#fff',
+    backgroundColor: '#fff7ed',
     borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
     padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowColor: EATS_ORANGE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
     elevation: 3,
   },
   contactDetailButtonIcon: {
@@ -4242,8 +4593,8 @@ const styles = StyleSheet.create({
   },
   contactDetailButtonText: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: '#9a3412',
   },
   emergencyButton: {
     backgroundColor: '#ffebee',

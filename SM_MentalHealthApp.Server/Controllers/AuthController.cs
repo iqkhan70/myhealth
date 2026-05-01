@@ -119,6 +119,63 @@ namespace SM_MentalHealthApp.Server.Controllers
             return Ok(result);
         }
 
+        [HttpPost("google")]
+        [AllowAnonymous]
+        public async Task<ActionResult<LoginResponse>> LoginWithGoogle([FromBody] ExternalLoginRequest request)
+        {
+            var result = await _authService.LoginWithGoogleAsync(request);
+            if (!result.Success)
+            {
+                return Unauthorized(result);
+            }
+
+            await StoreSessionAsync(result);
+            return Ok(result);
+        }
+
+        [HttpPost("apple")]
+        [AllowAnonymous]
+        public async Task<ActionResult<LoginResponse>> LoginWithApple([FromBody] ExternalLoginRequest request)
+        {
+            var result = await _authService.LoginWithAppleAsync(request);
+            if (!result.Success)
+            {
+                return Unauthorized(result);
+            }
+
+            await StoreSessionAsync(result);
+            return Ok(result);
+        }
+
+        private async Task StoreSessionAsync(LoginResponse result)
+        {
+            if (!result.Success || string.IsNullOrEmpty(result.Token) || result.User == null)
+            {
+                return;
+            }
+
+            var sessionKey = $"session:{result.User.Id}:{result.Token}";
+            var sessionData = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                userId = result.User.Id,
+                email = result.User.Email,
+                token = result.Token,
+                expiresAt = DateTime.UtcNow.AddMinutes(30)
+            });
+            await _redisCache.SetAsync(sessionKey, sessionData, TimeSpan.FromMinutes(30));
+
+            try
+            {
+                var agentSessionService = HttpContext.RequestServices.GetRequiredService<IClientAgentSessionService>();
+                await agentSessionService.ClearActiveServiceRequestAsync(result.User.Id);
+                _logger.LogInformation("Cleared ClientAgentSession for user {UserId} on external login", result.User.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to clear ClientAgentSession for user {UserId} on external login", result.User.Id);
+            }
+        }
+
         [HttpPost("validate")]
         public async Task<ActionResult<bool>> ValidateToken([FromBody] string token)
         {
