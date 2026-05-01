@@ -17,6 +17,19 @@
             </label>
         </div>
 
+        @if (ServiceRequest.PreferredSmeUserId.HasValue && !string.IsNullOrEmpty(ServiceRequest.PreferredSmeUserName))
+        {
+            <div class="mb-3" style="padding: 12px; background-color: #e7f3ff; border: 1px solid #007bff; border-radius: 8px;">
+                <label class="form-label" style="margin-bottom: 4px;">
+                    <strong>⭐ Client's Preferred Provider:</strong>
+                </label>
+                <div style="font-size: 16px; color: #0056b3; font-weight: 500;">
+                    @ServiceRequest.PreferredSmeUserName
+                </div>
+                <small class="text-muted">The client has expressed a preference for this provider. Please consider this when making the assignment.</small>
+            </div>
+        }
+
         @if (ServiceRequest.ExpertiseNames != null && ServiceRequest.ExpertiseNames.Any())
         {
             <div class="mb-3">
@@ -33,11 +46,22 @@
         @if (recommendations != null && recommendations.Any())
         {
             <div class="mb-3">
-                <label class="form-label"><strong>Recommended SMEs (sorted by expertise match & score):</strong></label>
+                <label class="form-label"><strong>Recommended SMEs (sorted by client's priority, expertise match & score):</strong></label>
+                @{
+                    var firstRec = recommendations.FirstOrDefault();
+                    var isFirstPreferred = firstRec != null && ServiceRequest.PreferredSmeUserId.HasValue && firstRec.SmeUserId == ServiceRequest.PreferredSmeUserId.Value;
+                }
+                @if (isFirstPreferred)
+                {
+                    <div class="alert alert-info mb-2" style="padding: 8px 12px; margin-bottom: 8px; border-left: 4px solid #0d6efd;">
+                        <strong>📌 Priority Placement:</strong> <strong>@firstRec.SmeUserName</strong> appears at the top of this list because the client specifically requested this provider. This prioritization reflects the client's preference expressed via Agentic AI chat.
+                    </div>
+                }
                 <div class="table-responsive" style="max-height: 300px; overflow-y: auto; overflow-x: visible;">
                     <table class="table table-sm table-hover" style="width: 100%; table-layout: auto;">
                         <thead>
                             <tr>
+                                <th style="width: 30px;">Priority</th>
                                 <th>SME</th>
                                 <th>Match</th>
                                 <th>Distance</th>
@@ -49,11 +73,30 @@
                             </tr>
                         </thead>
                         <tbody>
+                            @{
+                                var index = 0;
+                            }
                             @foreach (var rec in recommendations.Take(10))
                             {
-                                <tr style="cursor: pointer;" @onclick="@(() => SelectRecommendedSme(rec.SmeUserId))">
+                                index++;
+                                var isPreferred = ServiceRequest.PreferredSmeUserId.HasValue && rec.SmeUserId == ServiceRequest.PreferredSmeUserId.Value;
+                                <tr style="cursor: pointer; @(isPreferred ? "background-color: #e7f3ff; border-left: 4px solid #0d6efd;" : "")" @onclick="@(() => SelectRecommendedSme(rec.SmeUserId))">
+                                    <td style="text-align: center; vertical-align: middle;">
+                                        @if (isPreferred && index == 1)
+                                        {
+                                            <span class="badge bg-primary" style="font-size: 0.75em;" title="Client's preferred provider - placed at top per client request">1️⃣</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted" style="font-size: 0.85em;">@index</span>
+                                        }
+                                    </td>
                                     <td>
                                         <strong>@rec.SmeUserName</strong>
+                                        @if (isPreferred)
+                                        {
+                                            <span class="badge bg-primary ms-2" title="Client specifically requested this provider via Agentic AI chat">⭐ Client's Preference</span>
+                                        }
                                         @if (!string.IsNullOrEmpty(rec.Specialization))
                                         {
                                             <br /><small class="text-muted">@rec.Specialization</small>
@@ -98,7 +141,14 @@
                         </tbody>
                     </table>
                 </div>
-                <small class="text-muted">Click on a row or use the button to select. SMEs are sorted by expertise match count, then distance, then score.</small>
+                <small class="text-muted">
+                    Click on a row or use the button to select. 
+                    @if (isFirstPreferred)
+                    {
+                        <strong>The client's preferred provider is shown at the top (position #1) as requested.</strong> 
+                    }
+                    Other SMEs are sorted by expertise match count, distance, and score.
+                </small>
             </div>
         }
         

@@ -171,6 +171,7 @@ namespace SM_MentalHealthApp.Server.Services
                 session.CurrentServiceRequestId = null;
                 session.State = ClientAgentSessionState.NoActiveSRContext.ToString();
                 session.PendingCreatedServiceRequestId = null;
+                session.Metadata = null; // Clear metadata on reset
                 session.LastUpdatedUtc = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
@@ -180,6 +181,25 @@ namespace SM_MentalHealthApp.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error resetting session for client {ClientId}", clientId);
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateMetadataAsync(int clientId, string metadataJson)
+        {
+            try
+            {
+                var session = await GetOrCreateSessionAsync(clientId);
+                session.Metadata = metadataJson;
+                session.LastUpdatedUtc = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Updated metadata for client {ClientId}", clientId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating metadata for client {ClientId}", clientId);
                 return false;
             }
         }

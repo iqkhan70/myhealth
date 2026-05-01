@@ -1,6 +1,8 @@
 using SM_MentalHealthApp.Shared;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SM_MentalHealthApp.Server.Services
 {
@@ -19,6 +21,7 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly IServiceRequestService _serviceRequestService;
         private readonly IAppointmentService _appointmentService;
         private readonly IServiceScopeFactory _serviceScopeFactory;
+        private readonly IAssignmentLifecycleService _assignmentService;
 
         public ServiceRequestAgenticAIService(
             IClientProfileService profileService,
@@ -28,7 +31,8 @@ namespace SM_MentalHealthApp.Server.Services
             ILogger<ServiceRequestAgenticAIService> logger,
             IServiceRequestService serviceRequestService,
             IAppointmentService appointmentService,
-            IServiceScopeFactory serviceScopeFactory)
+            IServiceScopeFactory serviceScopeFactory,
+            IAssignmentLifecycleService assignmentService)
         {
             _profileService = profileService;
             _agentSessionService = agentSessionService;
@@ -38,6 +42,7 @@ namespace SM_MentalHealthApp.Server.Services
             _serviceRequestService = serviceRequestService;
             _appointmentService = appointmentService;
             _serviceScopeFactory = serviceScopeFactory;
+            _assignmentService = assignmentService;
         }
 
         public async Task<AgenticResponse> ProcessServiceRequestAsync(int clientId, string clientMessage, int? serviceRequestId = null, string? conversationHistory = null)
@@ -171,7 +176,24 @@ namespace SM_MentalHealthApp.Server.Services
                     }
                 }
 
-                // Step 5: CRITICAL SR-FIRST ENFORCEMENT CHECK
+                // Step 5: Check if user is trying to switch to a different SR (even if one is already active)
+                // This handles cases like: "how about work13" when work17 is currently active
+                if (activeServiceRequestId.HasValue)
+                {
+                    // Check if user is referencing a different SR by name/title/number
+                    var switchIntent = await DetectSRSwitchIntentAsync(clientId, clientMessage, activeServiceRequestId.Value);
+                    if (switchIntent.HasValue && switchIntent.Value != activeServiceRequestId.Value)
+                    {
+                        // User wants to switch to a different SR
+                        _logger.LogInformation("User switching from SR {OldSRId} to SR {NewSRId} for client {ClientId}",
+                            activeServiceRequestId.Value, switchIntent.Value, clientId);
+                        await _agentSessionService.SetActiveServiceRequestAsync(clientId, switchIntent.Value);
+                        activeServiceRequestId = switchIntent.Value;
+                        // Continue with normal flow using the new SR
+                    }
+                }
+
+                // Step 5.5: CRITICAL SR-FIRST ENFORCEMENT CHECK
                 // We should NEVER reach here without an active SR - if we do, it's a bug
                 if (!activeServiceRequestId.HasValue)
                 {
@@ -186,17 +208,78 @@ namespace SM_MentalHealthApp.Server.Services
                     await _agentSessionService.SetActiveServiceRequestAsync(clientId, activeServiceRequestId.Value);
                 }
 
+                // Step 6.1: Check if client is asking about available SMEs or expressing preference
+                if (IsAskingAboutSMEs(clientMessage))
+                {
+                    return await HandleSMERecommendationRequestAsync(clientId, activeServiceRequestId.Value, clientMessage);
+                }
+
+                // Step 6.2: Check if client is expressing a preference for a specific SME (or changing an existing preference)
+                var preferenceIntent = await DetectSMEPreferenceIntent(clientMessage, activeServiceRequestId.Value);
+                if (preferenceIntent.HasValue)
+                {
+                    // Check if there's an existing preference to detect if this is a change
+                    var currentSr = await _serviceRequestService.GetServiceRequestByIdAsync(activeServiceRequestId.Value);
+                    var hadPreviousPreference = currentSr?.PreferredSmeUserId.HasValue == true;
+                    var previousPreferredName = currentSr?.PreferredSmeUserName;
+                    var isChangingPreference = hadPreviousPreference && currentSr.PreferredSmeUserId.Value != preferenceIntent.Value;
+                    
+                    // Update the preference
+                    await _serviceRequestService.SetPreferredSmeAsync(activeServiceRequestId.Value, preferenceIntent.Value);
+                    var updatedSr = await _serviceRequestService.GetServiceRequestByIdAsync(activeServiceRequestId.Value);
+                    var newPreferredName = updatedSr?.PreferredSmeUserName ?? "the selected provider";
+                    
+                    string responseMessage;
+                    if (isChangingPreference)
+                    {
+                        responseMessage = $"Perfect! I've updated your preference from {previousPreferredName} to {newPreferredName}. Your new preference has been noted, and coordinators will take this into account when assigning a service provider to your request.";
+                    }
+                    else if (hadPreviousPreference)
+                    {
+                        responseMessage = $"I've confirmed your preference for {newPreferredName}. When a coordinator assigns a service provider to your request, they'll take your preference into account.";
+                    }
+                    else
+                    {
+                        responseMessage = $"Perfect! I've noted your preference for {newPreferredName}. When a coordinator assigns a service provider to your request, they'll take your preference into account.";
+                    }
+                    
+                    return new AgenticResponse
+                    {
+                        Message = responseMessage,
+                        Confidence = 0.9m,
+                        SuggestedActions = new List<string> { "Continue with service request", "Ask about status" }
+                    };
+                }
+
                 // Step 5: Load or create client profile
                 var profile = await _profileService.GetOrCreateProfileAsync(clientId);
 
                 // Step 6: Analyze client message
                 var analysis = await AnalyzeClientMessageAsync(clientMessage, profile);
 
+                // Step 6.5: Detect confirmations and update metadata (expert system optimization)
+                var confirmation = DetectConfirmation(clientMessage, conversationHistory);
+                if (confirmation != null)
+                {
+                    var metadataJson = JsonSerializer.Serialize(new
+                    {
+                        appointmentConfirmed = confirmation.AppointmentConfirmed,
+                        timeWindow = confirmation.TimeWindow,
+                        lastConfirmedAt = confirmation.LastConfirmedAt
+                    });
+                    await _agentSessionService.UpdateMetadataAsync(clientId, metadataJson);
+                    _logger.LogInformation("Detected confirmation for client {ClientId}: {Metadata}", clientId, metadataJson);
+                }
+
+                // Get current metadata for token optimization
+                var currentMetadata = agentSession.Metadata;
+                var hasConfirmation = !string.IsNullOrEmpty(currentMetadata);
+
                 // Step 7: Determine response strategy
                 var strategy = await DetermineResponseStrategyAsync(analysis, profile, activeServiceRequestId);
 
-                // Step 8: Generate adaptive response
-                var response = await GenerateAdaptiveResponseAsync(clientMessage, analysis, strategy, profile, activeServiceRequestId, conversationHistory);
+                // Step 8: Generate adaptive response (with metadata for token optimization)
+                var response = await GenerateAdaptiveResponseAsync(clientMessage, analysis, strategy, profile, activeServiceRequestId, conversationHistory, hasConfirmation, currentMetadata);
 
                 // Step 9: Learn from interaction (async, don't block)
                 // CRITICAL: Create a new scope for background task to avoid DbContext disposal issues
@@ -538,7 +621,9 @@ namespace SM_MentalHealthApp.Server.Services
             ResponseStrategy strategy,
             ClientProfile profile,
             int? serviceRequestId,
-            string? conversationHistory = null)
+            string? conversationHistory = null,
+            bool hasConfirmation = false,
+            string? metadata = null)
         {
             try
             {
@@ -550,7 +635,45 @@ namespace SM_MentalHealthApp.Server.Services
                     var sr = await _serviceRequestService.GetServiceRequestByIdAsync(serviceRequestId.Value);
                     if (sr != null)
                     {
-                        serviceRequestContext = $"Service Request: {sr.Title} - {sr.Description}";
+                        // Build service request context with assignment information
+                        var srInfo = new List<string>
+                        {
+                            $"Service Request: {sr.Title}",
+                            $"Description: {sr.Description ?? "No description"}",
+                            $"Status: {sr.Status}",
+                            $"Type: {sr.Type ?? "General"}"
+                        };
+
+                        // Add assignment information
+                        if (sr.Assignments != null && sr.Assignments.Any(a => a.IsActive))
+                        {
+                            var activeAssignments = sr.Assignments.Where(a => a.IsActive).ToList();
+                            srInfo.Add($"\nASSIGNED SERVICE PROVIDERS ({activeAssignments.Count}):");
+                            foreach (var assignment in activeAssignments)
+                            {
+                                var assignmentInfo = $"- {assignment.SmeUserName ?? "Unknown Provider"}";
+                                if (!string.IsNullOrEmpty(assignment.Status))
+                                {
+                                    assignmentInfo += $" (Status: {assignment.Status}";
+                                    if (assignment.AcceptedAt.HasValue)
+                                    {
+                                        assignmentInfo += $", Accepted: {assignment.AcceptedAt.Value:MM/dd/yyyy}";
+                                    }
+                                    if (assignment.StartedAt.HasValue)
+                                    {
+                                        assignmentInfo += $", Started: {assignment.StartedAt.Value:MM/dd/yyyy}";
+                                    }
+                                    assignmentInfo += ")";
+                                }
+                                srInfo.Add(assignmentInfo);
+                            }
+                        }
+                        else
+                        {
+                            srInfo.Add("\nASSIGNED SERVICE PROVIDERS: None - No service provider has been assigned yet.");
+                        }
+
+                        serviceRequestContext = string.Join("\n", srInfo);
 
                         // Get appointments for this service request
                         var allAppointments = await _appointmentService.GetAppointmentsAsync(patientId: profile.ClientId);
@@ -579,28 +702,37 @@ namespace SM_MentalHealthApp.Server.Services
                                 .ToList();
 
                             var appointmentsInfo = new List<string>();
+                            var currentDateTime = DateTime.UtcNow;
 
                             if (upcomingAppointments.Any())
                             {
-                                appointmentsInfo.Add($"UPCOMING APPOINTMENTS ({upcomingAppointments.Count}):");
+                                appointmentsInfo.Add($"UPCOMING APPOINTMENTS ({upcomingAppointments.Count}) - These are scheduled for the future:");
                                 foreach (var apt in upcomingAppointments.Take(3))
                                 {
                                     var doctorName = apt.DoctorName ?? "Provider";
                                     var dateTime = apt.AppointmentDateTime.ToString("MM/dd/yyyy HH:mm");
                                     var status = apt.Status;
-                                    appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status})");
+                                    var daysUntil = (apt.AppointmentDateTime - currentDateTime).Days;
+                                    var timeUntil = apt.AppointmentDateTime > currentDateTime
+                                        ? $"({daysUntil} day{(daysUntil != 1 ? "s" : "")} from now)"
+                                        : "";
+                                    appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status}) {timeUntil}");
                                 }
                             }
 
                             if (pastAppointments.Any())
                             {
-                                appointmentsInfo.Add($"RECENT APPOINTMENTS ({pastAppointments.Count}):");
+                                appointmentsInfo.Add($"PAST/COMPLETED APPOINTMENTS ({pastAppointments.Count}) - These are outdated and already occurred:");
                                 foreach (var apt in pastAppointments.OrderByDescending(a => a.AppointmentDateTime).Take(2))
                                 {
                                     var doctorName = apt.DoctorName ?? "Provider";
                                     var dateTime = apt.AppointmentDateTime.ToString("MM/dd/yyyy HH:mm");
                                     var status = apt.Status;
-                                    appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status})");
+                                    var daysAgo = (currentDateTime - apt.AppointmentDateTime).Days;
+                                    var timeAgo = apt.AppointmentDateTime < currentDateTime
+                                        ? $"(PAST - {daysAgo} day{(daysAgo != 1 ? "s" : "")} ago)"
+                                        : "";
+                                    appointmentsInfo.Add($"- {dateTime} with {doctorName} (Status: {status}) {timeAgo}");
                                 }
                             }
 
@@ -646,8 +778,8 @@ CURRENT SITUATION:
 - Main Concerns: {string.Join(", ", analysis.Concerns.Take(3))}
 - Client Reaction: {analysis.ClientReaction}
 
-{(!string.IsNullOrEmpty(serviceRequestContext) ? $"SERVICE REQUEST CONTEXT:\n{serviceRequestContext}\n" : "")}
-{(!string.IsNullOrEmpty(appointmentsContext) ? $"APPOINTMENTS FOR THIS SERVICE REQUEST:\n{appointmentsContext}\n\nIMPORTANT: The appointments listed above are the ONLY appointments for this service request. Acknowledge them in your response if relevant. Do NOT say you're 'looking for' or 'reaching out to' service providers if appointments are already scheduled. Instead, reference the existing appointments and provide updates based on what's already scheduled.\n" : "IMPORTANT: There are NO appointments scheduled for this service request. Do NOT mention or reference any appointments. Do NOT say things like 'your appointment is scheduled' or 'I see you have an appointment'. There are no appointments.\n")}
+{(!string.IsNullOrEmpty(serviceRequestContext) ? $"SERVICE REQUEST CONTEXT:\n{serviceRequestContext}\n\nIMPORTANT ASSIGNMENT INSTRUCTIONS:\n- If the SERVICE REQUEST CONTEXT shows 'ASSIGNED SERVICE PROVIDERS' with names listed, then service providers HAVE been assigned. DO NOT say 'no one has been assigned' or 'I'm still looking for providers'.\n- If it shows 'ASSIGNED SERVICE PROVIDERS: None', then NO providers have been assigned yet, and you can mention that you're working on finding suitable options.\n- Always check the assignment information in the SERVICE REQUEST CONTEXT before making claims about assignment status.\n" : "")}
+{(!string.IsNullOrEmpty(appointmentsContext) ? $"APPOINTMENTS FOR THIS SERVICE REQUEST:\n{appointmentsContext}\n\nIMPORTANT APPOINTMENT INSTRUCTIONS:\n- The appointments listed above are the ONLY appointments for this service request.\n- If an appointment is marked as 'PAST' or 'COMPLETED', you MUST clearly indicate in your response that it is outdated/already occurred. For example: 'You had an appointment on [date] (which has already passed)' or 'Your previous appointment on [date] has already occurred'.\n- For UPCOMING appointments, you can reference them normally (e.g., 'You have an appointment scheduled for [date]').\n- Do NOT say you're 'looking for' or 'reaching out to' service providers if appointments are already scheduled.\n- When mentioning past appointments, always clarify they are outdated/have already occurred.\n" : "IMPORTANT: There are NO appointments scheduled for this service request. Do NOT mention or reference any appointments. Do NOT say things like 'your appointment is scheduled' or 'I see you have an appointment'. There are no appointments.\n")}
 {conversationContext}
 
 PROFILE INTERACTION HISTORY:
@@ -658,6 +790,18 @@ RESPONSE STRATEGY:
 - Information Level: {strategy.InformationLevel} (Minimal=brief/essential only, Moderate=balanced, Detailed=comprehensive)
 - Approach: {strategy.Approach} (Reassuring=calm/comfort, Problem-Solving=action-oriented, Educational=informative)
 
+{(hasConfirmation ? $@"EXPERT SYSTEM OPTIMIZATION - CONFIRMATION DETECTED:
+The client has already confirmed information. Metadata: {metadata}
+
+**TOKEN OPTIMIZATION RULES (CRITICAL FOR COST REDUCTION):**
+- Give SHORT, CONCISE answers (1-2 sentences max)
+- DO NOT re-explain already confirmed information
+- DO NOT restate old appointments or previously discussed details
+- DO NOT ask questions that have already been answered
+- Simply acknowledge and move forward
+- Example: Instead of ""Great! I've scheduled your appointment for tomorrow between 10 AM and 12 PM as you confirmed. You'll receive a reminder..."", just say ""Perfect! I've scheduled it for tomorrow 10-12 AM.""
+
+" : "")}
 CRITICAL INSTRUCTIONS:
 1. **ABSOLUTELY DO NOT mention health, medical topics, patients, medical care, or ask about health concerns. This is a SERVICE REQUEST conversation only.**
 2. Respond in a {strategy.Tone} tone that matches the client's emotional state
@@ -671,31 +815,29 @@ CRITICAL INSTRUCTIONS:
 10. Reference successful past resolutions if relevant (client has {profile.SuccessfulResolutions} successful resolutions)
 11. Balance being helpful with not overwhelming the client
 12. **CRITICAL**: If conversation history is provided above, use it to understand context. For example, if the client says ""Yes please"", ""That sounds good"", ""10-12 AM is good"", or ""thank you, that is all"", refer back to what was discussed in the conversation history and continue from there.
-13. **CRITICAL**: ONLY mention appointments if they are explicitly listed in the ""APPOINTMENTS FOR THIS SERVICE REQUEST"" section above. If that section says ""IMPORTANT: There are NO appointments scheduled"", then DO NOT mention appointments at all. If appointments ARE listed, acknowledge them and do NOT say you're ""gathering information"" or ""reaching out to shops"". Never make up or assume appointment information that isn't explicitly provided above.
-13. **CRITICAL**: Maintain conversation continuity - if the client is responding to a previous question or suggestion, acknowledge that and continue from where you left off. Don't start a new topic.
-14. **CRITICAL**: If the client says ""thank you, that is all I need for now"" or similar closing statements, acknowledge their service request is complete and offer to help if they need anything else with their SERVICE REQUEST. Do NOT mention health or medical topics.
+{(hasConfirmation ? "13. **TOKEN OPTIMIZATION**: Since confirmations already exist, keep your response SHORT and avoid repeating information." : "")}
+13. **CRITICAL**: Check the SERVICE REQUEST CONTEXT above for assignment information. If it shows assigned service providers with names listed, DO NOT say ""no one has been assigned"" or ""I'm still looking for providers"". Only say you're looking for providers if the context explicitly says ""None - No service provider has been assigned yet"". Always verify assignment status from the SERVICE REQUEST CONTEXT before making claims.
+14. **CRITICAL**: ONLY mention appointments if they are explicitly listed in the ""APPOINTMENTS FOR THIS SERVICE REQUEST"" section above. If that section says ""IMPORTANT: There are NO appointments scheduled"", then DO NOT mention appointments at all. If appointments ARE listed:
+    - For appointments marked as ""PAST"" or ""COMPLETED"", you MUST clearly indicate they are outdated/already occurred (e.g., ""You had an appointment on [date] which has already passed"").
+    - For ""UPCOMING"" appointments, you can reference them normally.
+    - Do NOT say you're ""gathering information"" or ""reaching out to shops"" if appointments are already scheduled.
+    - Never make up or assume appointment information that isn't explicitly provided above.
+15. **CRITICAL**: Maintain conversation continuity - if the client is responding to a previous question or suggestion, acknowledge that and continue from where you left off. Don't start a new topic.
+16. **CRITICAL**: If the client says ""thank you, that is all I need for now"" or similar closing statements, acknowledge their service request is complete and offer to help if they need anything else with their SERVICE REQUEST. Do NOT mention health or medical topics.
 15. **CRITICAL**: If the client says ""nope"" or ""no"" in response to a question, acknowledge their answer and continue with the service request conversation. Do NOT switch topics or mention medical/health topics.
 
 Generate a helpful, personalized response that makes the client feel supported and guides them appropriately. Remember: This is ONLY about service requests, NOT medical or health topics:";
 
-                var llmRequest = new LlmRequest
-                {
-                    Prompt = prompt,
-                    Temperature = 0.7, // Creative but consistent
-                    MaxTokens = 300,
-                    Provider = AiProvider.OpenAI
-                };
+                // Use structured JSON generation with validation and retry
+                var structuredResponse = await GenerateStructuredJsonResponseAsync(
+                    prompt: prompt,
+                    strategy: strategy,
+                    analysis: analysis,
+                    maxRetries: 3,
+                    hasConfirmation: hasConfirmation
+                );
 
-                var llmResponse = await _llmClient.GenerateTextAsync(llmRequest);
-
-                return new AgenticResponse
-                {
-                    Message = llmResponse.Text.Trim(),
-                    SuggestedActions = strategy.SuggestedActions,
-                    Confidence = strategy.Confidence,
-                    Analysis = analysis,
-                    Strategy = strategy
-                };
+                return structuredResponse;
             }
             catch (Exception ex)
             {
@@ -709,6 +851,197 @@ Generate a helpful, personalized response that makes the client feel supported a
                     SuggestedActions = new List<string> { "Provide more details" }
                 };
             }
+        }
+
+        /// <summary>
+        /// Generates a structured JSON response with validation and retry logic.
+        /// This ensures we always get valid, parseable JSON from the LLM.
+        /// </summary>
+        private async Task<AgenticResponse> GenerateStructuredJsonResponseAsync(
+            string prompt,
+            ResponseStrategy strategy,
+            MessageAnalysis analysis,
+            int maxRetries = 3,
+            bool hasConfirmation = false)
+        {
+            // JSON schema for the expected response
+            var jsonSchema = @"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""message"": {
+      ""type"": ""string"",
+      ""description"": ""The main response message to the client""
+    },
+    ""confidence"": {
+      ""type"": ""number"",
+      ""minimum"": 0,
+      ""maximum"": 1,
+      ""description"": ""Confidence score between 0 and 1""
+    }
+  },
+  ""required"": [""message"", ""confidence""]
+}";
+
+            // Enhanced prompt with JSON format instructions
+            var enhancedPrompt = $@"{prompt}
+
+CRITICAL: You MUST respond with valid JSON only, in this exact format:
+{{
+  ""message"": ""Your response message here"",
+  ""confidence"": 0.85
+}}
+
+Do NOT include any text before or after the JSON. Do NOT use markdown code blocks. Return ONLY the raw JSON object.";
+
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    _logger.LogInformation("Generating structured JSON response (attempt {Attempt}/{MaxRetries})", attempt, maxRetries);
+
+                    // Token optimization: Use fewer tokens when confirmations exist (expert system optimization)
+                    var maxTokens = hasConfirmation
+                        ? (attempt == 1 ? 150 : 200)  // Short answers when confirmed
+                        : (attempt == 1 ? 300 : 400); // Normal length otherwise
+
+                    var llmRequest = new LlmRequest
+                    {
+                        Prompt = enhancedPrompt,
+                        Instructions = "You are a helpful AI assistant. You MUST respond with valid JSON only, no other text.",
+                        Temperature = 0.7,
+                        MaxTokens = maxTokens,
+                        Provider = AiProvider.OpenAI,
+                        ForceJsonMode = true // Enable OpenAI JSON mode
+                    };
+
+                    var llmResponse = await _llmClient.GenerateTextAsync(llmRequest);
+                    var responseText = llmResponse.Text.Trim();
+
+                    // Clean up the response - remove markdown code blocks if present
+                    responseText = CleanJsonResponse(responseText);
+
+                    // Try to parse as JSON
+                    AgenticResponse? parsedResponse = null;
+                    try
+                    {
+                        var jsonDoc = JsonDocument.Parse(responseText);
+                        var root = jsonDoc.RootElement;
+
+                        // Validate required fields
+                        if (!root.TryGetProperty("message", out var messageElement) ||
+                            messageElement.ValueKind != JsonValueKind.String ||
+                            string.IsNullOrWhiteSpace(messageElement.GetString()))
+                        {
+                            throw new JsonException("Missing or invalid 'message' field");
+                        }
+
+                        var message = messageElement.GetString() ?? string.Empty;
+
+                        // Confidence is optional but should be validated if present
+                        decimal confidence = strategy.Confidence; // Default to strategy confidence
+                        if (root.TryGetProperty("confidence", out var confidenceElement))
+                        {
+                            if (confidenceElement.ValueKind == JsonValueKind.Number)
+                            {
+                                var confValue = confidenceElement.GetDecimal();
+                                if (confValue < 0 || confValue > 1)
+                                {
+                                    _logger.LogWarning("Confidence value {Confidence} out of range, using strategy confidence", confValue);
+                                }
+                                else
+                                {
+                                    confidence = confValue;
+                                }
+                            }
+                        }
+
+                        parsedResponse = new AgenticResponse
+                        {
+                            Message = message,
+                            Confidence = confidence,
+                            SuggestedActions = strategy.SuggestedActions,
+                            Analysis = analysis,
+                            Strategy = strategy
+                        };
+
+                        _logger.LogInformation("Successfully parsed structured JSON response on attempt {Attempt}", attempt);
+                        return parsedResponse;
+                    }
+                    catch (JsonException jsonEx)
+                    {
+                        _logger.LogWarning(jsonEx, "Failed to parse JSON on attempt {Attempt}: {Response}", attempt, responseText.Substring(0, Math.Min(200, responseText.Length)));
+
+                        if (attempt == maxRetries)
+                        {
+                            // Last attempt failed - use fallback
+                            _logger.LogError("All {MaxRetries} attempts failed to get valid JSON. Using fallback response.", maxRetries);
+                            break;
+                        }
+
+                        // Retry with more explicit instructions
+                        enhancedPrompt = $@"{prompt}
+
+CRITICAL: You MUST respond with valid JSON only. Previous attempt failed validation.
+The JSON must be in this exact format (no markdown, no code blocks, no extra text):
+{{
+  ""message"": ""Your response message here"",
+  ""confidence"": 0.85
+}}
+
+Return ONLY the raw JSON object, nothing else.";
+                        continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error generating structured JSON response on attempt {Attempt}", attempt);
+
+                    if (attempt == maxRetries)
+                    {
+                        // Last attempt - use fallback
+                        break;
+                    }
+
+                    // Wait a bit before retrying (exponential backoff)
+                    await Task.Delay(attempt * 200);
+                }
+            }
+
+            // Fallback response if all retries failed
+            _logger.LogWarning("Using fallback response after {MaxRetries} failed attempts", maxRetries);
+            return new AgenticResponse
+            {
+                Message = "I understand you need help with your service request. Let me assist you. Could you provide a bit more detail about what you're experiencing?",
+                Confidence = strategy.Confidence,
+                SuggestedActions = strategy.SuggestedActions,
+                Analysis = analysis,
+                Strategy = strategy
+            };
+        }
+
+        /// <summary>
+        /// Cleans JSON response by removing markdown code blocks and extra whitespace
+        /// </summary>
+        private string CleanJsonResponse(string response)
+        {
+            if (string.IsNullOrWhiteSpace(response))
+                return "{}";
+
+            // Remove markdown code blocks (```json ... ``` or ``` ... ```)
+            response = Regex.Replace(response, @"^```(?:json)?\s*\n?", "", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+            response = Regex.Replace(response, @"\n?```\s*$", "", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
+            // Find JSON object boundaries
+            var jsonStart = response.IndexOf('{');
+            var jsonEnd = response.LastIndexOf('}');
+
+            if (jsonStart >= 0 && jsonEnd > jsonStart)
+            {
+                // Extract just the JSON object
+                response = response.Substring(jsonStart, jsonEnd - jsonStart + 1);
+            }
+
+            return response.Trim();
         }
 
         private async Task LearnFromInteractionAsync(
@@ -1014,6 +1347,81 @@ Generate a helpful, personalized response that makes the client feel supported a
         }
 
         /// <summary>
+        /// Detects confirmations in the client message and extracts structured data.
+        /// Returns confirmation metadata if detected, null otherwise.
+        /// </summary>
+        private ConfirmationMetadata? DetectConfirmation(string clientMessage, string? conversationHistory)
+        {
+            var message = clientMessage.ToLowerInvariant().Trim();
+            var history = conversationHistory?.ToLowerInvariant() ?? "";
+
+            // Combine message and history for context
+            var fullContext = $"{history} {message}";
+
+            // Check for confirmation patterns
+            var confirmationPatterns = new[]
+            {
+                @"\b(yes|yeah|yep|yup|sure|ok|okay|confirmed|confirm|agreed|sounds good|that works|perfect|great)\b",
+                @"\b(10|11|12|1|2|3|4|5|6|7|8|9)\s*(am|pm|AM|PM)\s*(to|-|until)\s*(10|11|12|1|2|3|4|5|6|7|8|9)\s*(am|pm|AM|PM)\b",
+                @"\b(morning|afternoon|evening)\s*(works|is good|sounds good|fine)\b",
+                @"\b(tomorrow|today|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s*(works|is good|sounds good|fine)\b"
+            };
+
+            bool hasConfirmation = false;
+            string? timeWindow = null;
+
+            // Check for time window patterns
+            var timeWindowPattern = @"\b((?:10|11|12|1|2|3|4|5|6|7|8|9)\s*(?:am|pm|AM|PM)\s*(?:to|-|until)\s*(?:10|11|12|1|2|3|4|5|6|7|8|9)\s*(?:am|pm|AM|PM))\b";
+            var timeMatch = Regex.Match(fullContext, timeWindowPattern, RegexOptions.IgnoreCase);
+            if (timeMatch.Success)
+            {
+                timeWindow = timeMatch.Groups[1].Value.Trim();
+                hasConfirmation = true;
+            }
+
+            // Check for date + time patterns
+            var dateTimePattern = @"\b(\d{1,2}/\d{1,2}/\d{2,4})\s+((?:10|11|12|1|2|3|4|5|6|7|8|9)\s*(?:am|pm|AM|PM)\s*(?:to|-|until)?\s*(?:10|11|12|1|2|3|4|5|6|7|8|9)?\s*(?:am|pm|AM|PM)?)\b";
+            var dateTimeMatch = Regex.Match(fullContext, dateTimePattern, RegexOptions.IgnoreCase);
+            if (dateTimeMatch.Success)
+            {
+                timeWindow = $"{dateTimeMatch.Groups[1].Value} {dateTimeMatch.Groups[2].Value}".Trim();
+                hasConfirmation = true;
+            }
+
+            // Check for confirmation words
+            foreach (var pattern in confirmationPatterns)
+            {
+                if (Regex.IsMatch(fullContext, pattern, RegexOptions.IgnoreCase))
+                {
+                    hasConfirmation = true;
+                    break;
+                }
+            }
+
+            if (hasConfirmation)
+            {
+                return new ConfirmationMetadata
+                {
+                    AppointmentConfirmed = true,
+                    TimeWindow = timeWindow,
+                    LastConfirmedAt = DateTime.UtcNow
+                };
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Structured confirmation metadata
+        /// </summary>
+        private class ConfirmationMetadata
+        {
+            public bool AppointmentConfirmed { get; set; }
+            public string? TimeWindow { get; set; }
+            public DateTime LastConfirmedAt { get; set; }
+        }
+
+        /// <summary>
         /// Extracts a potential SR title from the client message
         /// </summary>
         private string? ExtractSRTitle(string message)
@@ -1055,6 +1463,73 @@ Generate a helpful, personalized response that makes the client feel supported a
         }
 
         /// <summary>
+        /// Detects if user is trying to switch to a different SR (even when one is already active)
+        /// Handles cases like "how about work13" when work17 is currently active
+        /// </summary>
+        private async Task<int?> DetectSRSwitchIntentAsync(int clientId, string clientMessage, int currentActiveSRId)
+        {
+            var lowerMessage = clientMessage.ToLowerInvariant().Trim();
+
+            // Check for switch phrases like "how about", "what about", "switch to", "change to"
+            var switchPhrases = new[] { "how about", "what about", "switch to", "change to", "let's try", "try", "use" };
+            bool hasSwitchPhrase = switchPhrases.Any(phrase => lowerMessage.Contains(phrase));
+
+            // Extract SR reference from the message (remove switch phrases)
+            string srReference = lowerMessage;
+            if (hasSwitchPhrase)
+            {
+                // Remove switch phrases to get just the SR reference
+                foreach (var phrase in switchPhrases)
+                {
+                    if (lowerMessage.Contains(phrase))
+                    {
+                        // Extract text after the switch phrase
+                        var index = lowerMessage.IndexOf(phrase);
+                        srReference = lowerMessage.Substring(index + phrase.Length).Trim();
+                        break;
+                    }
+                }
+            }
+
+            // Always remove trailing punctuation (question marks, exclamation marks, etc.)
+            // This handles cases like "work3?" or "work13!" even without switch phrases
+            srReference = srReference.TrimEnd('.', '!', '?', ',', ';', ':');
+
+            // If srReference is empty or just whitespace after extraction, use the original message
+            if (string.IsNullOrWhiteSpace(srReference))
+            {
+                srReference = lowerMessage.TrimEnd('.', '!', '?', ',', ';', ':');
+            }
+
+            // If message contains a switch phrase, is a short message, or is just a number, try to match it
+            if (hasSwitchPhrase || lowerMessage.Length < 50 || int.TryParse(lowerMessage.Trim(), out _))
+            {
+                _logger.LogInformation("Checking SR switch intent for client {ClientId}. Message: '{Message}', Extracted reference: '{SRReference}', Has switch phrase: {HasSwitchPhrase}",
+                    clientId, clientMessage, srReference, hasSwitchPhrase);
+
+                // Use the extracted SR reference (or full message if no switch phrase)
+                var matchedSR = await MatchSelectedSRAsync(clientId, srReference);
+
+                _logger.LogInformation("SR switch match result for client {ClientId}: MatchedSR={MatchedSR}, CurrentSR={CurrentSR}",
+                    clientId, matchedSR, currentActiveSRId);
+
+                // Only return if it's different from the current active SR
+                if (matchedSR.HasValue && matchedSR.Value != currentActiveSRId)
+                {
+                    _logger.LogInformation("Detected SR switch intent: user wants to switch from SR {CurrentSRId} to SR {NewSRId}",
+                        currentActiveSRId, matchedSR.Value);
+                    return matchedSR.Value;
+                }
+                else if (matchedSR.HasValue && matchedSR.Value == currentActiveSRId)
+                {
+                    _logger.LogInformation("User referenced current active SR {SRId}, no switch needed", currentActiveSRId);
+                }
+            }
+
+            return null; // No switch intent detected
+        }
+
+        /// <summary>
         /// Matches user's response to an existing SR (by number, title, or index)
         /// </summary>
         private async Task<int?> MatchSelectedSRAsync(int clientId, string userResponse)
@@ -1071,14 +1546,18 @@ Generate a helpful, personalized response that makes the client feel supported a
 
             var lowerResponse = userResponse.ToLowerInvariant().Trim();
 
-            // Check for numeric index (1-5)
-            if (int.TryParse(lowerResponse, out int index) && index >= 1 && index <= activeSRs.Count)
+            // Remove trailing punctuation (question marks, exclamation marks, etc.)
+            // This handles cases like "work3?" or "work13!" 
+            var cleanResponse = lowerResponse.TrimEnd('.', '!', '?', ',', ';', ':');
+
+            // Check for numeric index (1-5) - use clean response without punctuation
+            if (int.TryParse(cleanResponse, out int index) && index >= 1 && index <= activeSRs.Count)
             {
                 return activeSRs[index - 1].Id;
             }
 
             // Check for SR number reference
-            var srNumberMatch = Regex.Match(lowerResponse, @"(?:sr-?|request|#)\s*(\d+)", RegexOptions.IgnoreCase);
+            var srNumberMatch = Regex.Match(cleanResponse, @"(?:sr-?|request|#)\s*(\d+)", RegexOptions.IgnoreCase);
             if (srNumberMatch.Success && int.TryParse(srNumberMatch.Groups[1].Value, out int srId))
             {
                 var matchedSR = activeSRs.FirstOrDefault(sr => sr.Id == srId);
@@ -1086,29 +1565,164 @@ Generate a helpful, personalized response that makes the client feel supported a
                     return matchedSR.Id;
             }
 
-            // Check for title match (fuzzy)
+            // Check for title match (fuzzy) - normalize spaces for better matching
+            // Use cleanResponse (without punctuation) for matching
+            var normalizedResponse = cleanResponse.Replace(" ", "").Replace("-", "").Replace("_", "");
             foreach (var sr in activeSRs)
             {
                 var srTitleLower = sr.Title?.ToLowerInvariant() ?? "";
-                if (srTitleLower.Contains(lowerResponse) || lowerResponse.Contains(srTitleLower))
+                var normalizedTitle = srTitleLower.Replace(" ", "").Replace("-", "").Replace("_", "");
+
+                // Exact match (normalized)
+                if (normalizedTitle == normalizedResponse || normalizedResponse == normalizedTitle)
+                {
+                    return sr.Id;
+                }
+
+                // Contains match (original) - use cleanResponse (without punctuation)
+                if (srTitleLower.Contains(cleanResponse) || cleanResponse.Contains(srTitleLower))
+                {
+                    return sr.Id;
+                }
+
+                // Contains match (normalized)
+                if (normalizedTitle.Contains(normalizedResponse) || normalizedResponse.Contains(normalizedTitle))
                 {
                     return sr.Id;
                 }
             }
 
-            // Check for keywords in title
-            var responseWords = lowerResponse.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            // Check for keywords in title - use cleanResponse (without punctuation)
+            var responseWords = cleanResponse.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (var sr in activeSRs)
             {
                 var srTitleLower = sr.Title?.ToLowerInvariant() ?? "";
                 var matchCount = responseWords.Count(word => srTitleLower.Contains(word));
-                if (matchCount >= 2) // At least 2 words match
+                if (matchCount >= 1 && responseWords.Length <= 3) // At least 1 word matches for short responses
                 {
                     return sr.Id;
                 }
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Checks if the user is asking about available SMEs
+        /// </summary>
+        private bool IsAskingAboutSMEs(string message)
+        {
+            var lowerMessage = message.ToLowerInvariant();
+            var smeKeywords = new[] { "available", "sme", "provider", "service provider", "expert", "specialist", "who can help", "recommend", "suggest", "options", "list", "show me", "see", "find" };
+            var contextKeywords = new[] { "for this", "for my", "for me", "available", "near me", "close", "local" };
+
+            // Check if message contains SME-related keywords AND context keywords
+            bool hasSmeKeyword = smeKeywords.Any(keyword => lowerMessage.Contains(keyword));
+            bool hasContextKeyword = contextKeywords.Any(keyword => lowerMessage.Contains(keyword)) ||
+                                    lowerMessage.Contains("service request") ||
+                                    lowerMessage.Contains("request");
+
+            return hasSmeKeyword && hasContextKeyword;
+        }
+
+        /// <summary>
+        /// Detects if client is expressing preference for a specific SME (including changing an existing preference)
+        /// </summary>
+        private async Task<int?> DetectSMEPreferenceIntent(string message, int serviceRequestId)
+        {
+            var lowerMessage = message.ToLowerInvariant();
+            // Include keywords for changing preferences: "change", "update", "switch", "instead", "different", "rather", "instead of"
+            var preferenceKeywords = new[] { 
+                "prefer", "preference", "like", "want", "choose", "select", "pick", "would like", "interested in",
+                "change", "update", "switch", "instead", "different", "rather", "instead of", "change to", "switch to"
+            };
+
+            if (!preferenceKeywords.Any(keyword => lowerMessage.Contains(keyword)))
+                return null;
+
+            // Get SME recommendations to match against
+            var recommendations = await _assignmentService.GetSmeRecommendationsAsync(serviceRequestId);
+
+            // Try to match SME name from message
+            foreach (var rec in recommendations)
+            {
+                var smeNameLower = rec.SmeUserName.ToLowerInvariant();
+                var nameParts = smeNameLower.Split(' ');
+
+                // Check if any part of the SME name appears in the message
+                if (nameParts.Any(part => part.Length > 2 && lowerMessage.Contains(part)))
+                {
+                    return rec.SmeUserId;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Handles request to show SME recommendations
+        /// </summary>
+        private async Task<AgenticResponse> HandleSMERecommendationRequestAsync(int clientId, int serviceRequestId, string clientMessage)
+        {
+            try
+            {
+                var recommendations = await _assignmentService.GetSmeRecommendationsAsync(serviceRequestId);
+
+                if (!recommendations.Any())
+                {
+                    return new AgenticResponse
+                    {
+                        Message = "I couldn't find any available service providers matching your service request requirements at this time. A coordinator will help assign someone suitable for you.",
+                        Confidence = 0.8m,
+                        SuggestedActions = new List<string> { "Ask about status", "Contact coordinator" }
+                    };
+                }
+
+                // Format recommendations for display (top 5)
+                var topRecommendations = recommendations.Take(5).ToList();
+                var recommendationsText = new List<string>();
+
+                for (int i = 0; i < topRecommendations.Count; i++)
+                {
+                    var rec = topRecommendations[i];
+                    var info = $"{i + 1}. **{rec.SmeUserName}**";
+
+                    if (rec.SmeScore > 0)
+                        info += $" (Rating: {rec.SmeScore}/100)";
+
+                    if (rec.DistanceMiles.HasValue)
+                        info += $" - {rec.DistanceMiles.Value:F1} miles away";
+
+                    if (rec.ExpertiseMatchCount > 0)
+                        info += $" - Matches {rec.ExpertiseMatchCount} of {rec.TotalExpertiseRequired} required expertise areas";
+
+                    if (rec.CompletionRate > 0)
+                        info += $" - {rec.CompletionRate:P0} completion rate";
+
+                    recommendationsText.Add(info);
+                }
+
+                var message = $"Here are the available service providers for your request:\n\n{string.Join("\n", recommendationsText)}\n\n" +
+                             $"You can let me know if you have a preference (e.g., \"I prefer [provider name]\" or \"I'd like the one closest to me\"), " +
+                             $"and I'll note it for when a coordinator assigns someone to your request.";
+
+                return new AgenticResponse
+                {
+                    Message = message,
+                    Confidence = 0.9m,
+                    SuggestedActions = new List<string> { "Express preference", "Ask about status", "Continue" }
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling SME recommendation request for client {ClientId}, SR {ServiceRequestId}", clientId, serviceRequestId);
+                return new AgenticResponse
+                {
+                    Message = "I'm having trouble finding available service providers right now. A coordinator will help assign someone suitable for you.",
+                    Confidence = 0.5m,
+                    SuggestedActions = new List<string> { "Contact coordinator" }
+                };
+            }
         }
 
         /// <summary>

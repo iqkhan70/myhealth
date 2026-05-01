@@ -132,7 +132,7 @@ namespace SM_MentalHealthApp.Server.Services
             const int maxRetries = 3;
             int retryCount = 0;
             ChatSession? session = null;
-            
+
             while (retryCount < maxRetries)
             {
                 try
@@ -188,15 +188,15 @@ namespace SM_MentalHealthApp.Server.Services
                 catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException ex)
                 {
                     retryCount++;
-                    _logger.LogWarning(ex, "Concurrency exception adding message to session {SessionId}, retry {RetryCount}/{MaxRetries}", 
+                    _logger.LogWarning(ex, "Concurrency exception adding message to session {SessionId}, retry {RetryCount}/{MaxRetries}",
                         sessionId, retryCount, maxRetries);
-                    
+
                     if (retryCount >= maxRetries)
                     {
                         _logger.LogError(ex, "Max retries reached for adding message to session {SessionId}", sessionId);
                         throw;
                     }
-                    
+
                     // Reload the session and retry
                     if (session != null)
                     {
@@ -210,7 +210,7 @@ namespace SM_MentalHealthApp.Server.Services
                     throw;
                 }
             }
-            
+
             throw new Exception($"Failed to add message to session {sessionId} after {maxRetries} retries");
         }
 
@@ -704,7 +704,7 @@ Please provide a structured summary in 2-3 sentences that would be useful for cl
                     summaryParts.Add($"AI provided: {string.Join(", ", recommendations.Distinct())}");
                 }
 
-                summaryParts.Add($"Session included {userMessages.Count} patient messages and {aiMessages.Count} AI responses.");
+                summaryParts.Add($"Session included {userMessages.Count} client messages and {aiMessages.Count} AI responses.");
 
                 return string.Join(" ", summaryParts);
             }

@@ -317,10 +317,11 @@ else
     {
         try
         {
-            var userResponse = await Http.GetFromJsonAsync<AuthUser>("api/auth/me");
-            currentUserRole = userResponse?.RoleName;
+            // Use AuthService.CurrentUser instead of calling non-existent api/auth/me endpoint
+            var currentUser = AuthService.CurrentUser;
+            currentUserRole = currentUser?.RoleName;
 
-            if (userResponse?.RoleId == 2) // Doctor
+            if (currentUser?.RoleId == 2) // Doctor
             {
                 var patientsResponse = await Http.GetFromJsonAsync<List<User>>("api/doctor/patients");
                 patients = patientsResponse ?? new List<User>();
@@ -328,7 +329,7 @@ else
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading user info: {ex.Message}");
+            // Silently handle errors - user info is already available from AuthService
         }
     }
 

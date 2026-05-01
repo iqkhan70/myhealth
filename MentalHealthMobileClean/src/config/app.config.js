@@ -6,9 +6,15 @@
  */
 
 const AppConfig = {
+  // Expo/local development override
+  // Keeps staging as the default config, but Expo dev runs use your Mac's LAN IP.
+  LOCAL_SERVER_IP: '192.168.86.34',
+  LOCAL_SERVER_PORT: 5262,
+  LOCAL_USE_HTTPS: false,
+
   // Server IP Address
   // STAGING: caseflowstage.store (current)
-  // For local development: use your Mac's local IP (e.g., 192.168.86.25)
+  // For local development: use your Mac's local IP (e.g., 192.168.86.34)
   // For production: use your production DNS (when ready)
   // To update: Run ./switch-to-digitalocean.sh or ./update-mobile-config-from-droplet.sh
   SERVER_IP: 'caseflowstage.store',  // Staging DNS
@@ -29,24 +35,40 @@ const AppConfig = {
   // Development mode: Allow self-signed certificates (iOS/Android may still reject)
   // This is a flag for documentation - actual handling depends on platform
   ALLOW_SELF_SIGNED_CERT: false,
+
+  get isExpoDevelopment() {
+    return typeof __DEV__ !== 'undefined' && __DEV__;
+  },
+
+  get activeServerIp() {
+    return this.isExpoDevelopment ? this.LOCAL_SERVER_IP : this.SERVER_IP;
+  },
+
+  get activeServerPort() {
+    return this.isExpoDevelopment ? this.LOCAL_SERVER_PORT : this.SERVER_PORT;
+  },
+
+  get activeUseHttps() {
+    return this.isExpoDevelopment ? this.LOCAL_USE_HTTPS : this.USE_HTTPS;
+  },
   
   // API Base URL (automatically constructed)
   get API_BASE_URL() {
     try {
-      if (!this.SERVER_IP || typeof this.SERVER_IP !== 'string' || this.SERVER_IP.trim() === '') {
+      if (!this.activeServerIp || typeof this.activeServerIp !== 'string' || this.activeServerIp.trim() === '') {
         throw new Error('SERVER_IP is invalid');
       }
-      const protocol = this.USE_HTTPS ? 'https' : 'http';
-      const serverIp = this.SERVER_IP.trim();
+      const protocol = this.activeUseHttps ? 'https' : 'http';
+      const serverIp = this.activeServerIp.trim();
       // For HTTPS on port 443 (default), omit the port number
-      if (this.USE_HTTPS && this.SERVER_PORT === 443) {
+      if (this.activeUseHttps && this.activeServerPort === 443) {
         const url = `${protocol}://${serverIp}/api`;
         if (!url || url.trim() === '') {
           throw new Error('Generated API URL is invalid');
         }
         return url;
       }
-      const url = `${protocol}://${serverIp}:${this.SERVER_PORT}/api`;
+      const url = `${protocol}://${serverIp}:${this.activeServerPort}/api`;
       if (!url || url.trim() === '') {
         throw new Error('Generated API URL is invalid');
       }
@@ -61,8 +83,9 @@ const AppConfig = {
   // Get API Base URL for web platform (uses localhost)
   getWebApiBaseUrl() {
     try {
-      const protocol = this.USE_HTTPS ? 'https' : 'http';
-      const url = `${protocol}://localhost:${this.SERVER_PORT}/api`;
+      const protocol = this.activeUseHttps ? 'https' : 'http';
+      const port = this.isExpoDevelopment ? this.LOCAL_SERVER_PORT : this.SERVER_PORT;
+      const url = `${protocol}://localhost:${port}/api`;
       if (!url || url.trim() === '') {
         throw new Error('Generated Web API URL is invalid');
       }

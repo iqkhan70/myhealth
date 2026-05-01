@@ -210,6 +210,11 @@
     }
 }
 
+/* Navigation Group Items - children spacing */
+.nav-group-items .nav-item {
+    margin: 0 0 4px 0;
+}
+
 @media (min-width: 641px) {
     .navbar-toggler {
         display: none;

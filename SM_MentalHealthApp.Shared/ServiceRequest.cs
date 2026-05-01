@@ -46,10 +46,17 @@ namespace SM_MentalHealthApp.Shared
         /// </summary>
         public int? PrimaryExpertiseId { get; set; }
 
+        /// <summary>
+        /// Client's preferred SME (set via Agentic AI when client expresses preference)
+        /// Coordinators/Admins should consider this preference when assigning SMEs
+        /// </summary>
+        public int? PreferredSmeUserId { get; set; }
+
         // Navigation properties
         public User Client { get; set; } = null!;
         public User? CreatedByUser { get; set; }
         public Expertise? PrimaryExpertise { get; set; }
+        public User? PreferredSmeUser { get; set; } // Client's preferred SME
         public List<ServiceRequestAssignment> Assignments { get; set; } = new();
         public List<ServiceRequestExpertise> Expertises { get; set; } = new();
     }
@@ -187,6 +194,17 @@ namespace SM_MentalHealthApp.Shared
     }
 
     /// <summary>
+    /// Request to set client's preferred SME for a service request
+    /// </summary>
+    public class SetPreferredSmeRequest
+    {
+        [Required]
+        public int ServiceRequestId { get; set; }
+
+        public int? SmeUserId { get; set; } // null to clear preference
+    }
+
+    /// <summary>
     /// DTO for service request responses
     /// </summary>
     public class ServiceRequestDto
@@ -207,6 +225,8 @@ namespace SM_MentalHealthApp.Shared
         public List<ServiceRequestAssignmentDto> Assignments { get; set; } = new();
         public List<int> ExpertiseIds { get; set; } = new();
         public List<string> ExpertiseNames { get; set; } = new();
+        public int? PreferredSmeUserId { get; set; } // Client's preferred SME
+        public string? PreferredSmeUserName { get; set; } // Preferred SME name for display
         
         /// <summary>
         /// Computed property for filtering by SME names (comma-separated)

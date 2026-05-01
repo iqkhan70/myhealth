@@ -564,9 +564,11 @@ namespace SM_MentalHealthApp.Server.Services
                     recommendations.Add(recommendation);
                 }
 
-                // Sort by: 1) Match count (desc), 2) Distance (asc - closest first), 3) Highest score, 4) Lowest rejections, 5) Lowest workload
+                // Sort by: 1) Client's preferred SME (if set), 2) Match count (desc), 3) Distance (asc - closest first), 4) Highest score, 5) Lowest rejections, 6) Lowest workload
+                var preferredSmeUserId = serviceRequest.PreferredSmeUserId;
                 return recommendations
-                    .OrderByDescending(r => r.ExpertiseMatchCount)
+                    .OrderByDescending(r => preferredSmeUserId.HasValue && r.SmeUserId == preferredSmeUserId.Value) // Preferred SME first
+                    .ThenByDescending(r => r.ExpertiseMatchCount)
                     .ThenBy(r => r.DistanceMiles ?? double.MaxValue) // Closest first (nulls go to end)
                     .ThenByDescending(r => r.SmeScore)
                     .ThenBy(r => r.RecentRejectionsCount)

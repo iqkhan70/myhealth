@@ -29,7 +29,7 @@
               "NSExceptionRequiresForwardSecrecy": false,
               "NSIncludesSubdomains": true
             },
-            "192.168.86.25": {
+            "192.168.86.34": {
               "NSExceptionAllowsInsecureHTTPLoads": false,
               "NSExceptionRequiresForwardSecrecy": false,
               "NSIncludesSubdomains": true

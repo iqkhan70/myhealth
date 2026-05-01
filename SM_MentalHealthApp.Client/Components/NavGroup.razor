@@ -1,0 +1,24 @@
+<div class="nav-group">
+    <div class="nav-group-header" @onclick="HandleToggle">
+        <span class="nav-group-title">@Title</span>
+        <span class="nav-group-toggle">@(IsExpanded ? "▼" : "▶")</span>
+    </div>
+    @if (IsExpanded)
+    {
+        <div class="nav-group-items">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public bool IsExpanded { get; set; } = true;
+    [Parameter] public EventCallback OnToggle { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private async Task HandleToggle()
+    {
+        await OnToggle.InvokeAsync();
+    }
+}

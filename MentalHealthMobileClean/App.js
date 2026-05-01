@@ -255,6 +255,16 @@ export default function App() {
     loadServiceRequestsIfNeeded();
   }, [currentView, aiChatMode, user]);
 
+  // Auto-scroll AI chat when loading indicator appears
+  useEffect(() => {
+    if (aiChatLoading && aiChatScrollViewRef.current) {
+      // Small delay to ensure the loading indicator is rendered
+      setTimeout(() => {
+        aiChatScrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 150);
+    }
+  }, [aiChatLoading]);
+
   useEffect(() => {
     if (user && user.id && !userInitializedRef.current) {
       userInitializedRef.current = true;
@@ -294,7 +304,7 @@ export default function App() {
       
       // Parse URL - format: https://caseflowstage.store/reset-password?token=XXX&email=YYY
       // or mentalhealthapp://reset-password?token=XXX&email=YYY
-      // or https://192.168.86.25:5283/reset-password?token=XXX&email=YYY
+      // or https://192.168.86.34:5283/reset-password?token=XXX&email=YYY
       let urlObj;
       try {
         urlObj = new URL(url);
@@ -922,6 +932,8 @@ export default function App() {
   const selectedContactRef = useRef(null);
   const currentViewRef = useRef('login');
   const userRef = useRef(null); // Ref to track current user for SignalR callbacks
+  const aiChatInputRef = useRef(null); // Ref for AI chat TextInput
+  const aiChatScrollViewRef = useRef(null); // Ref for AI chat ScrollView
   
   const loadContactsForUser = useCallback(async (userData, token) => {
     const callId = Math.random().toString(36).substring(7);
@@ -1242,6 +1254,11 @@ export default function App() {
     // Add user message to chat
     const userMsg = { id: Date.now().toString(), text: userMessage, isMe: true, timestamp: new Date() };
     setAiChatMessages(prev => [...prev, userMsg]);
+    
+    // Scroll to bottom to show loading indicator immediately
+    setTimeout(() => {
+      aiChatScrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
 
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -1297,6 +1314,10 @@ export default function App() {
       setAiChatMessages(prev => [...prev, errorMsg]);
     } finally {
       setAiChatLoading(false);
+      // Focus the input field after response is received
+      setTimeout(() => {
+        aiChatInputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -2093,7 +2114,7 @@ export default function App() {
         errorMsg = `Cannot connect to server.\n\n` +
           `Server: ${API_BASE_URL}\n\n` +
           `Troubleshooting:\n` +
-          `1. Test in browser: Open https://192.168.86.25:5263/swagger on your device\n` +
+          `1. Test in browser: Open https://192.168.86.34:5263/swagger on your device\n` +
           `2. If login works, this is likely a certificate issue\n` +
           `3. Make sure device and Mac are on same Wi-Fi\n` +
           `4. Check Mac firewall allows port 5263\n` +
@@ -2948,10 +2969,25 @@ export default function App() {
         </Text>
       </View>
 
-      <KeyboardAvoidingView style={styles.chatContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        enabled={true}
+      >
         <ScrollView 
-          style={styles.messagesContainer} 
-          contentContainerStyle={styles.messagesContent}
+          ref={aiChatScrollViewRef}
+          style={{ flex: 1 }} 
+          contentContainerStyle={{ padding: 10, paddingBottom: 10 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={true}
+          onContentSizeChange={() => {
+            // Auto-scroll to bottom when content size changes (new message or loading indicator added)
+            setTimeout(() => {
+              aiChatScrollViewRef.current?.scrollToEnd({ animated: true });
+            }, 100);
+          }}
         >
           {aiChatMessages.map((m) => (
             <View key={m.id} style={[styles.messageItem, m.isMe ? styles.myMessage : styles.otherMessage]}>
@@ -2970,6 +3006,7 @@ export default function App() {
 
         <View style={styles.messageInput}>
           <TextInput
+            ref={aiChatInputRef}
             style={styles.textInput}
             value={aiChatInput}
             onChangeText={setAiChatInput}
@@ -2977,6 +3014,7 @@ export default function App() {
             multiline
             maxLength={1000}
             editable={!aiChatLoading}
+            blurOnSubmit={false}
           />
           <TouchableOpacity
             style={[styles.sendButton, (!aiChatInput.trim() || aiChatLoading) && styles.sendButtonDisabled]}
@@ -4016,6 +4054,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#eee',
     alignItems: 'flex-end',
+    ...(Platform.OS === 'android' && {
+      paddingBottom: 10,
+    }),
   },
   textInput: {
     flex: 1,

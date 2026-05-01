@@ -41,6 +41,11 @@ namespace SM_MentalHealthApp.Server.Services
         /// Reset session to NoActiveSRContext state (useful for debugging stuck sessions)
         /// </summary>
         Task<bool> ResetSessionAsync(int clientId);
+
+        /// <summary>
+        /// Update session metadata with structured confirmation data
+        /// </summary>
+        Task<bool> UpdateMetadataAsync(int clientId, string metadataJson);
     }
 }
 

@@ -16,7 +16,7 @@ if [ -f "${CONFIG_FILE}.backup" ]; then
 else
     # Update config manually
     sed -i '' \
-        -e "s/SERVER_IP: '[^']*'/SERVER_IP: '192.168.86.25'/" \
+        -e "s/SERVER_IP: '[^']*'/SERVER_IP: '192.168.86.34'/" \
         -e "s/SERVER_PORT: [0-9]*/SERVER_PORT: 5262/" \
         -e "s/USE_HTTPS: [a-z]*/USE_HTTPS: false/" \
         "$CONFIG_FILE"
@@ -25,7 +25,7 @@ fi
 
 echo ""
 echo "✅ Updated configuration:"
-echo "   SERVER_IP: 192.168.86.25"
+echo "   SERVER_IP: 192.168.86.34"
 echo "   SERVER_PORT: 5283"
 echo "   USE_HTTPS: false"
 echo ""

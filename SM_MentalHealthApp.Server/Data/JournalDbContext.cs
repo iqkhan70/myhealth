@@ -84,7 +84,7 @@ namespace SM_MentalHealthApp.Server.Data
             public DbSet<ClientKeywordReaction> ClientKeywordReactions { get; set; }
             public DbSet<ClientServicePreference> ClientServicePreferences { get; set; }
             public DbSet<ClientInteractionHistory> ClientInteractionHistories { get; set; }
-            
+
             // Client Agent Session for SR-First Agentic AI
             public DbSet<ClientAgentSession> ClientAgentSessions { get; set; }
 
@@ -999,6 +999,12 @@ namespace SM_MentalHealthApp.Server.Data
                         .HasForeignKey(e => e.CreatedByUserId)
                         .OnDelete(DeleteBehavior.SetNull);
 
+                        // Foreign key relationship to PreferredSmeUser (client's preferred SME)
+                        entity.HasOne(e => e.PreferredSmeUser)
+                              .WithMany()
+                              .HasForeignKey(e => e.PreferredSmeUserId)
+                              .OnDelete(DeleteBehavior.SetNull);
+
                         // Indexes for performance
                         entity.HasIndex(e => e.ClientId);
                         entity.HasIndex(e => e.Status);
@@ -1393,6 +1399,10 @@ namespace SM_MentalHealthApp.Server.Data
                         entity.ToTable("ClientAgentSessions");
                         entity.HasKey(e => e.Id);
                         entity.Property(e => e.State).IsRequired().HasMaxLength(50).HasDefaultValue("NoActiveSRContext");
+                        // Configure Metadata as JSON - explicitly disable any automatic index creation
+                        entity.Property(e => e.Metadata)
+                            .HasColumnType("json")
+                            .HasComment("Structured JSON metadata for confirmations and conversation context");
                         entity.Property(e => e.LastUpdatedUtc).IsRequired().HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
                         entity.Property(e => e.CreatedAt).IsRequired().HasDefaultValueSql("CURRENT_TIMESTAMP(6)");
 
