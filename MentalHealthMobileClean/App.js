@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { Audio } from 'expo-av';
+import { LinearGradient } from 'expo-linear-gradient';
 import SignalRService from './src/services/SignalRService';
 // ✅ Use Agora now (conditionally imported for development builds only)
 let AgoraService = null;
@@ -133,6 +134,23 @@ console.log('✅ SignalR Hub URL:', SIGNALR_HUB_URL);
 
 // 👉 Set your Agora App ID here (or pull from .env)
 const AGORA_APP_ID = 'b480142a879c4ed2ab7efb07d318abda';
+const EATS_ORANGE = '#f97316';
+const EATS_YELLOW = '#eab308';
+const EATS_BG = '#f5f5f5';
+const EATS_TEXT = '#333';
+const EATS_MUTED = '#666';
+const EATS_GRADIENT = [EATS_ORANGE, EATS_YELLOW];
+
+const GradientHeader = ({ children, style }) => (
+  <LinearGradient
+    colors={EATS_GRADIENT}
+    start={{ x: 0, y: 0 }}
+    end={{ x: 1, y: 0 }}
+    style={style}
+  >
+    {children}
+  </LinearGradient>
+);
 
 // ---------- APP ----------
 export default function App() {
@@ -2200,9 +2218,14 @@ export default function App() {
 
   // ---------- RENDER ----------
   const renderLogin = () => (
-    <SafeAreaView style={styles.container}>
+    <LinearGradient colors={EATS_GRADIENT} style={styles.authGradient}>
+    <SafeAreaView style={styles.authSafeArea}>
       <View style={styles.loginContainer}>
+        <View style={styles.brandBadge}>
+          <Text style={styles.brandBadgeText}>CC</Text>
+        </View>
         <Text style={styles.title}>Customer Care App</Text>
+        <Text style={styles.subtitle}>Fast help, live support, and service requests in one place.</Text>
         <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" />
         <TextInput style={styles.input} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
         <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={login} disabled={loading}>
@@ -2235,10 +2258,12 @@ export default function App() {
         </View>
       </View>
     </SafeAreaView>
+    </LinearGradient>
   );
 
   const renderForgotPassword = () => (
-    <SafeAreaView style={styles.container}>
+    <LinearGradient colors={EATS_GRADIENT} style={styles.authGradient}>
+    <SafeAreaView style={styles.authSafeArea}>
       <View style={styles.loginContainer}>
         <Text style={styles.title}>Forgot Password</Text>
         <Text style={styles.subtitle}>Enter your email address and we'll send you a password reset link.</Text>
@@ -2280,10 +2305,12 @@ export default function App() {
         </TouchableOpacity>
       </View>
     </SafeAreaView>
+    </LinearGradient>
   );
 
   const renderResetPassword = () => (
-      <SafeAreaView style={styles.container}>
+      <LinearGradient colors={EATS_GRADIENT} style={styles.authGradient}>
+      <SafeAreaView style={styles.authSafeArea}>
         <ScrollView contentContainerStyle={styles.loginContainer}>
           <Text style={styles.title}>Reset Password</Text>
           <Text style={styles.subtitle}>Enter your new password</Text>
@@ -2361,6 +2388,7 @@ export default function App() {
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
+      </LinearGradient>
     );
 
   // Filter contacts based on search query (must be at component level, not inside render function)
@@ -2495,17 +2523,20 @@ export default function App() {
 
   const renderContacts = () => (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <Text style={styles.headerTitle}>Welcome, {user?.firstName}! ({user?.roleName})</Text>
         <View style={styles.headerActions}>
-          <Text style={[styles.connectionStatus, { color: signalRConnected ? '#4CAF50' : '#F44336' }]}>
-            {signalRConnected ? '🟢 Connected' : '🔴 Disconnected'}
-          </Text>
+          <View style={styles.connectionPill}>
+            <View style={[styles.connectionDot, { backgroundColor: signalRConnected ? '#22c55e' : '#ef4444' }]} />
+            <Text style={styles.connectionStatus}>
+              {signalRConnected ? 'Online' : 'Offline'}
+            </Text>
+          </View>
           <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-            <Text style={styles.logoutButtonText}>Logout</Text>
+            <Text style={styles.logoutButtonText}>Log out</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </GradientHeader>
 
       <View style={styles.contactsHeader}>
         <Text style={styles.contactsTitle}>
@@ -2538,7 +2569,7 @@ export default function App() {
         {user?.roleId === 1 && (
           <View style={{ padding: 16, paddingBottom: 12 }}>
             <TouchableOpacity 
-              style={[styles.serviceRequestButton, { backgroundColor: '#007bff' }]}
+              style={[styles.serviceRequestButton, { backgroundColor: EATS_ORANGE }]}
               onPress={() => {
                 setCurrentView('ai-chat');
                 currentViewRef.current = 'ai-chat';
@@ -2602,7 +2633,7 @@ export default function App() {
 
   const renderContactDetail = () => (
     <SafeAreaView style={styles.container}>
-      <View style={styles.chatHeader}>
+      <GradientHeader style={styles.chatHeader}>
         <TouchableOpacity onPress={() => { setCurrentView('main'); currentViewRef.current = 'main'; }} style={styles.backButton}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
@@ -2610,7 +2641,7 @@ export default function App() {
         <View style={styles.chatActions}>
           {/* Empty actions to maintain layout */}
         </View>
-      </View>
+      </GradientHeader>
 
       {selectedContactDetail && (
         <View style={styles.contactDetailContainer}>
@@ -2687,7 +2718,7 @@ export default function App() {
   // Render AI Chat view
   const renderAiChat = () => (
     <SafeAreaView style={styles.container}>
-      <View style={styles.chatHeader}>
+      <GradientHeader style={styles.chatHeader}>
         <TouchableOpacity style={styles.backButton} onPress={() => {
           setCurrentView('main');
           currentViewRef.current = 'main';
@@ -2698,7 +2729,7 @@ export default function App() {
         <View style={styles.chatActions}>
           {/* Empty to maintain layout */}
         </View>
-      </View>
+      </GradientHeader>
 
       {/* Mode Selector */}
       <View style={{ padding: 12, backgroundColor: '#f5f5f5', borderBottomWidth: 1, borderBottomColor: '#ddd' }}>
@@ -2708,7 +2739,7 @@ export default function App() {
             style={[
               { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center', borderWidth: 2 },
               aiChatMode === 'ServiceRequest' 
-                ? { backgroundColor: '#007bff', borderColor: '#007bff' }
+                ? { backgroundColor: EATS_ORANGE, borderColor: EATS_ORANGE }
                 : { backgroundColor: '#fff', borderColor: '#ddd' },
               !hasActiveServiceRequests && aiChatMode !== 'ServiceRequest' ? { opacity: 0.5 } : {}
             ]}
@@ -2737,7 +2768,7 @@ export default function App() {
             style={[
               { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center', borderWidth: 2 },
               aiChatMode === 'Generic' 
-                ? { backgroundColor: '#007bff', borderColor: '#007bff' }
+                ? { backgroundColor: EATS_ORANGE, borderColor: EATS_ORANGE }
                 : { backgroundColor: '#fff', borderColor: '#ddd' }
             ]}
             onPress={async () => {
@@ -2763,7 +2794,7 @@ export default function App() {
             style={[
               { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center', borderWidth: 2 },
               aiChatMode === 'Medical' 
-                ? { backgroundColor: '#007bff', borderColor: '#007bff' }
+                ? { backgroundColor: EATS_ORANGE, borderColor: EATS_ORANGE }
                 : { backgroundColor: '#fff', borderColor: '#ddd' }
             ]}
             onPress={async () => {
@@ -2873,15 +2904,15 @@ export default function App() {
                   alignItems: 'center',
                   paddingVertical: 12,
                   paddingHorizontal: 12,
-                  backgroundColor: selectedServiceRequestId ? '#e7f3ff' : '#fff',
+                  backgroundColor: selectedServiceRequestId ? '#fff7ed' : '#fff',
                   borderWidth: selectedServiceRequestId ? 2 : 1,
-                  borderColor: selectedServiceRequestId ? '#007bff' : '#ddd',
+                  borderColor: selectedServiceRequestId ? EATS_ORANGE : '#ddd',
                   borderRadius: 8
                 }}
               >
                 <Text style={{ 
                   fontSize: 14, 
-                  color: selectedServiceRequestId ? '#007bff' : '#999',
+                  color: selectedServiceRequestId ? EATS_ORANGE : '#999',
                   flex: 1,
                   fontWeight: selectedServiceRequestId ? '600' : '400'
                 }}>
@@ -2892,24 +2923,24 @@ export default function App() {
                       })()
                     : 'Tap to select a service request...'}
                 </Text>
-                <Text style={{ fontSize: 18, color: selectedServiceRequestId ? '#007bff' : '#666', marginLeft: 8 }}>▼</Text>
+                <Text style={{ fontSize: 18, color: selectedServiceRequestId ? EATS_ORANGE : '#666', marginLeft: 8 }}>▼</Text>
               </TouchableOpacity>
             </View>
             {selectedServiceRequestId && (
               <View style={{ marginTop: 8 }}>
                 <View style={{
                   padding: 10,
-                  backgroundColor: '#e7f3ff',
+                  backgroundColor: '#fff7ed',
                   borderRadius: 6,
                   borderWidth: 1,
-                  borderColor: '#b3d9ff'
+                  borderColor: '#fed7aa'
                 }}>
                   {(() => {
                     const selected = activeServiceRequests.find(sr => (sr.id || sr.Id) === selectedServiceRequestId);
                     if (!selected) return null;
                     return (
                       <View>
-                        <Text style={{ fontSize: 12, color: '#007bff', fontWeight: '600', marginBottom: 4 }}>
+                        <Text style={{ fontSize: 12, color: EATS_ORANGE, fontWeight: '600', marginBottom: 4 }}>
                           ✓ Active Service Request:
                         </Text>
                         <Text style={{ fontSize: 13, color: '#333', fontWeight: '500', marginBottom: 2 }}>
@@ -2951,7 +2982,7 @@ export default function App() {
                   style={{
                     marginTop: 8,
                     padding: 8,
-                    backgroundColor: '#007bff',
+                    backgroundColor: EATS_ORANGE,
                     borderRadius: 6,
                     alignItems: 'center'
                   }}
@@ -3030,7 +3061,7 @@ export default function App() {
 
   const renderChat = () => (
     <SafeAreaView style={styles.container}>
-      <View style={styles.chatHeader}>
+      <GradientHeader style={styles.chatHeader}>
         <TouchableOpacity style={styles.backButton} onPress={() => {
           setSelectedContact(null);
           setCurrentView('contact-detail');
@@ -3051,7 +3082,7 @@ export default function App() {
             <Text style={styles.chatActionText}>📹</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </GradientHeader>
 
       <KeyboardAvoidingView style={styles.chatContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
         <ScrollView 
@@ -3214,7 +3245,7 @@ export default function App() {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar style="auto" />
-        <View style={styles.chatHeader}>
+        <GradientHeader style={styles.chatHeader}>
           <TouchableOpacity onPress={() => { setCurrentView('main'); currentViewRef.current = 'main'; }} style={styles.backButton}>
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
@@ -3222,7 +3253,7 @@ export default function App() {
           <View style={styles.chatActions}>
             {/* Empty actions to maintain layout */}
           </View>
-        </View>
+        </GradientHeader>
         <ServiceRequestList 
           onServiceRequestSelect={(sr) => {
             setSelectedServiceRequest(sr);
@@ -3243,7 +3274,7 @@ export default function App() {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar style="auto" />
-        <View style={styles.chatHeader}>
+        <GradientHeader style={styles.chatHeader}>
           <TouchableOpacity onPress={() => {
             setCurrentView('service-requests');
             currentViewRef.current = 'service-requests';
@@ -3254,7 +3285,7 @@ export default function App() {
           <View style={styles.chatActions}>
             {/* Empty actions to maintain layout */}
           </View>
-        </View>
+        </GradientHeader>
         <CreateServiceRequestForm
           user={user}
           onSuccess={() => {
@@ -3309,7 +3340,7 @@ export default function App() {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar style="auto" />
-        <View style={styles.chatHeader}>
+        <GradientHeader style={styles.chatHeader}>
           <TouchableOpacity onPress={() => { 
             setSelectedServiceRequest(null);
             setCurrentView('service-requests'); 
@@ -3323,7 +3354,7 @@ export default function App() {
           <View style={styles.chatActions}>
             {/* Empty actions to maintain layout */}
           </View>
-        </View>
+        </GradientHeader>
         <View style={{ flex: 1 }}>
           {selectedServiceRequest && (
             <View style={{ padding: 16, paddingBottom: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' }}>
@@ -3349,7 +3380,7 @@ export default function App() {
               {isCoordinatorOrAdmin && clientId && (
                 <TouchableOpacity
                   style={{
-                    backgroundColor: '#007bff',
+                    backgroundColor: EATS_ORANGE,
                     paddingVertical: 12,
                     paddingHorizontal: 16,
                     borderRadius: 6,
@@ -3492,34 +3523,73 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: EATS_BG,
   },
-  loginContainer: {
+  authGradient: {
+    flex: 1,
+  },
+  authSafeArea: {
     flex: 1,
     justifyContent: 'center',
     padding: 20,
+  },
+  loginContainer: {
     backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  brandBadge: {
+    alignSelf: 'center',
+    width: 72,
+    height: 72,
+    borderRadius: 22,
+    backgroundColor: EATS_ORANGE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+    shadowColor: EATS_ORANGE,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    elevation: 5,
+  },
+  brandBadgeText: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '800',
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '800',
     textAlign: 'center',
-    marginBottom: 30,
-    color: '#333',
+    marginBottom: 10,
+    color: EATS_TEXT,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#e5e7eb',
     padding: 15,
     marginBottom: 15,
-    borderRadius: 8,
+    borderRadius: 14,
     fontSize: 16,
+    backgroundColor: '#fff',
+    color: EATS_TEXT,
   },
   button: {
-    backgroundColor: '#007bff',
+    backgroundColor: EATS_ORANGE,
     padding: 15,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: 'center',
+    shadowColor: EATS_ORANGE,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 4,
   },
   buttonDisabled: {
     backgroundColor: '#ccc',
@@ -3532,14 +3602,14 @@ const styles = StyleSheet.create({
   guestButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#007bff',
-    borderRadius: 8,
+    borderColor: EATS_ORANGE,
+    borderRadius: 14,
     padding: 12,
     marginTop: 10,
     alignItems: 'center',
   },
   guestButtonText: {
-    color: '#007bff',
+    color: EATS_ORANGE,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -3559,25 +3629,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   linkButtonText: {
-    color: '#007bff',
+    color: EATS_ORANGE,
     fontSize: 14,
     textDecorationLine: 'underline',
   },
   subtitle: {
     fontSize: 14,
     textAlign: 'center',
-    color: '#666',
+    color: EATS_MUTED,
     marginBottom: 20,
     paddingHorizontal: 10,
   },
   messageContainer: {
-    backgroundColor: '#e7f3ff',
+    backgroundColor: '#fff7ed',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
   },
   messageText: {
-    color: '#0066cc',
+    color: '#9a3412',
     fontSize: 14,
     textAlign: 'center',
   },
@@ -3611,11 +3683,11 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   logoutButtonText: {
-    color: '#007bff',
+    color: '#fff',
     fontSize: 16,
   },
   backButton: {
-    color: '#007bff',
+    color: '#fff',
     fontSize: 16,
   },
   contactsList: {
@@ -3625,9 +3697,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 15,
+    padding: 16,
     backgroundColor: '#fff',
-    marginVertical: 1,
+    marginHorizontal: 14,
+    marginVertical: 6,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
   contactInfo: {
     flex: 1,
@@ -3658,7 +3737,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#28a745',
   },
   videoButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: EATS_ORANGE,
   },
   chatButton: {
     backgroundColor: '#ffc107',
@@ -3677,24 +3756,24 @@ const styles = StyleSheet.create({
     maxWidth: '80%',
   },
   sentMessage: {
-    backgroundColor: '#007bff',
+    backgroundColor: EATS_ORANGE,
     alignSelf: 'flex-end',
   },
   receivedMessage: {
-    backgroundColor: '#e3f2fd', // Light blue - more visible than gray
+    backgroundColor: '#fff',
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: '#90caf9', // Subtle border for better visibility
+    borderColor: '#eee',
   },
   myMessage: {
-    backgroundColor: '#007bff',
+    backgroundColor: EATS_ORANGE,
     alignSelf: 'flex-end',
   },
   otherMessage: {
-    backgroundColor: '#e3f2fd', // Light blue - more visible than gray
+    backgroundColor: '#fff',
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: '#90caf9', // Subtle border for better visibility
+    borderColor: '#eee',
   },
   messageText: {
     fontSize: 16,
@@ -3735,7 +3814,7 @@ const styles = StyleSheet.create({
     maxHeight: 100,
   },
   sendButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: EATS_ORANGE,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
@@ -3842,22 +3921,40 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    marginLeft: 'auto',
+  },
+  connectionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  connectionDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
   connectionStatus: {
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
   },
   logoutButton: {
-    backgroundColor: '#dc3545',
+    backgroundColor: '#fff',
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 5,
+    paddingVertical: 7,
+    borderRadius: 999,
   },
   logoutButtonText: {
-    color: '#fff',
+    color: EATS_ORANGE,
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
   documentsButton: {
     backgroundColor: '#28a745',
@@ -3875,36 +3972,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: EATS_ORANGE,
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    borderBottomColor: 'rgba(255,255,255,0.22)',
   },
   backButton: {
     marginRight: 16,
   },
   backButtonText: {
     fontSize: 16,
-    color: '#007bff',
+    color: '#fff',
     fontWeight: '600',
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2c3e50',
+    fontWeight: '800',
+    color: '#fff',
+    flex: 1,
+    marginRight: 12,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: EATS_BG,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#eee',
   },
   searchInput: {
     flex: 1,
     height: 40,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
     borderRadius: 20,
     paddingHorizontal: 16,
     fontSize: 16,
@@ -3934,7 +4033,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 15,
     paddingVertical: 10,
-    backgroundColor: '#fff',
+    backgroundColor: EATS_BG,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
@@ -3976,9 +4075,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 15,
-    backgroundColor: '#007bff',
+    backgroundColor: EATS_ORANGE,
     borderBottomWidth: 1,
-    borderBottomColor: '#0056b3',
+    borderBottomColor: 'rgba(255,255,255,0.22)',
   },
   backButton: {
     paddingHorizontal: 10,
@@ -4013,7 +4112,8 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     flex: 1,
-    padding: 10,
+    padding: 12,
+    backgroundColor: EATS_BG,
   },
   messagesContent: {
     paddingBottom: 10,
@@ -4021,22 +4121,22 @@ const styles = StyleSheet.create({
   messageItem: {
     marginVertical: 5,
     padding: 12,
-    borderRadius: 15,
+    borderRadius: 18,
     maxWidth: '80%',
   },
   myMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#007bff',
+    backgroundColor: EATS_ORANGE,
   },
   otherMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#e3f2fd', // Light blue - more visible than gray
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#90caf9', // Subtle border for better visibility
+    borderColor: '#eee',
   },
   messageText: {
     fontSize: 16,
-    color: '#fff', // Default for sent messages
+    color: EATS_TEXT,
   },
   otherMessageText: {
     color: '#1a1a1a', // Dark text for better visibility on light blue
@@ -4049,7 +4149,7 @@ const styles = StyleSheet.create({
   },
   messageInput: {
     flexDirection: 'row',
-    padding: 10,
+    padding: 12,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#eee',
@@ -4061,8 +4161,8 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 20,
+    borderColor: '#e5e7eb',
+    borderRadius: 22,
     paddingHorizontal: 15,
     paddingVertical: 10,
     marginRight: 10,
@@ -4070,7 +4170,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   sendButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: EATS_ORANGE,
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 20,
@@ -4090,7 +4190,7 @@ const styles = StyleSheet.create({
   },
   contactDetailInfo: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 20,
     padding: 20,
     marginBottom: 20,
     alignItems: 'center',
@@ -4113,12 +4213,12 @@ const styles = StyleSheet.create({
   },
   contactDetailPhone: {
     fontSize: 16,
-    color: '#007bff',
+    color: EATS_ORANGE,
     marginBottom: 8,
   },
   contactDetailEmail: {
     fontSize: 16,
-    color: '#007bff',
+    color: EATS_ORANGE,
   },
   contactDetailActions: {
     flex: 1,
@@ -4126,7 +4226,7 @@ const styles = StyleSheet.create({
   },
   contactDetailButton: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
@@ -4186,7 +4286,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#2196F3',
+    backgroundColor: EATS_ORANGE,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 15,
@@ -4212,7 +4312,7 @@ const styles = StyleSheet.create({
   },
   callTypeText: {
     fontSize: 18,
-    color: '#2196F3',
+    color: EATS_ORANGE,
     fontWeight: '600',
   },
   incomingCallActions: {
@@ -4239,8 +4339,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   serviceRequestButton: {
-    backgroundColor: '#007bff',
-    borderRadius: 12,
+    backgroundColor: EATS_ORANGE,
+    borderRadius: 18,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
