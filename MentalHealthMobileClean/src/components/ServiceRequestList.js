@@ -12,6 +12,11 @@ import {
 } from 'react-native';
 import ServiceRequestService from '../services/ServiceRequestService';
 
+const EATS_ORANGE = '#f97316';
+const EATS_BG = '#f5f5f5';
+const EATS_TEXT = '#333';
+const EATS_MUTED = '#666';
+
 const ServiceRequestList = ({ 
   onServiceRequestSelect,
   user = null,
@@ -180,7 +185,7 @@ const ServiceRequestList = ({
   if (loading && !refreshing) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#007bff" />
+        <ActivityIndicator size="large" color={EATS_ORANGE} />
         <Text style={styles.loadingText}>Loading service requests...</Text>
       </View>
     );
@@ -255,20 +260,21 @@ const ServiceRequestList = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: EATS_BG,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: EATS_BG,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#eee',
   },
   searchInput: {
     flex: 1,
     height: 40,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
     borderRadius: 20,
     paddingHorizontal: 16,
     fontSize: 16,
@@ -293,12 +299,17 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   createButton: {
-    backgroundColor: '#28a745',
-    paddingVertical: 12,
+    backgroundColor: EATS_ORANGE,
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 6,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: EATS_ORANGE,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 4,
   },
   createButtonText: {
     color: '#fff',
@@ -307,7 +318,7 @@ const styles = StyleSheet.create({
   },
   serviceRequestCard: {
     backgroundColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 18,
     marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -320,17 +331,17 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   deleteButton: {
-    backgroundColor: '#dc3545',
+    backgroundColor: '#fff5f5',
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: '#fee2e2',
   },
   deleteButtonText: {
-    color: '#fff',
+    color: '#dc2626',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -341,7 +352,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: EATS_TEXT,
     flex: 1,
     marginRight: 8,
   },
@@ -365,7 +376,7 @@ const styles = StyleSheet.create({
   },
   type: {
     fontSize: 14,
-    color: '#666',
+    color: EATS_MUTED,
   },
   description: {
     fontSize: 14,
@@ -374,7 +385,7 @@ const styles = StyleSheet.create({
   },
   assignedSmes: {
     fontSize: 14,
-    color: '#007bff',
+    color: EATS_ORANGE,
     marginTop: 4,
   },
   date: {
@@ -399,10 +410,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   refreshButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: EATS_ORANGE,
     paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 6,
+    paddingVertical: 12,
+    borderRadius: 999,
   },
   refreshButtonText: {
     color: '#fff',
