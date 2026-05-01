@@ -311,6 +311,13 @@ namespace SM_MentalHealthApp.Shared
         public string Password { get; set; } = string.Empty;
     }
 
+    public class ExternalLoginRequest
+    {
+        public string IdToken { get; set; } = string.Empty;
+        public string? Email { get; set; }
+        public string? FullName { get; set; }
+    }
+
     public class LoginResponse
     {
         public bool Success { get; set; }
