@@ -73,7 +73,6 @@
         }
       ]
     },
-    "scheme": "mentalhealthapp",
     "associatedDomains": ["applinks:caseflowstage.store", "applinks:caseflow.store"],
     "web": {
       "favicon": "./assets/favicon.png"
