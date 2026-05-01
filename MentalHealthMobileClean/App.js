@@ -304,7 +304,7 @@ export default function App() {
       
       // Parse URL - format: https://caseflowstage.store/reset-password?token=XXX&email=YYY
       // or mentalhealthapp://reset-password?token=XXX&email=YYY
-      // or https://192.168.86.25:5283/reset-password?token=XXX&email=YYY
+      // or https://192.168.86.34:5283/reset-password?token=XXX&email=YYY
       let urlObj;
       try {
         urlObj = new URL(url);
@@ -2114,7 +2114,7 @@ export default function App() {
         errorMsg = `Cannot connect to server.\n\n` +
           `Server: ${API_BASE_URL}\n\n` +
           `Troubleshooting:\n` +
-          `1. Test in browser: Open https://192.168.86.25:5263/swagger on your device\n` +
+          `1. Test in browser: Open https://192.168.86.34:5263/swagger on your device\n` +
           `2. If login works, this is likely a certificate issue\n` +
           `3. Make sure device and Mac are on same Wi-Fi\n` +
           `4. Check Mac firewall allows port 5263\n` +

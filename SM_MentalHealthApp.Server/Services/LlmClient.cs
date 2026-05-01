@@ -38,6 +38,9 @@ namespace SM_MentalHealthApp.Server.Services
         private readonly string _openAiApiKey;
         private readonly string _openAiBaseUrl = "https://api.openai.com/v1";
         private readonly string _ollamaBaseUrl;
+        private readonly string _ollamaModel;
+        private readonly AiProvider? _providerOverride;
+        private readonly bool _fallbackToOllamaOnOpenAiFailure;
         private readonly string _customKnowledgePath;
         private readonly string _customKnowledgeContent;
         private readonly string _huggingFaceToken;
@@ -48,6 +51,9 @@ namespace SM_MentalHealthApp.Server.Services
             _httpClient = new HttpClient();
             _openAiApiKey = configuration["OpenAI:ApiKey"] ?? "";
             _ollamaBaseUrl = configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
+            _ollamaModel = configuration["Ollama:Model"] ?? "tinyllama:latest";
+            _providerOverride = TryParseProvider(configuration["AI:Provider"]);
+            _fallbackToOllamaOnOpenAiFailure = bool.TryParse(configuration["AI:FallbackToOllamaOnOpenAiFailure"], out var fallbackToOllama) && fallbackToOllama;
             _customKnowledgePath = configuration["CustomKnowledge:FilePath"] ?? "llm/prompts/WonderWorld.md";
             _huggingFaceToken = configuration["HuggingFace:ApiKey"] ?? throw new InvalidOperationException("Hugging Face token not found in configuration");
 
@@ -78,9 +84,11 @@ namespace SM_MentalHealthApp.Server.Services
 
         public async Task<LlmResponse> GenerateTextAsync(LlmRequest request)
         {
+            var provider = ResolveProvider(request.Provider);
+
             try
             {
-                switch (request.Provider)
+                switch (provider)
                 {
                     case AiProvider.OpenAI:
                         return await GenerateWithOpenAI(request);
@@ -97,13 +105,44 @@ namespace SM_MentalHealthApp.Server.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"AI Generation Error: {ex.Message}");
+
+                if (provider == AiProvider.OpenAI && _fallbackToOllamaOnOpenAiFailure)
+                {
+                    try
+                    {
+                        Console.WriteLine("OpenAI failed; falling back to Ollama.");
+                        return await GenerateWithOllama(request);
+                    }
+                    catch (Exception fallbackEx)
+                    {
+                        Console.WriteLine($"Ollama fallback failed: {fallbackEx.Message}");
+                    }
+                }
+
                 return new LlmResponse
                 {
                     Id = Guid.NewGuid().ToString(),
                     Text = $"I'm having trouble connecting to my AI service right now. Please try again later. (Error: {ex.Message})",
-                    Provider = request.Provider.ToString()
+                    Provider = provider.ToString()
                 };
             }
+        }
+
+        private AiProvider ResolveProvider(AiProvider requestedProvider)
+        {
+            if (_providerOverride.HasValue && requestedProvider == AiProvider.OpenAI)
+            {
+                return _providerOverride.Value;
+            }
+
+            return requestedProvider;
+        }
+
+        private static AiProvider? TryParseProvider(string? provider)
+        {
+            return Enum.TryParse<AiProvider>(provider, ignoreCase: true, out var parsedProvider)
+                ? parsedProvider
+                : null;
         }
 
         private async Task<LlmResponse> GenerateWithOpenAI(LlmRequest request)
@@ -161,7 +200,9 @@ namespace SM_MentalHealthApp.Server.Services
             // Use /api/generate endpoint (works with tinyllama and other models)
             var ollamaRequest = new
             {
-                model = request.Model ?? "tinyllama",
+                model = request.Provider == AiProvider.OpenAI || string.IsNullOrWhiteSpace(request.Model)
+                    ? _ollamaModel
+                    : request.Model,
                 prompt = $"{request.Instructions ?? "You are a helpful AI assistant."}\n\nUser: {request.Prompt}\nAssistant:",
                 stream = false,
                 options = new

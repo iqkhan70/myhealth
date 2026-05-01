@@ -974,7 +974,7 @@ namespace SM_MentalHealthApp.Server.Services
 
                 try
                 {
-                    // Use OpenAI via LlmClient for generic mode - this provides ChatGPT-like responses
+                    // Use the configured LLM provider for generic mode.
                     var llmRequest = new LlmRequest
                     {
                         Model = "gpt-4o-mini",
@@ -989,17 +989,17 @@ namespace SM_MentalHealthApp.Server.Services
 
                     if (!string.IsNullOrWhiteSpace(llmResponse?.Text))
                     {
-                        _logger.LogInformation("OpenAI response generated successfully for generic question");
+                        _logger.LogInformation("{Provider} response generated successfully for generic question", llmResponse.Provider);
                         return llmResponse.Text.Trim();
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error calling OpenAI for generic mode question: {Question}", userQuestion);
+                    _logger.LogError(ex, "Error calling configured LLM for generic mode question: {Question}", userQuestion);
                 }
 
-                // Fallback if OpenAI fails - try to provide a helpful message
-                _logger.LogWarning("OpenAI call failed, using fallback response");
+                // Fallback if the configured LLM fails.
+                _logger.LogWarning("Configured LLM call failed, using fallback response");
                 return $"I apologize, but I'm having trouble processing your question right now. Please try again in a moment. (Question: {userQuestion})";
             }
 

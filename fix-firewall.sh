@@ -62,6 +62,6 @@ echo "📝 Verification:"
 echo "   Run: sudo /usr/libexec/ApplicationFirewall/socketfilterfw --listapps | grep dotnet"
 echo ""
 echo "🧪 Test from other machine:"
-echo "   curl http://192.168.86.25:5262/api/health"
+echo "   curl http://192.168.86.34:5262/api/health"
 echo ""
 

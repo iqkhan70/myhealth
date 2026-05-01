@@ -4,15 +4,15 @@
  * Copy this to app.config.js and update with your values.
  * 
  * For production: Use DigitalOcean server IP from deploy/DROPLET_IP
- * For local development: Use your Mac's local IP (e.g., 192.168.86.25)
+ * For local development: Use your Mac's local IP (e.g., 192.168.86.34)
  */
 
 const AppConfig = {
   // Server IP Address
   // Update this when your Mac's IP address changes
-  // For local development: use your Mac's local IP (e.g., 192.168.86.25)
+  // For local development: use your Mac's local IP (e.g., 192.168.86.34)
   // For production: use your DigitalOcean server IP (read from deploy/DROPLET_IP)
-  SERVER_IP: 'YOUR_SERVER_IP_HERE',  // e.g., '159.65.242.79' or '192.168.86.25'
+  SERVER_IP: 'YOUR_SERVER_IP_HERE',  // e.g., '159.65.242.79' or '192.168.86.34'
   
   // Server Port
   // Mobile app connects directly to the server API (not through the Blazor client)

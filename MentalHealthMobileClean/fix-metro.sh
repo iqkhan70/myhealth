@@ -24,7 +24,7 @@ echo "✅ Caches cleared"
 # Step 3: Get network IP
 NETWORK_IP=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
 if [ -z "$NETWORK_IP" ]; then
-    NETWORK_IP="192.168.86.25"
+    NETWORK_IP="192.168.86.34"
 fi
 
 echo ""

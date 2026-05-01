@@ -149,6 +149,12 @@ namespace SM_MentalHealthApp.Server.Services
                 var metadata = BuildMessageMetadata(userId, userRoleId, patientId);
                 await _chatHistoryService.AddMessageAsync(session.Id, MessageRole.User, prompt, MessageType.Question, isMedicalData, metadata);
 
+                var appointmentResponse = await TryAnswerAppointmentQuestionAsync(prompt, patientId, userId, userRoleId, session.Id);
+                if (appointmentResponse != null)
+                {
+                    return appointmentResponse;
+                }
+
                 // Check if we should use agentic AI for service requests
                 // IMPORTANT: Only use agentic AI for service requests, NOT for medical chats
                 // This preserves content analysis for medical questions
@@ -737,6 +743,132 @@ namespace SM_MentalHealthApp.Server.Services
 
             var lowerContent = content.ToLower();
             return medicalKeywords.Any(keyword => lowerContent.Contains(keyword));
+        }
+
+        private async Task<ChatResponse?> TryAnswerAppointmentQuestionAsync(string prompt, int patientId, int userId, int userRoleId, int sessionId)
+        {
+            if (!IsAppointmentQuestion(prompt))
+            {
+                return null;
+            }
+
+            var appointments = await GetMatchingUpcomingAppointmentsAsync(prompt, patientId, userId, userRoleId);
+            var message = BuildAppointmentResponse(prompt, patientId, appointments);
+
+            await _chatHistoryService.AddMessageAsync(sessionId, MessageRole.Assistant, message, MessageType.Response, false, null);
+            await _chatHistoryService.UpdateSessionActivityAsync(sessionId);
+
+            return new ChatResponse
+            {
+                Id = Guid.NewGuid().ToString(),
+                Message = message,
+                Provider = "Appointments"
+            };
+        }
+
+        private static bool IsAppointmentQuestion(string prompt)
+        {
+            if (string.IsNullOrWhiteSpace(prompt))
+            {
+                return false;
+            }
+
+            var text = prompt.ToLowerInvariant();
+            return text.Contains("appointment") || text.Contains("appointments") || text.Contains("schedule") || text.Contains("scheduled");
+        }
+
+        private async Task<List<Appointment>> GetMatchingUpcomingAppointmentsAsync(string prompt, int patientId, int userId, int userRoleId)
+        {
+            var now = DateTime.UtcNow;
+            var query = _context.Appointments
+                .Include(a => a.Doctor)
+                .Include(a => a.Patient)
+                .Where(a => a.IsActive &&
+                    a.AppointmentDateTime >= now &&
+                    a.Status != AppointmentStatus.Cancelled &&
+                    a.Status != AppointmentStatus.Completed &&
+                    a.Status != AppointmentStatus.NoShow);
+
+            if (patientId > 0)
+            {
+                query = query.Where(a => a.PatientId == patientId);
+            }
+            else if (userRoleId == Shared.Constants.Roles.Patient)
+            {
+                query = query.Where(a => a.PatientId == userId);
+            }
+            else if (userRoleId == Shared.Constants.Roles.Doctor)
+            {
+                query = query.Where(a => a.DoctorId == userId);
+            }
+
+            var appointments = await query
+                .OrderBy(a => a.AppointmentDateTime)
+                .Take(20)
+                .ToListAsync();
+
+            if (patientId <= 0 && userRoleId != Shared.Constants.Roles.Patient)
+            {
+                appointments = appointments
+                    .Where(a => PromptMentionsPatient(prompt, a.Patient))
+                    .ToList();
+            }
+
+            return appointments.Take(5).ToList();
+        }
+
+        private static bool PromptMentionsPatient(string prompt, User patient)
+        {
+            var text = prompt.ToLowerInvariant();
+            var firstName = patient.FirstName?.Trim().ToLowerInvariant();
+            var lastName = patient.LastName?.Trim().ToLowerInvariant();
+            var fullName = $"{firstName} {lastName}".Trim();
+
+            return (!string.IsNullOrWhiteSpace(fullName) && text.Contains(fullName)) ||
+                (!string.IsNullOrWhiteSpace(firstName) && !string.IsNullOrWhiteSpace(lastName) &&
+                    text.Contains(firstName) && text.Contains(lastName));
+        }
+
+        private static string BuildAppointmentResponse(string prompt, int patientId, List<Appointment> appointments)
+        {
+            if (!appointments.Any())
+            {
+                var subject = patientId > 0 ? "this patient" : "that patient";
+                return $"I don't see any upcoming appointments for {subject}.";
+            }
+
+            var patientName = $"{appointments[0].Patient.FirstName} {appointments[0].Patient.LastName}".Trim();
+            var response = new System.Text.StringBuilder();
+            response.AppendLine($"Yes. {patientName} has {appointments.Count} upcoming appointment{(appointments.Count == 1 ? "" : "s")}:");
+
+            foreach (var appointment in appointments)
+            {
+                var doctorName = $"{appointment.Doctor.FirstName} {appointment.Doctor.LastName}".Trim();
+                var dateText = FormatAppointmentDate(appointment);
+                var reason = string.IsNullOrWhiteSpace(appointment.Reason) ? "" : $" - {appointment.Reason}";
+                response.AppendLine($"- {dateText} with {doctorName} ({appointment.Status}){reason}");
+            }
+
+            return response.ToString().Trim();
+        }
+
+        private static string FormatAppointmentDate(Appointment appointment)
+        {
+            var appointmentTime = appointment.AppointmentDateTime;
+            if (!string.IsNullOrWhiteSpace(appointment.TimeZoneId))
+            {
+                try
+                {
+                    var timeZone = TimeZoneInfo.FindSystemTimeZoneById(appointment.TimeZoneId);
+                    appointmentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(appointment.AppointmentDateTime, DateTimeKind.Utc), timeZone);
+                }
+                catch
+                {
+                    appointmentTime = appointment.AppointmentDateTime;
+                }
+            }
+
+            return $"{appointmentTime:MMM d, yyyy h:mm tt} {appointment.TimeZoneId}";
         }
 
         private string BuildMessageMetadata(int userId, int userRoleId, int patientId)
